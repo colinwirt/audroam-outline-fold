@@ -197,23 +197,47 @@ kbd {
   padding: 0.15rem 0 0.15rem 1.95rem;
 }
 
-.pane-toolbar {
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.doc-bar {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem;
-  margin-bottom: 0.35rem;
+  gap: 0.4rem;
+  margin: 0 0 0.85rem;
 }
 
-.pane-toolbar .pane-label {
-  margin-bottom: 0;
+.doc-select-wrap {
+  flex: 1 1 12rem;
+  min-width: 0;
 }
 
-.reset-btn {
+.doc-select {
+  width: 100%;
+  font: inherit;
+  font-size: 0.85rem;
+  padding: 0.35rem 0.55rem;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--text);
+}
+
+.doc-btn {
   flex: none;
   font: inherit;
   font-size: 0.75rem;
-  padding: 0.25rem 0.55rem;
+  padding: 0.35rem 0.55rem;
   border-radius: 6px;
   border: 1px solid var(--border);
   background: var(--panel);
@@ -221,7 +245,11 @@ kbd {
   cursor: pointer;
 }
 
-.reset-btn:hover {
+.doc-btn:hover {
   color: var(--text);
   border-color: var(--accent);
+}
+
+.doc-btn-accent {
+  color: var(--accent);
 }

@@ -4,7 +4,7 @@ Online-parser style demo for `@audroam/outline-fold`: textarea source → live `
 
 This is an **OSS example only** — not the Audroam Angular SPA.
 
-Edits persist in the browser via `localStorage` key `audroam-outline-fold-react-live-v1` (outline text only — do not store secrets); use **Reset to cafe demo** to clear the draft and reload the seed.
+A small multi-doc library lives in this browser’s `localStorage` (`audroam-outline-fold-react-live-docs-v1`: list of `{ id, title, body, updatedAt }` + `activeId`). Outline / cafe text only — do not store secrets. Quota is limited (~5MB typical); oversized libraries may fail to save silently. An older single-string key is migrated once into one doc. Use **New / Rename / Delete / Duplicate**, the doc dropdown, and **Load cafe sample**.
 
 
 ## Run
