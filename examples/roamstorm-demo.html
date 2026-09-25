@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<title>Roamstorm — outline-fold demo</title>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<style>
+:root{color-scheme:dark}
+body{font:16px/1.5 system-ui,sans-serif;max-width:42rem;margin:2rem auto;padding:0 1.25rem;background:#0f1419;color:#e7ecf1}
+h1{font-size:1.2rem;font-weight:600;margin:0 0 .25rem}
+.meta{color:#8b9bab;font-size:.85rem;margin-bottom:1.25rem}
+.of-outline,.of-children{list-style:none;margin:0;padding-left:0}
+.of-children{padding-left:1.1rem;border-left:1px solid #2a3540;margin-left:.35rem}
+.of-node{margin:.15rem 0}
+.of-node[data-collapsed="true"]>.of-children{display:none}
+.of-row{display:flex;align-items:flex-start;gap:.35rem}
+.of-title{flex:1}
+.of-fold{flex:none;min-width:1.6rem;height:1.25rem;border:0;background:transparent;color:#6cb6ff;cursor:pointer;padding:0;line-height:1.2;font:inherit}
+.of-fold-collapsed::before{content:"(+)"}
+.of-fold-expanded::before{content:" "}
+.of-row svg{flex:none;margin-top:.15rem;opacity:.85}
+#panel{margin-top:1.5rem;padding-top:1rem;border-top:1px solid #2a3540}
+pre{background:#1a2330;padding:.75rem;overflow:auto;font-size:12px;border-radius:8px}
+kbd{background:#1a2330;padding:.1em .35em;border-radius:4px;font-size:.85em}
+</style>
+</head>
+<body>
+<h1>🌩️ Roamstorm</h1>
+<p class="meta">Live demo — click <kbd>(+)</kbd> to expand. LLM-style <code>approve:</code> / <code>reject:</code> tasks, P# and 👍👎 in captions. POC / disposable.</p>
+<div id="tree"><ul class="of-outline" data-fold-mode="-"><li class="of-node" data-id="root" data-collapsed="false">
+  <div class="of-row"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16" aria-label="document" fill="none" stroke="#C9A227" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/></svg><button type="button" class="of-fold of-fold-expanded" data-toggle-fold="root" aria-label="Collapse"></button><span class="of-title">🌩️ Roamstorm — LLM actionable outline (POC)</span></div>
+  <ul class="of-children"><li class="of-node" data-id="goal" data-collapsed="false">
+  <div class="of-row"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16" aria-label="document" fill="none" stroke="#C9A227" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/></svg><button type="button" class="of-fold of-fold-expanded" data-toggle-fold="goal" aria-label="Collapse"></button><span class="of-title">Goal: bots write feedback you can approve in-syntax</span></div>
+  
+</li><li class="of-node" data-id="actions" data-collapsed="false">
+  <div class="of-row"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16" aria-label="document" fill="none" stroke="#C9A227" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/></svg><button type="button" class="of-fold of-fold-expanded" data-toggle-fold="actions" aria-label="Collapse"></button><span class="of-title">✅ Actions to approve</span></div>
+  <ul class="of-children"><li class="of-node" data-id="a1" data-collapsed="false">
+  <div class="of-row"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16" aria-label="document" fill="none" stroke="#C9A227" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/></svg><button type="button" class="of-fold of-fold-expanded" data-toggle-fold="a1" aria-label="Collapse"></button><span class="of-title">[ ] Ship label **Roamstorm** (retire Roamthink) · P1 · 👍</span></div>
+  
+</li><li class="of-node" data-id="a2" data-collapsed="false">
+  <div class="of-row"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16" aria-label="document" fill="none" stroke="#C9A227" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/></svg><button type="button" class="of-fold of-fold-expanded" data-toggle-fold="a2" aria-label="Collapse"></button><span class="of-title">[ ] Keep GitHub disposable · no npm publish yet · P1</span></div>
+  
+</li><li class="of-node" data-id="a3" data-collapsed="false">
+  <div class="of-row"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16" aria-label="document" fill="none" stroke="#C9A227" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/></svg><button type="button" class="of-fold of-fold-expanded" data-toggle-fold="a3" aria-label="Collapse"></button><span class="of-title">[ ] Lock caption micro-syntax P# + 👍N 👎N · P2</span></div>
+  
+</li><li class="of-node" data-id="a4" data-collapsed="false">
+  <div class="of-row"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16" aria-label="document" fill="none" stroke="#C9A227" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/></svg><button type="button" class="of-fold of-fold-expanded" data-toggle-fold="a4" aria-label="Collapse"></button><span class="of-title">[ ] Wire Angular outline/map dogfood · P3</span></div>
+  
+</li></ul>
+</li><li class="of-node" data-id="names" data-collapsed="false">
+  <div class="of-row"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16" aria-label="document" fill="none" stroke="#C9A227" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/></svg><button type="button" class="of-fold of-fold-expanded" data-toggle-fold="names" aria-label="Collapse"></button><span class="of-title">🏷️ Name votes</span></div>
+  <ul class="of-children"><li class="of-node" data-id="n-storm" data-collapsed="false">
+  <div class="of-row"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16" aria-label="document" fill="none" stroke="#C9A227" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/></svg><button type="button" class="of-fold of-fold-expanded" data-toggle-fold="n-storm" aria-label="Collapse"></button><span class="of-title">Roamstorm · 🥇 P1 · 👍12 👎2</span></div>
+  
+</li><li class="of-node of-collapsed" data-id="n-think" data-collapsed="true">
+  <div class="of-row"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16" aria-label="document" fill="none" stroke="#C9A227" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/></svg><button type="button" class="of-fold" data-toggle-fold="n-think" aria-label="Expand">(+)</button><span class="of-title">Roamthink · P2 · 👍5 👎4</span></div>
+  
+</li><li class="of-node" data-id="n-fold" data-collapsed="false">
+  <div class="of-row"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16" aria-label="document" fill="none" stroke="#C9A227" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/></svg><button type="button" class="of-fold of-fold-expanded" data-toggle-fold="n-fold" aria-label="Collapse"></button><span class="of-title">foldroam · P3 · 👍3 👎6</span></div>
+  
+</li></ul>
+</li><li class="of-node" data-id="llm" data-collapsed="false">
+  <div class="of-row"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16" aria-label="document" fill="none" stroke="#C9A227" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/></svg><button type="button" class="of-fold of-fold-expanded" data-toggle-fold="llm" aria-label="Collapse"></button><span class="of-title">🤖 LLM proposals (actionable)</span></div>
+  <ul class="of-children"><li class="of-node" data-id="fb1" data-collapsed="false">
+  <div class="of-row"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16" aria-label="document" fill="none" stroke="#C9A227" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/></svg><button type="button" class="of-fold of-fold-expanded" data-toggle-fold="fb1" aria-label="Collapse"></button><span class="of-title">Proposal: storm docs default fold- (majority open) · pros4 cons1</span></div>
+  <ul class="of-children"><li class="of-node" data-id="fb1-act" data-collapsed="false">
+  <div class="of-row"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16" aria-label="document" fill="none" stroke="#C9A227" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/></svg><button type="button" class="of-fold of-fold-expanded" data-toggle-fold="fb1-act" aria-label="Collapse"></button><span class="of-title">[ ] approve:fb1 adopt fold- default</span></div>
+  
+</li></ul>
+</li><li class="of-node" data-id="fb2" data-collapsed="false">
+  <div class="of-row"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16" aria-label="document" fill="none" stroke="#C9A227" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/></svg><button type="button" class="of-fold of-fold-expanded" data-toggle-fold="fb2" aria-label="Collapse"></button><span class="of-title">Proposal: captions = title · P# · 👍N 👎N · pros6 cons0</span></div>
+  <ul class="of-children"><li class="of-node" data-id="fb2-act" data-collapsed="false">
+  <div class="of-row"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16" aria-label="document" fill="none" stroke="#C9A227" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/></svg><button type="button" class="of-fold of-fold-expanded" data-toggle-fold="fb2-act" aria-label="Collapse"></button><span class="of-title">[ ] approve:fb2 lock caption micro-syntax</span></div>
+  
+</li></ul>
+</li><li class="of-node of-collapsed" data-id="fb3" data-collapsed="true">
+  <div class="of-row"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16" aria-label="document" fill="none" stroke="#C9A227" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/></svg><button type="button" class="of-fold" data-toggle-fold="fb3" aria-label="Expand">(+)</button><span class="of-title">🔒 Proposal: MFA gate on private nodes before expand · pros2 cons3</span></div>
+  
+</li></ul>
+</li><li class="of-node" data-id="icons" data-collapsed="false">
+  <div class="of-row"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16" aria-label="document" fill="none" stroke="#C9A227" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/></svg><button type="button" class="of-fold of-fold-expanded" data-toggle-fold="icons" aria-label="Collapse"></button><span class="of-title">🎨 Captions with emoji / type hints</span></div>
+  <ul class="of-children"><li class="of-node" data-id="i-doc" data-collapsed="false">
+  <div class="of-row"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16" aria-label="document" fill="none" stroke="#C9A227" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/></svg><button type="button" class="of-fold of-fold-expanded" data-toggle-fold="i-doc" aria-label="Collapse"></button><span class="of-title">📄 Spec spike</span></div>
+  
+</li><li class="of-node" data-id="i-bug" data-collapsed="false">
+  <div class="of-row"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16" aria-label="document" fill="none" stroke="#C9A227" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/></svg><button type="button" class="of-fold of-fold-expanded" data-toggle-fold="i-bug" aria-label="Collapse"></button><span class="of-title">🐛 Hyphen id todo-1 · fixed</span></div>
+  
+</li><li class="of-node" data-id="i-risk" data-collapsed="false">
+  <div class="of-row"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16" aria-label="document" fill="none" stroke="#C9A227" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/></svg><button type="button" class="of-fold of-fold-expanded" data-toggle-fold="i-risk" aria-label="Collapse"></button><span class="of-title">⚠️ Roam Research name collision · monitor</span></div>
+  
+</li><li class="of-node" data-id="i-db" data-collapsed="false">
+  <div class="of-row"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16" aria-label="document" fill="none" stroke="#C9A227" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/></svg><button type="button" class="of-fold of-fold-expanded" data-toggle-fold="i-db" aria-label="Collapse"></button><span class="of-title">🗄️ DB-backed nodes · host-only later</span></div>
+  
+</li></ul>
+</li></ul>
+</li></ul></div>
+<div id="panel">
+<p class="meta">Fold state (updates as you click):</p>
+<pre id="foldOut"></pre>
+</div>
+<script type="module">
+import { parse, toggleFold, serialize, toHtml, isCollapsed } from '../dist/index.js';
+
+const src = "---\nfold-: n-think, fb3\ncollapsedMarker: \"(+)\"\n---\n- <id:root> 🌩️ Roamstorm — LLM actionable outline (POC)\n  - <id:goal> Goal: bots write feedback you can approve in-syntax\n  - <id:actions> ✅ Actions to approve\n    - <id:a1> [ ] Ship label **Roamstorm** (retire Roamthink) · P1 · 👍\n    - <id:a2> [ ] Keep GitHub disposable · no npm publish yet · P1\n    - <id:a3> [ ] Lock caption micro-syntax P# + 👍N 👎N · P2\n    - <id:a4> [ ] Wire Angular outline/map dogfood · P3\n  - <id:names> 🏷️ Name votes\n    - <id:n-storm> Roamstorm · 🥇 P1 · 👍12 👎2\n    - <id:n-think> Roamthink · P2 · 👍5 👎4 (+)\n    - <id:n-fold> foldroam · P3 · 👍3 👎6\n  - <id:llm> 🤖 LLM proposals (actionable)\n    - <id:fb1> Proposal: storm docs default fold- (majority open) · pros4 cons1\n      - <id:fb1-act> [ ] approve:fb1 adopt fold- default\n    - <id:fb2> Proposal: captions = title · P# · 👍N 👎N · pros6 cons0\n      - <id:fb2-act> [ ] approve:fb2 lock caption micro-syntax\n    - <id:fb3> 🔒 Proposal: MFA gate on private nodes before expand · pros2 cons3 (+)\n      - <id:fb3-act> [ ] reject:fb3 defer MFA to Audroam host\n  - <id:icons> 🎨 Captions with emoji / type hints\n    - <id:i-doc> 📄 Spec spike\n    - <id:i-bug> 🐛 Hyphen id todo-1 · fixed\n    - <id:i-risk> ⚠️ Roam Research name collision · monitor\n    - <id:i-db> 🗄️ DB-backed nodes · host-only later\n";
+let doc = parse(src);
+const tree = document.getElementById('tree');
+const foldOut = document.getElementById('foldOut');
+
+function paint() {
+  tree.innerHTML = toHtml(doc);
+  foldOut.textContent = 'fold' + doc.fold.mode + ': ' + (doc.fold.ids.join(', ') || '(none)') + '\n\n' + serialize(doc);
+  tree.querySelectorAll('[data-toggle-fold]').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      const id = btn.getAttribute('data-toggle-fold');
+      if (!id) return;
+      doc = toggleFold(doc, id);
+      paint();
+    });
+  });
+}
+paint();
+</script>
+</body>
+</html>
