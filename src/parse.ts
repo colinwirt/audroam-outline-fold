@@ -11,13 +11,13 @@ const DEFAULT_COLLAPSED = '(+)';
 
 const ID_PREFIXED = /^<id:([A-Za-z][A-Za-z0-9_-]*)>\s*/;
 const KIND_SPAN =
-  /^<(?:kind:)?(doc|ticket|globe|db|feature|form|bug|risk|lock|encrypted|system-link)>\s*/i;
+  /^<(?:kind:)?(doc|ticket|globe|db|feature|form|bug|risk|lock|encrypted|system-link|pending-approve)>\s*/i;
 const FLAG_SPAN =
   /^<(private|encrypted|db)(?::([^\s>]+))?>\s*/i;
 
 const ID_TRAILING = /\s*<id:([A-Za-z][A-Za-z0-9_-]*)>\s*$/;
 const KIND_TRAILING =
-  /\s*<(?:kind:)?(doc|ticket|globe|db|feature|form|bug|risk|lock|encrypted|system-link)>\s*$/i;
+  /\s*<(?:kind:)?(doc|ticket|globe|db|feature|form|bug|risk|lock|encrypted|system-link|pending-approve)>\s*$/i;
 const FLAG_TRAILING =
   /\s*<(private|encrypted|db)(?::([^\s>]+))?>\s*$/i;
 

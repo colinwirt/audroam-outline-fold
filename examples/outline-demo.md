@@ -1,27 +1,33 @@
 ---
-fold-: drafts, risk-mfa
+fold-: courtyard-quotes, payroll, alarm, staff-private
 collapsedMarker: "(+)"
 ---
-- 📋 Launch checklist — LLM actionable outline <id:root>
-  - Goal: share one outline bots and humans can approve in-syntax <id:goal>
-  - ✅ Actions to approve <id:actions>
-    - [ ] Ship fold docs · P1 · 👍 <id:a1>
-    - [ ] Publish package README sample · P1 <id:a2>
-    - [ ] Lock caption micro-syntax P# + 👍N 👎N · P2 <id:a3>
-    - [ ] Wire host outline/map dogfood · P3 <id:a4>
-  - 📦 Deliverables <id:deliverables>
-    - Docs site · 🥇 P1 · 👍12 👎2 <id:d-docs>
-    - Interactive HTML demo · P1 · 👍9 👎1 <id:d-html>
-    - Draft blog post · P3 · 👍3 👎6 <id:drafts> (+)
-  - 🤖 LLM proposals (actionable) <id:llm>
-    - Proposal: docs default fold- (majority open) · pros4 cons1 <id:fb1>
-      - [ ] approve:fb1 adopt fold- default <id:fb1-act>
-    - Proposal: captions = title · P# · 👍N 👎N · pros6 cons0 <id:fb2>
-      - [ ] approve:fb2 lock caption micro-syntax <id:fb2-act>
-    - 🔒 Proposal: MFA gate on private nodes before expand · pros2 cons3 <id:risk-mfa> (+)
-      - [ ] reject:risk-mfa defer MFA to host app <id:risk-mfa-act>
-  - 🎨 Captions with emoji / type hints <id:icons>
-    - 📄 Spec spike <id:i-doc>
-    - 🐛 Hyphen id todo-1 · fixed <id:i-bug>
-    - ⚠️ External dependency churn · monitor <id:i-risk>
-    - 🗄️ DB-backed nodes · host-only later <id:i-db>
+- ☕ Northside Corner Cafe — ops handoff <id:root>
+  - Menu update ideas · spring · P2 · 👍 <id:menu>
+    - [ ] Add cold brew flight · board special <kind:pending-approve> <id:menu-coldbrew>
+    - [ ] Retire winter pie · low sellers · P3 <kind:pending-approve> <id:menu-pie>
+    - [-] Seasonal flat white syrup · supplier TBD <id:menu-syrup>
+    - [x] Allergen line on board · approved:Jess · done Wed <id:menu-allergen>
+    - pros: weekend tourist traffic · cons: barista training time <id:menu-notes>
+  - Seasonal supplier update · Q4 fruit <id:suppliers>
+    - Berries · Yarra Valley co-op · ETA next Tue <id:sup-berries>
+    - Milk · keep current dairy · no change <id:sup-milk>
+    - Coffee · sample bag from Altitude Roasters <id:sup-coffee>
+    - [x] Send Friday supplier SMS · approved:sms-bot · auto <id:sup-sms>
+    - Order codes / account notes <private> <id:sup-private> (+)
+  - Remodel the courtyard · permit in flight · P1 <id:courtyard>
+    - [ ] Confirm pavers quote · three bids <kind:pending-approve> <id:courtyard-quotes> (+)
+      - Bid A · local mason · ballpark only <id:bid-a>
+      - Bid B · landscape crew · includes planters <id:bid-b>
+    - [ ] Shade sail colour · match awning <kind:pending-approve> <id:courtyard-sail>
+    - [ ] Neighbour note before dig day <kind:pending-approve> <id:courtyard-neighbour>
+    - [x] Permit lodged · approved:Sam <id:courtyard-permit>
+  - Staff roster · first names only <id:staff>
+    - Mon open · Sam · Jess <id:staff-mon>
+    - Tue–Wed · Sam · Priya <id:staff-mid>
+    - Fri late · Jess · Omar <id:staff-fri>
+    - [x] Post Fri late SMS to Omar · approved:sms-bot · auto <id:staff-sms>
+    - Full staff list + emergency contacts <private> <id:staff-private> (+)
+  - Secrets · manager only <id:secrets>
+    - Payroll portal link + pay-run notes <private> <id:payroll> (+)
+    - Alarm code / arming notes <encrypted> <id:alarm> (+)

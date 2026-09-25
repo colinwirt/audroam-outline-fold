@@ -1,6 +1,5 @@
 /**
- * Minimal 2D map demo. Uses built dist when available; otherwise paste parse output.
- * Run after `npm run build` from package root, or open via a bundler.
+ * Minimal 2D cafe ops map. Uses the built package for parsing and fold state.
  */
 import {
   parse,
@@ -10,14 +9,22 @@ import {
 } from '../../dist/index.js';
 
 const SAMPLE = `---
-fold-: design
+fold-: courtyard-quotes, payroll, alarm
 collapsedMarker: "(+)"
 ---
-- Designing updates for Markmap <id:design> (+)
-  - Wire fold state <id:todo-1>
-  - Payroll notes <private> <id:secret>
-- Public site <kind:globe> <id:map>
-- Schema <db:prod-pg> <id:db1>
+- ☕ Northside Corner Cafe — ops handoff <id:root>
+  - Menu update ideas · spring · P2 · 👍 <id:menu>
+    - [ ] Add cold brew flight · board special <kind:pending-approve> <id:menu-coldbrew>
+    - [x] Allergen line on board · approved:Jess · done Wed <id:menu-allergen>
+  - Remodel the courtyard · permit in flight · P1 <id:courtyard>
+    - [ ] Confirm pavers quote · three bids <kind:pending-approve> <id:courtyard-quotes> (+)
+    - [x] Permit lodged · approved:Sam <id:courtyard-permit>
+    - [x] Post Fri SMS · approved:sms-bot · auto <id:staff-sms>
+      - Bid A · local mason · ballpark only <id:bid-a>
+      - Bid B · landscape crew · includes planters <id:bid-b>
+  - Secrets · manager only <id:secrets>
+    - Payroll portal link + pay-run notes <private> <id:payroll> (+)
+    - Alarm code / arming notes <encrypted> <id:alarm> (+)
 `;
 
 let doc = parse(SAMPLE);

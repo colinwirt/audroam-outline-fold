@@ -6,13 +6,22 @@ import {
 } from '../../dist/index.js';
 
 const SAMPLE = `---
-fold-: design, secret
+fold-: courtyard-quotes, payroll, alarm
+collapsedMarker: "(+)"
 ---
-- Designing updates for Markmap <id:design> (+)
-  - Wire fold <id:todo-1>
-  - Payroll <private> <id:secret> (+)
-- Client keys <encrypted> <id:vault>
-- Website <kind:globe> <id:site>
+- ☕ Northside Corner Cafe — ops handoff <id:root>
+  - Menu update ideas · spring · P2 · 👍 <id:menu>
+    - [ ] Add cold brew flight · board special <kind:pending-approve> <id:menu-coldbrew>
+    - [x] Allergen line on board · approved:Jess · done Wed <id:menu-allergen>
+  - Remodel the courtyard · permit in flight · P1 <id:courtyard>
+    - [ ] Confirm pavers quote · three bids <kind:pending-approve> <id:courtyard-quotes> (+)
+    - [x] Permit lodged · approved:Sam <id:courtyard-permit>
+    - [x] Post Fri SMS · approved:sms-bot · auto <id:staff-sms>
+      - Bid A · local mason · ballpark only <id:bid-a>
+      - Bid B · landscape crew · includes planters <id:bid-b>
+  - Secrets · manager only <id:secrets>
+    - Payroll portal link + pay-run notes <private> <id:payroll> (+)
+    - Alarm code / arming notes <encrypted> <id:alarm> (+)
 `;
 
 let doc = parse(SAMPLE);

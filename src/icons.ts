@@ -16,7 +16,8 @@ export type IconName =
   | 'encrypted'
   | 'mfa'
   | 'unlock'
-  | 'system-link';
+  | 'system-link'
+  | 'pending-approve';
 
 const gold = '#C9A227';
 const stroke = gold;
@@ -73,6 +74,10 @@ export const ICONS: Record<IconName, string> = {
   'system-link': svg(
     '<path d="M10 13a5 5 0 0 0 7.07 0l2.83-2.83a5 5 0 0 0-7.07-7.07L11 4.76"/><path d="M14 11a5 5 0 0 0-7.07 0L4.1 13.83a5 5 0 0 0 7.07 7.07L13 19.24"/>',
     'system link',
+  ),
+  'pending-approve': svg(
+    '<rect x="5" y="3" width="14" height="18" rx="2"/><path d="M8 8h8M8 12h3M8 16l2 2 5-5"/>',
+    'pending approval',
   ),
   unlock: svg(
 

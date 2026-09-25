@@ -1,7 +1,7 @@
 # @audroam/outline-fold
 
-Pure TypeScript **outline language** for LLM handoff and actionable outlines: parse / serialize, `fold-` / `fold+`, toggle, icons, and `toHtml`.  
-**MIT.** Host apps (e.g. Audroam) own real MFA, encryption, and database drivers.
+Pure TypeScript **outline language** for structured operational handoffs: parse / serialize, `fold-` / `fold+`, toggle, icons, and `toHtml`.
+**MIT.** Host apps own production authentication, encryption, and database drivers.
 
 ```bash
 npm i   # from this repo
@@ -16,39 +16,38 @@ Open after `npm run build` and `npx serve -l 4173 .`:
 
 | Demo | URL |
 |------|-----|
-| **Outline demo** — LLM actionable outline (approve/reject, P#, votes, fold) | [examples/outline-demo.html](./examples/outline-demo.html) → `http://127.0.0.1:4173/examples/outline-demo.html` |
-| Canvas 2D map | [examples/canvas-2d/](./examples/canvas-2d/) → `http://127.0.0.1:4173/examples/canvas-2d/` |
-| 3D example | [examples/3d/](./examples/3d/) → `http://127.0.0.1:4173/examples/3d/` |
+| **Cafe ops outline** — menu, suppliers, courtyard, and private handoff notes | [examples/outline-demo.html](./examples/outline-demo.html) → `http://127.0.0.1:4173/examples/outline-demo.html` |
+| Cafe ops 2D map | [examples/canvas-2d/](./examples/canvas-2d/) → `http://127.0.0.1:4173/examples/canvas-2d/` |
+| Cafe ops 3D map | [examples/3d/](./examples/3d/) → `http://127.0.0.1:4173/examples/3d/` |
 
-Source outline for the demo: [examples/outline-demo.md](./examples/outline-demo.md).
+Source outline for the cafe handoff: [examples/outline-demo.md](./examples/outline-demo.md).
 
 ### Screenshots
 
-![Outline live HTML + fold state (tablet portrait)](docs/screenshots/outline-html.png)
+![Cafe ops outline live HTML + fold state (tablet portrait)](docs/screenshots/outline-html.png)
 
-![Outline tree (tablet portrait)](docs/screenshots/outline-tree.png)
+![Cafe ops outline tree (tablet portrait)](docs/screenshots/outline-tree.png)
 
-![Canvas 2D map (tablet portrait)](docs/screenshots/canvas-2d.png)
+![Cafe ops 2D map (tablet portrait)](docs/screenshots/canvas-2d.png)
 
 ## Sample (caption-first ids)
 
-Bots and humans can share the same artifact — tasks to approve, priority and votes in captions, fold memory in frontmatter. **Ids trail the caption** so the title stays readable (`(+)` stays outermost):
+Cafe ops handoff — bots and humans share one outline. **Ids trail the caption.** Pending sign-off uses `<kind:pending-approve>`. Done rows name who approved (`approved:Jess` or auto `approved:sms-bot`):
 
 ```text
 ---
-fold-: drafts, risk-mfa
+fold-: courtyard-quotes, payroll, alarm, staff-private
 collapsedMarker: "(+)"
 ---
-- 📋 Launch checklist — LLM actionable outline <id:root>
-  - ✅ Actions to approve <id:actions>
-    - [ ] Ship fold docs · P1 · 👍 <id:a1>
-    - [ ] Publish package README sample · P1 <id:a2>
-  - 📦 Deliverables <id:deliverables>
-    - Docs site · 🥇 P1 · 👍12 👎2 <id:d-docs>
-    - Draft blog post · P3 · 👍3 👎6 <id:drafts> (+)
-  - 🤖 LLM proposals <id:llm>
-    - 🔒 MFA on private nodes · pros2 cons3 <id:risk-mfa> (+)
-      - [ ] reject:risk-mfa defer MFA to host <id:risk-mfa-act>
+- ☕ Northside Corner Cafe — ops handoff <id:root>
+  - Menu update ideas · spring · P2 · 👍 <id:menu>
+    - [ ] Add cold brew flight · board special <kind:pending-approve> <id:menu-coldbrew>
+    - [ ] Retire winter pie · low sellers · P3 <kind:pending-approve> <id:menu-pie>
+    - [x] Allergen line on board · approved:Jess · done Wed <id:menu-allergen>
+    - [x] Send Friday supplier SMS · approved:sms-bot · auto <id:sup-sms>
+  - Remodel the courtyard · permit in flight · P1 <id:courtyard>
+    - [ ] Confirm pavers quote · three bids <kind:pending-approve> <id:courtyard-quotes> (+)
+    - [x] Permit lodged · approved:Sam <id:courtyard-permit>
 ```
 
 Leading `<id:…>` is still accepted for backward compatibility; `serialize` always emits caption-first.
@@ -67,14 +66,15 @@ Leading `<id:…>` is still accepted for backward compatibility; `serialize` alw
 ### Optional kinds / flags (model only)
 
 ```text
-- Payroll notes <private> <id:secret>
-- Client keys <encrypted> <id:vault>
-- Schema map <db:prod-pg> <id:conn>
-- New map layer <kind:feature> <id:feat>
+- Payroll portal notes <private> <id:payroll>
+- Alarm arming notes <encrypted> <id:alarm>
+- Cafe supplier account <kind:ticket> <id:supplier-account>
+- Courtyard project <kind:feature> <id:courtyard>
+- Menu change awaiting sign-off <kind:pending-approve> <id:menu-signoff>
 ```
 
-Icons include doc, ticket, globe, db, feature, form, bug, risk, lock, encrypted, mfa, system-link.  
-`toHtml` can render locked chrome + Unlock/Decrypt buttons. Wire host callbacks for real MFA/crypto — **none ship in this package.**
+Icons include doc, ticket, globe, db, feature, form, bug, risk, lock, encrypted, mfa, system-link, and pending-approve (an amber clipboard-check for human sign-off).
+`toHtml` can render locked chrome + Unlock/Decrypt buttons. Wire host callbacks for real authentication/crypto — **none ship in this package.**
 
 ## API
 
@@ -89,12 +89,12 @@ import {
 } from '@audroam/outline-fold';
 
 const doc = parse(text);
-isCollapsed(doc, 'design');
-const next = toggleFold(doc, 'design'); // pure — Angular binds the object, no re-parse on click
+isCollapsed(doc, 'courtyard');
+const next = toggleFold(doc, 'courtyard'); // pure — bind the returned object, no re-parse on click
 const html = toHtml(next);
 ```
 
-## Angular dogfood (host)
+## Host integration
 
 1. `doc = parse(savedText)` once  
 2. Bind UI to `doc`  
@@ -103,9 +103,9 @@ const html = toHtml(next);
 
 ## Security boundary
 
-| In this package | In the host (Audroam, etc.) |
-|-----------------|-----------------------------|
-| Grammar, fold state, icons, HTML chrome | MFA / TOTP challenge |
+| In this package | In the host app |
+|-----------------|-----------------|
+| Grammar, fold state, icons, HTML chrome | Authentication / MFA challenge |
 | `onUnlock` / `onDecrypt` **types** | Key management, decrypt |
 | `db` flag + `dbRef` string | Connection pools, credentials |
 
