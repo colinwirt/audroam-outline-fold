@@ -1,0 +1,42 @@
+{
+  "passphrase": "northside-demo",
+  "note": "Fictional cafe demo plaintexts only. Regenerated into examples/outline-demo.md via npm run demo:seal.",
+  "payloads": [
+    {
+      "id": "sup-private",
+      "kid": "cafe-sup-1",
+      "flag": "private",
+      "caption": "Order codes / account notes",
+      "plaintext": "Account code NC-DEMO-9"
+    },
+    {
+      "id": "staff-private",
+      "kid": "cafe-staff-1",
+      "flag": "private",
+      "caption": "Full staff list + emergency contacts",
+      "plaintext": "Jess mobile +61 400 000 001 (fiction) / Omar ICE +61 400 000 002 (fiction)"
+    },
+    {
+      "id": "payroll",
+      "kid": "cafe-payroll-1",
+      "flag": "private",
+      "caption": "Payroll portal link + pay-run notes",
+      "plaintext": "Portal: https://example.invalid/payroll \u00b7 run Wed"
+    },
+    {
+      "id": "alarm",
+      "kid": "cafe-alarm-1",
+      "flag": "encrypted",
+      "caption": "Alarm code / arming notes",
+      "plaintext": "Arm code 0000 (fiction) \u00b7 exit delay 60s"
+    }
+  ],
+  "remoteStub": {
+    "id": "ins-remote",
+    "kid": "cafe-ins-1",
+    "flag": "encrypted",
+    "caption": "Vendor insurance cert (remote blob)",
+    "uri": "https://example.invalid/sealed/cafe-ins-1.bin",
+    "alg": "demo-aes-gcm"
+  }
+}

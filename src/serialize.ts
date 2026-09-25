@@ -1,3 +1,4 @@
+import { collectPayloads, formatPayloadsBlock } from './payloads.js';
 import type { OutlineFoldDoc, OutlineNode } from './types.js';
 
 const DEFAULT_COLLAPSED = '(+)';
@@ -9,11 +10,11 @@ function isCollapsed(doc: OutlineFoldDoc, id: string | undefined): boolean {
   return mode === '-' ? inList : !inList;
 }
 
-function escapeTitle(title: string): string {
-  return title;
-}
-
-/** Caption-first: kind/flag spans, then `<id:...>`, after the title. */
+/**
+ * Caption-first trailing tags (v0.2 lean):
+ * `title <kind:…>? <flag>* <id:…>? (+)?`
+ * Sealed material lives in the trailing `--- payloads ---` block, not on the line.
+ */
 function formatTrailingSpans(node: OutlineNode): string {
   const parts: string[] = [];
   if (node.kind) parts.push(`<kind:${node.kind}>`);
@@ -36,7 +37,7 @@ function serializeNode(
     doc.frontmatter?.collapsedMarker ?? DEFAULT_COLLAPSED;
   const expandedMarker = doc.frontmatter?.expandedMarker;
   const indent = '  '.repeat(node.depth);
-  let line = `${indent}- ${escapeTitle(node.title)}${formatTrailingSpans(node)}`;
+  let line = `${indent}- ${node.title}${formatTrailingSpans(node)}`;
   if (node.id && isCollapsed(doc, node.id)) {
     line += ` ${collapsedMarker}`;
   } else if (node.id && expandedMarker) {
@@ -68,6 +69,11 @@ export function serialize(doc: OutlineFoldDoc): string {
   }
   lines.push('---', '');
   for (const n of doc.nodes) serializeNode(n, doc, lines);
+  const payloads = collectPayloads(doc.nodes);
+  const block = formatPayloadsBlock(payloads);
+  if (block) {
+    lines.push('', block);
+  }
   lines.push('');
   return lines.join('\n');
 }

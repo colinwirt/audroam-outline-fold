@@ -17,6 +17,22 @@ export type NodeKind =
   | 'system-link'
   | string;
 
+/**
+ * Sealed payload on a node (v0.2).
+ * Cleartext caption stays lossy; secret material is either:
+ * - **inline** `ciphertext` (bundled in the outline doc), or
+ * - **remote** `uri` (host fetches after auth).
+ * Exactly one of `ciphertext` | `uri` should be set.
+ */
+export interface SealedPayload {
+  kid: string;
+  /** Base64url (or base64) ciphertext — inline / bundled style. */
+  ciphertext?: string;
+  /** Remote blob URI — host fetches after key release. */
+  uri?: string;
+  alg?: string;
+}
+
 export interface OutlineNode {
   id?: string;
   title: string;
@@ -26,6 +42,8 @@ export interface OutlineNode {
   flags?: NodeFlag[];
   /** Optional DB connection ref string — host resolves; package never opens DB. */
   dbRef?: string;
+  /** Sealed / encrypted payload (`<enc:…>`). Demo or host crypto opens it. */
+  sealed?: SealedPayload;
 }
 
 export interface OutlineFrontmatter {
@@ -49,7 +67,7 @@ export interface OutlineFoldDoc {
 /** Host-supplied hooks — package does not implement MFA/crypto. */
 export interface OutlineViewCallbacks {
   onUnlock?(id: string): void;
-  onDecrypt?(id: string): void;
+  onDecrypt?(id: string, kid?: string): void | Promise<void>;
 }
 
 export interface ToHtmlOptions {

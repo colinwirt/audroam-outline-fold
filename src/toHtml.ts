@@ -1,5 +1,6 @@
 import { isCollapsed } from './fold.js';
 import { iconForNode } from './icons.js';
+import { hasSealed } from './sealed.js';
 import type { OutlineFoldDoc, OutlineNode, ToHtmlOptions } from './types.js';
 
 function esc(s: string): string {
@@ -25,12 +26,20 @@ function renderNode(
     opts.lockedChrome &&
     (flags.includes('private') || flags.includes('encrypted'));
   const icon = iconForNode(node.kind, flags);
+  const sealed = hasSealed(node);
 
+  // data-kid only — never put raw ciphertext in the DOM / accessible name.
   const dataAttrs = [
     node.id ? `data-id="${esc(node.id)}"` : '',
     `data-collapsed="${collapsed}"`,
     flags.length ? `data-flags="${esc(flags.join(','))}"` : '',
     node.dbRef ? `data-db-ref="${esc(node.dbRef)}"` : '',
+    sealed ? `data-sealed="true"` : '',
+    sealed && node.sealed?.kid ? `data-kid="${esc(node.sealed.kid)}"` : '',
+    sealed && node.sealed?.uri ? `data-sealed-uri="${esc(node.sealed.uri)}"` : '',
+    sealed
+      ? `data-sealed-mode="${node.sealed?.uri && !node.sealed?.ciphertext ? 'remote' : 'inline'}"`
+      : '',
   ]
     .filter(Boolean)
     .join(' ');
@@ -66,6 +75,7 @@ function renderNode(
 /**
  * Semantic HTML string for an outline doc. Wire buttons to toggleFold /
  * host onUnlock/onDecrypt — this function only emits markup.
+ * Sealed ciphertext stays in the JS model; DOM gets `data-kid` / `data-sealed` only.
  */
 export function toHtml(doc: OutlineFoldDoc, options: ToHtmlOptions = {}): string {
   const opts = {

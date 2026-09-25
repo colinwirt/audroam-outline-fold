@@ -1,12 +1,14 @@
 # @audroam/outline-fold
 
-Pure TypeScript **outline language** for structured operational handoffs: parse / serialize, `fold-` / `fold+`, toggle, icons, and `toHtml`.
+Pure TypeScript **outline language** for structured operational handoffs: parse / serialize, `fold-` / `fold+`, toggle, icons, `toHtml`, and **sealed payloads** (demo crypto only).
+
 **MIT.** Host apps own production authentication, encryption, and database drivers.
 
 ```bash
 npm i   # from this repo
 npm test
 npm run build
+npm run demo:seal   # regenerate cafe trailer payloads from fictional plaintexts
 npx serve -l 4173 .   # then open the live demos below
 ```
 
@@ -22,83 +24,106 @@ npx serve -l 4173 .   # then open the live demos below
 | Cafe ops 2D map | […/examples/canvas-2d/](https://colinwirt.github.io/audroam-outline-fold/examples/canvas-2d/) |
 | Cafe ops 3D map | […/examples/3d/](https://colinwirt.github.io/audroam-outline-fold/examples/3d/) |
 
-**Local** — after `npm run build` and `npx serve -l 4173 .`:
+Source outline: [examples/outline-demo.md](./examples/outline-demo.md).
 
-| Demo | URL |
-|------|-----|
-| **Cafe ops outline** — menu, suppliers, courtyard, and private handoff notes | [examples/outline-demo.html](./examples/outline-demo.html) → `http://127.0.0.1:4173/examples/outline-demo.html` |
-| Cafe ops 2D map | [examples/canvas-2d/](./examples/canvas-2d/) → `http://127.0.0.1:4173/examples/canvas-2d/` |
-| Cafe ops 3D map | [examples/3d/](./examples/3d/) → `http://127.0.0.1:4173/examples/3d/` |
+## Grammar (v0.2) — lean lines + trailer payloads
 
-**React live parser** (OSS example — textarea → `parse` / `toHtml`, fold via `toggleFold` + `serialize` sync; not the Audroam Angular SPA):
+**Cleartext on the outline line:** lossy caption + flags + id (safe to show a partially trusted LLM).
 
-```bash
-npm run demo:react
-# → http://127.0.0.1:5173/
-# or: npm run build && npx vite --config examples/react-live/vite.config.ts
-```
-
-| Demo | Path |
-|------|------|
-| React online parser | [examples/react-live/](./examples/react-live/) → `http://127.0.0.1:5173/` |
-
-Source outline for the cafe handoff: [examples/outline-demo.md](./examples/outline-demo.md).
-
-To rebuild the Pages publish tree locally: `npm run build:site` then `npx serve -l 4173 site`.
-
-### Screenshots
-
-![Cafe ops outline live HTML + fold state (tablet portrait)](docs/screenshots/outline-html.png)
-
-![Cafe ops outline tree (tablet portrait)](docs/screenshots/outline-tree.png)
-
-![Cafe ops 2D map (tablet portrait)](docs/screenshots/canvas-2d.png)
-
-## Sample (caption-first ids)
-
-Cafe ops handoff — bots and humans share one outline. **Ids trail the caption.** Pending sign-off uses `<kind:pending-approve>`. Done rows name who approved (`approved:Jess` or auto `approved:sms-bot`):
+**Secret material:** a **sealed payload** attached to the node — **not** plaintext children. Prefer a trailing payload map so titles stay readable:
 
 ```text
 ---
-fold-: courtyard-quotes, payroll, alarm, staff-private
+fold-: alarm, staff-private, payroll, ins-remote
 collapsedMarker: "(+)"
 ---
 - ☕ Northside Corner Cafe — ops handoff <id:root>
-  - Menu update ideas · spring · P2 · 👍 <id:menu>
-    - [ ] Add cold brew flight · board special <kind:pending-approve> <id:menu-coldbrew>
-    - [ ] Retire winter pie · low sellers · P3 <kind:pending-approve> <id:menu-pie>
-    - [x] Allergen line on board · approved:Jess · done Wed <id:menu-allergen>
-    - [x] Send Friday supplier SMS · approved:sms-bot · auto <id:sup-sms>
-  - Remodel the courtyard · permit in flight · P1 <id:courtyard>
-    - [ ] Confirm pavers quote · three bids <kind:pending-approve> <id:courtyard-quotes> (+)
-    - [x] Permit lodged · approved:Sam <id:courtyard-permit>
+  - Alarm code / arming notes <encrypted> <id:alarm> (+)
+  - Full staff list + emergency contacts <private> <id:staff-private> (+)
+  - Vendor insurance cert (remote blob) <encrypted> <id:ins-remote> (+)
+
+--- payloads ---
+alarm:
+  kid: cafe-alarm-1
+  alg: demo-aes-gcm
+  ct: BASE64URL…
+staff-private:
+  kid: cafe-staff-1
+  ct: …
+ins-remote:
+  kid: cafe-ins-1
+  uri: https://example.invalid/sealed/cafe-ins-1.bin
+---
 ```
 
-Leading `<id:…>` is still accepted for backward compatibility; `serialize` always emits caption-first.
-
-## Locked grammar (v0)
+### Rules
 
 | Rule | Meaning |
 |------|---------|
-| `<id:design>` | Typed id span (optional short `<design>` also OK) — **leading or trailing** |
-| `(+)` | **Collapsed** — click to expand. Expanded nodes show **no** `(+)` |
-| Hyphens in ids | Legal (`todo-1`). **Do not** use `-` as a fold operator on ids |
-| `fold-` | Default **expanded**; list = **collapsed** ids only |
-| `fold+` | Default **collapsed**; list = **expanded** ids only — never both |
-| Markers | Frontmatter `collapsedMarker` (default `(+)`), optional `expandedMarker` |
+| Caption-first tags | `title <flag>* <id:…> (+)?` — serialize always emits this shape |
+| `<private>` / `<encrypted>` | Lock chrome (Unlock vs Decrypt) |
+| `--- payloads ---` | Trailer map keyed by node **id** → `{ kid, ct? \| uri?, alg? }` |
+| Fence aliases | `payloads` / `sealed` / `enc` accepted on parse |
+| Inline `<enc:…>` | Still parsed (compat); **serialize writes trailer only** |
+| Exactly one of `ct` \| `uri` | Inline ciphertext **or** remote blob URI |
+| Trailing YAML `---` | Same fold-/marker keys as leading frontmatter |
+| Head + tail frontmatter | **Merged; tail wins** on conflicts |
 
-### Optional kinds / flags (model only)
+`serialize` always emits lean lines + a `--- payloads ---` trailer when any node has `sealed`.
+
+### Optional kinds / flags
 
 ```text
 - Payroll portal notes <private> <id:payroll>
 - Alarm arming notes <encrypted> <id:alarm>
 - Cafe supplier account <kind:ticket> <id:supplier-account>
-- Courtyard project <kind:feature> <id:courtyard>
 - Menu change awaiting sign-off <kind:pending-approve> <id:menu-signoff>
 ```
 
-Icons include doc, ticket, globe, db, feature, form, bug, risk, lock, encrypted, mfa, system-link, and pending-approve (an amber clipboard-check for human sign-off).
-`toHtml` can render locked chrome + Unlock/Decrypt buttons. Wire host callbacks for real authentication/crypto — **none ship in this package.**
+## Demo crypto (not production MFA)
+
+```ts
+import {
+  demoSeal,
+  demoOpen,
+  DEMO_PASSPHRASE,
+  DEMO_ALG,
+} from '@audroam/outline-fold';
+
+const sealed = await demoSeal('Arm code 0000 (fiction)', DEMO_PASSPHRASE, 'cafe-alarm-1');
+const plain = await demoOpen(sealed, DEMO_PASSPHRASE);
+```
+
+| | |
+|--|--|
+| **Sample passphrase** | `northside-demo` (fictional cafe fixtures only) |
+| **Alg label** | `demo-aes-gcm` (AES-GCM + PBKDF2 via Web Crypto) |
+| **Regenerate fixtures** | `npm run demo:seal` ← reads `scripts/demo-plaintexts.json` |
+
+Remote `uri` entries **cannot** be opened by `demoOpen` — the host must fetch after key release.
+
+### Key sources (BYO ladder — demos stub all four)
+
+The **key is never in the outline string**. Session / user supplies it:
+
+1. **Browser session** — passphrase or DEK in memory after unlock (`sessionStorage` OK for demo; avoid `localStorage` for demo DEKs)
+2. **Password manager** — paste field labeled “from password manager” (future: Web Credentials / 1Password)
+3. **Pageant / OS agent** — stub “Use agent” (not wired in browser demos)
+4. **Server after MFA** — stub `onDecrypt(id, kid)` → host returns DEK; demo can fake “MFA OK” then use the sample key
+
+Unlock reveals **session-only** plaintext under the node (default: do **not** write plaintext back into the editor).
+
+## Security boundary
+
+| In this package | In the host app |
+|-----------------|-----------------|
+| Grammar, fold state, icons, HTML chrome | Authentication / MFA challenge |
+| Trailer / inline sealed fields | Key management, remote blob fetch |
+| `demoSeal` / `demoOpen` (**demo only**) | Production crypto / ACL key release |
+| `onUnlock` / `onDecrypt` **types** | Real key release callbacks |
+| `db` flag + `dbRef` string | Connection pools, credentials |
+
+**Demo ≠ production MFA.** Pages cafe unlock uses the documented sample passphrase so the fiction works offline.
 
 ## API
 
@@ -108,30 +133,19 @@ import {
   serialize,
   toggleFold,
   isCollapsed,
+  hasSealed,
+  isRemoteSealed,
   toHtml,
-  ICONS,
+  demoSeal,
+  demoOpen,
+  DEMO_PASSPHRASE,
 } from '@audroam/outline-fold';
 
 const doc = parse(text);
-isCollapsed(doc, 'courtyard');
-const next = toggleFold(doc, 'courtyard'); // pure — bind the returned object, no re-parse on click
+hasSealed(doc.nodes[0]);
+const next = toggleFold(doc, 'alarm');
 const html = toHtml(next);
 ```
-
-## Host integration
-
-1. `doc = parse(savedText)` once  
-2. Bind UI to `doc`  
-3. On `(+)` click → `doc = toggleFold(doc, id)`  
-4. On save → `serialize(doc)`
-
-## Security boundary
-
-| In this package | In the host app |
-|-----------------|-----------------|
-| Grammar, fold state, icons, HTML chrome | Authentication / MFA challenge |
-| `onUnlock` / `onDecrypt` **types** | Key management, decrypt |
-| `db` flag + `dbRef` string | Connection pools, credentials |
 
 ## License
 

@@ -1,3 +1,9 @@
+import {
+  attachPayloads,
+  mergeFrontmatter,
+  peelTrailingSections,
+} from './payloads.js';
+import { parseEncBody } from './sealed.js';
 import type {
   FoldMode,
   NodeFlag,
@@ -5,6 +11,7 @@ import type {
   OutlineFoldDoc,
   OutlineFrontmatter,
   OutlineNode,
+  SealedPayload,
 } from './types.js';
 
 const DEFAULT_COLLAPSED = '(+)';
@@ -14,14 +21,17 @@ const KIND_SPAN =
   /^<(?:kind:)?(doc|ticket|globe|db|feature|form|bug|risk|lock|encrypted|system-link|pending-approve)>\s*/i;
 const FLAG_SPAN =
   /^<(private|encrypted|db)(?::([^\s>]+))?>\s*/i;
+/** `<enc:kid=…;alg=…;ct=…>` — body may not contain `>`. */
+const ENC_SPAN = /^<enc:([^>]+)>\s*/i;
 
 const ID_TRAILING = /\s*<id:([A-Za-z][A-Za-z0-9_-]*)>\s*$/;
 const KIND_TRAILING =
   /\s*<(?:kind:)?(doc|ticket|globe|db|feature|form|bug|risk|lock|encrypted|system-link|pending-approve)>\s*$/i;
 const FLAG_TRAILING =
   /\s*<(private|encrypted|db)(?::([^\s>]+))?>\s*$/i;
+const ENC_TRAILING = /\s*<enc:([^>]+)>\s*$/i;
 
-/** Short `<design>` form — excluded reserved flag/kind words. */
+/** Short `<design>` form — excluded reserved flag/kind/enc words. */
 const RESERVED_SHORT = new Set([
   'private',
   'encrypted',
@@ -38,6 +48,7 @@ const RESERVED_SHORT = new Set([
   'system-link',
   'kind',
   'id',
+  'enc',
   't',
 ]);
 
@@ -143,6 +154,7 @@ function tryShortIdTrailing(rest: string): { id: string; rest: string } | null {
  * Peel leading meta spans (backward compatible), then strip fold marker from
  * the end, then peel trailing meta spans so `(+)` stays outermost.
  * Trailing id overrides a leading id when both are present.
+ * Grammar v0.2: caption-first trailing tags; `<enc:…>` → `node.sealed`.
  */
 function parseTitleAndMeta(
   content: string,
@@ -154,6 +166,7 @@ function parseTitleAndMeta(
   kind?: NodeKind;
   flags?: NodeFlag[];
   dbRef?: string;
+  sealed?: SealedPayload;
   inlineCollapsed?: boolean;
 } {
   let rest = content.trim();
@@ -161,8 +174,9 @@ function parseTitleAndMeta(
   let kind: NodeKind | undefined;
   const flags: NodeFlag[] = [];
   let dbRef: string | undefined;
+  let sealed: SealedPayload | undefined;
 
-  // Prefer flags/kinds before short ids so `<private>` is never an id.
+  // Prefer flags/kinds/enc before short ids so `<private>` is never an id.
   let progressed = true;
   while (progressed) {
     progressed = false;
@@ -172,6 +186,15 @@ function parseTitleAndMeta(
       const flag = m[1].toLowerCase() as NodeFlag;
       flags.push(flag);
       if (flag === 'db' && m[2]) dbRef = m[2];
+      rest = rest.slice(m[0].length);
+      progressed = true;
+      continue;
+    }
+
+    m = rest.match(ENC_SPAN);
+    if (m) {
+      const parsed = parseEncBody(m[1]);
+      if (parsed) sealed = parsed;
       rest = rest.slice(m[0].length);
       progressed = true;
       continue;
@@ -210,7 +233,7 @@ function parseTitleAndMeta(
     rest = rest.slice(0, -expandedMarker.length).trimEnd();
   }
 
-  // Caption-first: peel trailing <id:…> / short id / kind / flag from title end.
+  // Caption-first: peel trailing <id:…> / enc / short id / kind / flag from title end.
   progressed = true;
   while (progressed) {
     progressed = false;
@@ -220,6 +243,15 @@ function parseTitleAndMeta(
       const flag = m[1].toLowerCase() as NodeFlag;
       flags.push(flag);
       if (flag === 'db' && m[2]) dbRef = m[2];
+      rest = rest.slice(0, rest.length - m[0].length).trimEnd();
+      progressed = true;
+      continue;
+    }
+
+    m = rest.match(ENC_TRAILING);
+    if (m) {
+      const parsed = parseEncBody(m[1]);
+      if (parsed) sealed = parsed;
       rest = rest.slice(0, rest.length - m[0].length).trimEnd();
       progressed = true;
       continue;
@@ -250,12 +282,22 @@ function parseTitleAndMeta(
     }
   }
 
+  // `<enc:>` without private/encrypted implies encrypted chrome.
+  if (
+    sealed &&
+    !flags.includes('private') &&
+    !flags.includes('encrypted')
+  ) {
+    flags.push('encrypted');
+  }
+
   return {
     id,
     title: rest,
     kind,
     flags: flags.length ? flags : undefined,
     dbRef,
+    sealed,
     inlineCollapsed,
   };
 }
@@ -265,7 +307,10 @@ function parseTitleAndMeta(
  * optional leading `- ` / `* ` / `1. `).
  */
 export function parse(text: string): OutlineFoldDoc {
-  const { fm, body } = parseFrontmatter(text);
+  const head = parseFrontmatter(text);
+  const peeled = peelTrailingSections(head.body);
+  const fm = mergeFrontmatter(head.fm, peeled.trailingFm);
+  const body = peeled.outline;
   const collapsedMarker = fm.collapsedMarker ?? DEFAULT_COLLAPSED;
   const expandedMarker = fm.expandedMarker;
 
@@ -308,6 +353,7 @@ export function parse(text: string): OutlineFoldDoc {
     if (meta.kind) node.kind = meta.kind;
     if (meta.flags) node.flags = meta.flags;
     if (meta.dbRef) node.dbRef = meta.dbRef;
+    if (meta.sealed) node.sealed = meta.sealed;
     if (meta.inlineCollapsed && meta.id) {
       inlineCollapsedIds.push(meta.id);
     }
@@ -340,6 +386,9 @@ export function parse(text: string): OutlineFoldDoc {
   }
   frontmatter.foldMode = mode;
   frontmatter.foldIds = ids;
+
+  // Trailer payloads attach by id (overwrite any inline <enc:>).
+  attachPayloads(roots, peeled.payloads);
 
   return {
     frontmatter,

@@ -11,7 +11,13 @@ import {
   serialize,
   toggleFold,
   toHtml,
+  isCollapsed,
+  hasSealed,
+  isRemoteSealed,
+  demoOpen,
+  DEMO_PASSPHRASE,
   type OutlineFoldDoc,
+  type OutlineNode,
 } from '@audroam/outline-fold';
 import seedMd from '../../outline-demo.md?raw';
 import {
@@ -32,6 +38,18 @@ import {
 type ParseOk = { ok: true; doc: OutlineFoldDoc };
 type ParseErr = { ok: false; message: string };
 type ParseState = ParseOk | ParseErr;
+
+function findNode(nodes: OutlineNode[], id: string): OutlineNode | undefined {
+  for (const n of nodes) {
+    if (n.id === id) return n;
+    if (n.children) {
+      const hit = findNode(n.children, id);
+      if (hit) return hit;
+    }
+  }
+  return undefined;
+}
+
 
 function tryParse(text: string): ParseState {
   try {
@@ -58,6 +76,7 @@ export default function App() {
   const [parsed, setParsed] = useState<ParseState>(() =>
     tryParse(active.body),
   );
+  const [revealed, setRevealed] = useState<Record<string, string>>({});
   const docRef = useRef<OutlineFoldDoc | null>(
     parsed.ok ? parsed.doc : null,
   );
@@ -288,6 +307,80 @@ export default function App() {
     [parsed],
   );
 
+
+  const trySessionReveal = useCallback(
+    async (id: string) => {
+      const current = docRef.current;
+      if (!current) return;
+      const node = findNode(current.nodes, id);
+      if (!node || !hasSealed(node)) {
+        window.alert(
+          `No sealed payload on “${id}”. Host MFA/crypto is out of this package.`,
+        );
+        return;
+      }
+      if (isRemoteSealed(node)) {
+        window.alert(
+          `Remote sealed blob (kid=${node.sealed?.kid}).\nURI: ${node.sealed?.uri}\n\nDemo does not fetch — host would fetch after key release.`,
+        );
+        return;
+      }
+      const source = window.prompt(
+        [
+          'Key source for cafe demo:',
+          '1 = browser session (sample passphrase)',
+          '2 = paste from password manager',
+          '3 = pageant / OS agent (stub)',
+          '4 = server after MFA (stub → sample key)',
+          '',
+          'Enter 1–4:',
+        ].join('\n'),
+        '1',
+      );
+      if (source == null) return;
+      let pass: string | null = null;
+      switch (source.trim()) {
+        case '1':
+          pass = window.prompt(
+            `Session passphrase (hint: ${DEMO_PASSPHRASE})`,
+            DEMO_PASSPHRASE,
+          );
+          break;
+        case '2':
+          pass = window.prompt(
+            'Paste passphrase from password manager (demo field):',
+            '',
+          );
+          break;
+        case '3':
+          window.alert(
+            'Pageant / OS agent is not wired in this browser demo. Use 1 or 2, or see README.',
+          );
+          return;
+        case '4':
+          window.alert(
+            'Stub: MFA OK → host would release DEK. Demo falls through to sample passphrase.',
+          );
+          pass = DEMO_PASSPHRASE;
+          break;
+        default:
+          window.alert('Unknown key source — use 1–4.');
+          return;
+      }
+      if (pass == null) return;
+      try {
+        const plaintext = await demoOpen(node.sealed!, pass);
+        setRevealed((r) => ({ ...r, [id]: plaintext }));
+        if (isCollapsed(current, id)) onToggleFold(id);
+      } catch (err) {
+        window.alert(
+          err instanceof Error ? err.message : 'Decrypt failed (wrong key?)',
+        );
+      }
+    },
+    [onToggleFold],
+  );
+
   const onTreeClick = useCallback(
     (e: ReactMouseEvent<HTMLDivElement>) => {
       const target = e.target as HTMLElement;
@@ -301,27 +394,49 @@ export default function App() {
         return;
       }
       const unlock = target.closest('[data-unlock]') as HTMLElement | null;
-      if (unlock) {
-        e.preventDefault();
-        const id = unlock.getAttribute('data-unlock') ?? '';
-        console.info(`[stub] Unlock (MFA) for id=${id} — host owns auth`);
-        window.alert(
-          `Unlock stub for “${id}”. Real MFA lives in the host app — not this OSS example.`,
-        );
-        return;
-      }
       const decrypt = target.closest('[data-decrypt]') as HTMLElement | null;
-      if (decrypt) {
+      const btn = unlock ?? decrypt;
+      if (btn) {
         e.preventDefault();
-        const id = decrypt.getAttribute('data-decrypt') ?? '';
-        console.info(`[stub] Decrypt for id=${id} — host owns crypto`);
-        window.alert(
-          `Decrypt stub for “${id}”. Real crypto lives in the host app — not this OSS example.`,
-        );
+        const id =
+          btn.getAttribute('data-unlock') ??
+          btn.getAttribute('data-decrypt') ??
+          '';
+        void trySessionReveal(id);
       }
     },
-    [onToggleFold],
+    [onToggleFold, trySessionReveal],
   );
+
+
+  useEffect(() => {
+    const tree = document.querySelector('.preview-pane .tree, .tree');
+    if (!tree) return;
+    for (const [id, plaintext] of Object.entries(revealed)) {
+      const li = tree.querySelector(
+        '.of-node[data-id="' + CSS.escape(id) + '"]',
+      ) as HTMLElement | null;
+      if (!li) continue;
+      const locked = li.querySelector(':scope > .of-locked-chrome');
+      if (locked) locked.remove();
+      let panel = li.querySelector(':scope > .of-reveal') as HTMLElement | null;
+      if (!panel) {
+        panel = document.createElement('div');
+        panel.className = 'of-reveal';
+        panel.setAttribute('role', 'region');
+        panel.setAttribute('aria-label', 'Session reveal');
+        const row = li.querySelector(':scope > .of-row');
+        if (row) row.insertAdjacentElement('afterend', panel);
+        else li.prepend(panel);
+      }
+      panel.innerHTML =
+        '<span class="of-reveal-label">Session reveal (demo) · not written to editor</span>' +
+        plaintext
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;');
+    }
+  }, [revealed, html]);
 
   useEffect(() => {
     document.documentElement.style.colorScheme = 'dark';
@@ -343,8 +458,8 @@ export default function App() {
           <code>toggleFold</code> (no re-parse); fold state syncs via{' '}
           <code>serialize</code>. Multiple drafts stay in this browser’s{' '}
           <code>localStorage</code> (outline text only — no secrets).
-          Unlock/Decrypt are stubs. OSS example only — not the Audroam Angular
-          SPA.
+          Unlock/Decrypt: choose a key source (session / password manager / agent stub / MFA stub),
+          then session-reveal sealed trailer payloads. OSS example only — not production MFA.
         </p>
       </header>
 

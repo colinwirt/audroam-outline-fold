@@ -261,3 +261,22 @@ kbd {
   background: var(--border);
   margin: 0 0.15rem;
 }
+
+.of-reveal {
+  margin: 0.25rem 0 0.35rem 1.95rem;
+  padding: 0.55rem 0.7rem;
+  background: var(--panel);
+  border: 1px solid #3d5a3a;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  white-space: pre-wrap;
+  color: #c8e6c9;
+}
+.of-reveal-label {
+  display: block;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  margin-bottom: 0.25rem;
+}
