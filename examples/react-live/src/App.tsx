@@ -16,10 +16,14 @@ import {
 import seedMd from '../../outline-demo.md?raw';
 import {
   type DocLibrary,
+  downloadActiveDoc,
+  downloadLibraryJson,
   getActive,
   loadLibrary,
   makeDoc,
+  mergeLibraries,
   newId,
+  parseLibraryJson,
   saveLibrary,
   titleFromBody,
   upsertActiveBody,
@@ -62,6 +66,7 @@ export default function App() {
   const textRef = useRef(text);
   textRef.current = text;
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const importFileRef = useRef<HTMLInputElement | null>(null);
 
   if (parsed.ok) {
     docRef.current = parsed.doc;
@@ -223,6 +228,61 @@ export default function App() {
     loadDocBody(cafe.body);
   }, [flushBodyToLibrary, persistLibrary, loadDocBody]);
 
+
+  const onDownloadDoc = useCallback(() => {
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    const lib = flushBodyToLibrary(textRef.current);
+    const cur = getActive(lib);
+    downloadActiveDoc(cur.title, textRef.current);
+  }, [flushBodyToLibrary]);
+
+  const onDownloadLibrary = useCallback(() => {
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    const lib = flushBodyToLibrary(textRef.current);
+    downloadLibraryJson(lib);
+  }, [flushBodyToLibrary]);
+
+  const onImportClick = useCallback(() => {
+    importFileRef.current?.click();
+  }, []);
+
+  const onImportFile = useCallback(
+    async (file: File | null) => {
+      if (!file) return;
+      const raw = await file.text();
+      const incoming = parseLibraryJson(raw);
+      if (!incoming) {
+        window.alert(
+          'Could not import: expected a library JSON with version 1 and at least one doc.',
+        );
+        return;
+      }
+      if (
+        !window.confirm(
+          `Import ${incoming.docs.length} doc(s) from “${file.name}”?`,
+        )
+      ) {
+        if (importFileRef.current) importFileRef.current.value = '';
+        return;
+      }
+      const merge = window.confirm(
+        'OK = merge into current library\nCancel = replace library entirely',
+      );
+      if (saveTimer.current) clearTimeout(saveTimer.current);
+      let next: DocLibrary;
+      if (merge) {
+        const current = flushBodyToLibrary(textRef.current);
+        next = mergeLibraries(current, incoming);
+      } else {
+        next = incoming;
+      }
+      persistLibrary(next);
+      loadDocBody(getActive(next).body);
+      if (importFileRef.current) importFileRef.current.value = '';
+    },
+    [flushBodyToLibrary, persistLibrary, loadDocBody],
+  );
+
   const html = useMemo(
     () => (parsed.ok ? toHtml(parsed.doc) : ''),
     [parsed],
@@ -319,6 +379,25 @@ export default function App() {
         <button type="button" className="doc-btn doc-btn-accent" onClick={onLoadCafe}>
           Load cafe sample
         </button>
+        <span className="doc-bar-sep" aria-hidden="true" />
+        <button type="button" className="doc-btn" onClick={onDownloadDoc} title="Download active doc as .md">
+          Download .md
+        </button>
+        <button type="button" className="doc-btn" onClick={onDownloadLibrary} title="Download full library as .json">
+          Download library
+        </button>
+        <button type="button" className="doc-btn" onClick={onImportClick} title="Import library JSON (merge or replace)">
+          Import library
+        </button>
+        <input
+          ref={importFileRef}
+          type="file"
+          accept="application/json,.json"
+          className="sr-only"
+          aria-hidden="true"
+          tabIndex={-1}
+          onChange={(e) => void onImportFile(e.target.files?.[0] ?? null)}
+        />
       </div>
 
       <div className="panes">

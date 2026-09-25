@@ -253,3 +253,11 @@ kbd {
 .doc-btn-accent {
   color: var(--accent);
 }
+
+.doc-bar-sep {
+  width: 1px;
+  align-self: stretch;
+  min-height: 1.5rem;
+  background: var(--border);
+  margin: 0 0.15rem;
+}

@@ -145,3 +145,93 @@ export function upsertActiveBody(
   });
   return { ...lib, docs };
 }
+
+export function sanitizeFilename(title: string, fallback = 'outline'): string {
+  const s = title
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-zA-Z0-9._\- ]+/g, '')
+    .trim()
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-')
+    .slice(0, 60);
+  return s || fallback;
+}
+
+export function downloadBlob(filename: string, blob: Blob): void {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.rel = 'noopener';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+export function downloadTextFile(filename: string, text: string, mime = 'text/plain;charset=utf-8'): void {
+  downloadBlob(filename, new Blob([text], { type: mime }));
+}
+
+export function downloadLibraryJson(lib: DocLibrary): void {
+  const stamp = new Date().toISOString().slice(0, 10);
+  downloadTextFile(
+    `outline-fold-library-${stamp}.json`,
+    JSON.stringify(lib, null, 2),
+    'application/json;charset=utf-8',
+  );
+}
+
+export function downloadActiveDoc(title: string, body: string): void {
+  const base = sanitizeFilename(title);
+  downloadTextFile(`${base}.md`, body, 'text/markdown;charset=utf-8');
+}
+
+/** Validate and normalize an imported library JSON payload. */
+export function parseLibraryJson(raw: string): DocLibrary | null {
+  try {
+    const parsed = JSON.parse(raw) as DocLibrary;
+    if (
+      parsed?.version !== 1 ||
+      !Array.isArray(parsed.docs) ||
+      parsed.docs.length === 0 ||
+      typeof parsed.activeId !== 'string'
+    ) {
+      return null;
+    }
+    for (const d of parsed.docs) {
+      if (
+        !d ||
+        typeof d.id !== 'string' ||
+        typeof d.title !== 'string' ||
+        typeof d.body !== 'string' ||
+        typeof d.updatedAt !== 'number'
+      ) {
+        return null;
+      }
+    }
+    const active =
+      parsed.docs.find((d) => d.id === parsed.activeId) ?? parsed.docs[0];
+    return { version: 1, activeId: active.id, docs: parsed.docs };
+  } catch {
+    return null;
+  }
+}
+
+/** Merge imported docs into existing (new ids on collision). */
+export function mergeLibraries(current: DocLibrary, incoming: DocLibrary): DocLibrary {
+  const ids = new Set(current.docs.map((d) => d.id));
+  const merged = [...current.docs];
+  for (const d of incoming.docs) {
+    if (ids.has(d.id)) {
+      const copy = { ...d, id: newId(), title: `${d.title} (import)`, updatedAt: Date.now() };
+      merged.push(copy);
+      ids.add(copy.id);
+    } else {
+      merged.push(d);
+      ids.add(d.id);
+    }
+  }
+  return { version: 1, activeId: current.activeId, docs: merged };
+}

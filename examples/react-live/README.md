@@ -6,6 +6,9 @@ This is an **OSS example only** — not the Audroam Angular SPA.
 
 A small multi-doc library lives in this browser’s `localStorage` (`audroam-outline-fold-react-live-docs-v1`: list of `{ id, title, body, updatedAt }` + `activeId`). Outline / cafe text only — do not store secrets. Quota is limited (~5MB typical); oversized libraries may fail to save silently. An older single-string key is migrated once into one doc. Use **New / Rename / Delete / Duplicate**, the doc dropdown, and **Load cafe sample**.
 
+**Download .md** exports the active textarea as a Markdown file named from the doc title (e.g. `cafe-ops.md`). **Download library** / **Import library** use the full localStorage JSON (client-side Blob only; import can merge or replace).
+
+
 
 ## Run
 
