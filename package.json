@@ -21,7 +21,9 @@
     "build": "tsc -p tsconfig.json",
     "test": "vitest run",
     "test:watch": "vitest",
-    "prepublishOnly": "npm run build && npm test"
+    "prepublishOnly": "npm run build && npm test",
+    "demo:react": "npm run build && npm --prefix examples/react-live install && npm --prefix examples/react-live run dev",
+    "demo:react:build": "npm run build && npm --prefix examples/react-live install && npm --prefix examples/react-live run build"
   },
   "keywords": [
     "outline",

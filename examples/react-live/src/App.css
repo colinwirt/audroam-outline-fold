@@ -1,0 +1,198 @@
+:root {
+  color-scheme: dark;
+  --bg: #0f1419;
+  --panel: #1a2330;
+  --border: #2a3540;
+  --text: #e7ecf1;
+  --muted: #8b9bab;
+  --accent: #6cb6ff;
+  --error: #f87171;
+  --error-bg: #3b1a1a;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  font: 16px/1.5 system-ui, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 1.25rem 1.25rem 1.5rem;
+}
+
+.header h1 {
+  font-size: 1.15rem;
+  font-weight: 600;
+  margin: 0 0 0.35rem;
+}
+
+.meta {
+  color: var(--muted);
+  font-size: 0.85rem;
+  margin: 0 0 1rem;
+}
+
+.meta code,
+kbd {
+  background: var(--panel);
+  padding: 0.1em 0.35em;
+  border-radius: 4px;
+  font-size: 0.85em;
+}
+
+.panes {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  flex: 1;
+  min-height: 0;
+}
+
+@media (max-width: 800px) {
+  .panes {
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(220px, 40%) 1fr;
+  }
+}
+
+.pane {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+  background: #121820;
+}
+
+.pane-label {
+  flex: none;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  padding: 0.45rem 0.75rem;
+  border-bottom: 1px solid var(--border);
+  background: #151c26;
+}
+
+.source {
+  flex: 1;
+  width: 100%;
+  border: 0;
+  resize: none;
+  padding: 0.75rem;
+  background: transparent;
+  color: var(--text);
+  font: 13px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  outline: none;
+}
+
+.preview-pane .tree,
+.preview-pane .parse-error {
+  flex: 1;
+  overflow: auto;
+  padding: 0.75rem 1rem 1rem;
+}
+
+.parse-error {
+  background: var(--error-bg);
+  color: var(--error);
+}
+
+.parse-error strong {
+  display: block;
+  margin-bottom: 0.5rem;
+}
+
+.parse-error pre {
+  margin: 0;
+  white-space: pre-wrap;
+  font: 13px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+/* Match examples/outline-demo.html tree chrome */
+.of-outline,
+.of-children {
+  list-style: none;
+  margin: 0;
+  padding-left: 0;
+}
+
+.of-children {
+  padding-left: 1.1rem;
+  border-left: 1px solid var(--border);
+  margin-left: 0.35rem;
+}
+
+.of-node {
+  margin: 0.15rem 0;
+}
+
+.of-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.35rem;
+}
+
+.of-title {
+  flex: 1;
+}
+
+.of-fold {
+  flex: none;
+  min-width: 1.6rem;
+  height: 1.25rem;
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  cursor: pointer;
+  padding: 0;
+  line-height: 1.2;
+  font: inherit;
+}
+
+.of-row svg {
+  flex: none;
+  margin-top: 0.15rem;
+  opacity: 0.85;
+}
+
+.of-unlock {
+  flex: none;
+  margin-left: 0.35rem;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--accent);
+  border-radius: 6px;
+  padding: 0.1rem 0.45rem;
+  font: inherit;
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+.of-unlock:hover {
+  border-color: var(--accent);
+}
+
+.of-locked-chrome {
+  color: var(--muted);
+  font-size: 0.85rem;
+  padding: 0.15rem 0 0.15rem 1.95rem;
+}

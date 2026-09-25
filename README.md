@@ -10,15 +10,27 @@ npm run build
 npx serve -l 4173 .   # then open the live demos below
 ```
 
-## Live demos (HTML + JS)
+## Live demos (HTML + JS + React)
 
-Open after `npm run build` and `npx serve -l 4173 .`:
+**Static HTML** — after `npm run build` and `npx serve -l 4173 .`:
 
 | Demo | URL |
 |------|-----|
 | **Cafe ops outline** — menu, suppliers, courtyard, and private handoff notes | [examples/outline-demo.html](./examples/outline-demo.html) → `http://127.0.0.1:4173/examples/outline-demo.html` |
 | Cafe ops 2D map | [examples/canvas-2d/](./examples/canvas-2d/) → `http://127.0.0.1:4173/examples/canvas-2d/` |
 | Cafe ops 3D map | [examples/3d/](./examples/3d/) → `http://127.0.0.1:4173/examples/3d/` |
+
+**React live parser** (OSS example — textarea → `parse` / `toHtml`, fold via `toggleFold` + `serialize` sync; not the Audroam Angular SPA):
+
+```bash
+npm run demo:react
+# → http://127.0.0.1:5173/
+# or: npm run build && npx vite --config examples/react-live/vite.config.ts
+```
+
+| Demo | Path |
+|------|------|
+| React online parser | [examples/react-live/](./examples/react-live/) → `http://127.0.0.1:5173/` |
 
 Source outline for the cafe handoff: [examples/outline-demo.md](./examples/outline-demo.md).
 
