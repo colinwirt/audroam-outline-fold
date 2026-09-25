@@ -24,11 +24,11 @@ Source outline for the demo: [examples/outline-demo.md](./examples/outline-demo.
 
 ### Screenshots
 
-![Outline live HTML + fold state](docs/screenshots/outline-html.png)
+![Outline live HTML + fold state (tablet portrait)](docs/screenshots/outline-html.png)
 
-![Outline tree (expanded)](docs/screenshots/outline-tree.png)
+![Outline tree (tablet portrait)](docs/screenshots/outline-tree.png)
 
-![Canvas 2D map](docs/screenshots/canvas-2d.png)
+![Canvas 2D map (tablet portrait)](docs/screenshots/canvas-2d.png)
 
 ## Sample (caption-first ids)
 
