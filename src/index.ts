@@ -15,6 +15,13 @@ export { parse } from './parse.js';
 export { serialize } from './serialize.js';
 export { toggleFold, isCollapsed, setExpandLevel, type ExpandLevel } from './fold.js';
 export { toHtml } from './toHtml.js';
+export {
+  attachOutlineTree,
+  expandLevelAnnouncement,
+  foldToggleAnnouncement,
+  type AttachOutlineTreeOptions,
+  type AttachOutlineTreeHandle,
+} from './attachOutlineTree.js';
 export { ICONS, iconForNode, type IconName } from './icons.js';
 export { hasSealed, isRemoteSealed, parseEncBody, formatEncTag } from './sealed.js';
 export {

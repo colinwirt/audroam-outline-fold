@@ -15,7 +15,11 @@ h1{font-size:1.2rem;font-weight:600;margin:0 0 .25rem}
 .of-node[data-collapsed="true"]>.of-children{display:none}
 .of-row{display:flex;align-items:flex-start;gap:.35rem}
 .of-title{flex:1}
-.of-fold{flex:none;min-width:1.6rem;height:1.25rem;border:0;background:transparent;color:#6cb6ff;cursor:pointer;padding:0;line-height:1.2;font:inherit}
+.of-fold{flex:none;min-width:44px;min-height:44px;border:0;background:transparent;color:#6cb6ff;cursor:pointer;padding:0;line-height:1.2;font:inherit;display:inline-flex;align-items:center;justify-content:center}
+.of-node[role="treeitem"]:focus{outline:2px solid #6cb6ff;outline-offset:2px;border-radius:4px}
+.of-node[role="treeitem"]:focus:not(:focus-visible){outline:none}
+.of-node[role="treeitem"]:focus-visible{outline:2px solid #6cb6ff;outline-offset:2px}
+.of-live.visually-hidden{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 .of-row svg{flex:none;margin-top:.15rem;opacity:.85}
 .of-unlock{flex:none;margin-left:.35rem;border:1px solid #2a3540;background:#1a2330;color:#6cb6ff;border-radius:6px;padding:.1rem .45rem;font:inherit;font-size:.75rem;cursor:pointer}
 .of-unlock:hover{border-color:#6cb6ff}
@@ -34,7 +38,7 @@ code{font-size:.9em}
 </head>
 <body>
 <h1>☕ Northside Corner Cafe</h1>
-<p class="meta">Cafe ops handoff — click <kbd>(+)</kbd> to expand. Amber clipboard = pending approve. Locked rows carry <strong>sealed payloads</strong> in a trailing <code>--- payloads ---</code> map (lean titles). Unlock / Decrypt: pick a key source (session / password manager / agent stub / MFA stub). Sample passphrase <code>northside-demo</code>. Session reveal only — not written back. Demo ≠ production MFA.</p>
+<p class="meta">Cafe ops handoff — click <kbd>(+)</kbd> or use keyboard after focus in the tree: <kbd>↑</kbd><kbd>↓</kbd> move · <kbd>←</kbd><kbd>→</kbd> fold · <kbd>Enter</kbd>/<kbd>Space</kbd>/<kbd>.</kbd> toggle · <kbd>0</kbd>–<kbd>9</kbd> expand level · <kbd>*</kbd> expand all (session-local). Amber clipboard = pending approve. Locked rows carry <strong>sealed payloads</strong> in a trailing <code>--- payloads ---</code> map (lean titles). Unlock / Decrypt: pick a key source (session / password manager / agent stub / MFA stub). Sample passphrase <code>northside-demo</code>. Session reveal only — not written back. Demo ≠ production MFA.</p>
 <div id="validation" hidden></div>
 <div id="tree"></div>
 <div id="panel">
@@ -51,6 +55,7 @@ import {
   demoOpen,
   DEMO_PASSPHRASE,
   validateDocument,
+  attachOutlineTree,
 } from '../dist/index.js';
 
 const src = "---\nfold-: courtyard-quotes, payroll, alarm, staff-private, ins-remote\ncollapsedMarker: \"(+)\"\n---\n- ☕ Northside Corner Cafe — ops handoff <id:root>\n  - Menu update ideas · spring · P2 · 👍 <id:menu>\n    - [ ] Add cold brew flight · board special <kind:pending-approve> <id:menu-coldbrew>\n    - [ ] Retire winter pie · low sellers · P3 <kind:pending-approve> <id:menu-pie>\n    - [-] Seasonal flat white syrup · supplier TBD <id:menu-syrup>\n    - [x] Allergen line on board · approved:Jess · done Wed <id:menu-allergen>\n    - pros: weekend tourist traffic · cons: barista training time <id:menu-notes>\n  - Seasonal supplier update · Q4 fruit <id:suppliers>\n    - Berries · Yarra Valley co-op · ETA next Tue <id:sup-berries>\n    - Milk · keep current dairy · no change <id:sup-milk>\n    - Coffee · sample bag from Altitude Roasters <id:sup-coffee>\n    - [x] Send Friday supplier SMS · approved:sms-bot · auto <id:sup-sms>\n    - Order codes / account notes <private> <id:sup-private> (+)\n  - Remodel the courtyard · permit in flight · P1 <id:courtyard>\n    - [ ] Confirm pavers quote · three bids <kind:pending-approve> <id:courtyard-quotes> (+)\n      - Bid A · local mason · ballpark only <id:bid-a>\n      - Bid B · landscape crew · includes planters <id:bid-b>\n    - [ ] Shade sail colour · match awning <kind:pending-approve> <id:courtyard-sail>\n    - [ ] Neighbour note before dig day <kind:pending-approve> <id:courtyard-neighbour>\n    - [x] Permit lodged · approved:Sam <id:courtyard-permit>\n  - Staff roster · first names only <id:staff>\n    - Mon open · Sam · Jess <id:staff-mon>\n    - Tue–Wed · Sam · Priya <id:staff-mid>\n    - Fri late · Jess · Omar <id:staff-fri>\n    - [x] Post Fri late SMS to Omar · approved:sms-bot · auto <id:staff-sms>\n    - Full staff list + emergency contacts <private> <id:staff-private> (+)\n  - Secrets · manager only <id:secrets>\n    - Payroll portal link + pay-run notes <private> <id:payroll> (+)\n    - Alarm code / arming notes <encrypted> <id:alarm> (+)\n    - Vendor insurance cert (remote blob) <encrypted> <id:ins-remote> (+)\n\n--- payloads ---\nalarm:\n  kid: cafe-alarm-1\n  alg: demo-aes-gcm\n  ct: d5GKTRZz_bevxCLla30bezDR9EqnDfFZLbj06WcqP5yxPQ7D1V4ifDUdlTDnrnrucKZDARUhRb8Y264r7gT7PAS9ObvOK8EL3kXZ8EjoWIeEhoHzPA\npayroll:\n  kid: cafe-payroll-1\n  alg: demo-aes-gcm\n  ct: F8LoZO7Bj-qYP5R93KlcWQn7rGbTqjYS6dSuNv4dgMsaGyhUsgW1NZq1Ix6a4v9LC8UgF_W6OqEoIAEZfFdZmDCLIpwdOZBFK7AY0YxIRk5qjG7WZkZUpKstqoW7mA\nstaff-private:\n  kid: cafe-staff-1\n  alg: demo-aes-gcm\n  ct: NgVBgsayYos_Jyj0xUz0BgQbVxpM6_Jc1SZ5byLX8MqfxqWV4WJuruNbdlYoL4JE-voicrmbjdyBTNPLtQGl3m3XoE0SM4qeUcnpqD4JAiA_h6clyuS48hhXRYp6e-XF65SHuDc9pUFoDghrprm2wU5ML_tmelMqmVBjTQ\nsup-private:\n  kid: cafe-sup-1\n  alg: demo-aes-gcm\n  ct: -6_IZecRJeIrHro6f02fCt-zlQWOPkmK5U3dQhSp6RvOTy7GbHz0oQvY1p5uSbeBdvvf-_jTPoJq-w_SbtEIgndD\nins-remote:\n  kid: cafe-ins-1\n  alg: demo-aes-gcm\n  uri: https://example.invalid/sealed/cafe-ins-1.bin\n---\n";
@@ -137,6 +142,9 @@ function injectReveals() {
   }
 }
 
+/** @type {{ refresh: (id?: string | null) => void }} */
+const treeApi = { refresh: (id) => { paint(); void id; } };
+
 async function tryUnlock(id) {
   const node = findNode(doc.nodes, id);
   if (!node?.sealed) {
@@ -204,7 +212,7 @@ async function tryUnlock(id) {
     if (isCollapsed(doc, id)) {
       doc = toggleFold(doc, id);
     }
-    paint();
+    treeApi.refresh(id);
   } catch (err) {
     window.alert(
       err instanceof Error ? err.message : 'Decrypt failed (wrong passphrase?)',
@@ -213,34 +221,23 @@ async function tryUnlock(id) {
 }
 
 function paint() {
-  tree.innerHTML = toHtml(doc);
+  tree.innerHTML = toHtml(doc, { ariaLabel: 'Northside Corner Cafe ops outline' });
   foldOut.textContent = serialize(doc);
   injectReveals();
-  tree.querySelectorAll('[data-toggle-fold]').forEach((btn) => {
-    btn.addEventListener('click', (e) => {
-      e.preventDefault();
-      const id = btn.getAttribute('data-toggle-fold');
-      if (!id) return;
-      doc = toggleFold(doc, id);
-      paint();
-    });
-  });
-  tree.querySelectorAll('[data-unlock]').forEach((btn) => {
-    btn.addEventListener('click', (e) => {
-      e.preventDefault();
-      const id = btn.getAttribute('data-unlock');
-      if (id) void tryUnlock(id);
-    });
-  });
-  tree.querySelectorAll('[data-decrypt]').forEach((btn) => {
-    btn.addEventListener('click', (e) => {
-      e.preventDefault();
-      const id = btn.getAttribute('data-decrypt');
-      if (id) void tryUnlock(id);
-    });
-  });
 }
+
 paint();
+Object.assign(
+  treeApi,
+  attachOutlineTree(tree, {
+    getDoc: () => doc,
+    setDoc: (d) => { doc = d; },
+    render: paint,
+    onUnlock: (id) => { void tryUnlock(id); },
+    onDecrypt: (id) => { void tryUnlock(id); },
+  }),
+);
+treeApi.refresh();
 </script>
 </body>
 </html>

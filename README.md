@@ -141,6 +141,7 @@ import {
   hasSealed,
   isRemoteSealed,
   toHtml,
+  attachOutlineTree,
   validateDocument,
   demoSeal,
   demoOpen,
@@ -153,20 +154,40 @@ hasSealed(doc.nodes[0]);
 const next = toggleFold(doc, 'alarm');
 const through2 = setExpandLevel(doc, 2); // iThoughts-style; 0–9 or '*'/'all'
 const html = toHtml(next);
+
+// Cafe / host: bind click + keyboard fold/nav (session-local)
+const root = document.getElementById('tree');
+let current = next;
+function paint() {
+  root.innerHTML = toHtml(current);
+}
+const tree = attachOutlineTree(root, {
+  getDoc: () => current,
+  setDoc: (d) => { current = d; },
+  render: paint,
+});
+paint();
+tree.refresh();
 ```
 
 ### Keyboard / expand level (read-only fold)
 
+Wired by **`attachOutlineTree`** (cafe demo + host outline-view). Tab enters/leaves the tree as one stop; arrows move among **visible** rows (roving `tabindex`). Session-local only — does not write `pnBody`.
+
 | Key | Behaviour |
 |-----|-----------|
-| Enter / Space / `.` | Toggle fold on the focused row (when it has children) |
+| `Tab` / `Shift+Tab` | Enter or leave the tree as a whole |
+| `↑` / `↓` | Previous / next **visible** row |
+| `Home` / `End` | First / last **visible** row |
+| `→` | Expand if collapsed; else move to first visible child |
+| `←` | Collapse if expanded; else move to parent |
+| Enter / Space / `.` | Toggle fold when the row has children |
 | `0`–`9` | `setExpandLevel` — show through depth **N** (1-based; roots = 1). `0` = top level only |
 | `*` | Expand all foldable nodes |
-| ↑ ↓ Home End / ← → | Tree navigation + expand/collapse (when `attachOutlineTree` is wired) |
 
-`setExpandLevel(doc, n)` is pure: same fold-/fold+ ids model as `toggleFold`. Session-local on host read-only outline-view — package does not persist.
+`setExpandLevel(doc, n)` is pure: same fold-/fold+ ids model as `toggleFold`. Polite live region (`data-testid="of-live"`) announces expand/collapse and level changes — not every arrow move.
 
-> **TODO:** thin `attachOutlineTree` helper (roving tabindex, live region `of-live`, cafe demo `.` / `0`–`9` / `*` wiring) — follow design note `refs/design-system/20260925-outline-fold-a11y-keyboard-ux.md` (Audroam box). This release ships `setExpandLevel` + the shortcut map above.
+**0.2.3:** `attachOutlineTree` + ARIA `tree` / `treeitem` / `group` markup from `toHtml` (children stay in the DOM when collapsed; CSS hides).
 
 
 

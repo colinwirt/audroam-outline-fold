@@ -223,19 +223,24 @@ fold-:
 });
 
 describe('toHtml', () => {
-  it('emits (+) only when collapsed and locked chrome for private', () => {
+  it('emits (+) when collapsed foldable + locked chrome for private', () => {
     const doc = parse(`---
 fold-: secret
 ---
 - Payroll <private> <id:secret>
+  - Nested note <id:secret-child>
 - Open node <id:open>
 `);
     const html = toHtml(doc);
     expect(html).toContain('(+)');
     expect(html).toContain('data-id="secret"');
+    expect(html).toContain('data-testid="of-fold-secret"');
     expect(html).toContain('locked');
     expect(html).toContain('Unlock (MFA)');
     expect(html).toContain('Open node');
+    expect(html).toContain('role="tree"');
+    // collapsed kids stay in DOM
+    expect(html).toContain('data-id="secret-child"');
   });
 });
 

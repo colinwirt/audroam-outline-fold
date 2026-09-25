@@ -81,4 +81,6 @@ export interface ToHtmlOptions {
   classPrefix?: string;
   /** Show locked chrome for private/encrypted nodes. Default true. */
   lockedChrome?: boolean;
+  /** Accessible name for role=tree root. Default: "Outline" */
+  ariaLabel?: string;
 }
