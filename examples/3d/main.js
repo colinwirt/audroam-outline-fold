@@ -8,11 +8,11 @@ import {
 const SAMPLE = `---
 fold-: design, secret
 ---
-- <id:design> Designing updates for Markmap (+)
-  - <id:todo-1> Wire fold
-  - <id:secret> <private> Payroll (+)
-- <id:vault> <encrypted> Client keys
-- <id:site> <kind:globe> Website
+- Designing updates for Markmap <id:design> (+)
+  - Wire fold <id:todo-1>
+  - Payroll <private> <id:secret> (+)
+- Client keys <encrypted> <id:vault>
+- Website <kind:globe> <id:site>
 `;
 
 let doc = parse(SAMPLE);

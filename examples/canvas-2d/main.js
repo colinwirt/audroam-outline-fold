@@ -13,11 +13,11 @@ const SAMPLE = `---
 fold-: design
 collapsedMarker: "(+)"
 ---
-- <id:design> Designing updates for Markmap (+)
-  - <id:todo-1> Wire fold state
-  - <id:secret> <private> Payroll notes
-- <id:map> <kind:globe> Public site
-- <id:db1> <db:prod-pg> Schema
+- Designing updates for Markmap <id:design> (+)
+  - Wire fold state <id:todo-1>
+  - Payroll notes <private> <id:secret>
+- Public site <kind:globe> <id:map>
+- Schema <db:prod-pg> <id:db1>
 `;
 
 let doc = parse(SAMPLE);

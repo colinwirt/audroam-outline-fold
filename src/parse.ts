@@ -15,6 +15,12 @@ const KIND_SPAN =
 const FLAG_SPAN =
   /^<(private|encrypted|db)(?::([^\s>]+))?>\s*/i;
 
+const ID_TRAILING = /\s*<id:([A-Za-z][A-Za-z0-9_-]*)>\s*$/;
+const KIND_TRAILING =
+  /\s*<(?:kind:)?(doc|ticket|globe|db|feature|form|bug|risk|lock|encrypted|system-link)>\s*$/i;
+const FLAG_TRAILING =
+  /\s*<(private|encrypted|db)(?::([^\s>]+))?>\s*$/i;
+
 /** Short `<design>` form — excluded reserved flag/kind words. */
 const RESERVED_SHORT = new Set([
   'private',
@@ -28,6 +34,7 @@ const RESERVED_SHORT = new Set([
   'bug',
   'risk',
   'lock',
+  'encrypted',
   'system-link',
   'kind',
   'id',
@@ -125,6 +132,18 @@ function tryShortId(rest: string): { id: string; rest: string } | null {
   return { id: m[1], rest: rest.slice(m[0].length) };
 }
 
+function tryShortIdTrailing(rest: string): { id: string; rest: string } | null {
+  const m = rest.match(/\s*<([A-Za-z][A-Za-z0-9_-]*)>\s*$/);
+  if (!m) return null;
+  if (RESERVED_SHORT.has(m[1].toLowerCase())) return null;
+  return { id: m[1], rest: rest.slice(0, rest.length - m[0].length).trimEnd() };
+}
+
+/**
+ * Peel leading meta spans (backward compatible), then strip fold marker from
+ * the end, then peel trailing meta spans so `(+)` stays outermost.
+ * Trailing id overrides a leading id when both are present.
+ */
 function parseTitleAndMeta(
   content: string,
   collapsedMarker: string,
@@ -189,6 +208,46 @@ function parseTitleAndMeta(
     rest = rest.slice(0, -collapsedMarker.length).trimEnd();
   } else if (expandedMarker && rest.endsWith(expandedMarker)) {
     rest = rest.slice(0, -expandedMarker.length).trimEnd();
+  }
+
+  // Caption-first: peel trailing <id:…> / short id / kind / flag from title end.
+  progressed = true;
+  while (progressed) {
+    progressed = false;
+
+    let m = rest.match(FLAG_TRAILING);
+    if (m) {
+      const flag = m[1].toLowerCase() as NodeFlag;
+      flags.push(flag);
+      if (flag === 'db' && m[2]) dbRef = m[2];
+      rest = rest.slice(0, rest.length - m[0].length).trimEnd();
+      progressed = true;
+      continue;
+    }
+
+    m = rest.match(KIND_TRAILING);
+    if (m) {
+      kind = m[1].toLowerCase() as NodeKind;
+      rest = rest.slice(0, rest.length - m[0].length).trimEnd();
+      progressed = true;
+      continue;
+    }
+
+    m = rest.match(ID_TRAILING);
+    if (m) {
+      id = m[1]; // trailing overrides leading
+      rest = rest.slice(0, rest.length - m[0].length).trimEnd();
+      progressed = true;
+      continue;
+    }
+
+    const short = tryShortIdTrailing(rest);
+    if (short) {
+      id = short.id; // trailing overrides leading
+      rest = short.rest;
+      progressed = true;
+      continue;
+    }
   }
 
   return {

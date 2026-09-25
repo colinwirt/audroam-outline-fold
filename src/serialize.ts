@@ -13,9 +13,9 @@ function escapeTitle(title: string): string {
   return title;
 }
 
-function formatSpans(node: OutlineNode): string {
+/** Caption-first: kind/flag spans, then `<id:...>`, after the title. */
+function formatTrailingSpans(node: OutlineNode): string {
   const parts: string[] = [];
-  if (node.id) parts.push(`<id:${node.id}>`);
   if (node.kind) parts.push(`<kind:${node.kind}>`);
   if (node.flags) {
     for (const f of node.flags) {
@@ -23,7 +23,8 @@ function formatSpans(node: OutlineNode): string {
       else parts.push(`<${f}>`);
     }
   }
-  return parts.length ? parts.join(' ') + ' ' : '';
+  if (node.id) parts.push(`<id:${node.id}>`);
+  return parts.length ? ' ' + parts.join(' ') : '';
 }
 
 function serializeNode(
@@ -35,7 +36,7 @@ function serializeNode(
     doc.frontmatter?.collapsedMarker ?? DEFAULT_COLLAPSED;
   const expandedMarker = doc.frontmatter?.expandedMarker;
   const indent = '  '.repeat(node.depth);
-  let line = `${indent}- ${formatSpans(node)}${escapeTitle(node.title)}`;
+  let line = `${indent}- ${escapeTitle(node.title)}${formatTrailingSpans(node)}`;
   if (node.id && isCollapsed(doc, node.id)) {
     line += ` ${collapsedMarker}`;
   } else if (node.id && expandedMarker) {

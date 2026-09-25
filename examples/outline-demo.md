@@ -1,0 +1,27 @@
+---
+fold-: drafts, risk-mfa
+collapsedMarker: "(+)"
+---
+- 📋 Launch checklist — LLM actionable outline <id:root>
+  - Goal: share one outline bots and humans can approve in-syntax <id:goal>
+  - ✅ Actions to approve <id:actions>
+    - [ ] Ship fold docs · P1 · 👍 <id:a1>
+    - [ ] Publish package README sample · P1 <id:a2>
+    - [ ] Lock caption micro-syntax P# + 👍N 👎N · P2 <id:a3>
+    - [ ] Wire host outline/map dogfood · P3 <id:a4>
+  - 📦 Deliverables <id:deliverables>
+    - Docs site · 🥇 P1 · 👍12 👎2 <id:d-docs>
+    - Interactive HTML demo · P1 · 👍9 👎1 <id:d-html>
+    - Draft blog post · P3 · 👍3 👎6 <id:drafts> (+)
+  - 🤖 LLM proposals (actionable) <id:llm>
+    - Proposal: docs default fold- (majority open) · pros4 cons1 <id:fb1>
+      - [ ] approve:fb1 adopt fold- default <id:fb1-act>
+    - Proposal: captions = title · P# · 👍N 👎N · pros6 cons0 <id:fb2>
+      - [ ] approve:fb2 lock caption micro-syntax <id:fb2-act>
+    - 🔒 Proposal: MFA gate on private nodes before expand · pros2 cons3 <id:risk-mfa> (+)
+      - [ ] reject:risk-mfa defer MFA to host app <id:risk-mfa-act>
+  - 🎨 Captions with emoji / type hints <id:icons>
+    - 📄 Spec spike <id:i-doc>
+    - 🐛 Hyphen id todo-1 · fixed <id:i-bug>
+    - ⚠️ External dependency churn · monitor <id:i-risk>
+    - 🗄️ DB-backed nodes · host-only later <id:i-db>

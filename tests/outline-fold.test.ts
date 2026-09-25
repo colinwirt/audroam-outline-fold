@@ -8,17 +8,52 @@ import {
   ICONS,
 } from '../src/index.js';
 
-const SAMPLE_LINE = `<id:design> Designing updates for Markmap (+)`;
+const SAMPLE_LINE_LEADING = `<id:design> Designing updates for Markmap (+)`;
+const SAMPLE_LINE_TRAILING = `Designing updates for Markmap <id:design> (+)`;
 
 describe('parse sample line', () => {
-  it('parses Colin sample with inline (+)', () => {
-    const doc = parse(`- ${SAMPLE_LINE}\n`);
+  it('parses leading id with inline (+) (backward compatible)', () => {
+    const doc = parse(`- ${SAMPLE_LINE_LEADING}\n`);
     expect(doc.nodes).toHaveLength(1);
     expect(doc.nodes[0].id).toBe('design');
     expect(doc.nodes[0].title).toBe('Designing updates for Markmap');
     expect(doc.fold.mode).toBe('-');
     expect(doc.fold.ids).toContain('design');
     expect(isCollapsed(doc, 'design')).toBe(true);
+  });
+
+  it('parses trailing id with inline (+)', () => {
+    const doc = parse(`- ${SAMPLE_LINE_TRAILING}\n`);
+    expect(doc.nodes[0].id).toBe('design');
+    expect(doc.nodes[0].title).toBe('Designing updates for Markmap');
+    expect(doc.fold.ids).toContain('design');
+    expect(isCollapsed(doc, 'design')).toBe(true);
+  });
+
+  it('parses trailing short id', () => {
+    const doc = parse(`- Designing updates for Markmap <design> (+)\n`);
+    expect(doc.nodes[0].id).toBe('design');
+    expect(doc.nodes[0].title).toBe('Designing updates for Markmap');
+  });
+
+  it('parses caption with priority/vote then trailing id', () => {
+    const doc = parse(`- [ ] Ship fold docs · P1 · 👍 <id:a1>\n`);
+    expect(doc.nodes[0].id).toBe('a1');
+    expect(doc.nodes[0].title).toBe('[ ] Ship fold docs · P1 · 👍');
+  });
+
+  it('parses trailing flag then id with (+)', () => {
+    const doc = parse(`- Payroll notes <private> <id:secret> (+)\n`);
+    expect(doc.nodes[0].id).toBe('secret');
+    expect(doc.nodes[0].title).toBe('Payroll notes');
+    expect(doc.nodes[0].flags).toContain('private');
+    expect(doc.fold.ids).toContain('secret');
+  });
+
+  it('trailing id overrides leading id', () => {
+    const doc = parse(`- <id:old> Title text <id:new>\n`);
+    expect(doc.nodes[0].id).toBe('new');
+    expect(doc.nodes[0].title).toBe('Title text');
   });
 });
 
@@ -27,9 +62,9 @@ describe('fold- / fold+', () => {
     const text = `---
 fold-: design
 ---
-- <id:design> Design
-  - <id:todo-1> Todo hyphen
-- <id:other> Other
+- Designing updates <id:design>
+  - Todo hyphen <id:todo-1>
+- Other <id:other>
 `;
     const doc = parse(text);
     expect(doc.fold.mode).toBe('-');
@@ -42,8 +77,8 @@ fold-: design
     const text = `---
 fold+: design
 ---
-- <id:design> Design
-- <id:other> Other
+- Design <id:design>
+- Other <id:other>
 `;
     const doc = parse(text);
     expect(doc.fold.mode).toBe('+');
@@ -57,7 +92,7 @@ fold+: design
 fold-: a
 fold+: b
 ---
-- <id:a> A
+- A <id:a>
 `),
     ).toThrow(/both fold/);
   });
@@ -68,7 +103,7 @@ describe('hyphen ids', () => {
     const doc = parse(`---
 fold-: todo-1
 ---
-- <id:todo-1> Wire fold
+- Wire fold <id:todo-1>
 `);
     expect(doc.nodes[0].id).toBe('todo-1');
     expect(isCollapsed(doc, 'todo-1')).toBe(true);
@@ -80,7 +115,7 @@ describe('toggleFold', () => {
     const doc = parse(`---
 fold-: design
 ---
-- <id:design> Design
+- Design <id:design>
 `);
     const next = toggleFold(doc, 'design');
     expect(isCollapsed(doc, 'design')).toBe(true);
@@ -93,8 +128,8 @@ fold-: design
     const doc = parse(`---
 fold+: design
 ---
-- <id:design> Design
-- <id:other> Other
+- Design <id:design>
+- Other <id:other>
 `);
     expect(isCollapsed(doc, 'other')).toBe(true);
     const next = toggleFold(doc, 'other');
@@ -109,7 +144,7 @@ describe('custom markers', () => {
 fold-: x
 collapsedMarker: "[+]"
 ---
-- <id:x> X [+]
+- X <id:x> [+]
 `;
     const doc = parse(text);
     expect(doc.frontmatter?.collapsedMarker).toBe('[+]');
@@ -121,19 +156,23 @@ collapsedMarker: "[+]"
 });
 
 describe('round-trip', () => {
-  it('serialize(parse(text)) preserves fold and ids', () => {
+  it('serialize(parse(text)) puts ids at end (caption-first)', () => {
     const text = `---
 fold-: design, todo-1
 collapsedMarker: "(+)"
 ---
 
-- <id:design> Designing updates for Markmap (+)
-  - <id:todo-1> Wire fold state (+)
+- Designing updates for Markmap <id:design> (+)
+  - Wire fold state <id:todo-1> (+)
   - Child without id
-- <id:open> Always open
+- Always open <id:open>
 `;
     const doc = parse(text);
     const out = serialize(doc);
+    expect(out).toMatch(/- Designing updates for Markmap <id:design> \(\+\)/);
+    expect(out).toMatch(/- Wire fold state <id:todo-1> \(\+\)/);
+    expect(out).toMatch(/- Always open <id:open>/);
+    expect(out).not.toMatch(/<id:design> Designing/);
     const doc2 = parse(out);
     expect(doc2.fold).toEqual(doc.fold);
     expect(doc2.nodes[0].id).toBe('design');
@@ -142,6 +181,22 @@ collapsedMarker: "(+)"
     expect(isCollapsed(doc2, 'design')).toBe(true);
     expect(isCollapsed(doc2, 'open')).toBe(false);
   });
+
+  it('round-trips leading-id input to caption-first output', () => {
+    const text = `---
+fold-: secret
+collapsedMarker: "(+)"
+---
+- <id:secret> <private> Payroll notes (+)
+`;
+    const doc = parse(text);
+    const out = serialize(doc);
+    expect(out).toContain('- Payroll notes <private> <id:secret> (+)');
+    const doc2 = parse(out);
+    expect(doc2.nodes[0].id).toBe('secret');
+    expect(doc2.nodes[0].flags).toContain('private');
+    expect(doc2.nodes[0].title).toBe('Payroll notes');
+  });
 });
 
 describe('private / encrypted / db stubs', () => {
@@ -149,9 +204,9 @@ describe('private / encrypted / db stubs', () => {
     const text = `---
 fold-:
 ---
-- <id:secret> <private> Payroll notes
-- <id:vault> <encrypted> Client keys
-- <id:conn> <db:prod-pg> Schema map
+- Payroll notes <private> <id:secret>
+- Client keys <encrypted> <id:vault>
+- Schema map <db:prod-pg> <id:conn>
 `;
     const doc = parse(text);
     expect(doc.nodes[0].flags).toContain('private');
@@ -161,7 +216,7 @@ fold-:
   });
 
   it('parses system-link kind', () => {
-    const doc = parse(`- <id:lnk> <kind:system-link> Related roam\n`);
+    const doc = parse(`- Related outline <kind:system-link> <id:lnk>\n`);
     expect(doc.nodes[0].kind).toBe('system-link');
   });
 });
@@ -171,8 +226,8 @@ describe('toHtml', () => {
     const doc = parse(`---
 fold-: secret
 ---
-- <id:secret> <private> Payroll
-- <id:open> Open node
+- Payroll <private> <id:secret>
+- Open node <id:open>
 `);
     const html = toHtml(doc);
     expect(html).toContain('(+)');
