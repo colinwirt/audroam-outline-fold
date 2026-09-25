@@ -107,12 +107,11 @@ export function parsePayloadMap(block: string): PayloadMap {
 }
 
 function fieldsToSealed(fields: Record<string, string>): SealedPayload | null {
-  const kid = fields.kid;
-  if (!kid) return null;
   const hasCt = Boolean(fields.ct);
   const hasUri = Boolean(fields.uri);
   if (hasCt === hasUri) return null;
-  const sealed: SealedPayload = { kid };
+  const sealed: SealedPayload = {};
+  if (fields.kid) sealed.kid = fields.kid;
   if (fields.ct) sealed.ciphertext = fields.ct;
   if (fields.uri) sealed.uri = fields.uri;
   if (fields.alg) sealed.alg = fields.alg;
@@ -208,7 +207,7 @@ export function collectPayloads(nodes: OutlineNode[]): PayloadMap {
   const out: PayloadMap = {};
   const walk = (list: OutlineNode[]) => {
     for (const n of list) {
-      if (n.id && n.sealed?.kid && (n.sealed.ciphertext || n.sealed.uri)) {
+      if (n.id && n.sealed && (n.sealed.ciphertext || n.sealed.uri)) {
         out[n.id] = { ...n.sealed };
       }
       if (n.children) walk(n.children);
@@ -226,7 +225,7 @@ export function formatPayloadsBlock(payloads: PayloadMap): string {
   for (const id of keys) {
     const s = payloads[id]!;
     lines.push(`${id}:`);
-    lines.push(`  kid: ${s.kid}`);
+    if (s.kid) lines.push(`  kid: ${s.kid}`);
     if (s.alg) lines.push(`  alg: ${s.alg}`);
     if (s.ciphertext) lines.push(`  ct: ${s.ciphertext}`);
     else if (s.uri) lines.push(`  uri: ${s.uri}`);

@@ -8,6 +8,8 @@
   --accent: #6cb6ff;
   --error: #f87171;
   --error-bg: #3b1a1a;
+  --warn: #fbbf24;
+  --warn-bg: #3b2f14;
 }
 
 * {
@@ -95,6 +97,7 @@ kbd {
 .source {
   flex: 1;
   width: 100%;
+  min-height: 8rem;
   border: 0;
   resize: none;
   padding: 0.75rem;
@@ -102,6 +105,80 @@ kbd {
   color: var(--text);
   font: 13px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   outline: none;
+}
+
+.validation-panel {
+  flex: none;
+  max-height: 40%;
+  overflow: auto;
+  border-top: 1px solid var(--border);
+  padding: 0.55rem 0.75rem 0.7rem;
+  font-size: 0.8rem;
+}
+
+.validation-panel-error {
+  background: var(--error-bg);
+  color: #fecaca;
+}
+
+.validation-panel-warn {
+  background: var(--warn-bg);
+  color: #fde68a;
+}
+
+.validation-panel-title {
+  font-weight: 600;
+  margin-bottom: 0.35rem;
+  font-size: 0.75rem;
+}
+
+.validation-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.validation-item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.35rem 0.5rem;
+  line-height: 1.35;
+}
+
+.validation-sev {
+  text-transform: uppercase;
+  font-size: 0.65rem;
+  letter-spacing: 0.04em;
+  font-weight: 700;
+  opacity: 0.9;
+}
+
+.severity-error .validation-sev {
+  color: var(--error);
+}
+
+.severity-warning .validation-sev {
+  color: var(--warn);
+}
+
+.validation-code {
+  font-size: 0.75em;
+  background: rgba(0, 0, 0, 0.25);
+  padding: 0.05em 0.35em;
+  border-radius: 4px;
+}
+
+.validation-msg {
+  flex: 1 1 12rem;
+}
+
+.validation-meta {
+  color: var(--muted);
+  font-size: 0.75em;
 }
 
 .preview-pane .tree,

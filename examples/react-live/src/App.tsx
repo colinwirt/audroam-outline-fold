@@ -7,7 +7,6 @@ import {
   type MouseEvent as ReactMouseEvent,
 } from 'react';
 import {
-  parse,
   serialize,
   toggleFold,
   toHtml,
@@ -16,8 +15,10 @@ import {
   isRemoteSealed,
   demoOpen,
   DEMO_PASSPHRASE,
+  validateDocument,
   type OutlineFoldDoc,
   type OutlineNode,
+  type ValidationResult,
 } from '@audroam/outline-fold';
 import seedMd from '../../outline-demo.md?raw';
 import {
@@ -35,10 +36,6 @@ import {
   upsertActiveBody,
 } from './docsStorage';
 
-type ParseOk = { ok: true; doc: OutlineFoldDoc };
-type ParseErr = { ok: false; message: string };
-type ParseState = ParseOk | ParseErr;
-
 function findNode(nodes: OutlineNode[], id: string): OutlineNode | undefined {
   for (const n of nodes) {
     if (n.id === id) return n;
@@ -50,16 +47,8 @@ function findNode(nodes: OutlineNode[], id: string): OutlineNode | undefined {
   return undefined;
 }
 
-
-function tryParse(text: string): ParseState {
-  try {
-    return { ok: true, doc: parse(text) };
-  } catch (e) {
-    return {
-      ok: false,
-      message: e instanceof Error ? e.message : String(e),
-    };
-  }
+function runValidate(text: string): ValidationResult {
+  return validateDocument(text);
 }
 
 /**
@@ -73,12 +62,12 @@ export default function App() {
   );
   const active = getActive(library);
   const [text, setText] = useState(active.body);
-  const [parsed, setParsed] = useState<ParseState>(() =>
-    tryParse(active.body),
+  const [validation, setValidation] = useState<ValidationResult>(() =>
+    runValidate(active.body),
   );
   const [revealed, setRevealed] = useState<Record<string, string>>({});
   const docRef = useRef<OutlineFoldDoc | null>(
-    parsed.ok ? parsed.doc : null,
+    validation.doc ?? null,
   );
   const libraryRef = useRef(library);
   libraryRef.current = library;
@@ -87,8 +76,8 @@ export default function App() {
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const importFileRef = useRef<HTMLInputElement | null>(null);
 
-  if (parsed.ok) {
-    docRef.current = parsed.doc;
+  if (validation.doc) {
+    docRef.current = validation.doc;
   }
 
   const persistLibrary = useCallback((next: DocLibrary) => {
@@ -125,14 +114,14 @@ export default function App() {
   const loadDocBody = useCallback((body: string) => {
     setText(body);
     textRef.current = body;
-    setParsed(tryParse(body));
+    setValidation(runValidate(body));
   }, []);
 
   const onTextChange = useCallback(
     (next: string) => {
       setText(next);
       textRef.current = next;
-      setParsed(tryParse(next));
+      setValidation(runValidate(next));
       scheduleAutosave(next);
     },
     [scheduleAutosave],
@@ -144,8 +133,8 @@ export default function App() {
       if (!current) return;
       const next = toggleFold(current, id);
       docRef.current = next;
-      setParsed({ ok: true, doc: next });
       const synced = serialize(next);
+      setValidation(runValidate(synced));
       setText(synced);
       textRef.current = synced;
       if (saveTimer.current) clearTimeout(saveTimer.current);
@@ -249,6 +238,18 @@ export default function App() {
 
 
   const onDownloadDoc = useCallback(() => {
+    const gate = runValidate(textRef.current);
+    if (!gate.ok) {
+      window.alert(
+        'Document has validation errors — fix them before download/share.\n\n' +
+          gate.issues
+            .filter((i) => i.severity === 'error')
+            .map((i) => `• [${i.code}] ${i.message}`)
+            .join('\n'),
+      );
+      setValidation(gate);
+      return;
+    }
     if (saveTimer.current) clearTimeout(saveTimer.current);
     const lib = flushBodyToLibrary(textRef.current);
     const cur = getActive(lib);
@@ -256,6 +257,14 @@ export default function App() {
   }, [flushBodyToLibrary]);
 
   const onDownloadLibrary = useCallback(() => {
+    const gate = runValidate(textRef.current);
+    if (!gate.ok) {
+      window.alert(
+        'Active document has validation errors — fix them before download/share.',
+      );
+      setValidation(gate);
+      return;
+    }
     if (saveTimer.current) clearTimeout(saveTimer.current);
     const lib = flushBodyToLibrary(textRef.current);
     downloadLibraryJson(lib);
@@ -302,9 +311,10 @@ export default function App() {
     [flushBodyToLibrary, persistLibrary, loadDocBody],
   );
 
+  const renderDoc = validation.doc ?? docRef.current;
   const html = useMemo(
-    () => (parsed.ok ? toHtml(parsed.doc) : ''),
-    [parsed],
+    () => (renderDoc ? toHtml(renderDoc) : ''),
+    [renderDoc, validation],
   );
 
 
@@ -453,13 +463,13 @@ export default function App() {
       <header className="header">
         <h1>@audroam/outline-fold — React live parser</h1>
         <p className="meta">
-          Edit outline source on the left · live <code>parse</code> →{' '}
-          <code>toHtml</code> on the right. Click <kbd>(+)</kbd> to{' '}
-          <code>toggleFold</code> (no re-parse); fold state syncs via{' '}
-          <code>serialize</code>. Multiple drafts stay in this browser’s{' '}
-          <code>localStorage</code> (outline text only — no secrets).
-          Unlock/Decrypt: choose a key source (session / password manager / agent stub / MFA stub),
-          then session-reveal sealed trailer payloads. OSS example only — not production MFA.
+          Edit outline source on the left · live <code>validateDocument</code> +{' '}
+          <code>toHtml</code> on the right. Invalid docs still render what parse can build;
+          issues appear under the editor. Download/share is gated when <code>!ok</code>.
+          Click <kbd>(+)</kbd> to <code>toggleFold</code>; fold state syncs via{' '}
+          <code>serialize</code>. Drafts stay in this browser’s <code>localStorage</code>{' '}
+          (outline text only — no secrets). Unlock/Decrypt uses demo key sources.
+          OSS example only — not production MFA.
         </p>
       </header>
 
@@ -525,11 +535,42 @@ export default function App() {
             spellCheck={false}
             aria-label="Outline source"
           />
+          {validation.issues.length > 0 ? (
+            <div
+              className={
+                'validation-panel' +
+                (validation.ok ? ' validation-panel-warn' : ' validation-panel-error')
+              }
+              role="status"
+              aria-live="polite"
+            >
+              <div className="validation-panel-title">
+                {validation.ok
+                  ? `Warnings (${validation.issues.length}) — outline still renders`
+                  : `Errors (${validation.issues.filter((i) => i.severity === 'error').length}) — download/share gated; outline still renders when parseable`}
+              </div>
+              <ul className="validation-list">
+                {validation.issues.map((iss, idx) => (
+                  <li key={idx} className={'validation-item severity-' + iss.severity}>
+                    <span className="validation-sev">{iss.severity}</span>
+                    <code className="validation-code">{iss.code}</code>
+                    <span className="validation-msg">{iss.message}</span>
+                    {iss.line != null ? (
+                      <span className="validation-meta">line {iss.line}</span>
+                    ) : null}
+                    {iss.nodeId ? (
+                      <span className="validation-meta">#{iss.nodeId}</span>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
         </section>
 
         <section className="pane preview-pane">
           <div className="pane-label">Preview</div>
-          {parsed.ok ? (
+          {html ? (
             <div
               className="tree"
               onClick={onTreeClick}
@@ -537,8 +578,11 @@ export default function App() {
             />
           ) : (
             <div className="parse-error" role="alert">
-              <strong>Parse error</strong>
-              <pre>{parsed.message}</pre>
+              <strong>Nothing to render yet</strong>
+              <pre>
+                {validation.issues.map((i) => `[${i.code}] ${i.message}`).join('\n') ||
+                  'Empty document'}
+              </pre>
             </div>
           )}
         </section>

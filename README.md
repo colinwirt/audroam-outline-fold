@@ -140,16 +140,48 @@ import {
   hasSealed,
   isRemoteSealed,
   toHtml,
+  validateDocument,
   demoSeal,
   demoOpen,
   DEMO_PASSPHRASE,
 } from '@audroam/outline-fold';
 
 const doc = parse(text);
+const { ok, issues } = validateDocument(text);
 hasSealed(doc.nodes[0]);
 const next = toggleFold(doc, 'alarm');
 const html = toHtml(next);
 ```
+
+
+## Document validation
+
+`parse` stays lenient (it only throws for conflicting `fold-` / `fold+`). Hosts that need a hard gate call **`validateDocument`**, which never throws for document problems — it returns a structured result:
+
+```ts
+import { validateDocument } from '@audroam/outline-fold';
+
+const { ok, issues, doc } = validateDocument(source);
+// ok === false only when some issue.severity === 'error'
+// warnings (orphan trailer id, blank caption, …) leave ok true
+```
+
+**Render what you can:** keep showing the outline from `parse` / `doc` even when there are errors. Surface `issues` in an editor panel (severity, code, message, optional `line` / `nodeId`). Refuse save / share / Invite to Beta when `!ok`.
+
+| Code | Severity | Meaning |
+|------|----------|---------|
+| `fold_mode_conflict` | error | both `fold-` and `fold+` |
+| `payload_missing_ct_uri` | error | sealed needs exactly one of `ct` \| `uri` |
+| `payload_missing_kid` | error | sealed without `kid` (strict default) |
+| `payload_kid_omitted_single_key` | warning | omitted `kid` with `{ singleKeyFallback: true }` |
+| `alg_mixed_without_kid` | error | mixed algs across unkeyed sealed under single-key fallback |
+| `payload_node_missing_id` | error | sealed node has no id |
+| `duplicate_node_id` | error | two outline nodes share an id |
+| `payload_orphan` | warning | trailer id with no outline node |
+| `empty_title` | warning | blank caption after strip |
+| `enc_tag_ignored` | warning | malformed inline `<enc:…>` dropped by parse |
+
+Pass `{ singleKeyFallback: true }` when the unlock context has exactly one key (missing `kid` → warnings, not errors).
 
 ## License
 

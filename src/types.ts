@@ -29,7 +29,8 @@ export type NodeKind =
  * material; this does not change the per-entry grammar.
  */
 export interface SealedPayload {
-  kid: string;
+  /** Key id — expected per sealed node; omit only under host single-key fallback. */
+  kid?: string;
   /** Base64url (or base64) ciphertext — inline / bundled style. */
   ciphertext?: string;
   /** Remote blob URI — host fetches after key release. */

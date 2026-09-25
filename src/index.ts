@@ -31,3 +31,11 @@ export {
   attachPayloads,
   mergeFrontmatter,
 } from './payloads.js';
+
+export type {
+  ValidationSeverity,
+  ValidationIssue,
+  ValidationResult,
+  ValidateOptions,
+} from './validate.js';
+export { validateDocument } from './validate.js';

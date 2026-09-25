@@ -23,6 +23,10 @@ h1{font-size:1.2rem;font-weight:600;margin:0 0 .25rem}
 .of-reveal{margin:.25rem 0 .35rem 1.95rem;padding:.55rem .7rem;background:#1a2330;border:1px solid #3d5a3a;border-radius:8px;font-size:.85rem;white-space:pre-wrap;color:#c8e6c9}
 .of-reveal-label{display:block;font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;color:#8b9bab;margin-bottom:.25rem}
 #panel{margin-top:1.5rem;padding-top:1rem;border-top:1px solid #2a3540}
+#validation{margin:0 0 1rem;padding:.55rem .7rem;border-radius:8px;font-size:.8rem;border:1px solid #2a3540;background:#1a2330}
+#validation.ok{border-color:#3d5a3a;color:#c8e6c9}
+#validation.bad{border-color:#5a3d3d;color:#fecaca;background:#3b1a1a}
+#validation ul{margin:.35rem 0 0;padding-left:1.1rem}
 pre{background:#1a2330;padding:.75rem;overflow:auto;font-size:12px;border-radius:8px}
 kbd{background:#1a2330;padding:.1em .35em;border-radius:4px;font-size:.85em}
 code{font-size:.9em}
@@ -31,6 +35,7 @@ code{font-size:.9em}
 <body>
 <h1>☕ Northside Corner Cafe</h1>
 <p class="meta">Cafe ops handoff — click <kbd>(+)</kbd> to expand. Amber clipboard = pending approve. Locked rows carry <strong>sealed payloads</strong> in a trailing <code>--- payloads ---</code> map (lean titles). Unlock / Decrypt: pick a key source (session / password manager / agent stub / MFA stub). Sample passphrase <code>northside-demo</code>. Session reveal only — not written back. Demo ≠ production MFA.</p>
+<div id="validation" hidden></div>
 <div id="tree"></div>
 <div id="panel">
 <p class="meta">Current handoff text (fold state updates as you click; sealed ciphertext stays in the outline):</p>
@@ -45,6 +50,7 @@ import {
   isCollapsed,
   demoOpen,
   DEMO_PASSPHRASE,
+  validateDocument,
 } from '../dist/index.js';
 
 const src = "---\nfold-: courtyard-quotes, payroll, alarm, staff-private, ins-remote\ncollapsedMarker: \"(+)\"\n---\n- ☕ Northside Corner Cafe — ops handoff <id:root>\n  - Menu update ideas · spring · P2 · 👍 <id:menu>\n    - [ ] Add cold brew flight · board special <kind:pending-approve> <id:menu-coldbrew>\n    - [ ] Retire winter pie · low sellers · P3 <kind:pending-approve> <id:menu-pie>\n    - [-] Seasonal flat white syrup · supplier TBD <id:menu-syrup>\n    - [x] Allergen line on board · approved:Jess · done Wed <id:menu-allergen>\n    - pros: weekend tourist traffic · cons: barista training time <id:menu-notes>\n  - Seasonal supplier update · Q4 fruit <id:suppliers>\n    - Berries · Yarra Valley co-op · ETA next Tue <id:sup-berries>\n    - Milk · keep current dairy · no change <id:sup-milk>\n    - Coffee · sample bag from Altitude Roasters <id:sup-coffee>\n    - [x] Send Friday supplier SMS · approved:sms-bot · auto <id:sup-sms>\n    - Order codes / account notes <private> <id:sup-private> (+)\n  - Remodel the courtyard · permit in flight · P1 <id:courtyard>\n    - [ ] Confirm pavers quote · three bids <kind:pending-approve> <id:courtyard-quotes> (+)\n      - Bid A · local mason · ballpark only <id:bid-a>\n      - Bid B · landscape crew · includes planters <id:bid-b>\n    - [ ] Shade sail colour · match awning <kind:pending-approve> <id:courtyard-sail>\n    - [ ] Neighbour note before dig day <kind:pending-approve> <id:courtyard-neighbour>\n    - [x] Permit lodged · approved:Sam <id:courtyard-permit>\n  - Staff roster · first names only <id:staff>\n    - Mon open · Sam · Jess <id:staff-mon>\n    - Tue–Wed · Sam · Priya <id:staff-mid>\n    - Fri late · Jess · Omar <id:staff-fri>\n    - [x] Post Fri late SMS to Omar · approved:sms-bot · auto <id:staff-sms>\n    - Full staff list + emergency contacts <private> <id:staff-private> (+)\n  - Secrets · manager only <id:secrets>\n    - Payroll portal link + pay-run notes <private> <id:payroll> (+)\n    - Alarm code / arming notes <encrypted> <id:alarm> (+)\n    - Vendor insurance cert (remote blob) <encrypted> <id:ins-remote> (+)\n\n--- payloads ---\nalarm:\n  kid: cafe-alarm-1\n  alg: demo-aes-gcm\n  ct: xjxUt4blu4NhjSyB_TeX81yahLQLa68II5C7Yh7EJ1Y67R_y3x8raf8dycxV7_uHDg0I4PLJ640qdklRULDrI18J15DhyIsbtyJ8QYvP7VN_rxXnQg\npayroll:\n  kid: cafe-payroll-1\n  alg: demo-aes-gcm\n  ct: CxctqFsCKAjeTg_7rui8xnemiNICQYxHPM-BtPV154wMQa-2FbQ6LNZHJ_9Pw2ezIW8Ar68pEy3j5F3xkWqWgFLItBNAYFV0CFWmhsW0M-l0qUB51OnY9TY4prnbRw\nstaff-private:\n  kid: cafe-staff-1\n  alg: demo-aes-gcm\n  ct: bbqmcQ5F7I-KKm8_38zQ3vVNdZt7GUB9mOm8msflPipn477YL5zWa62DG7BX-2DW1keeiZYCOEXlJSO6_fNHDJB_s4yOxnJle4kWoyg6bOoi0uzOPCjTSWzwD-9F89BxgFwLAVfMYiyNwRaTwaTcHsfzArwlhQ\nsup-private:\n  kid: cafe-sup-1\n  alg: demo-aes-gcm\n  ct: 0A9HCkVgKUdLZVvYsFjbQGvIbm4y_vxeyNrWso_Ga554pMOBvaWYYvVsDH1qhgRpxfKpUiAU8PhQVo_w2lQTrb6x\nins-remote:\n  kid: cafe-ins-1\n  alg: demo-aes-gcm\n  uri: https://example.invalid/sealed/cafe-ins-1.bin\n---\n";
@@ -53,6 +59,42 @@ let doc = parse(src);
 const revealed = Object.create(null);
 const tree = document.getElementById('tree');
 const foldOut = document.getElementById('foldOut');
+const validationEl = document.getElementById('validation');
+
+function showValidation(source) {
+  const v = validateDocument(source);
+  if (!validationEl) return;
+  validationEl.hidden = false;
+  if (v.ok && v.issues.length === 0) {
+    validationEl.className = 'ok';
+    validationEl.textContent = 'validateDocument: ok — outline renders; no issues.';
+    return;
+  }
+  validationEl.className = v.ok ? 'ok' : 'bad';
+  const title = v.ok
+    ? 'validateDocument: warnings (outline still renders)'
+    : 'validateDocument: errors (outline still renders when parseable; gate save/share)';
+  validationEl.innerHTML =
+    '<strong>' +
+    title +
+    '</strong><ul>' +
+    v.issues
+      .map(
+        (i) =>
+          '<li><code>' +
+          i.severity +
+          '</code> <code>' +
+          i.code +
+          '</code> ' +
+          i.message +
+          (i.line != null ? ' · line ' + i.line : '') +
+          (i.nodeId ? ' · #' + i.nodeId : '') +
+          '</li>',
+      )
+      .join('') +
+    '</ul>';
+}
+showValidation(src);
 
 function findNode(nodes, id) {
   for (const n of nodes) {
