@@ -23,6 +23,8 @@ export type NodeKind =
  * - **inline** `ciphertext` (bundled in the outline doc), or
  * - **remote** `uri` (host fetches after auth).
  * Exactly one of `ciphertext` | `uri` should be set.
+ * Each sealed node is expected to carry its own `kid`; sharing a `kid` is a
+ * deliberate choice when the user judges node sensitivity to be the same.
  */
 export interface SealedPayload {
   kid: string;

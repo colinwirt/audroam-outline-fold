@@ -69,6 +69,8 @@ ins-remote:
 | Trailing YAML `---` | Same fold-/marker keys as leading frontmatter |
 | Head + tail frontmatter | **Merged; tail wins** on conflicts |
 
+**Key identity:** Every sealed node is expected to carry its own `kid`. The default is one key per node; sharing a `kid` across nodes is supported when the user deliberately judges their sensitivity the same. The trailer stays keyed by node id, with each entry carrying its own `kid`.
+
 `serialize` always emits lean lines + a `--- payloads ---` trailer when any node has `sealed`.
 
 ### Optional kinds / flags

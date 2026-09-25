@@ -63,7 +63,11 @@ export function peelTrailingSections(body: string): {
   return { outline: rest, trailingFm, payloads };
 }
 
-/** Minimal YAML-ish map: `id:\n  kid: …\n  ct: …` */
+/**
+ * Minimal YAML-ish map keyed by node id: `id:\n  kid: …\n  ct: …`.
+ * Each entry carries its own kid; per-node keys are the grammar default, while
+ * deliberate sensitivity-based kid reuse remains valid.
+ */
 export function parsePayloadMap(block: string): PayloadMap {
   const out: PayloadMap = {};
   let current: string | null = null;
