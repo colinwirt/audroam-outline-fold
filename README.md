@@ -108,3 +108,6 @@ const html = toHtml(next);
 ## License
 
 MIT © 2026 Colin Wirt / Audroam
+
+
+> **POC / workshop name: Roamthink** — disposable; may delete this repo later. Final package name TBD.
