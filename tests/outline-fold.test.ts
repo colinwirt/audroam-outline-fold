@@ -4,6 +4,7 @@ import {
   parse,
   serialize,
   toggleFold,
+  setExpandLevel,
   toHtml,
   ICONS,
 } from '../src/index.js';
@@ -256,5 +257,137 @@ describe('icons', () => {
     ] as const) {
       expect(ICONS[k]).toContain('<svg');
     }
+  });
+});
+
+describe('setExpandLevel', () => {
+  const TREE = `---
+fold-:
+---
+- Root <id:root>
+  - Child <id:child>
+    - Grand <id:grand>
+      - Leaf under grand <id:leaf>
+  - Sibling <id:sib>
+- Other root <id:other>
+  - Other child <id:ochild>
+`;
+
+  it('level 0 / 1 collapses all foldable (top level only)', () => {
+    const doc = parse(TREE);
+    // Make grand foldable
+    const withGrandKids = parse(`---
+fold-:
+---
+- Root <id:root>
+  - Child <id:child>
+    - Grand <id:grand>
+      - Deep <id:deep>
+  - Sibling <id:sib>
+- Other root <id:other>
+  - Other child <id:ochild>
+`);
+    for (const level of [0, 1] as const) {
+      const next = setExpandLevel(withGrandKids, level);
+      expect(isCollapsed(next, 'root')).toBe(true);
+      expect(isCollapsed(next, 'child')).toBe(true);
+      expect(isCollapsed(next, 'grand')).toBe(true);
+      expect(isCollapsed(next, 'other')).toBe(true);
+      // leaves / non-foldable not required in ids
+      expect(next.fold.mode).toBe('-');
+    }
+  });
+
+  it('level 2 expands roots, collapses deeper foldable', () => {
+    const doc = parse(`---
+fold-:
+---
+- Root <id:root>
+  - Child <id:child>
+    - Grand <id:grand>
+      - Deep <id:deep>
+  - Sibling <id:sib>
+- Other root <id:other>
+  - Other child <id:ochild>
+`);
+    const next = setExpandLevel(doc, 2);
+    expect(isCollapsed(next, 'root')).toBe(false); // level 1
+    expect(isCollapsed(next, 'other')).toBe(false);
+    expect(isCollapsed(next, 'child')).toBe(true); // level 2 foldable
+    expect(isCollapsed(next, 'grand')).toBe(true); // level 3
+  });
+
+  it('level 3 expands through level 2', () => {
+    const doc = parse(`---
+fold-:
+---
+- Root <id:root>
+  - Child <id:child>
+    - Grand <id:grand>
+      - Deep <id:deep>
+`);
+    const next = setExpandLevel(doc, 3);
+    expect(isCollapsed(next, 'root')).toBe(false);
+    expect(isCollapsed(next, 'child')).toBe(false);
+    expect(isCollapsed(next, 'grand')).toBe(true);
+  });
+
+  it('* / all expands every foldable node', () => {
+    const doc = parse(`---
+fold-: root, child, grand
+---
+- Root <id:root>
+  - Child <id:child>
+    - Grand <id:grand>
+      - Deep <id:deep>
+`);
+    for (const level of ['*', 'all'] as const) {
+      const next = setExpandLevel(doc, level);
+      expect(isCollapsed(next, 'root')).toBe(false);
+      expect(isCollapsed(next, 'child')).toBe(false);
+      expect(isCollapsed(next, 'grand')).toBe(false);
+      expect(next.fold.ids).toEqual([]);
+    }
+  });
+
+  it('works under fold+ (ids = expanded list)', () => {
+    const doc = parse(`---
+fold+:
+---
+- Root <id:root>
+  - Child <id:child>
+    - Grand <id:grand>
+      - Deep <id:deep>
+`);
+    expect(isCollapsed(doc, 'root')).toBe(true);
+    const next = setExpandLevel(doc, 2);
+    expect(next.fold.mode).toBe('+');
+    expect(isCollapsed(next, 'root')).toBe(false);
+    expect(next.fold.ids).toContain('root');
+    expect(isCollapsed(next, 'child')).toBe(true);
+    expect(next.fold.ids).not.toContain('child');
+    const all = setExpandLevel(doc, '*');
+    expect(isCollapsed(all, 'root')).toBe(false);
+    expect(isCollapsed(all, 'child')).toBe(false);
+    expect(isCollapsed(all, 'grand')).toBe(false);
+  });
+
+  it('is pure and syncs frontmatter foldIds', () => {
+    const doc = parse(`---
+fold-: root
+---
+- Root <id:root>
+  - Child <id:child>
+`);
+    const next = setExpandLevel(doc, '*');
+    expect(isCollapsed(doc, 'root')).toBe(true);
+    expect(isCollapsed(next, 'root')).toBe(false);
+    expect(next.frontmatter?.foldIds).toEqual([]);
+  });
+
+  it('rejects invalid level', () => {
+    const doc = parse(`- Root <id:root>\n  - Child <id:c>\n`);
+    expect(() => setExpandLevel(doc, 10)).toThrow(/0–9/);
+    expect(() => setExpandLevel(doc, 'x')).toThrow(/0–9/);
   });
 });

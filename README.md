@@ -136,6 +136,7 @@ import {
   parse,
   serialize,
   toggleFold,
+  setExpandLevel,
   isCollapsed,
   hasSealed,
   isRemoteSealed,
@@ -150,8 +151,23 @@ const doc = parse(text);
 const { ok, issues } = validateDocument(text);
 hasSealed(doc.nodes[0]);
 const next = toggleFold(doc, 'alarm');
+const through2 = setExpandLevel(doc, 2); // iThoughts-style; 0–9 or '*'/'all'
 const html = toHtml(next);
 ```
+
+### Keyboard / expand level (read-only fold)
+
+| Key | Behaviour |
+|-----|-----------|
+| Enter / Space / `.` | Toggle fold on the focused row (when it has children) |
+| `0`–`9` | `setExpandLevel` — show through depth **N** (1-based; roots = 1). `0` = top level only |
+| `*` | Expand all foldable nodes |
+| ↑ ↓ Home End / ← → | Tree navigation + expand/collapse (when `attachOutlineTree` is wired) |
+
+`setExpandLevel(doc, n)` is pure: same fold-/fold+ ids model as `toggleFold`. Session-local on host read-only outline-view — package does not persist.
+
+> **TODO:** thin `attachOutlineTree` helper (roving tabindex, live region `of-live`, cafe demo `.` / `0`–`9` / `*` wiring) — follow design note `refs/design-system/20260925-outline-fold-a11y-keyboard-ux.md` (Audroam box). This release ships `setExpandLevel` + the shortcut map above.
+
 
 
 ## Document validation

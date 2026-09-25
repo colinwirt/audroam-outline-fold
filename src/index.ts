@@ -13,7 +13,7 @@ export type {
 
 export { parse } from './parse.js';
 export { serialize } from './serialize.js';
-export { toggleFold, isCollapsed } from './fold.js';
+export { toggleFold, isCollapsed, setExpandLevel, type ExpandLevel } from './fold.js';
 export { toHtml } from './toHtml.js';
 export { ICONS, iconForNode, type IconName } from './icons.js';
 export { hasSealed, isRemoteSealed, parseEncBody, formatEncTag } from './sealed.js';
