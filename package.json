@@ -1,0 +1,48 @@
+{
+  "name": "@audroam/outline-fold",
+  "version": "0.1.0",
+  "description": "Pure TS outline language: parse/serialize, fold-/fold+, icons, toHtml. Host owns MFA/crypto/DB.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "icons",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "prepublishOnly": "npm run build && npm test"
+  },
+  "keywords": [
+    "outline",
+    "fold",
+    "markdown",
+    "audroam"
+  ],
+  "author": "Colin Wirt / Audroam",
+  "license": "MIT",
+  "devDependencies": {
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.4"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/colinwirt/audroam-outline-fold.git"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

@@ -1,0 +1,72 @@
+import type { OutlineFoldDoc, OutlineNode } from './types.js';
+
+const DEFAULT_COLLAPSED = '(+)';
+
+function isCollapsed(doc: OutlineFoldDoc, id: string | undefined): boolean {
+  if (!id) return false;
+  const { mode, ids } = doc.fold;
+  const inList = ids.includes(id);
+  return mode === '-' ? inList : !inList;
+}
+
+function escapeTitle(title: string): string {
+  return title;
+}
+
+function formatSpans(node: OutlineNode): string {
+  const parts: string[] = [];
+  if (node.id) parts.push(`<id:${node.id}>`);
+  if (node.kind) parts.push(`<kind:${node.kind}>`);
+  if (node.flags) {
+    for (const f of node.flags) {
+      if (f === 'db' && node.dbRef) parts.push(`<db:${node.dbRef}>`);
+      else parts.push(`<${f}>`);
+    }
+  }
+  return parts.length ? parts.join(' ') + ' ' : '';
+}
+
+function serializeNode(
+  node: OutlineNode,
+  doc: OutlineFoldDoc,
+  lines: string[],
+): void {
+  const collapsedMarker =
+    doc.frontmatter?.collapsedMarker ?? DEFAULT_COLLAPSED;
+  const expandedMarker = doc.frontmatter?.expandedMarker;
+  const indent = '  '.repeat(node.depth);
+  let line = `${indent}- ${formatSpans(node)}${escapeTitle(node.title)}`;
+  if (node.id && isCollapsed(doc, node.id)) {
+    line += ` ${collapsedMarker}`;
+  } else if (node.id && expandedMarker) {
+    line += ` ${expandedMarker}`;
+  }
+  lines.push(line);
+  if (node.children) {
+    for (const c of node.children) serializeNode(c, doc, lines);
+  }
+}
+
+export function serialize(doc: OutlineFoldDoc): string {
+  const lines: string[] = ['---'];
+  const mode = doc.fold.mode;
+  const ids = doc.fold.ids.join(', ');
+  if (mode === '-') {
+    lines.push(`fold-: ${ids}`);
+  } else {
+    lines.push(`fold+: ${ids}`);
+  }
+  const cm = doc.frontmatter?.collapsedMarker ?? DEFAULT_COLLAPSED;
+  if (cm !== DEFAULT_COLLAPSED) {
+    lines.push(`collapsedMarker: "${cm}"`);
+  } else {
+    lines.push(`collapsedMarker: "(+)"`);
+  }
+  if (doc.frontmatter?.expandedMarker) {
+    lines.push(`expandedMarker: "${doc.frontmatter.expandedMarker}"`);
+  }
+  lines.push('---', '');
+  for (const n of doc.nodes) serializeNode(n, doc, lines);
+  lines.push('');
+  return lines.join('\n');
+}
