@@ -7,3 +7,4 @@ dist/
 .env.*
 examples/react-live/node_modules/
 examples/react-live/dist/
+site/

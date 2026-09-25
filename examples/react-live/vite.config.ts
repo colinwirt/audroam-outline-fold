@@ -6,8 +6,17 @@ import react from '@vitejs/plugin-react';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const packageRoot = path.resolve(__dirname, '../..');
 
+/** Pages path: /{repo}/react-live/ when GITHUB_REPOSITORY is set; override with VITE_BASE. */
+function resolveBase(): string {
+  if (process.env.VITE_BASE) return process.env.VITE_BASE;
+  const repo = process.env.GITHUB_REPOSITORY?.split('/')[1];
+  if (repo) return `/${repo}/react-live/`;
+  return '/';
+}
+
 export default defineConfig({
   plugins: [react()],
+  base: resolveBase(),
   root: __dirname,
   resolve: {
     alias: {

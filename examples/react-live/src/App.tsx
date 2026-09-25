@@ -15,6 +15,9 @@ import {
 } from '@audroam/outline-fold';
 import seedMd from '../../outline-demo.md?raw';
 
+/** Browser-only draft of the outline source (cafe / user notes — not secrets). */
+const STORAGE_KEY = 'audroam-outline-fold-react-live-v1';
+
 type ParseOk = { ok: true; doc: OutlineFoldDoc };
 type ParseErr = { ok: false; message: string };
 type ParseState = ParseOk | ParseErr;
@@ -30,14 +33,47 @@ function tryParse(text: string): ParseState {
   }
 }
 
+function readStored(): string | null {
+  try {
+    return localStorage.getItem(STORAGE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function writeStored(src: string): void {
+  try {
+    localStorage.setItem(STORAGE_KEY, src);
+  } catch {
+    /* private mode / quota */
+  }
+}
+
+function clearStored(): void {
+  try {
+    localStorage.removeItem(STORAGE_KEY);
+  } catch {
+    /* ignore */
+  }
+}
+
+function initialSource(): string {
+  const saved = readStored();
+  if (saved != null && saved.length > 0) return saved;
+  return seedMd;
+}
+
 /**
  * Read-only fold view: edit in the textarea; clicks call toggleFold only
  * (no re-parse). After fold, serialize syncs fold-/fold+ back into the source.
  * Controlled setText does not fire onChange, so fold→serialize does not re-parse.
+ * Source is persisted to localStorage for a small notetaker-style draft.
  */
 export default function App() {
-  const [text, setText] = useState(seedMd);
-  const [parsed, setParsed] = useState<ParseState>(() => tryParse(seedMd));
+  const [text, setText] = useState(initialSource);
+  const [parsed, setParsed] = useState<ParseState>(() =>
+    tryParse(initialSource()),
+  );
   const docRef = useRef<OutlineFoldDoc | null>(
     parsed.ok ? parsed.doc : null,
   );
@@ -49,6 +85,7 @@ export default function App() {
   const onTextChange = useCallback((next: string) => {
     setText(next);
     setParsed(tryParse(next));
+    writeStored(next);
   }, []);
 
   const onToggleFold = useCallback((id: string) => {
@@ -58,7 +95,15 @@ export default function App() {
     docRef.current = next;
     setParsed({ ok: true, doc: next });
     // Sync fold state into source (fold-/fold+ / inline markers) without re-parse
-    setText(serialize(next));
+    const synced = serialize(next);
+    setText(synced);
+    writeStored(synced);
+  }, []);
+
+  const resetToCafe = useCallback(() => {
+    clearStored();
+    setText(seedMd);
+    setParsed(tryParse(seedMd));
   }, []);
 
   const html = useMemo(
@@ -113,14 +158,26 @@ export default function App() {
           Edit outline source on the left · live <code>parse</code> →{' '}
           <code>toHtml</code> on the right. Click <kbd>(+)</kbd> to{' '}
           <code>toggleFold</code> (no re-parse); fold state syncs back into the
-          textarea via <code>serialize</code>. Unlock/Decrypt are stubs. OSS
-          example only — not the Audroam Angular SPA.
+          textarea via <code>serialize</code>. Drafts save to{' '}
+          <code>localStorage</code> (outline text only — no secrets).
+          Unlock/Decrypt are stubs. OSS example only — not the Audroam Angular
+          SPA.
         </p>
       </header>
 
       <div className="panes">
         <section className="pane source-pane">
-          <div className="pane-label">Source</div>
+          <div className="pane-toolbar">
+            <div className="pane-label">Source</div>
+            <button
+              type="button"
+              className="reset-btn"
+              onClick={resetToCafe}
+              title="Clear local draft and reload cafe seed"
+            >
+              Reset to cafe demo
+            </button>
+          </div>
           <textarea
             className="source"
             value={text}

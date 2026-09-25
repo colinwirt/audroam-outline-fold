@@ -4,6 +4,9 @@ Online-parser style demo for `@audroam/outline-fold`: textarea source → live `
 
 This is an **OSS example only** — not the Audroam Angular SPA.
 
+Edits persist in the browser via `localStorage` key `audroam-outline-fold-react-live-v1` (outline text only — do not store secrets); use **Reset to cafe demo** to clear the draft and reload the seed.
+
+
 ## Run
 
 From the package root (`packages/outline-fold`):

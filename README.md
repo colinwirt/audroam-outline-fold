@@ -12,7 +12,17 @@ npx serve -l 4173 .   # then open the live demos below
 
 ## Live demos (HTML + JS + React)
 
-**Static HTML** — after `npm run build` and `npx serve -l 4173 .`:
+**Hosted on GitHub Pages:** [https://colinwirt.github.io/audroam-outline-fold/](https://colinwirt.github.io/audroam-outline-fold/)
+
+| Demo | Pages URL |
+|------|-----------|
+| Landing | [https://colinwirt.github.io/audroam-outline-fold/](https://colinwirt.github.io/audroam-outline-fold/) |
+| Cafe ops outline (HTML) | […/examples/outline-demo.html](https://colinwirt.github.io/audroam-outline-fold/examples/outline-demo.html) |
+| React live parser | […/react-live/](https://colinwirt.github.io/audroam-outline-fold/react-live/) |
+| Cafe ops 2D map | […/examples/canvas-2d/](https://colinwirt.github.io/audroam-outline-fold/examples/canvas-2d/) |
+| Cafe ops 3D map | […/examples/3d/](https://colinwirt.github.io/audroam-outline-fold/examples/3d/) |
+
+**Local** — after `npm run build` and `npx serve -l 4173 .`:
 
 | Demo | URL |
 |------|-----|
@@ -33,6 +43,8 @@ npm run demo:react
 | React online parser | [examples/react-live/](./examples/react-live/) → `http://127.0.0.1:5173/` |
 
 Source outline for the cafe handoff: [examples/outline-demo.md](./examples/outline-demo.md).
+
+To rebuild the Pages publish tree locally: `npm run build:site` then `npx serve -l 4173 site`.
 
 ### Screenshots
 
