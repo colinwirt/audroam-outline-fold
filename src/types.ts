@@ -25,6 +25,8 @@ export type NodeKind =
  * Exactly one of `ciphertext` | `uri` should be set.
  * Each sealed node is expected to carry its own `kid`; sharing a `kid` is a
  * deliberate choice when the user judges node sensitivity to be the same.
+ * A host may apply the documented single-key fallback for unkeyed whole-document
+ * material; this does not change the per-entry grammar.
  */
 export interface SealedPayload {
   kid: string;

@@ -71,6 +71,8 @@ ins-remote:
 
 **Key identity:** Every sealed node is expected to carry its own `kid`. The default is one key per node; sharing a `kid` across nodes is supported when the user deliberately judges their sensitivity the same. The trailer stays keyed by node id, with each entry carrying its own `kid`.
 
+**Single-key fallback (host unlock):** If sealed nodes omit `kid` and the unlock context has exactly one key, the host may use that key for all sealed nodes and assume one shared algorithm. With zero or multiple keys, do not guess: require explicit `kid`, plus `alg` when it is not the demo default. This is only a whole-document convenience; per-node `kid`s remain the expected path.
+
 `serialize` always emits lean lines + a `--- payloads ---` trailer when any node has `sealed`.
 
 ### Optional kinds / flags
