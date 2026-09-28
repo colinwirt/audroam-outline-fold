@@ -104,8 +104,9 @@ function prefersReducedMotion() {
 /**
  * Deterministic L→R auto-pack for the *visible* (non-collapsed) tree.
  * Parent centres vertically on the midpoint of its child stack; height grows
- * with siblings/leaves. Column *left* edges share max pill width per depth so
- * same-depth nodes left-align (M13) and roots are not clipped on the left.
+ * with siblings/leaves. Siblings under the *same parent* share a common left
+ * edge (M13) — not a tree-wide depth column. Each parent's child group starts
+ * at parentRight + gapX, so different parents' kids may sit at different X.
  *
  * @param {{ nodes: object[] }} doc
  * @param {object} [opts]
@@ -132,40 +133,21 @@ export function autoPackPositions(doc, opts = {}) {
   }
   for (const root of doc.nodes || []) walkVis(root, 0);
 
-  /** @type {Map<number, number>} */
-  const maxWAtDepth = new Map();
-  for (const { n, depth } of visible) {
-    const reserveFold = hasKids(n) && isNodeCollapsed(n.id);
-    const { w } = pillSize(shortLabel(n.title), { reserveFold });
-    maxWAtDepth.set(depth, Math.max(maxWAtDepth.get(depth) || 0, w));
-  }
-  const depths = [...maxWAtDepth.keys()];
-  const maxDepth = depths.length ? Math.max(...depths) : 0;
-
-  /** Column left X per depth — same-depth pills share this edge (M13). */
-  /** @type {Map<number, number>} */
-  const colLeft = new Map();
-  let xCursor = margin;
-  for (let d = 0; d <= maxDepth; d++) {
-    const w = maxWAtDepth.get(d) || 88;
-    colLeft.set(d, xCursor);
-    xCursor += w + gapX;
-  }
-
   /** @type {Record<string, {x:number,y:number}>} */
   const positions = {};
 
   /**
+   * Place n with left edge at `left`. Visible children share kidLeft =
+   * left + parentW + gapX (sibling left-align under this parent only — M13).
+   *
    * @param {object} n
-   * @param {number} depth
+   * @param {number} left
    * @param {number} top
    * @returns {number} subtree block height
    */
-  function layoutSubtree(n, depth, top) {
+  function layoutSubtree(n, left, top) {
     const reserveFold = hasKids(n) && isNodeCollapsed(n.id);
     const { w, h } = pillSize(shortLabel(n.title), { reserveFold });
-    const left = colLeft.get(depth) ?? margin;
-    // Store geometric centre; left edge = left (shared per depth).
     const x = left + w / 2;
     const kids =
       hasKids(n) && !isNodeCollapsed(n.id)
@@ -177,9 +159,10 @@ export function autoPackPositions(doc, opts = {}) {
       return h;
     }
 
+    const kidLeft = left + w + gapX;
     let y = top;
     for (let i = 0; i < kids.length; i++) {
-      const ch = layoutSubtree(kids[i], depth + 1, y);
+      const ch = layoutSubtree(kids[i], kidLeft, y);
       y += ch;
       if (i < kids.length - 1) y += gapY;
     }
@@ -189,10 +172,11 @@ export function autoPackPositions(doc, opts = {}) {
     return Math.max(stackH, h);
   }
 
+  // Forest roots are siblings of an implicit parent — share left = margin.
   let top = margin;
   const roots = (doc.nodes || []).filter((r) => r?.id);
   for (let i = 0; i < roots.length; i++) {
-    const h = layoutSubtree(roots[i], 0, top);
+    const h = layoutSubtree(roots[i], margin, top);
     top += h;
     if (i < roots.length - 1) top += gapY * 2;
   }

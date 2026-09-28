@@ -40,7 +40,7 @@ const ids = Object.keys(expanded.nodes);
 assert(ids.length > 10, 'expected many visible nodes when expanded');
 assert(expanded.viewBox.h > 960, `viewBox height should grow with leaves (got ${expanded.viewBox.h})`);
 
-// M2/M3: no vertical overlap between any two pills (AABB)
+// M2/M3: vertical gap for near-column pills (centres or left edges close)
 const boxes = ids.map((id) => {
   const p = expanded.nodes[id];
   return { id, top: p.y - PILL_H / 2, bot: p.y + PILL_H / 2, x: p.x, y: p.y };
@@ -49,13 +49,12 @@ for (let i = 0; i < boxes.length; i++) {
   for (let j = i + 1; j < boxes.length; j++) {
     const a = boxes[i];
     const b = boxes[j];
-    // Only check same-column-ish siblings (near x) for vertical overlap
-    if (Math.abs(a.x - b.x) > 1) continue;
-    const overlap = !(a.bot + GAP_Y - 0.5 <= b.top || b.bot + GAP_Y - 0.5 <= a.top);
-    // Allow touching through gap: edges must be >= gap apart
+    // Left-aligned siblings share left edge but centres may differ by width/2
+    if (Math.abs(a.x - b.x) > 120) continue;
     const gap = a.y < b.y ? b.top - a.bot : a.top - b.bot;
+    // Only enforce when they could collide vertically in a stack (gap small or overlapping)
+    if (gap > GAP_Y * 3) continue;
     assert(gap >= GAP_Y - 0.01, `sibling gap ${a.id}/${b.id} = ${gap}, need ≥ ${GAP_Y}`);
-    assert(!overlap || gap >= GAP_Y - 0.01, `overlap ${a.id} vs ${b.id}`);
   }
 }
 
@@ -143,36 +142,60 @@ for (const id of ['howto', 'ism', 'e8']) {
   assert(collapsedW === baseW + FOLD_SLOT, 'collapsed e8 pill grows by fold slot only');
 }
 
-// M13: same-depth nodes share a common left edge
-function walkDepth(nodes, depth, fn) {
+// M13: siblings under the *same parent* share a common left edge (not tree-wide depth)
+function findNodeById(nodes, id) {
+  for (const n of nodes) {
+    if (n.id === id) return n;
+    const hit = findNodeById(n.children || [], id);
+    if (hit) return hit;
+  }
+  return null;
+}
+function leftEdge(packed, d, id) {
+  const n = findNodeById(d.nodes, id);
+  const pos = packed.nodes[id];
+  assert(n && pos, `missing node/pos ${id}`);
+  const reserveFold = !!(n.children?.length) && isCollapsed(d, n.id);
+  const { w } = pillSize(shortLabel(n.title), { reserveFold });
+  return pos.x - w / 2;
+}
+function assertSiblingLeftAlign(packed, d, parentId) {
+  const kids = childIds(d, parentId).filter((id) => packed.nodes[id]);
+  if (kids.length < 2) return 0;
+  const ref = leftEdge(packed, d, kids[0]);
+  for (const id of kids) {
+    const left = leftEdge(packed, d, id);
+    assert(
+      Math.abs(left - ref) < 0.01,
+      `M13 siblings of ${parentId}: ${id} left ${left} ≠ ${ref}`,
+    );
+  }
+  return kids.length;
+}
+let siblingGroupsChecked = 0;
+function walkParents(nodes) {
   for (const n of nodes) {
     if (!n?.id) continue;
-    fn(n, depth);
     if (n.children?.length && !isCollapsed(doc, n.id)) {
-      walkDepth(n.children, depth + 1, fn);
+      if (assertSiblingLeftAlign(expanded, doc, n.id) >= 2) siblingGroupsChecked++;
+      walkParents(n.children);
     }
   }
 }
-const leftByDepth = new Map();
-walkDepth(doc.nodes, 0, (n, depth) => {
-  const pos = expanded.nodes[n.id];
-  if (!pos) return;
-  const reserveFold = !!(n.children?.length) && isCollapsed(doc, n.id);
-  const { w } = pillSize(shortLabel(n.title), { reserveFold });
-  const left = pos.x - w / 2;
-  if (!leftByDepth.has(depth)) leftByDepth.set(depth, []);
-  leftByDepth.get(depth).push({ id: n.id, left });
-});
-for (const [depth, list] of leftByDepth) {
-  if (list.length < 2) continue;
-  const ref = list[0].left;
-  for (const { id, left } of list) {
-    assert(
-      Math.abs(left - ref) < 0.01,
-      `M13 depth ${depth}: ${id} left ${left} ≠ ${ref}`,
-    );
-  }
-}
+walkParents(doc.nodes);
+assert(siblingGroupsChecked >= 2, 'expected multiple sibling groups checked for M13');
+
+// e8 kids (variable widths) share one left; howto kids share another — may differ
+const e8Left = leftEdge(expanded, doc, e8Kids[0]);
+const howtoKids = childIds(doc, 'howto').filter((id) => expanded.nodes[id]);
+assert(howtoKids.length >= 2, 'howto should have kids');
+const howtoLeft = leftEdge(expanded, doc, howtoKids[0]);
+// Both groups are depth-2 under different L1 parents with different widths, so
+// kidLeft = parentLeft + parentW + gapX can differ — that is correct M13.
+assert(
+  Number.isFinite(e8Left) && Number.isFinite(howtoLeft),
+  'sibling group lefts computed',
+);
 
 console.log('smoke-autopack OK', {
   nodes: ids.length,
@@ -181,5 +204,7 @@ console.log('smoke-autopack OK', {
   e8y,
   stackMid,
   foldSlot: FOLD_SLOT,
-  depthsChecked: [...leftByDepth.keys()],
+  siblingGroupsChecked,
+  e8Left,
+  howtoLeft,
 });
