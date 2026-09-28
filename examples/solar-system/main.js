@@ -301,7 +301,10 @@ function renderMap() {
         .join(' ');
       const marker =
         foldable && col
-          ? `<text class="map-marker" x="${pos.x + w / 2 - 14}" y="${pos.y + 4}">(+)</text>`
+          ? `<g class="map-fold-indicator" transform="translate(${pos.x + w / 2 - 14} ${pos.y})" aria-hidden="true">
+          <circle r="9"/>
+          <path d="M -4 0 H 4 M 0 -4 V 4"/>
+        </g>`
           : '';
       return `<g class="${cls}" data-id="${esc(n.id)}" tabindex="${n.id === focusId ? 0 : -1}"
       role="button" aria-label="${esc(label)}${foldable ? (col ? ', collapsed' : ', expanded') : ''}"

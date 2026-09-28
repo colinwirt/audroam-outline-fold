@@ -132,9 +132,13 @@
     pointer-events: none; user-select: none;
   }
   .map-node.cue .map-label { fill: var(--cue-text); }
-  .map-marker {
-    fill: var(--gold); font: 700 11px/1 var(--font);
-    pointer-events: none;
+  .map-fold-indicator { pointer-events: none; }
+  .map-fold-indicator circle {
+    fill: var(--gold); stroke: var(--gold); stroke-width: 1;
+  }
+  .map-fold-indicator path {
+    fill: none; stroke: var(--map-bg); stroke-width: 1.8;
+    stroke-linecap: round;
   }
   .map-edge {
     fill: none; stroke: var(--connector); stroke-width: 1.4; opacity: .85;
