@@ -182,3 +182,7 @@ kbd {
   background: #1a2330; padding: .75rem; overflow: auto; font-size: 12px;
   border-radius: 8px; color: var(--text); border: 1px solid var(--stroke);
 }
+
+/* Map relocate FLIP (set inline during expand/collapse) */
+.map-node { transform-box: fill-box; transform-origin: center; }
+.map-edge { opacity: .85; }

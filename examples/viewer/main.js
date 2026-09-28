@@ -181,7 +181,7 @@ async function boot() {
       'Missing ?doc= — pass a markdown path, e.g. ?doc=../fixtures/pci-dss.md or ?doc=../solar-system/solar-system.md&layout=../solar-system/solar-system.layout.json',
     );
     pageSub.innerHTML =
-      'Open from the <a href="../">landing page</a> or fixtures. Example: ' +
+      'Open from the <a href="../../">landing page</a> or fixtures. Example: ' +
       '<a href="?doc=../solar-system/solar-system.md&layout=../solar-system/solar-system.layout.json"><code>?doc=../solar-system/…</code></a>';
     return;
   }
@@ -267,7 +267,7 @@ async function boot() {
     ' · layout source: <code>' +
     layoutSrc +
     '</code>. ' +
-    '<a href="../">All demos</a> · paste into <a href="../../react-live/">React live</a>';
+    '<a href="../../">All demos</a> · paste into <a href="../../react-live/">React live</a>';
 
   docMeta.textContent =
     'Sealed policy: sealed nodes stay on the outline; map shows current fold graph. Unlock chrome outside the map canvas.';

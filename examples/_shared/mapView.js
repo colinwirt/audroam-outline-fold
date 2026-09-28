@@ -2,6 +2,11 @@
  * Shared map renderer: doc + fold + layoutSidecar → SVG L→R pills.
  * All Pages map demos use this — no per-page map builders.
  * Sealed nodes: omitted until unlocked (no gray stubs) — caller filters doc if needed.
+ *
+ * Auto-pack (`layout._source === 'auto-pack'`): recursive L→R tidy layout.
+ * Parent Y centres on the midpoint of its visible child stack; tree height grows
+ * with leaf/sibling count (no fixed short column). Recomputed on every paint so
+ * fold expand/collapse reflows without overlap.
  */
 import {
   toggleFold,
@@ -76,6 +81,128 @@ function esc(s) {
     .replace(/"/g, '&quot;');
 }
 
+function prefersReducedMotion() {
+  try {
+    return (
+      typeof matchMedia === 'function' &&
+      matchMedia('(prefers-reduced-motion: reduce)').matches
+    );
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Deterministic L→R auto-pack for the *visible* (non-collapsed) tree.
+ * Parent centres vertically on the midpoint of its child stack; height grows
+ * with siblings/leaves. Column X uses max pill width per depth so roots are
+ * not clipped on the left.
+ *
+ * @param {{ nodes: object[] }} doc
+ * @param {object} [opts]
+ * @param {(id: string) => boolean} [opts.isNodeCollapsed]
+ * @param {number} [opts.gapY] min vertical gap between sibling pill edges
+ * @param {number} [opts.gapX] horizontal gap between adjacent column pill edges
+ * @param {number} [opts.margin] canvas padding
+ * @returns {{ nodes: Record<string, {x:number,y:number}>, viewBox: {w:number,h:number} }}
+ */
+export function autoPackPositions(doc, opts = {}) {
+  const isNodeCollapsed = opts.isNodeCollapsed || (() => false);
+  const gapY = opts.gapY ?? 14;
+  const gapX = opts.gapX ?? 56;
+  const margin = opts.margin ?? 40;
+
+  /** @type {{ n: object, depth: number }[]} */
+  const visible = [];
+  function walkVis(n, depth) {
+    if (!n?.id) return;
+    visible.push({ n, depth });
+    if (hasKids(n) && !isNodeCollapsed(n.id)) {
+      for (const c of n.children) walkVis(c, depth + 1);
+    }
+  }
+  for (const root of doc.nodes || []) walkVis(root, 0);
+
+  /** @type {Map<number, number>} */
+  const maxWAtDepth = new Map();
+  for (const { n, depth } of visible) {
+    const { w } = pillSize(shortLabel(n.title));
+    maxWAtDepth.set(depth, Math.max(maxWAtDepth.get(depth) || 0, w));
+  }
+  const depths = [...maxWAtDepth.keys()];
+  const maxDepth = depths.length ? Math.max(...depths) : 0;
+
+  /** @type {Map<number, number>} */
+  const colX = new Map();
+  let xCursor = margin;
+  for (let d = 0; d <= maxDepth; d++) {
+    const w = maxWAtDepth.get(d) || 88;
+    xCursor += w / 2;
+    colX.set(d, xCursor);
+    xCursor += w / 2 + gapX;
+  }
+
+  /** @type {Record<string, {x:number,y:number}>} */
+  const positions = {};
+
+  /**
+   * @param {object} n
+   * @param {number} depth
+   * @param {number} top
+   * @returns {number} subtree block height
+   */
+  function layoutSubtree(n, depth, top) {
+    const { h } = pillSize(shortLabel(n.title));
+    const x = colX.get(depth) ?? margin + 44;
+    const kids =
+      hasKids(n) && !isNodeCollapsed(n.id)
+        ? n.children.filter((c) => c?.id)
+        : [];
+
+    if (kids.length === 0) {
+      positions[n.id] = { x, y: top + h / 2 };
+      return h;
+    }
+
+    let y = top;
+    for (let i = 0; i < kids.length; i++) {
+      const ch = layoutSubtree(kids[i], depth + 1, y);
+      y += ch;
+      if (i < kids.length - 1) y += gapY;
+    }
+    const stackH = y - top;
+    // Parent pill centres on midpoint of visible child stack (M9).
+    positions[n.id] = { x, y: top + stackH / 2 };
+    return Math.max(stackH, h);
+  }
+
+  let top = margin;
+  const roots = (doc.nodes || []).filter((r) => r?.id);
+  for (let i = 0; i < roots.length; i++) {
+    const h = layoutSubtree(roots[i], 0, top);
+    top += h;
+    if (i < roots.length - 1) top += gapY * 2;
+  }
+
+  let maxX = margin;
+  let maxY = margin;
+  for (const { n } of visible) {
+    const pos = positions[n.id];
+    if (!pos) continue;
+    const { w, h } = pillSize(shortLabel(n.title));
+    maxX = Math.max(maxX, pos.x + w / 2);
+    maxY = Math.max(maxY, pos.y + h / 2);
+  }
+
+  return {
+    nodes: positions,
+    viewBox: {
+      w: Math.max(400, Math.ceil(maxX + margin)),
+      h: Math.max(300, Math.ceil(maxY + margin)),
+    },
+  };
+}
+
 /**
  * @typedef {object} MapViewOptions
  * @property {() => import('../../dist/index.js').OutlineFoldDoc} getDoc
@@ -107,6 +234,7 @@ export function createMapView(host, opts) {
   const CAM_MIN = 0.35;
   const CAM_MAX = 3.5;
   const cam = { x: 0, y: 0, k: 1 };
+  const ANIM_MS = 280;
 
   function applyCam() {
     const g = host.querySelector('#mapViewport');
@@ -143,13 +271,30 @@ export function createMapView(host, opts) {
     applyCam();
   }
 
-  /** Fill missing node positions with deterministic L→R pack. */
+  function isAutoPack(layout) {
+    return layout?._source === 'auto-pack';
+  }
+
+  /**
+   * Auto-pack: full recompute from fold-visible tree every call.
+   * Sidecar: fill only missing ids (authored positions kept).
+   */
   function ensurePositions() {
     const layout = getLayout();
     const doc = getDoc();
+    if (!layout.nodes) layout.nodes = {};
+
+    if (isAutoPack(layout)) {
+      const packed = autoPackPositions(doc, {
+        isNodeCollapsed: (id) => isCollapsed(doc, id),
+      });
+      layout.nodes = packed.nodes;
+      layout.viewBox = packed.viewBox;
+      return;
+    }
+
     const vb = layout.viewBox || { w: 1200, h: 960 };
     layout.viewBox = vb;
-    if (!layout.nodes) layout.nodes = {};
 
     const byDepth = new Map();
     walkNodes(doc.nodes, (n, depth) => {
@@ -181,7 +326,74 @@ export function createMapView(host, opts) {
     return out;
   }
 
+  /** Snapshot centres before paint for FLIP relocate (M11). */
+  function snapshotPositions() {
+    /** @type {Record<string, {x:number,y:number}>} */
+    const snap = {};
+    const layout = getLayout();
+    if (!layout?.nodes) return snap;
+    for (const [id, pos] of Object.entries(layout.nodes)) {
+      if (pos && typeof pos.x === 'number' && typeof pos.y === 'number') {
+        snap[id] = { x: pos.x, y: pos.y };
+      }
+    }
+    return snap;
+  }
+
+  function runFlipAnimation(prev) {
+    if (!prev || prefersReducedMotion()) return;
+    const layout = getLayout();
+    const nodes = host.querySelectorAll('.map-node');
+    if (!nodes.length) return;
+
+    /** @type {SVGElement[]} */
+    const movers = [];
+    nodes.forEach((g) => {
+      const id = g.getAttribute('data-id');
+      if (!id || !prev[id] || !layout.nodes[id]) return;
+      const dx = prev[id].x - layout.nodes[id].x;
+      const dy = prev[id].y - layout.nodes[id].y;
+      if (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5) return;
+      g.style.transition = 'none';
+      g.style.transform = `translate(${dx}px, ${dy}px)`;
+      movers.push(g);
+    });
+    if (!movers.length) return;
+
+    // Soft: fade edges while nodes ease (avoids connector teleport jank).
+    host.querySelectorAll('.map-edge').forEach((el) => {
+      el.style.transition = 'none';
+      el.style.opacity = '0.25';
+    });
+
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        movers.forEach((g) => {
+          g.style.transition = `transform ${ANIM_MS}ms ease`;
+          g.style.transform = '';
+        });
+        host.querySelectorAll('.map-edge').forEach((el) => {
+          el.style.transition = `opacity ${ANIM_MS}ms ease`;
+          el.style.opacity = '';
+        });
+        window.setTimeout(() => {
+          movers.forEach((g) => {
+            g.style.transition = '';
+            g.style.transform = '';
+          });
+          host.querySelectorAll('.map-edge').forEach((el) => {
+            el.style.transition = '';
+            el.style.opacity = '';
+          });
+        }, ANIM_MS + 40);
+      });
+    });
+  }
+
   function paint() {
+    const prev = snapshotPositions();
+    const hadViewport = !!host.querySelector('#mapViewport');
+
     ensurePositions();
     const doc = getDoc();
     const layout = getLayout();
@@ -237,9 +449,11 @@ export function createMapView(host, opts) {
           <path d="M -4 0 H 4 M 0 -4 V 4"/>
         </g>`
             : '';
+        // Native SVG tooltip for truncated labels (M5 soft).
         return `<g class="${cls}" data-id="${esc(n.id)}" tabindex="${n.id === focusId ? 0 : -1}"
       role="button" aria-label="${esc(label)}${foldable ? (col ? ', collapsed' : ', expanded') : ''}"
       ${foldable ? `aria-expanded="${col ? 'false' : 'true'}"` : ''}>
+      <title>${esc(n.title)}</title>
       <rect class="map-pill" x="${x}" y="${y}" width="${w}" height="${h}" rx="18" ry="18"/>
       <text class="map-label" x="${pos.x}" y="${pos.y + 4}" text-anchor="middle">${esc(label)}</text>
       ${marker}
@@ -247,7 +461,6 @@ export function createMapView(host, opts) {
       })
       .join('');
 
-    const keepCam = !!host.querySelector('#mapViewport');
     host.innerHTML = `<svg class="map-svg" viewBox="0 0 ${Math.max(1, host.clientWidth || 1180)} ${Math.max(1, host.clientHeight || 520)}"
       preserveAspectRatio="xMidYMid meet" role="img"
       aria-label="${esc(ariaLabel)}">
@@ -259,8 +472,12 @@ export function createMapView(host, opts) {
       </g>
     </svg>`;
 
-    if (!keepCam) resetCam();
+    if (!hadViewport) resetCam();
     else applyCam();
+
+    if (hadViewport && isAutoPack(layout)) {
+      runFlipAnimation(prev);
+    }
 
     host.querySelectorAll('.map-node').forEach((g) => {
       g.addEventListener('click', (e) => {
