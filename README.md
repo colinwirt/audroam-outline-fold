@@ -20,11 +20,12 @@ npx serve -l 4173 .   # then open the live demos below
 |------|-----------|
 | Landing | [https://colinwirt.github.io/audroam-outline-fold/](https://colinwirt.github.io/audroam-outline-fold/) |
 | Cafe ops outline (HTML) | […/examples/outline-demo.html](https://colinwirt.github.io/audroam-outline-fold/examples/outline-demo.html) |
+| Solar System Outline \| Map | […/examples/solar-system/](https://colinwirt.github.io/audroam-outline-fold/examples/solar-system/) |
 | React live parser | […/react-live/](https://colinwirt.github.io/audroam-outline-fold/react-live/) |
 | Cafe ops 2D map | […/examples/canvas-2d/](https://colinwirt.github.io/audroam-outline-fold/examples/canvas-2d/) |
 | Cafe ops 3D map | […/examples/3d/](https://colinwirt.github.io/audroam-outline-fold/examples/3d/) |
 
-Source outline: [examples/outline-demo.md](./examples/outline-demo.md).
+Source outlines: [examples/outline-demo.md](./examples/outline-demo.md) · [examples/solar-system/solar-system.md](./examples/solar-system/solar-system.md) (+ [layout sidecar](./examples/solar-system/solar-system.layout.json)).
 
 ## Grammar (v0.2) — lean lines + trailer payloads
 

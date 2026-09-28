@@ -27,6 +27,7 @@ cpSync(join(root, 'dist'), join(site, 'dist'), { recursive: true });
 cpSync(join(root, 'examples', 'outline-demo.html'), join(site, 'examples', 'outline-demo.html'));
 cpSync(join(root, 'examples', 'canvas-2d'), join(site, 'examples', 'canvas-2d'), { recursive: true });
 cpSync(join(root, 'examples', '3d'), join(site, 'examples', '3d'), { recursive: true });
+cpSync(join(root, 'examples', 'solar-system'), join(site, 'examples', 'solar-system'), { recursive: true });
 cpSync(reactDist, join(site, 'react-live'), { recursive: true });
 
 const indexHtml = `<!DOCTYPE html>
@@ -48,9 +49,10 @@ code{font-size:.9em;background:#1a2330;padding:.1em .35em;border-radius:4px}
 </head>
 <body>
 <h1>@audroam/outline-fold</h1>
-<p class="meta">Pure TS outline language demos (cafe fiction). <a href="https://github.com/colinwirt/audroam-outline-fold">Source</a> · MIT</p>
+<p class="meta">Pure TS outline language demos (cafe fiction + solar spatial). <a href="https://github.com/colinwirt/audroam-outline-fold">Source</a> · MIT</p>
 <ul>
   <li><a href="examples/outline-demo.html">Cafe ops outline</a> — HTML + fold state</li>
+  <li><a href="examples/solar-system/">Solar System Outline | Map</a> — dual view, sidecar layout, pan/zoom</li>
   <li><a href="react-live/">React live parser</a> — textarea → parse / toHtml / toggleFold</li>
   <li><a href="examples/canvas-2d/">Cafe ops 2D map</a></li>
   <li><a href="examples/3d/">Cafe ops 3D map</a> (loads three.js from CDN)</li>
