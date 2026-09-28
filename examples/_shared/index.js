@@ -5,7 +5,7 @@
  */
 export { parseDoc, loadDoc, parse, validateDocument } from './parseDoc.js';
 export { createOutlineView, toHtml, attachOutlineTree, serialize } from './outlineView.js';
-export { createMapView, autoPackPositions } from './mapView.js';
+export { createMapView, autoPackPositions, pillSize, FOLD_SLOT } from './mapView.js';
 export {
   resolveLayout,
   extractLayoutSidecarPointer,

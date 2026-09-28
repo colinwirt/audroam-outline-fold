@@ -59,9 +59,18 @@ function shortLabel(title) {
   return title.length > 36 ? title.slice(0, 34) + '…' : title;
 }
 
-function pillSize(label) {
-  const w = Math.max(88, Math.min(280, 18 + label.length * 7.2));
-  return { w, h: 44 };
+/** Reserved end-cap for collapsed fold `+` so chrome does not eat label width (M12). */
+export const FOLD_SLOT = 22;
+
+/**
+ * @param {string} label
+ * @param {{ reserveFold?: boolean }} [opts]
+ * @returns {{ w: number, h: number, textW: number, foldSlot: number }}
+ */
+export function pillSize(label, opts = {}) {
+  const textW = Math.max(88, Math.min(280, 18 + String(label).length * 7.2));
+  const foldSlot = opts.reserveFold ? FOLD_SLOT : 0;
+  return { w: textW + foldSlot, h: 44, textW, foldSlot };
 }
 
 function connectorPath(px, py, pw, cx, cy, cw) {
@@ -95,8 +104,8 @@ function prefersReducedMotion() {
 /**
  * Deterministic L→R auto-pack for the *visible* (non-collapsed) tree.
  * Parent centres vertically on the midpoint of its child stack; height grows
- * with siblings/leaves. Column X uses max pill width per depth so roots are
- * not clipped on the left.
+ * with siblings/leaves. Column *left* edges share max pill width per depth so
+ * same-depth nodes left-align (M13) and roots are not clipped on the left.
  *
  * @param {{ nodes: object[] }} doc
  * @param {object} [opts]
@@ -126,20 +135,21 @@ export function autoPackPositions(doc, opts = {}) {
   /** @type {Map<number, number>} */
   const maxWAtDepth = new Map();
   for (const { n, depth } of visible) {
-    const { w } = pillSize(shortLabel(n.title));
+    const reserveFold = hasKids(n) && isNodeCollapsed(n.id);
+    const { w } = pillSize(shortLabel(n.title), { reserveFold });
     maxWAtDepth.set(depth, Math.max(maxWAtDepth.get(depth) || 0, w));
   }
   const depths = [...maxWAtDepth.keys()];
   const maxDepth = depths.length ? Math.max(...depths) : 0;
 
+  /** Column left X per depth — same-depth pills share this edge (M13). */
   /** @type {Map<number, number>} */
-  const colX = new Map();
+  const colLeft = new Map();
   let xCursor = margin;
   for (let d = 0; d <= maxDepth; d++) {
     const w = maxWAtDepth.get(d) || 88;
-    xCursor += w / 2;
-    colX.set(d, xCursor);
-    xCursor += w / 2 + gapX;
+    colLeft.set(d, xCursor);
+    xCursor += w + gapX;
   }
 
   /** @type {Record<string, {x:number,y:number}>} */
@@ -152,8 +162,11 @@ export function autoPackPositions(doc, opts = {}) {
    * @returns {number} subtree block height
    */
   function layoutSubtree(n, depth, top) {
-    const { h } = pillSize(shortLabel(n.title));
-    const x = colX.get(depth) ?? margin + 44;
+    const reserveFold = hasKids(n) && isNodeCollapsed(n.id);
+    const { w, h } = pillSize(shortLabel(n.title), { reserveFold });
+    const left = colLeft.get(depth) ?? margin;
+    // Store geometric centre; left edge = left (shared per depth).
+    const x = left + w / 2;
     const kids =
       hasKids(n) && !isNodeCollapsed(n.id)
         ? n.children.filter((c) => c?.id)
@@ -189,7 +202,8 @@ export function autoPackPositions(doc, opts = {}) {
   for (const { n } of visible) {
     const pos = positions[n.id];
     if (!pos) continue;
-    const { w, h } = pillSize(shortLabel(n.title));
+    const reserveFold = hasKids(n) && isNodeCollapsed(n.id);
+    const { w, h } = pillSize(shortLabel(n.title), { reserveFold });
     maxX = Math.max(maxX, pos.x + w / 2);
     maxY = Math.max(maxY, pos.y + h / 2);
   }
@@ -406,18 +420,20 @@ export function createMapView(host, opts) {
       if (!n.id) return;
       const pos = layout.nodes[n.id] || { x: 100, y: 100 };
       const label = shortLabel(n.title);
-      const { w, h } = pillSize(label);
       const foldable = hasKids(n);
       const col = foldable && isCollapsed(doc, n.id);
+      const reserveFold = foldable && col;
+      const { w, h, textW, foldSlot } = pillSize(label, { reserveFold });
       const cue = isCue(n);
-      nodes.push({ n, pos, label, w, h, foldable, col, cue });
+      nodes.push({ n, pos, label, w, h, textW, foldSlot, foldable, col, cue });
 
       if (foldable && !col) {
         for (const c of n.children) {
           if (!c.id) continue;
           const cpos = layout.nodes[c.id] || { x: pos.x + 200, y: pos.y };
           const clabel = shortLabel(c.title);
-          const cs = pillSize(clabel);
+          const cFold = hasKids(c) && isCollapsed(doc, c.id);
+          const cs = pillSize(clabel, { reserveFold: cFold });
           edges.push({
             d: connectorPath(pos.x, pos.y, w, cpos.x, cpos.y, cs.w),
           });
@@ -431,9 +447,11 @@ export function createMapView(host, opts) {
       .map((e) => `<path class="map-edge" d="${e.d}"/>`)
       .join('');
     const nodeSvg = nodes
-      .map(({ n, pos, label, w, h, foldable, col, cue }) => {
+      .map(({ n, pos, label, w, h, textW, foldSlot, foldable, col, cue }) => {
         const x = pos.x - w / 2;
         const y = pos.y - h / 2;
+        // Label centres in the text region; fold `+` sits in reserved end-cap (M12).
+        const textX = x + textW / 2;
         const cls = [
           'map-node',
           foldable ? '' : 'leaf',
@@ -444,7 +462,7 @@ export function createMapView(host, opts) {
           .join(' ');
         const marker =
           foldable && col
-            ? `<g class="map-fold-indicator" transform="translate(${pos.x + w / 2 - 14} ${pos.y})" aria-hidden="true">
+            ? `<g class="map-fold-indicator" transform="translate(${x + textW + foldSlot / 2} ${pos.y})" aria-hidden="true">
           <circle r="9"/>
           <path d="M -4 0 H 4 M 0 -4 V 4"/>
         </g>`
@@ -455,7 +473,7 @@ export function createMapView(host, opts) {
       ${foldable ? `aria-expanded="${col ? 'false' : 'true'}"` : ''}>
       <title>${esc(n.title)}</title>
       <rect class="map-pill" x="${x}" y="${y}" width="${w}" height="${h}" rx="18" ry="18"/>
-      <text class="map-label" x="${pos.x}" y="${pos.y + 4}" text-anchor="middle">${esc(label)}</text>
+      <text class="map-label" x="${textX}" y="${pos.y + 4}" text-anchor="middle">${esc(label)}</text>
       ${marker}
     </g>`;
       })

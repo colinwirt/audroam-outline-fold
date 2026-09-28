@@ -1,12 +1,16 @@
 /**
- * Headless smoke for Map auto-pack (M2–M4, M9–M10).
+ * Headless smoke for Map auto-pack (M2–M4, M9–M10, M12–M13).
  * Run: node scripts/smoke-autopack.mjs
  */
 import { readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parse, isCollapsed, toggleFold } from '../dist/index.js';
-import { autoPackPositions } from '../examples/_shared/mapView.js';
+import {
+  autoPackPositions,
+  pillSize,
+  FOLD_SLOT,
+} from '../examples/_shared/mapView.js';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const md = readFileSync(
@@ -105,10 +109,77 @@ assert(
   're-expand restores parent centre',
 );
 
+// M12: fold chrome reserves an end-cap — text measure unchanged vs no-chrome
+function shortLabel(title) {
+  const parts = String(title).split(' · ');
+  if (parts.length >= 2) return parts[0].trim();
+  return title.length > 36 ? title.slice(0, 34) + '…' : title;
+}
+function findTitle(d, id) {
+  const walk = (nodes) => {
+    for (const n of nodes) {
+      if (n.id === id) return n.title;
+      const hit = walk(n.children || []);
+      if (hit != null) return hit;
+    }
+    return null;
+  };
+  return walk(d.nodes);
+}
+for (const id of ['howto', 'ism', 'e8']) {
+  const label = shortLabel(findTitle(doc, id));
+  const base = pillSize(label);
+  const withFold = pillSize(label, { reserveFold: true });
+  assert(base.foldSlot === 0, `${id} base foldSlot`);
+  assert(withFold.foldSlot === FOLD_SLOT, `${id} fold slot = ${FOLD_SLOT}`);
+  assert(withFold.textW === base.w, `${id} textW must equal no-chrome pill width`);
+  assert(withFold.w === base.w + FOLD_SLOT, `${id} total w = text + fold chrome`);
+}
+// Collapsed e8 pill is wider by FOLD_SLOT than expanded (text region preserved)
+{
+  const label = shortLabel(findTitle(doc, 'e8'));
+  const baseW = pillSize(label).w;
+  const collapsedW = pillSize(label, { reserveFold: true }).w;
+  assert(collapsedW === baseW + FOLD_SLOT, 'collapsed e8 pill grows by fold slot only');
+}
+
+// M13: same-depth nodes share a common left edge
+function walkDepth(nodes, depth, fn) {
+  for (const n of nodes) {
+    if (!n?.id) continue;
+    fn(n, depth);
+    if (n.children?.length && !isCollapsed(doc, n.id)) {
+      walkDepth(n.children, depth + 1, fn);
+    }
+  }
+}
+const leftByDepth = new Map();
+walkDepth(doc.nodes, 0, (n, depth) => {
+  const pos = expanded.nodes[n.id];
+  if (!pos) return;
+  const reserveFold = !!(n.children?.length) && isCollapsed(doc, n.id);
+  const { w } = pillSize(shortLabel(n.title), { reserveFold });
+  const left = pos.x - w / 2;
+  if (!leftByDepth.has(depth)) leftByDepth.set(depth, []);
+  leftByDepth.get(depth).push({ id: n.id, left });
+});
+for (const [depth, list] of leftByDepth) {
+  if (list.length < 2) continue;
+  const ref = list[0].left;
+  for (const { id, left } of list) {
+    assert(
+      Math.abs(left - ref) < 0.01,
+      `M13 depth ${depth}: ${id} left ${left} ≠ ${ref}`,
+    );
+  }
+}
+
 console.log('smoke-autopack OK', {
   nodes: ids.length,
   viewBox: expanded.viewBox,
   collapsedH: collapsed.viewBox.h,
   e8y,
   stackMid,
+  foldSlot: FOLD_SLOT,
+  depthsChecked: [...leftByDepth.keys()],
 });
