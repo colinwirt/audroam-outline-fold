@@ -1,8 +1,8 @@
 /**
  * Minimal 2D cafe ops map. Uses the built package for parsing and fold state.
  */
+import { parseDoc } from '../_shared/parseDoc.js';
 import {
-  parse,
   serialize,
   toggleFold,
   isCollapsed,
@@ -27,7 +27,7 @@ collapsedMarker: "(+)"
     - Alarm code / arming notes <encrypted> <id:alarm> (+)
 `;
 
-let doc = parse(SAMPLE);
+let doc = parseDoc(SAMPLE).doc;
 const canvas = document.getElementById('c');
 const ctx = canvas.getContext('2d');
 const out = document.getElementById('out');

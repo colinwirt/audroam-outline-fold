@@ -36,6 +36,8 @@ npx serve -l 4173 .   # then open the live demos below
 | Cafe ops 2D map | […/examples/canvas-2d/](https://colinwirt.github.io/audroam-outline-fold/examples/canvas-2d/) |
 | Cafe ops 3D map | […/examples/3d/](https://colinwirt.github.io/audroam-outline-fold/examples/3d/) |
 
+Pages demos share one core under [`examples/_shared/`](./examples/_shared/): `parseDoc` → `createOutlineView` → `createMapView` (package owns `parse` / `toHtml` / `attachOutlineTree` / `toggleFold`).
+
 Wave-1 sealed demos ship `ct: PLACEHOLDER` (stub unlock N/A until `demo:seal`). Fiction / study banners stay in sources.
 
 Source outlines: [examples/outline-demo.md](./examples/outline-demo.md) · [examples/solar-system/solar-system.md](./examples/solar-system/solar-system.md) (+ [layout sidecar](./examples/solar-system/solar-system.layout.json)) · [examples/fixtures/](./examples/fixtures/).

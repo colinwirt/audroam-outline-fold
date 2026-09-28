@@ -25,7 +25,9 @@ mkdirSync(join(site, 'examples'), { recursive: true });
 
 cpSync(join(root, 'dist'), join(site, 'dist'), { recursive: true });
 cpSync(join(root, 'examples', 'outline-demo.html'), join(site, 'examples', 'outline-demo.html'));
+cpSync(join(root, 'examples', 'outline-demo.md'), join(site, 'examples', 'outline-demo.md'));
 cpSync(join(root, 'examples', 'outline-viewer.js'), join(site, 'examples', 'outline-viewer.js'));
+// examples/_shared + demo folders copied in the directory loop below
 
 // Copy every examples/* directory except react-live (built separately) and node_modules
 const examplesDir = join(root, 'examples');
@@ -59,7 +61,7 @@ code{font-size:.9em;background:#1a2330;padding:.1em .35em;border-radius:4px}
 </head>
 <body>
 <h1>@audroam/outline-fold</h1>
-<p class="meta">Pure TS outline language demos (fiction + study maps). <a href="https://github.com/colinwirt/audroam-outline-fold">Source</a> · MIT</p>
+<p class="meta">Pure TS outline language demos (fiction + study maps). Shared core: parse → outlineView → mapView. <a href="https://github.com/colinwirt/audroam-outline-fold">Source</a> · MIT</p>
 
 <h2>Core</h2>
 <ul>

@@ -1,6 +1,6 @@
 import * as THREE from 'three';
+import { parseDoc } from '../_shared/parseDoc.js';
 import {
-  parse,
   toggleFold,
   isCollapsed,
 } from '../../dist/index.js';
@@ -24,7 +24,7 @@ collapsedMarker: "(+)"
     - Alarm code / arming notes <encrypted> <id:alarm> (+)
 `;
 
-let doc = parse(SAMPLE);
+let doc = parseDoc(SAMPLE).doc;
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x0b0b0f);

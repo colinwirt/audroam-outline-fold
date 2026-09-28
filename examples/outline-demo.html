@@ -46,29 +46,26 @@ code{font-size:.9em}
 <pre id="foldOut"></pre>
 </div>
 <script type="module">
-import {
-  parse,
-  toggleFold,
-  serialize,
-  toHtml,
-  isCollapsed,
-  demoOpen,
-  DEMO_PASSPHRASE,
-  validateDocument,
-  attachOutlineTree,
-} from '../dist/index.js';
+/**
+ * Cafe ops Pages demo — shared core only.
+ * parseDoc → createOutlineView + unlockStub (real demo seal, not PLACEHOLDER).
+ */
+import { loadDoc } from './_shared/parseDoc.js';
+import { createOutlineView } from './_shared/outlineView.js';
+import { tryUnlock } from './_shared/unlockStub.js';
 
-const src = "---\nfold-: courtyard-quotes, payroll, alarm, staff-private, ins-remote\ncollapsedMarker: \"(+)\"\n---\n- ☕ Northside Corner Cafe — ops handoff <id:root>\n  - Menu update ideas · spring · P2 · 👍 <id:menu>\n    - [ ] Add cold brew flight · board special <kind:pending-approve> <id:menu-coldbrew>\n    - [ ] Retire winter pie · low sellers · P3 <kind:pending-approve> <id:menu-pie>\n    - [-] Seasonal flat white syrup · supplier TBD <id:menu-syrup>\n    - [x] Allergen line on board · approved:Jess · done Wed <id:menu-allergen>\n    - pros: weekend tourist traffic · cons: barista training time <id:menu-notes>\n  - Seasonal supplier update · Q4 fruit <id:suppliers>\n    - Berries · Yarra Valley co-op · ETA next Tue <id:sup-berries>\n    - Milk · keep current dairy · no change <id:sup-milk>\n    - Coffee · sample bag from Altitude Roasters <id:sup-coffee>\n    - [x] Send Friday supplier SMS · approved:sms-bot · auto <id:sup-sms>\n    - Order codes / account notes <private> <id:sup-private> (+)\n  - Remodel the courtyard · permit in flight · P1 <id:courtyard>\n    - [ ] Confirm pavers quote · three bids <kind:pending-approve> <id:courtyard-quotes> (+)\n      - Bid A · local mason · ballpark only <id:bid-a>\n      - Bid B · landscape crew · includes planters <id:bid-b>\n    - [ ] Shade sail colour · match awning <kind:pending-approve> <id:courtyard-sail>\n    - [ ] Neighbour note before dig day <kind:pending-approve> <id:courtyard-neighbour>\n    - [x] Permit lodged · approved:Sam <id:courtyard-permit>\n  - Staff roster · first names only <id:staff>\n    - Mon open · Sam · Jess <id:staff-mon>\n    - Tue–Wed · Sam · Priya <id:staff-mid>\n    - Fri late · Jess · Omar <id:staff-fri>\n    - [x] Post Fri late SMS to Omar · approved:sms-bot · auto <id:staff-sms>\n    - Full staff list + emergency contacts <private> <id:staff-private> (+)\n  - Secrets · manager only <id:secrets>\n    - Payroll portal link + pay-run notes <private> <id:payroll> (+)\n    - Alarm code / arming notes <encrypted> <id:alarm> (+)\n    - Vendor insurance cert (remote blob) <encrypted> <id:ins-remote> (+)\n\n--- payloads ---\nalarm:\n  kid: cafe-alarm-1\n  alg: demo-aes-gcm\n  ct: d5GKTRZz_bevxCLla30bezDR9EqnDfFZLbj06WcqP5yxPQ7D1V4ifDUdlTDnrnrucKZDARUhRb8Y264r7gT7PAS9ObvOK8EL3kXZ8EjoWIeEhoHzPA\npayroll:\n  kid: cafe-payroll-1\n  alg: demo-aes-gcm\n  ct: F8LoZO7Bj-qYP5R93KlcWQn7rGbTqjYS6dSuNv4dgMsaGyhUsgW1NZq1Ix6a4v9LC8UgF_W6OqEoIAEZfFdZmDCLIpwdOZBFK7AY0YxIRk5qjG7WZkZUpKstqoW7mA\nstaff-private:\n  kid: cafe-staff-1\n  alg: demo-aes-gcm\n  ct: NgVBgsayYos_Jyj0xUz0BgQbVxpM6_Jc1SZ5byLX8MqfxqWV4WJuruNbdlYoL4JE-voicrmbjdyBTNPLtQGl3m3XoE0SM4qeUcnpqD4JAiA_h6clyuS48hhXRYp6e-XF65SHuDc9pUFoDghrprm2wU5ML_tmelMqmVBjTQ\nsup-private:\n  kid: cafe-sup-1\n  alg: demo-aes-gcm\n  ct: -6_IZecRJeIrHro6f02fCt-zlQWOPkmK5U3dQhSp6RvOTy7GbHz0oQvY1p5uSbeBdvvf-_jTPoJq-w_SbtEIgndD\nins-remote:\n  kid: cafe-ins-1\n  alg: demo-aes-gcm\n  uri: https://example.invalid/sealed/cafe-ins-1.bin\n---\n";
-let doc = parse(src);
-/** @type {Record<string, string>} */
-const revealed = Object.create(null);
+const mdUrl = new URL('./outline-demo.md', import.meta.url);
 const tree = document.getElementById('tree');
 const foldOut = document.getElementById('foldOut');
 const validationEl = document.getElementById('validation');
 
-function showValidation(source) {
-  const v = validateDocument(source);
-  if (!validationEl) return;
+/** @type {import('../dist/index.js').OutlineFoldDoc} */
+let doc;
+/** @type {Record<string, string>} */
+const revealed = Object.create(null);
+
+function showValidation(v) {
+  if (!validationEl || !v) return;
   validationEl.hidden = false;
   if (v.ok && v.issues.length === 0) {
     validationEl.className = 'ok';
@@ -80,164 +77,48 @@ function showValidation(source) {
     ? 'validateDocument: warnings (outline still renders)'
     : 'validateDocument: errors (outline still renders when parseable; gate save/share)';
   validationEl.innerHTML =
-    '<strong>' +
-    title +
-    '</strong><ul>' +
-    v.issues
-      .map(
-        (i) =>
-          '<li><code>' +
-          i.severity +
-          '</code> <code>' +
-          i.code +
-          '</code> ' +
-          i.message +
-          (i.line != null ? ' · line ' + i.line : '') +
-          (i.nodeId ? ' · #' + i.nodeId : '') +
-          '</li>',
-      )
-      .join('') +
-    '</ul>';
-}
-showValidation(src);
-
-function findNode(nodes, id) {
-  for (const n of nodes) {
-    if (n.id === id) return n;
-    if (n.children?.length) {
-      const hit = findNode(n.children, id);
-      if (hit) return hit;
-    }
-  }
-  return null;
+    '<strong>' + title + '</strong><ul>' +
+    v.issues.map((i) =>
+      '<li><code>' + i.severity + '</code> <code>' + i.code + '</code> ' +
+      i.message +
+      (i.line != null ? ' · line ' + i.line : '') +
+      (i.nodeId ? ' · #' + i.nodeId : '') + '</li>'
+    ).join('') + '</ul>';
 }
 
-function esc(s) {
-  return String(s)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-}
+const loaded = await loadDoc(mdUrl);
+doc = loaded.doc;
+showValidation(loaded.validation);
 
-function injectReveals() {
-  for (const [id, plaintext] of Object.entries(revealed)) {
-    const li = tree.querySelector('.of-node[data-id="' + CSS.escape(id) + '"]');
-    if (!li) continue;
-    const locked = li.querySelector(':scope > .of-locked-chrome');
-    if (locked) locked.remove();
-    let panel = li.querySelector(':scope > .of-reveal');
-    if (!panel) {
-      panel = document.createElement('div');
-      panel.className = 'of-reveal';
-      panel.setAttribute('role', 'region');
-      panel.setAttribute('aria-label', 'Session reveal');
-      const row = li.querySelector(':scope > .of-row');
-      if (row) row.insertAdjacentElement('afterend', panel);
-      else li.prepend(panel);
-    }
-    panel.innerHTML =
-      '<span class="of-reveal-label">Session reveal (demo) · not written to editor</span>' +
-      esc(plaintext);
-  }
-}
-
-/** @type {{ refresh: (id?: string | null) => void }} */
-const treeApi = { refresh: (id) => { paint(); void id; } };
-
-async function tryUnlock(id) {
-  const node = findNode(doc.nodes, id);
-  if (!node?.sealed) {
-    window.alert(
-      'No sealed payload on “' + id + '”. Host MFA/crypto is out of this package.',
-    );
-    return;
-  }
-  if (node.sealed.uri && !node.sealed.ciphertext) {
-    window.alert(
-      'Remote sealed blob (kid=' +
-        node.sealed.kid +
-        ').\nURI: ' +
-        node.sealed.uri +
-        '\n\nDemo does not fetch — host would fetch after key release.',
-    );
-    return;
-  }
-  const source = window.prompt(
-    [
-      'Key source for cafe demo:',
-      '1 = browser session (sample passphrase)',
-      '2 = paste from password manager',
-      '3 = pageant / OS agent (stub)',
-      '4 = server after MFA (stub → sample key)',
-      '',
-      'Enter 1–4:',
-    ].join('\n'),
-    '1',
-  );
-  if (source == null) return;
-  let pass = null;
-  switch (source.trim()) {
-    case '1':
-      pass = window.prompt(
-        'Session passphrase (hint: northside-demo)',
-        DEMO_PASSPHRASE,
-      );
-      break;
-    case '2':
-      pass = window.prompt(
-        'Paste passphrase from password manager (demo field):',
-        '',
-      );
-      break;
-    case '3':
-      window.alert(
-        'Pageant / OS agent is not wired in this browser demo. Use 1 or 2, or see README.',
-      );
-      return;
-    case '4':
-      window.alert(
-        'Stub: MFA OK → host would release DEK. Demo falls through to sample passphrase.',
-      );
-      pass = DEMO_PASSPHRASE;
-      break;
-    default:
-      window.alert('Unknown key source — use 1–4.');
-      return;
-  }
-  if (pass == null) return;
-  try {
-    const plaintext = await demoOpen(node.sealed, pass);
-    revealed[id] = plaintext;
-    if (isCollapsed(doc, id)) {
-      doc = toggleFold(doc, id);
-    }
-    treeApi.refresh(id);
-  } catch (err) {
-    window.alert(
-      err instanceof Error ? err.message : 'Decrypt failed (wrong passphrase?)',
-    );
-  }
-}
-
-function paint() {
-  tree.innerHTML = toHtml(doc, { ariaLabel: 'Northside Corner Cafe ops outline' });
-  foldOut.textContent = serialize(doc);
-  injectReveals();
-}
-
-paint();
-Object.assign(
-  treeApi,
-  attachOutlineTree(tree, {
-    getDoc: () => doc,
-    setDoc: (d) => { doc = d; },
-    render: paint,
-    onUnlock: (id) => { void tryUnlock(id); },
-    onDecrypt: (id) => { void tryUnlock(id); },
-  }),
-);
-treeApi.refresh();
+const view = createOutlineView(tree, {
+  getDoc: () => doc,
+  setDoc: (d) => { doc = d; },
+  ariaLabel: 'Northside Corner Cafe ops outline',
+  lockedChrome: true,
+  revealed,
+  serializeTarget: foldOut,
+  onUnlock: (id) => {
+    void tryUnlock({
+      getDoc: () => doc,
+      setDoc: (d) => { doc = d; },
+      id,
+      revealed,
+      refresh: () => view.refresh(id),
+      stubUnlock: false,
+    });
+  },
+  onDecrypt: (id) => {
+    void tryUnlock({
+      getDoc: () => doc,
+      setDoc: (d) => { doc = d; },
+      id,
+      revealed,
+      refresh: () => view.refresh(id),
+      stubUnlock: false,
+    });
+  },
+});
+view.refresh();
 </script>
 </body>
 </html>
