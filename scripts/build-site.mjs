@@ -61,40 +61,41 @@ code{font-size:.9em;background:#1a2330;padding:.1em .35em;border-radius:4px}
 </head>
 <body>
 <h1>@audroam/outline-fold</h1>
-<p class="meta">Pure TS outline language demos (fiction + study maps). Shared core: parse → outlineView → mapView. <a href="https://github.com/colinwirt/audroam-outline-fold">Source</a> · MIT</p>
+<p class="meta">Pure TS outline language demos (fiction + study maps). <strong>One shared viewer</strong>: parse → outlineView → mapView. <a href="https://github.com/colinwirt/audroam-outline-fold">Source</a> · MIT</p>
 
-<h2>Core</h2>
+<h2>Shared Outline | Map viewer</h2>
 <ul>
-  <li><a href="examples/outline-demo.html">Cafe ops outline</a> — HTML + fold + real demo seal</li>
-  <li><a href="examples/solar-system/">Solar System Outline | Map</a> — dual view, sidecar layout, pan/zoom</li>
-  <li><a href="react-live/">React live parser</a> — textarea → parse / toHtml / toggleFold</li>
-  <li><a href="examples/canvas-2d/">Cafe ops 2D map</a></li>
-  <li><a href="examples/3d/">Cafe ops 3D map</a> (loads three.js from CDN)</li>
+  <li><a href="examples/viewer/?doc=../solar-system/solar-system.md&amp;layout=../solar-system/solar-system.layout.json">Solar System</a> — dual view + layout sidecar</li>
+  <li><a href="examples/viewer/?doc=../outline-demo.md">Cafe ops</a> — real demo seal</li>
+  <li><a href="examples/viewer/">Viewer</a> — pass <code>?doc=</code> (+ optional <code>&amp;layout=</code>); auto-pack when no sidecar</li>
 </ul>
 
 <h2>Wave-1 handoffs (PLACEHOLDER sealed stub · unlock N/A)</h2>
 <ul>
-  <li><a href="examples/teacher-parent/">Teacher ↔ parent</a> — Vic need-to-know fiction</li>
-  <li><a href="examples/streetlamps/">Streetlamps</a> — pole lon/lat + CMMS-class URLs</li>
-  <li><a href="examples/potholes/">Potholes</a> — SSS-style ↔ CMMS loop</li>
-  <li><a href="examples/student-study/">Student study</a> — Cornell/outline tutor cues</li>
-  <li><a href="examples/work-notes/">Work notes</a> — async squad handoff + URLs</li>
+  <li><a href="examples/viewer/?doc=../teacher-parent/teacher-parent.md">Teacher ↔ parent</a> — Vic need-to-know fiction</li>
+  <li><a href="examples/viewer/?doc=../streetlamps/streetlamps.md">Streetlamps</a> — pole lon/lat + CMMS-class URLs</li>
+  <li><a href="examples/viewer/?doc=../potholes/potholes.md">Potholes</a> — SSS-style ↔ CMMS loop</li>
+  <li><a href="examples/viewer/?doc=../student-study/student-study.md">Student study</a> — Cornell/outline tutor cues</li>
+  <li><a href="examples/viewer/?doc=../work-notes/work-notes.md">Work notes</a> — async squad handoff + URLs</li>
 </ul>
 
 <h2>Compliance / study maps (cleartext-first)</h2>
 <ul>
-  <li><a href="examples/iso27001/">ISO/IEC 27001</a> — clauses 4–10 + Annex A themes</li>
-  <li><a href="examples/soc2/">SOC 2</a> — TSC CC1–CC9 + modules</li>
-  <li><a href="examples/pci-dss/">PCI DSS</a> — Req 1–12 families</li>
-  <li><a href="examples/nist/">NIST CSF</a> — core functions + 800-53 pointer</li>
-  <li><a href="examples/aust-gov-cyber/">AU gov cyber</a> — ISM / Essential Eight / PSPF-shaped</li>
+  <li><a href="examples/viewer/?doc=../iso27001/iso27001.md">ISO/IEC 27001</a> — clauses 4–10 + Annex A themes</li>
+  <li><a href="examples/viewer/?doc=../soc2/soc2.md">SOC 2</a> — TSC CC1–CC9 + modules</li>
+  <li><a href="examples/viewer/?doc=../pci-dss/pci-dss.md">PCI DSS</a> — Req 1–12 families</li>
+  <li><a href="examples/viewer/?doc=../nist/nist.md">NIST CSF</a> — core functions + 800-53 pointer</li>
+  <li><a href="examples/viewer/?doc=../aust-gov-cyber/aust-gov-cyber.md">AU gov cyber</a> — ISM / Essential Eight / PSPF-shaped</li>
 </ul>
 
-<h2>Fixtures (md for React-live paste)</h2>
+<h2>Also</h2>
 <ul>
-  <li><a href="examples/fixtures/">Fixture index</a> — solar-system, municipal-greece, earth-field, twins, wave-1, compliance…</li>
+  <li><a href="react-live/">React live parser</a> — textarea → parse / toHtml / toggleFold</li>
+  <li><a href="examples/fixtures/">Fixture index</a> — md paste + viewer links</li>
+  <li><a href="examples/canvas-2d/">Cafe ops 2D map</a></li>
+  <li><a href="examples/3d/">Cafe ops 3D map</a> (loads three.js from CDN)</li>
 </ul>
-<p class="note">Fiction banners stay in sources. Sealed demos with <code>ct: PLACEHOLDER</code> label stub unlock N/A. Not legal advice; no live secrets.</p>
+<p class="note">Old per-demo paths (e.g. <code>examples/pci-dss/</code>) redirect to the shared viewer. Fiction banners stay in sources. Sealed demos with <code>ct: PLACEHOLDER</code> label stub unlock N/A. Not legal advice; no live secrets.</p>
 </body>
 </html>
 `;

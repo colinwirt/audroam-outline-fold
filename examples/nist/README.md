@@ -1,9 +1,9 @@
-# NIST CSF study map
+# NIST CSF
 
 Pages demo for `@audroam/outline-fold`.
 
 - Fixture: `nist.md`
-- Viewer: cafe-style HTML + shared `../outline-viewer.js`
-- Sealed: cleartext / caption placeholders only
+- Viewer: shared [`../viewer/`](../viewer/)?doc=../nist/nist.md
+- Old `index.html` redirects here (stable Pages URL).
 
 Fiction / study banners stay in the markdown. Do not invent secrets.

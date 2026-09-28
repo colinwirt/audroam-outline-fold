@@ -1,9 +1,9 @@
-# AU gov cyber study map
+# AU gov cyber
 
 Pages demo for `@audroam/outline-fold`.
 
 - Fixture: `aust-gov-cyber.md`
-- Viewer: cafe-style HTML + shared `../outline-viewer.js`
-- Sealed: cleartext / caption placeholders only
+- Viewer: shared [`../viewer/`](../viewer/)?doc=../aust-gov-cyber/aust-gov-cyber.md
+- Old `index.html` redirects here (stable Pages URL).
 
 Fiction / study banners stay in the markdown. Do not invent secrets.

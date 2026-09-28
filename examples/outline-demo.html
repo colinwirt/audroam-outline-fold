@@ -2,123 +2,18 @@
 <html lang="en">
 <head>
 <meta charset="utf-8"/>
-<title>Northside Corner Cafe — ops outline</title>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Northside Corner Cafe · redirect</title>
+<meta http-equiv="refresh" content="0; url=./viewer/?doc=../outline-demo.md">
+<link rel="canonical" href="./viewer/?doc=../outline-demo.md">
 <style>
 :root{color-scheme:dark}
-body{font:16px/1.5 system-ui,sans-serif;max-width:42rem;margin:2rem auto;padding:0 1.25rem;background:#0f1419;color:#e7ecf1}
-h1{font-size:1.2rem;font-weight:600;margin:0 0 .25rem}
-.meta{color:#8b9bab;font-size:.85rem;margin-bottom:1.25rem}
-.of-outline,.of-children{list-style:none;margin:0;padding-left:0}
-.of-children{padding-left:1.1rem;border-left:1px solid #2a3540;margin-left:.35rem}
-.of-node{margin:.15rem 0}
-.of-node[data-collapsed="true"]>.of-children{display:none}
-.of-row{display:flex;align-items:flex-start;gap:.35rem}
-.of-title{flex:1}
-.of-fold{flex:none;min-width:44px;min-height:44px;border:0;background:transparent;color:#6cb6ff;cursor:pointer;padding:0;line-height:1.2;font:inherit;display:inline-flex;align-items:center;justify-content:center}
-.of-node[role="treeitem"]:focus{outline:2px solid #6cb6ff;outline-offset:2px;border-radius:4px}
-.of-node[role="treeitem"]:focus:not(:focus-visible){outline:none}
-.of-node[role="treeitem"]:focus-visible{outline:2px solid #6cb6ff;outline-offset:2px}
-.of-live.visually-hidden{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
-.of-row svg{flex:none;margin-top:.15rem;opacity:.85}
-.of-unlock{flex:none;margin-left:.35rem;border:1px solid #2a3540;background:#1a2330;color:#6cb6ff;border-radius:6px;padding:.1rem .45rem;font:inherit;font-size:.75rem;cursor:pointer}
-.of-unlock:hover{border-color:#6cb6ff}
-.of-locked-chrome{color:#8b9bab;font-size:.85rem;padding:.15rem 0 .15rem 1.95rem}
-.of-reveal{margin:.25rem 0 .35rem 1.95rem;padding:.55rem .7rem;background:#1a2330;border:1px solid #3d5a3a;border-radius:8px;font-size:.85rem;white-space:pre-wrap;color:#c8e6c9}
-.of-reveal-label{display:block;font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;color:#8b9bab;margin-bottom:.25rem}
-#panel{margin-top:1.5rem;padding-top:1rem;border-top:1px solid #2a3540}
-#validation{margin:0 0 1rem;padding:.55rem .7rem;border-radius:8px;font-size:.8rem;border:1px solid #2a3540;background:#1a2330}
-#validation.ok{border-color:#3d5a3a;color:#c8e6c9}
-#validation.bad{border-color:#5a3d3d;color:#fecaca;background:#3b1a1a}
-#validation ul{margin:.35rem 0 0;padding-left:1.1rem}
-pre{background:#1a2330;padding:.75rem;overflow:auto;font-size:12px;border-radius:8px}
-kbd{background:#1a2330;padding:.1em .35em;border-radius:4px;font-size:.85em}
-code{font-size:.9em}
+body{font:16px/1.5 system-ui,sans-serif;max-width:36rem;margin:2.5rem auto;padding:0 1.25rem;background:#0f1419;color:#e7ecf1}
+a{color:#6cb6ff}
 </style>
+<script>location.replace("./viewer/?doc=../outline-demo.md");</script>
 </head>
 <body>
-<h1>☕ Northside Corner Cafe</h1>
-<p class="meta">Cafe ops handoff — click <kbd>(+)</kbd> or use keyboard after focus in the tree: <kbd>↑</kbd><kbd>↓</kbd> move · <kbd>←</kbd><kbd>→</kbd> fold · <kbd>Enter</kbd>/<kbd>Space</kbd>/<kbd>.</kbd> toggle · <kbd>0</kbd>–<kbd>9</kbd> expand level · <kbd>*</kbd> expand all (session-local). Amber clipboard = pending approve. Locked rows carry <strong>sealed payloads</strong> in a trailing <code>--- payloads ---</code> map (lean titles). Unlock / Decrypt: pick a key source (session / password manager / agent stub / MFA stub). Sample passphrase <code>northside-demo</code>. Session reveal only — not written back. Demo ≠ production MFA.</p>
-<div id="validation" hidden></div>
-<div id="tree"></div>
-<div id="panel">
-<p class="meta">Current handoff text (fold state updates as you click; sealed ciphertext stays in the outline):</p>
-<pre id="foldOut"></pre>
-</div>
-<script type="module">
-/**
- * Cafe ops Pages demo — shared core only.
- * parseDoc → createOutlineView + unlockStub (real demo seal, not PLACEHOLDER).
- */
-import { loadDoc } from './_shared/parseDoc.js';
-import { createOutlineView } from './_shared/outlineView.js';
-import { tryUnlock } from './_shared/unlockStub.js';
-
-const mdUrl = new URL('./outline-demo.md', import.meta.url);
-const tree = document.getElementById('tree');
-const foldOut = document.getElementById('foldOut');
-const validationEl = document.getElementById('validation');
-
-/** @type {import('../dist/index.js').OutlineFoldDoc} */
-let doc;
-/** @type {Record<string, string>} */
-const revealed = Object.create(null);
-
-function showValidation(v) {
-  if (!validationEl || !v) return;
-  validationEl.hidden = false;
-  if (v.ok && v.issues.length === 0) {
-    validationEl.className = 'ok';
-    validationEl.textContent = 'validateDocument: ok — outline renders; no issues.';
-    return;
-  }
-  validationEl.className = v.ok ? 'ok' : 'bad';
-  const title = v.ok
-    ? 'validateDocument: warnings (outline still renders)'
-    : 'validateDocument: errors (outline still renders when parseable; gate save/share)';
-  validationEl.innerHTML =
-    '<strong>' + title + '</strong><ul>' +
-    v.issues.map((i) =>
-      '<li><code>' + i.severity + '</code> <code>' + i.code + '</code> ' +
-      i.message +
-      (i.line != null ? ' · line ' + i.line : '') +
-      (i.nodeId ? ' · #' + i.nodeId : '') + '</li>'
-    ).join('') + '</ul>';
-}
-
-const loaded = await loadDoc(mdUrl);
-doc = loaded.doc;
-showValidation(loaded.validation);
-
-const view = createOutlineView(tree, {
-  getDoc: () => doc,
-  setDoc: (d) => { doc = d; },
-  ariaLabel: 'Northside Corner Cafe ops outline',
-  lockedChrome: true,
-  revealed,
-  serializeTarget: foldOut,
-  onUnlock: (id) => {
-    void tryUnlock({
-      getDoc: () => doc,
-      setDoc: (d) => { doc = d; },
-      id,
-      revealed,
-      refresh: () => view.refresh(id),
-      stubUnlock: false,
-    });
-  },
-  onDecrypt: (id) => {
-    void tryUnlock({
-      getDoc: () => doc,
-      setDoc: (d) => { doc = d; },
-      id,
-      revealed,
-      refresh: () => view.refresh(id),
-      stubUnlock: false,
-    });
-  },
-});
-view.refresh();
-</script>
+<p>Moved to the shared <a href="./viewer/?doc=../outline-demo.md">Outline | Map viewer</a> (cafe ops).</p>
 </body>
 </html>

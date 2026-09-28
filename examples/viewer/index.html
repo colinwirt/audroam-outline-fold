@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Outline | Map · @audroam/outline-fold</title>
+<!--
+  Shared Pages viewer: ?doc=<md url> [&layout=<sidecar json>]
+  Uses examples/_shared parseDoc → createOutlineView → createMapView.
+  Layout: query layout= wins, else frontmatter layoutSidecar: / sibling *.layout.json,
+  else auto-pack (empty nodes).
+-->
+<link rel="stylesheet" href="./viewer.css"/>
+</head>
+<body>
+<div class="shell">
+  <div class="gold-rule" aria-hidden="true"></div>
+  <h1 id="pageTitle">Outline | Map</h1>
+  <p class="sub" id="pageSub">
+    Dual <strong>Outline | Map</strong>, shared fold. Pass
+    <code>?doc=</code> (markdown URL) and optional <code>&amp;layout=</code>
+    (sidecar JSON). Without a sidecar, positions auto-pack L→R.
+    <a href="../">All demos</a>
+  </p>
+  <p class="banner" id="banner" hidden></p>
+
+  <div class="bar">
+    <div class="seg" role="group" aria-label="View mode">
+      <button type="button" id="btnOutline" aria-pressed="true">Outline</button>
+      <button type="button" id="btnMap" aria-pressed="false">Map</button>
+    </div>
+    <div class="map-tools" id="mapTools" hidden>
+      <button type="button" id="btnZoomIn" title="Zoom in">+</button>
+      <button type="button" id="btnZoomOut" title="Zoom out">−</button>
+      <button type="button" id="btnResetView" title="Reset pan/zoom">Reset view</button>
+    </div>
+    <p class="legend">
+      <kbd>↑</kbd><kbd>↓</kbd> move · <kbd>←</kbd><kbd>→</kbd> fold ·
+      <kbd>Enter</kbd>/<kbd>Space</kbd>/<kbd>.</kbd> toggle ·
+      <kbd>0</kbd>–<kbd>9</kbd> level · <kbd>*</kbd> expand all ·
+      Map: click pill to fold · wheel/drag/pinch pan-zoom · session-local
+    </p>
+  </div>
+
+  <div id="loadErr" class="err" hidden></div>
+  <div id="validation" class="validation" hidden></div>
+
+  <div id="panel" class="tile" data-mode="outline">
+    <div id="outlineHost"></div>
+    <div id="mapHost" class="map-wrap" hidden></div>
+  </div>
+
+  <details class="serialize" id="serializeBox">
+    <summary>Current handoff text (fold state · sealed ciphertext stays in outline)</summary>
+    <pre id="foldOut"></pre>
+  </details>
+
+  <p class="note" id="docMeta"></p>
+</div>
+
+<script type="module" src="./main.js"></script>
+</body>
+</html>

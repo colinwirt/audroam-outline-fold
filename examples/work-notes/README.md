@@ -1,9 +1,11 @@
-# Work notes handoff
+# Work notes
 
 Pages demo for `@audroam/outline-fold`.
 
 - Fixture: `work-notes.md`
-- Viewer: cafe-style HTML + shared `../outline-viewer.js`
-- Sealed: PLACEHOLDER stub (unlock N/A until demo:seal)
+- Viewer: shared [`../viewer/`](../viewer/)?doc=../work-notes/work-notes.md
+- Old `index.html` redirects here (stable Pages URL).
+
+Sealed: PLACEHOLDER stub (unlock N/A until demo:seal).
 
 Fiction / study banners stay in the markdown. Do not invent secrets.

@@ -16,27 +16,30 @@ npx serve -l 4173 .   # then open the live demos below
 
 **Hosted on GitHub Pages:** [https://colinwirt.github.io/audroam-outline-fold/](https://colinwirt.github.io/audroam-outline-fold/)
 
+**One shared viewer** ([`examples/viewer/`](./examples/viewer/)): `?doc=<md>` + optional `&layout=<sidecar.json>`. Without a sidecar, map positions **auto-pack**. Old per-demo paths redirect here.
+
 | Demo | Pages URL |
 |------|-----------|
 | Landing | [https://colinwirt.github.io/audroam-outline-fold/](https://colinwirt.github.io/audroam-outline-fold/) |
-| Cafe ops outline (HTML) | […/examples/outline-demo.html](https://colinwirt.github.io/audroam-outline-fold/examples/outline-demo.html) |
-| Solar System Outline \| Map | […/examples/solar-system/](https://colinwirt.github.io/audroam-outline-fold/examples/solar-system/) |
-| Teacher ↔ parent | […/examples/teacher-parent/](https://colinwirt.github.io/audroam-outline-fold/examples/teacher-parent/) |
-| Streetlamps | […/examples/streetlamps/](https://colinwirt.github.io/audroam-outline-fold/examples/streetlamps/) |
-| Potholes | […/examples/potholes/](https://colinwirt.github.io/audroam-outline-fold/examples/potholes/) |
-| Student study | […/examples/student-study/](https://colinwirt.github.io/audroam-outline-fold/examples/student-study/) |
-| Work notes | […/examples/work-notes/](https://colinwirt.github.io/audroam-outline-fold/examples/work-notes/) |
-| ISO/IEC 27001 study | […/examples/iso27001/](https://colinwirt.github.io/audroam-outline-fold/examples/iso27001/) |
-| SOC 2 study | […/examples/soc2/](https://colinwirt.github.io/audroam-outline-fold/examples/soc2/) |
-| PCI DSS study | […/examples/pci-dss/](https://colinwirt.github.io/audroam-outline-fold/examples/pci-dss/) |
-| NIST CSF study | […/examples/nist/](https://colinwirt.github.io/audroam-outline-fold/examples/nist/) |
-| AU gov cyber study | […/examples/aust-gov-cyber/](https://colinwirt.github.io/audroam-outline-fold/examples/aust-gov-cyber/) |
-| Fixtures (md paste) | […/examples/fixtures/](https://colinwirt.github.io/audroam-outline-fold/examples/fixtures/) |
+| Shared Outline \| Map viewer | […/examples/viewer/](https://colinwirt.github.io/audroam-outline-fold/examples/viewer/) |
+| Cafe ops | […/viewer/?doc=../outline-demo.md](https://colinwirt.github.io/audroam-outline-fold/examples/viewer/?doc=../outline-demo.md) |
+| Solar System (+ layout) | […/viewer/?doc=…/solar-system.md&layout=…](https://colinwirt.github.io/audroam-outline-fold/examples/viewer/?doc=../solar-system/solar-system.md&layout=../solar-system/solar-system.layout.json) |
+| Teacher ↔ parent | […/viewer/?doc=…/teacher-parent.md](https://colinwirt.github.io/audroam-outline-fold/examples/viewer/?doc=../teacher-parent/teacher-parent.md) |
+| Streetlamps | […/viewer/?doc=…/streetlamps.md](https://colinwirt.github.io/audroam-outline-fold/examples/viewer/?doc=../streetlamps/streetlamps.md) |
+| Potholes | […/viewer/?doc=…/potholes.md](https://colinwirt.github.io/audroam-outline-fold/examples/viewer/?doc=../potholes/potholes.md) |
+| Student study | […/viewer/?doc=…/student-study.md](https://colinwirt.github.io/audroam-outline-fold/examples/viewer/?doc=../student-study/student-study.md) |
+| Work notes | […/viewer/?doc=…/work-notes.md](https://colinwirt.github.io/audroam-outline-fold/examples/viewer/?doc=../work-notes/work-notes.md) |
+| ISO/IEC 27001 study | […/viewer/?doc=…/iso27001.md](https://colinwirt.github.io/audroam-outline-fold/examples/viewer/?doc=../iso27001/iso27001.md) |
+| SOC 2 study | […/viewer/?doc=…/soc2.md](https://colinwirt.github.io/audroam-outline-fold/examples/viewer/?doc=../soc2/soc2.md) |
+| PCI DSS study | […/viewer/?doc=…/pci-dss.md](https://colinwirt.github.io/audroam-outline-fold/examples/viewer/?doc=../pci-dss/pci-dss.md) |
+| NIST CSF study | […/viewer/?doc=…/nist.md](https://colinwirt.github.io/audroam-outline-fold/examples/viewer/?doc=../nist/nist.md) |
+| AU gov cyber study | […/viewer/?doc=…/aust-gov-cyber.md](https://colinwirt.github.io/audroam-outline-fold/examples/viewer/?doc=../aust-gov-cyber/aust-gov-cyber.md) |
+| Fixtures (md + viewer links) | […/examples/fixtures/](https://colinwirt.github.io/audroam-outline-fold/examples/fixtures/) |
 | React live parser | […/react-live/](https://colinwirt.github.io/audroam-outline-fold/react-live/) |
 | Cafe ops 2D map | […/examples/canvas-2d/](https://colinwirt.github.io/audroam-outline-fold/examples/canvas-2d/) |
 | Cafe ops 3D map | […/examples/3d/](https://colinwirt.github.io/audroam-outline-fold/examples/3d/) |
 
-Pages demos share one core under [`examples/_shared/`](./examples/_shared/): `parseDoc` → `createOutlineView` → `createMapView` (package owns `parse` / `toHtml` / `attachOutlineTree` / `toggleFold`).
+Shared core: [`examples/_shared/`](./examples/_shared/) — `parseDoc` → `createOutlineView` → `createMapView` (package owns `parse` / `toHtml` / `attachOutlineTree` / `toggleFold`). No per-page map forks.
 
 Wave-1 sealed demos ship `ct: PLACEHOLDER` (stub unlock N/A until `demo:seal`). Fiction / study banners stay in sources.
 

@@ -48,6 +48,7 @@ function renderNode(
     .join(' ');
 
   // Presentational fold chrome — treeitem owns expand/collapse for a11y.
+  // Fold column first so expanded parents don't leave a gap between icon and title.
   const foldBtn =
     node.id && hasKids
       ? `<button type="button" class="${p}-fold${collapsed ? '' : ` ${p}-fold-expanded`}" data-toggle-fold="${esc(node.id)}" data-testid="of-fold-${esc(node.id)}" tabindex="-1" aria-hidden="true">${collapsed ? esc(marker) : ''}</button>`
@@ -73,7 +74,7 @@ function renderNode(
     : '';
 
   return `<li role="treeitem" class="${p}-node${collapsed ? ` ${p}-collapsed` : ''}${locked ? ` ${p}-locked` : ''}" tabindex="-1" aria-level="${ariaLevel}"${ariaExpanded} ${dataAttrs}>
-  <div class="${p}-row">${icon}${foldBtn}<span class="${p}-title">${esc(node.title)}</span>${unlockBtn}</div>
+  <div class="${p}-row">${foldBtn}${icon}<span class="${p}-title">${esc(node.title)}</span>${unlockBtn}</div>
   ${body}${kids}
 </li>`;
 }

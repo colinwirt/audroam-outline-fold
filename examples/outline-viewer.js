@@ -1,7 +1,6 @@
 /**
- * Pages outline boot — config via window.OUTLINE_DEMO.
- * Uses shared core: parseDoc → createOutlineView (+ unlockStub).
- * No per-page parse/render logic.
+ * @deprecated Prefer examples/viewer/?doc=… (shared Outline | Map shell).
+ * Kept briefly for any lingering deep links; new work uses viewer/main.js.
  */
 import { loadDoc } from './_shared/parseDoc.js';
 import { createOutlineView } from './_shared/outlineView.js';

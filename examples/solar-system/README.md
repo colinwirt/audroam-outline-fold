@@ -1,24 +1,11 @@
-# Solar System — Outline | Map
+# Solar System
 
-Cleartext spatial Pages demo for `@audroam/outline-fold`.
+Pages demo for `@audroam/outline-fold`.
 
-Uses **shared core** (`examples/_shared/`):
+- Fixture: `solar-system.md` + `solar-system.layout.json`
+- Viewer: shared [`../viewer/`](../viewer/)?doc=../solar-system/solar-system.md&layout=../solar-system/solar-system.layout.json
+- Old `index.html` redirects here (stable Pages URL).
 
-- `parseDoc` / `loadDoc` → doc model
-- `createOutlineView` → cafe ARIA tree (`toHtml` + `attachOutlineTree`)
-- `createMapView` → iThoughts-inspired L→R pills + pan/zoom
-- `resolveLayout` → sidecar discovery
+Cleartext spatial demo — layout sidecar via `?layout=`.
 
-## Sidecar discovery
-
-1. Frontmatter `layoutSidecar:` pointer (wins if both exist)
-2. Sibling `*.layout.json` beside the `.md`
-
-## Files
-
-| File | Role |
-|------|------|
-| `index.html` | Page chrome |
-| `main.js` | Thin wire to shared core |
-| `solar-system.md` | Hero fixture (cleartext) |
-| `solar-system.layout.json` | Authored node positions |
+Fiction / study banners stay in the markdown. Do not invent secrets.
