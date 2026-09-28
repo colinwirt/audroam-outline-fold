@@ -80,18 +80,31 @@ kbd {
 }
 .of-row:hover { background: rgba(255,255,255,.03); }
 .of-fold {
-  flex: none; min-width: 44px; min-height: 44px; border: 0; background: transparent;
-  color: var(--accent); cursor: pointer; font: inherit;
+  flex: none; width: 44px; min-width: 44px; min-height: 44px; border: 0; background: transparent;
+  color: var(--accent); cursor: pointer; font: inherit; padding: 0;
   display: inline-flex; align-items: center; justify-content: center;
+}
+.of-fold-leaf {
+  visibility: hidden; pointer-events: none; cursor: default;
+}
+.of-chevron {
+  display: block; transition: transform .12s ease;
+}
+.of-fold-expanded .of-chevron {
+  transform: rotate(90deg);
 }
 .of-title { flex: 1; }
 .of-node[data-id^="cue"] .of-title,
 .of-cue .of-title { color: #b8e0c8; }
 .of-node[role="treeitem"]:focus { outline: none; }
-.of-node[role="treeitem"]:focus-visible .of-row {
+/* Child-only: avoid painting every nested .of-row when a parent treeitem is focused. */
+.of-node[role="treeitem"]:focus > .of-row {
+  background: rgba(108, 182, 255, .08);
+}
+.of-node[role="treeitem"]:focus-visible > .of-row {
   outline: 2px solid var(--accent); outline-offset: 2px;
 }
-.of-row svg { flex: none; opacity: .85; }
+.of-row > svg { flex: none; opacity: .85; }
 .of-unlock {
   flex: none; margin-left: .35rem; border: 1px solid var(--stroke);
   background: #1a2330; color: var(--accent); border-radius: 6px;

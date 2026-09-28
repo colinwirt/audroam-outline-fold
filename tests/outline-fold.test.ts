@@ -223,7 +223,7 @@ fold-:
 });
 
 describe('toHtml', () => {
-  it('emits (+) when collapsed foldable + locked chrome for private', () => {
+  it('emits chevron fold chrome + locked chrome for private; reserves leaf fold slot', () => {
     const doc = parse(`---
 fold-: secret
 ---
@@ -232,9 +232,12 @@ fold-: secret
 - Open node <id:open>
 `);
     const html = toHtml(doc);
-    expect(html).toContain('(+)');
+    // Visual fold is chevron SVG, not grammar "(+)" text
+    expect(html).not.toMatch(/of-fold[^>]*>\(\+\)</);
+    expect(html).toContain('class="of-chevron"');
     expect(html).toContain('data-id="secret"');
     expect(html).toContain('data-testid="of-fold-secret"');
+    expect(html).toContain('of-fold-leaf'); // leaf / open node reserves column
     expect(html).toContain('locked');
     expect(html).toContain('Unlock (MFA)');
     expect(html).toContain('Open node');

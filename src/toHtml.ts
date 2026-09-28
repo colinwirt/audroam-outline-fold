@@ -19,8 +19,6 @@ function renderNode(
 ): string {
   const p = opts.classPrefix;
   const collapsed = node.id ? isCollapsed(doc, node.id) : false;
-  const marker =
-    doc.frontmatter?.collapsedMarker ?? '(+)';
   const flags = node.flags ?? [];
   const locked =
     opts.lockedChrome &&
@@ -48,11 +46,13 @@ function renderNode(
     .join(' ');
 
   // Presentational fold chrome — treeitem owns expand/collapse for a11y.
-  // Fold column first so expanded parents don't leave a gap between icon and title.
+  // Always reserve the fold column so icon/title align for parents and leaves.
+  // Chevron (not grammar "(+)") — collapsed points right, expanded rotates down.
+  const chevron = `<svg class="${p}-chevron" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false"><path d="M9 6l6 6-6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
   const foldBtn =
     node.id && hasKids
-      ? `<button type="button" class="${p}-fold${collapsed ? '' : ` ${p}-fold-expanded`}" data-toggle-fold="${esc(node.id)}" data-testid="of-fold-${esc(node.id)}" tabindex="-1" aria-hidden="true">${collapsed ? esc(marker) : ''}</button>`
-      : '';
+      ? `<button type="button" class="${p}-fold${collapsed ? '' : ` ${p}-fold-expanded`}" data-toggle-fold="${esc(node.id)}" data-testid="of-fold-${esc(node.id)}" tabindex="-1" aria-hidden="true">${chevron}</button>`
+      : `<span class="${p}-fold ${p}-fold-leaf" aria-hidden="true"></span>`;
 
   const unlockBtn = locked
     ? flags.includes('encrypted')

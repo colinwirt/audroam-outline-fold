@@ -234,8 +234,9 @@ kbd {
 
 .of-fold {
   flex: none;
-  min-width: 1.6rem;
-  height: 1.25rem;
+  width: 44px;
+  min-width: 44px;
+  min-height: 44px;
   border: 0;
   background: transparent;
   color: var(--accent);
@@ -243,9 +244,40 @@ kbd {
   padding: 0;
   line-height: 1.2;
   font: inherit;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
-.of-row svg {
+.of-fold-leaf {
+  visibility: hidden;
+  pointer-events: none;
+  cursor: default;
+}
+
+.of-chevron {
+  display: block;
+  transition: transform 0.12s ease;
+}
+
+.of-fold-expanded .of-chevron {
+  transform: rotate(90deg);
+}
+
+.of-node[role="treeitem"]:focus {
+  outline: none;
+}
+
+.of-node[role="treeitem"]:focus > .of-row {
+  background: rgba(108, 182, 255, 0.08);
+}
+
+.of-node[role="treeitem"]:focus-visible > .of-row {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.of-row > svg {
   flex: none;
   margin-top: 0.15rem;
   opacity: 0.85;

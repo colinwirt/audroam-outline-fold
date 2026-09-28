@@ -51,6 +51,8 @@ fold-: child
     expect(html).toContain('role="group"');
     expect(html).toContain('data-testid="of-node-root"');
     expect(html).toContain('data-testid="of-fold-child"');
+    expect(html).toContain('class="of-chevron"');
+    expect(html).toContain('of-fold-leaf');
     // Collapsed children stay in the DOM
     expect(html).toContain('data-id="leaf"');
     // Leaves omit aria-expanded on their own tag
