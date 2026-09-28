@@ -3,7 +3,7 @@
  * Assemble site/ for GitHub Pages (and local preview).
  * Layout mirrors package paths so examples keep relative imports to ../dist or ../../dist.
  */
-import { cpSync, mkdirSync, rmSync, writeFileSync, existsSync } from 'node:fs';
+import { cpSync, mkdirSync, rmSync, writeFileSync, existsSync, readdirSync, statSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -25,9 +25,17 @@ mkdirSync(join(site, 'examples'), { recursive: true });
 
 cpSync(join(root, 'dist'), join(site, 'dist'), { recursive: true });
 cpSync(join(root, 'examples', 'outline-demo.html'), join(site, 'examples', 'outline-demo.html'));
-cpSync(join(root, 'examples', 'canvas-2d'), join(site, 'examples', 'canvas-2d'), { recursive: true });
-cpSync(join(root, 'examples', '3d'), join(site, 'examples', '3d'), { recursive: true });
-cpSync(join(root, 'examples', 'solar-system'), join(site, 'examples', 'solar-system'), { recursive: true });
+cpSync(join(root, 'examples', 'outline-viewer.js'), join(site, 'examples', 'outline-viewer.js'));
+
+// Copy every examples/* directory except react-live (built separately) and node_modules
+const examplesDir = join(root, 'examples');
+for (const name of readdirSync(examplesDir)) {
+  const full = join(examplesDir, name);
+  if (!statSync(full).isDirectory()) continue;
+  if (name === 'react-live') continue;
+  cpSync(full, join(site, 'examples', name), { recursive: true });
+}
+
 cpSync(reactDist, join(site, 'react-live'), { recursive: true });
 
 const indexHtml = `<!DOCTYPE html>
@@ -38,28 +46,56 @@ const indexHtml = `<!DOCTYPE html>
 <title>@audroam/outline-fold — demos</title>
 <style>
 :root{color-scheme:dark}
-body{font:16px/1.5 system-ui,sans-serif;max-width:40rem;margin:2.5rem auto;padding:0 1.25rem;background:#0f1419;color:#e7ecf1}
+body{font:16px/1.5 system-ui,sans-serif;max-width:44rem;margin:2.5rem auto;padding:0 1.25rem;background:#0f1419;color:#e7ecf1}
 h1{font-size:1.35rem;font-weight:600;margin:0 0 .35rem}
-.meta{color:#8b9bab;font-size:.9rem;margin:0 0 1.5rem}
-ul{padding-left:1.2rem}
-li{margin:.45rem 0}
+h2{font-size:1.05rem;font-weight:600;margin:1.6rem 0 .5rem;color:#cfe0ef}
+.meta{color:#8b9bab;font-size:.9rem;margin:0 0 1.25rem}
+ul{padding-left:1.2rem;margin:.35rem 0 0}
+li{margin:.4rem 0}
 a{color:#6cb6ff}
 code{font-size:.9em;background:#1a2330;padding:.1em .35em;border-radius:4px}
+.note{color:#8b9bab;font-size:.82rem;margin:.75rem 0 0}
 </style>
 </head>
 <body>
 <h1>@audroam/outline-fold</h1>
-<p class="meta">Pure TS outline language demos (cafe fiction + solar spatial). <a href="https://github.com/colinwirt/audroam-outline-fold">Source</a> · MIT</p>
+<p class="meta">Pure TS outline language demos (fiction + study maps). <a href="https://github.com/colinwirt/audroam-outline-fold">Source</a> · MIT</p>
+
+<h2>Core</h2>
 <ul>
-  <li><a href="examples/outline-demo.html">Cafe ops outline</a> — HTML + fold state</li>
+  <li><a href="examples/outline-demo.html">Cafe ops outline</a> — HTML + fold + real demo seal</li>
   <li><a href="examples/solar-system/">Solar System Outline | Map</a> — dual view, sidecar layout, pan/zoom</li>
   <li><a href="react-live/">React live parser</a> — textarea → parse / toHtml / toggleFold</li>
   <li><a href="examples/canvas-2d/">Cafe ops 2D map</a></li>
   <li><a href="examples/3d/">Cafe ops 3D map</a> (loads three.js from CDN)</li>
 </ul>
+
+<h2>Wave-1 handoffs (PLACEHOLDER sealed stub · unlock N/A)</h2>
+<ul>
+  <li><a href="examples/teacher-parent/">Teacher ↔ parent</a> — Vic need-to-know fiction</li>
+  <li><a href="examples/streetlamps/">Streetlamps</a> — pole lon/lat + CMMS-class URLs</li>
+  <li><a href="examples/potholes/">Potholes</a> — SSS-style ↔ CMMS loop</li>
+  <li><a href="examples/student-study/">Student study</a> — Cornell/outline tutor cues</li>
+  <li><a href="examples/work-notes/">Work notes</a> — async squad handoff + URLs</li>
+</ul>
+
+<h2>Compliance / study maps (cleartext-first)</h2>
+<ul>
+  <li><a href="examples/iso27001/">ISO/IEC 27001</a> — clauses 4–10 + Annex A themes</li>
+  <li><a href="examples/soc2/">SOC 2</a> — TSC CC1–CC9 + modules</li>
+  <li><a href="examples/pci-dss/">PCI DSS</a> — Req 1–12 families</li>
+  <li><a href="examples/nist/">NIST CSF</a> — core functions + 800-53 pointer</li>
+  <li><a href="examples/aust-gov-cyber/">AU gov cyber</a> — ISM / Essential Eight / PSPF-shaped</li>
+</ul>
+
+<h2>Fixtures (md for React-live paste)</h2>
+<ul>
+  <li><a href="examples/fixtures/">Fixture index</a> — solar-system, municipal-greece, earth-field, twins, wave-1, compliance…</li>
+</ul>
+<p class="note">Fiction banners stay in sources. Sealed demos with <code>ct: PLACEHOLDER</code> label stub unlock N/A. Not legal advice; no live secrets.</p>
 </body>
 </html>
 `;
 
 writeFileSync(join(site, 'index.html'), indexHtml);
-console.log('Wrote site/ (index, dist, examples, react-live)');
+console.log('Wrote site/ (index, dist, examples/*, react-live)');

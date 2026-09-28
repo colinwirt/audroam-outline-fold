@@ -1,0 +1,19 @@
+---
+collapsedMarker: "(+)"
+---
+- ☀️ Northside Solar Club · dusk session · 28 Sep · cleartext log <id:root>
+  - ⚠️ FICTION club night · no sealed packs · emoji/filter notes only <id:banner>
+  - Conditions <id:cond>
+    - Pad · -33.6901, 150.9012 · Bortle ~5 estimate <id:cond-site>
+    - Seeing fair · thin cirrus after 20:30 <id:cond-see>
+  - Targets <id:targets>
+    - Continuum sketch · active region label AR-demo-12 (fiction) <id:t-cont>
+    - H-α limb · NE prominence · morphology only <id:t-ha>
+    - Cue: why never point an unfiltered scope at the Sun? <id:t-cue1>
+  - Results <id:results>
+    - [x] Continuum sketch · 18:10 · seeing 3/5 <id:res-cont>
+    - [x] H-α limb check · 18:35 <id:res-ha>
+    - [ ] Stack burst · defer if cirrus thickens <id:res-stack>
+  - Gear checklist <id:gear>
+    - [x] White-light filter fitted before open <id:gear-filter>
+    - [x] Tracking within club tolerance <id:gear-track>

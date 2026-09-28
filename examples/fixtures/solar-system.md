@@ -1,0 +1,25 @@
+---
+collapsedMarker: "(+)"
+---
+- 🌌 Solar System · textbook fact tree · cleartext only <id:root>
+  - ⚠️ FICTION-FREE FACTS · emoji stand-ins (outline-fold has no image grammar yet) <id:banner>
+  - ☀️ Sun · star · ~1.99e30 kg · ~696000 km radius <id:sun>
+  - ☿️ Mercury · ~0.39 AU · 0 moons <id:mercury>
+  - ♀️ Venus · ~0.72 AU · 0 moons <id:venus>
+  - 🌍 Earth · ~1.00 AU · 1 moon <id:earth>
+    - 🌕 Moon · ~384000 km avg · tidally locked <id:moon>
+  - ♂️ Mars · ~1.52 AU · 2 moons <id:mars>
+    - 🪨 Phobos · inner · irregular <id:phobos>
+    - 🪨 Deimos · outer · irregular <id:deimos>
+  - 🪐 Jupiter · ~5.2 AU · many moons · show 4 Galilean <id:jupiter>
+    - 🌑 Io · volcanic <id:io>
+    - 🌑 Europa · ice shell <id:europa>
+    - 🌑 Ganymede · largest moon <id:ganymede>
+    - 🌑 Callisto · heavily cratered <id:callisto>
+  - 🪐 Saturn · ~9.5 AU · rings · Titan highlighted <id:saturn>
+    - 🌑 Titan · thick atmosphere <id:titan>
+  - 🧊 Uranus · ~19.2 AU · ice giant · tipped axis <id:uranus>
+  - 🧊 Neptune · ~30.1 AU · ice giant · Triton highlighted <id:neptune>
+    - 🌑 Triton · retrograde orbit <id:triton>
+  - Cue: which planet has the largest moon? <id:cue1>
+  - Cue: which terrestrial planet has no moons? name two <id:cue2>

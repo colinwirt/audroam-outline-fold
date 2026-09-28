@@ -1,0 +1,20 @@
+---
+collapsedMarker: "(+)"
+---
+- 🪨 Cedarvale Field Unit · earth science day log · 28 Sep · outcrop CV-EF-07 <id:root>
+  - ⚠️ FICTION · teaching outline · no real survey marks or sample custody secrets <id:banner>
+  - Site <id:site>
+    - Grid · -33.7124, 150.8940 · sandstone bench · strike/dip sketch on file <id:site-grid>
+    - Weather · clear · light SE wind · good photo light until 15:30 <id:site-wx>
+    - Access · public track · park gate 17:00 · stay behind tagged ledge <id:site-access>
+  - Observations <id:obs>
+    - Unit A · cross-bedded sandstone · medium grain · Fe staining on joints <id:obs-a>
+    - Unit B · siltstone lens · ~0.4 m · soft · bag EF07-B1 labelled <id:obs-b>
+    - Spring seep · do not drink · conductivity noted in field book <id:obs-water>
+    - Cue: what does cross-bedding imply about paleocurrent? <id:obs-cue1>
+    - Cue: why bag siltstone separate from sandstone? <id:obs-cue2>
+  - End of day <id:check>
+    - [x] Photo + scale bar on Unit A · 11:20 <id:check-photo>
+    - [ ] Cool-box bag EF07-B1 · label check <id:check-bag>
+    - [ ] Gate latched · radio checkout <id:check-gate>
+    - Summary: Unit A = traction current bedforms; Unit B = quieter settling lens <id:sum>

@@ -21,11 +21,24 @@ npx serve -l 4173 .   # then open the live demos below
 | Landing | [https://colinwirt.github.io/audroam-outline-fold/](https://colinwirt.github.io/audroam-outline-fold/) |
 | Cafe ops outline (HTML) | […/examples/outline-demo.html](https://colinwirt.github.io/audroam-outline-fold/examples/outline-demo.html) |
 | Solar System Outline \| Map | […/examples/solar-system/](https://colinwirt.github.io/audroam-outline-fold/examples/solar-system/) |
+| Teacher ↔ parent | […/examples/teacher-parent/](https://colinwirt.github.io/audroam-outline-fold/examples/teacher-parent/) |
+| Streetlamps | […/examples/streetlamps/](https://colinwirt.github.io/audroam-outline-fold/examples/streetlamps/) |
+| Potholes | […/examples/potholes/](https://colinwirt.github.io/audroam-outline-fold/examples/potholes/) |
+| Student study | […/examples/student-study/](https://colinwirt.github.io/audroam-outline-fold/examples/student-study/) |
+| Work notes | […/examples/work-notes/](https://colinwirt.github.io/audroam-outline-fold/examples/work-notes/) |
+| ISO/IEC 27001 study | […/examples/iso27001/](https://colinwirt.github.io/audroam-outline-fold/examples/iso27001/) |
+| SOC 2 study | […/examples/soc2/](https://colinwirt.github.io/audroam-outline-fold/examples/soc2/) |
+| PCI DSS study | […/examples/pci-dss/](https://colinwirt.github.io/audroam-outline-fold/examples/pci-dss/) |
+| NIST CSF study | […/examples/nist/](https://colinwirt.github.io/audroam-outline-fold/examples/nist/) |
+| AU gov cyber study | […/examples/aust-gov-cyber/](https://colinwirt.github.io/audroam-outline-fold/examples/aust-gov-cyber/) |
+| Fixtures (md paste) | […/examples/fixtures/](https://colinwirt.github.io/audroam-outline-fold/examples/fixtures/) |
 | React live parser | […/react-live/](https://colinwirt.github.io/audroam-outline-fold/react-live/) |
 | Cafe ops 2D map | […/examples/canvas-2d/](https://colinwirt.github.io/audroam-outline-fold/examples/canvas-2d/) |
 | Cafe ops 3D map | […/examples/3d/](https://colinwirt.github.io/audroam-outline-fold/examples/3d/) |
 
-Source outlines: [examples/outline-demo.md](./examples/outline-demo.md) · [examples/solar-system/solar-system.md](./examples/solar-system/solar-system.md) (+ [layout sidecar](./examples/solar-system/solar-system.layout.json)).
+Wave-1 sealed demos ship `ct: PLACEHOLDER` (stub unlock N/A until `demo:seal`). Fiction / study banners stay in sources.
+
+Source outlines: [examples/outline-demo.md](./examples/outline-demo.md) · [examples/solar-system/solar-system.md](./examples/solar-system/solar-system.md) (+ [layout sidecar](./examples/solar-system/solar-system.layout.json)) · [examples/fixtures/](./examples/fixtures/).
 
 ## Grammar (v0.2) — lean lines + trailer payloads
 

@@ -1,0 +1,37 @@
+---
+collapsedMarker: "(+)"
+---
+- 💳 PCI DSS · requirement families study map · demo · not a ROC / SAQ <id:root>
+  - ⚠️ FICTION / STUDY ONLY · public requirement-family titles · no live CHD · no real merchant gaps <id:banner>
+  - How to use <id:howto>
+    - Cleartext = Req 1–12 family captions + study cues <id:howto-clear>
+    - Cardholder data / account data never in captions — even fictional PANs <id:howto-no-pan>
+    - Sealed later (optional) = evidence / ASV / pentest packs — not in this fixture <id:howto-seal>
+  - Build and maintain secure networks and systems <id:net>
+    - Req 1 · Install and maintain network security controls <id:r1>
+    - Req 2 · Apply secure configurations to all system components <id:r2>
+    - Cue: NSC vs “default passwords” — why both families exist <id:net-cue>
+  - Protect account data <id:data>
+    - Req 3 · Protect stored account data <id:r3>
+    - Req 4 · Protect cardholder data with strong cryptography during transmission <id:r4>
+    - Cue: storage vs transit — different controls, same “don’t expose CHD” goal <id:data-cue>
+  - Maintain a vulnerability management program <id:vuln>
+    - Req 5 · Protect all systems and networks from malicious software <id:r5>
+    - Req 6 · Develop and maintain secure systems and software <id:r6>
+  - Implement strong access control measures <id:access>
+    - Req 7 · Restrict access to system components and cardholder data by business need to know <id:r7>
+    - Req 8 · Identify users and authenticate access to system components <id:r8>
+    - Req 9 · Restrict physical access to cardholder data <id:r9>
+    - Cue: need-to-know vs identity vs physical — three layers, one goal <id:access-cue>
+  - Regularly monitor and test networks <id:mon>
+    - Req 10 · Log and monitor all access to system components and cardholder data <id:r10>
+    - Req 11 · Test security of systems and networks regularly <id:r11>
+  - Maintain an information security policy <id:policy>
+    - Req 12 · Support information security with organizational policies and programs <id:r12>
+  - Scope reminder (study) <id:scope>
+    - CDE · people · processes · technologies that store / process / transmit account data or are connected <id:scope-cde>
+    - Segmentation · reduce scope — caption only; no live network diagrams here <id:scope-seg>
+    - SAQ vs ROC · self-assessment vs assessor report — pick by merchant level (study) <id:scope-saq>
+  - Study hygiene <id:hyg>
+    - Never paste PANs · track data · auth codes · or real ASV findings in cleartext demos <id:hyg-1>
+    - Family map in the clear · evidence packs locked later <id:hyg-2>

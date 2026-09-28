@@ -1,0 +1,38 @@
+---
+fold-: contractor-pack, integration-pack
+collapsedMarker: "(+)"
+---
+- 🛣️ Mairie fiction · Voirie nord · signalements · 29 sep matin <id:root>
+  - ⚠️ FICTION DEMO · Paris-shaped twin · pas d’assets réels · ct=PLACEHOLDER <id:banner>
+  - Canaux · app citoyen (DansMaRue-style) · GMAO / CMMS · retour statut <id:flow>
+  - Ouverts <id:open>
+    - Rue des Tilleuls · milieutrottoir · 48.8845, 2.3261 <id:fr-r1>
+      - Citoyen · https://example.invalid/signal/VN-2201 · P2 · photo · piste cyclable <id:fr-r1-url>
+      - Défaut: nid-de-poule · ~40 cm · ~5 cm · enrobé à froid si OK <id:fr-r1-fault>
+      - [ ] Inspection mercredi · secteur N3 <id:fr-r1-next>
+    - Avenue du Parc · entrée école · 48.8820, 2.3310 <id:fr-r2>
+      - Citoyen · https://example.invalid/signal/VN-2218 · P1 · flaque <id:fr-r2-url>
+      - [ ] Inspection jour même · balisage si bord cassé <kind:pending-approve> <id:fr-r2-next>
+  - Planifiés <id:sched>
+    - Quai fiction · sens est · 48.8795, 2.3188 <id:fr-s1>
+      - GMAO · https://example.invalid/cmms/OT-VN-990 · P1 · enrobé à chaud · 06h–09h <id:fr-s1-url>
+      - [ ] Patch mercredi · circulation alternée <kind:pending-approve> <id:fr-s1-job>
+  - Clos <id:done>
+    - Impasse des Saules · 48.8860, 2.3220 <id:fr-d1>
+      - Citoyen · https://example.invalid/signal/VN-2102 · clos · notifié <id:fr-d1-url>
+      - [x] Froid temporaire · suivi 14 j <id:fr-d1-done>
+  - Déverrouillage chef de service <id:secrets>
+    - Pack accès prestataire <private> <id:contractor-pack> (+)
+    - Pack intégration API <encrypted> <id:integration-pack> (+)
+
+--- payloads ---
+# PLACEHOLDER = not real ciphertext; host replaces via demo:seal
+contractor-pack:
+  kid: fr-contractor-1
+  alg: demo-aes-gcm
+  ct: PLACEHOLDER
+integration-pack:
+  kid: fr-api-1
+  alg: demo-aes-gcm
+  ct: PLACEHOLDER
+---

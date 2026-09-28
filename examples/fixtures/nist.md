@@ -1,0 +1,39 @@
+---
+collapsedMarker: "(+)"
+---
+- 🇺🇸 NIST · CSF core functions study tree · + 800-53 family pointer · demo <id:root>
+  - ⚠️ FICTION / STUDY ONLY · public CSF / 800-53 family names · no live FedRAMP / org profile gaps <id:banner>
+  - How to use <id:howto>
+    - Primary tree = CSF core functions (Govern + five ops functions) <id:howto-csf>
+    - 800-53 = companion catalogue pointer — not expanded control-by-control here <id:howto-853>
+    - Cleartext study map · sealed profiles / POA&M later (not in this fixture) <id:howto-seal>
+  - GV · Govern <id:gv>
+    - Organizational context · risk management strategy · roles · policy · oversight · cybersecurity supply chain (themes) <id:gv-themes>
+    - Cue: why CSF 2.0 elevated Govern — strategy sits above Protect/Detect loops <id:gv-cue>
+  - ID · Identify <id:id>
+    - Asset management · risk assessment · improvement (themes) <id:id-themes>
+    - Cue: you cannot protect what you have not inventoried <id:id-cue>
+  - PR · Protect <id:pr>
+    - Identity management / access · awareness · data security · platform security · technology infrastructure resilience (themes) <id:pr-themes>
+    - Cue: protect is preventive — which themes overlap Essential Eight? <id:pr-cue>
+  - DE · Detect <id:de>
+    - Continuous monitoring · adverse event analysis (themes) <id:de-themes>
+  - RS · Respond <id:rs>
+    - Incident management · analysis · mitigation · reporting (themes) <id:rs-themes>
+  - RC · Recover <id:rc>
+    - Incident recovery plan execution · communication (themes) <id:rc-themes>
+    - Cue: respond vs recover — containment vs restore services <id:rc-cue>
+  - Implementation tiers / profiles (caption study) <id:tiers>
+    - Tiers · Partial → Risk Informed → Repeatable → Adaptive (labels only) <id:tiers-list>
+    - Profiles · current vs target — org-specific; keep live profiles sealed later <id:tiers-prof>
+  - Companion · NIST SP 800-53 control families (pointer) <id:sp853>
+    - AC Access control · AU Audit / accountability · AT Awareness / training <id:sp-a>
+    - CM Configuration · CP Contingency · IA Identification / authentication <id:sp-b>
+    - IR Incident response · MA Maintenance · MP Media · PE Physical / environmental <id:sp-c>
+    - PL Planning · PM Program management · PS Personnel · PT PII processing <id:sp-d>
+    - RA Risk assessment · SA System / services acquisition · SC System / communications protection <id:sp-e>
+    - SI System / information integrity · SR Supply chain risk management <id:sp-f>
+    - Study note: map families ↔ CSF functions in class — do not dump baseline selections here <id:sp-note>
+  - Study hygiene <id:hyg>
+    - No live system inventories · no real POA&M rows · no FedRAMP package excerpts <id:hyg-1>
+    - Function map in the clear · org profiles locked later <id:hyg-2>
