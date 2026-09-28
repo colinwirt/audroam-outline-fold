@@ -12,6 +12,7 @@ import {
   findNode,
   isPlaceholderSealed,
 } from '../_shared/unlockStub.js';
+import { packageVersion, viewerBuild, gitShort } from './build-info.js';
 
 const params = new URLSearchParams(window.location.search);
 const docParam = params.get('doc') || params.get('md');
@@ -33,6 +34,20 @@ const docMeta = document.getElementById('docMeta');
 const btnZoomIn = document.getElementById('btnZoomIn');
 const btnZoomOut = document.getElementById('btnZoomOut');
 const btnResetView = document.getElementById('btnResetView');
+const buildMeta = document.getElementById('buildMeta');
+
+if (buildMeta) {
+  buildMeta.innerHTML =
+    '<span><strong>Package</strong> <code>@audroam/outline-fold@' +
+    packageVersion +
+    '</code></span>' +
+    '<span><strong>Viewer</strong> <code>' +
+    viewerBuild +
+    '</code></span>' +
+    '<span><strong>Git</strong> <code>' +
+    gitShort +
+    '</code></span>';
+}
 
 /** @type {import('../../dist/index.js').OutlineFoldDoc} */
 let doc;

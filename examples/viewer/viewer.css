@@ -22,6 +22,15 @@ body {
 }
 .shell { max-width: 1180px; margin: 0 auto; }
 .gold-rule { height: 2px; width: 40px; background: var(--gold); border-radius: 2px; margin-bottom: 12px; }
+.build-meta {
+  display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: baseline;
+  margin: 0 0 10px; padding: 5px 8px; border-radius: 8px;
+  border: 1px solid var(--stroke); background: #0a141c;
+  color: var(--muted); font-size: 11px; letter-spacing: .01em;
+}
+.build-meta span { white-space: nowrap; }
+.build-meta strong { color: #cfe0ef; font-weight: 600; margin-right: .25em; }
+.build-meta code { font-size: 11px; color: #9fd0ff; background: #13232c; padding: .05em .35em; border-radius: 4px; }
 h1 { font-size: 20px; font-weight: 650; margin: 0 0 6px; }
 .sub {
   color: var(--muted); font-size: 13px; margin: 0 0 12px; max-width: 78ch;

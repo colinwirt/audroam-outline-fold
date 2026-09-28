@@ -41,6 +41,8 @@ npx serve -l 4173 .   # then open the live demos below
 
 Shared core: [`examples/_shared/`](./examples/_shared/) — `parseDoc` → `createOutlineView` → `createMapView` (package owns `parse` / `toHtml` / `attachOutlineTree` / `toggleFold`). No per-page map forks.
 
+The viewer chrome shows **Package** / **Viewer** / **Git** build stamps (injected at site build). Hard-refresh (`Ctrl+Shift+R` / `Cmd+Shift+R`) or use a private window to bypass cache and confirm you have the latest Pages build.
+
 Wave-1 sealed demos ship `ct: PLACEHOLDER` (stub unlock N/A until `demo:seal`). Fiction / study banners stay in sources.
 
 Source outlines: [examples/outline-demo.md](./examples/outline-demo.md) · [examples/solar-system/solar-system.md](./examples/solar-system/solar-system.md) (+ [layout sidecar](./examples/solar-system/solar-system.layout.json)) · [examples/fixtures/](./examples/fixtures/).
