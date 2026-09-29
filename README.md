@@ -21,6 +21,7 @@ npx serve -l 4173 .   # then open the live demos below
 | Demo | Pages URL |
 |------|-----------|
 | Landing | [https://colinwirt.github.io/audroam-outline-fold/](https://colinwirt.github.io/audroam-outline-fold/) |
+| Demos index (Map) | […/examples/viewer/?doc=../demos-index/demos-index.md](https://colinwirt.github.io/audroam-outline-fold/examples/viewer/?doc=../demos-index/demos-index.md) |
 | Shared Outline \| Map viewer | […/examples/viewer/](https://colinwirt.github.io/audroam-outline-fold/examples/viewer/) |
 | Cafe ops | […/viewer/?doc=../outline-demo.md](https://colinwirt.github.io/audroam-outline-fold/examples/viewer/?doc=../outline-demo.md) |
 | Solar System (+ layout) | […/viewer/?doc=…/solar-system.md&layout=…](https://colinwirt.github.io/audroam-outline-fold/examples/viewer/?doc=../solar-system/solar-system.md&layout=../solar-system/solar-system.layout.json) |
@@ -262,6 +263,9 @@ const packed = autoPackPositions(doc, {
 | `autoPackPositions(doc, opts?)` | Deterministic L→R positions for the fold-visible tree |
 | `resolveMapFocus(doc, focusId, dir, opts?)` | Map L→R focus resolver (↑↓ siblings · → child · ← parent; no fold-on-arrow) |
 | `pillSize(label, opts?)` / `FOLD_SLOT` | Pill measure helpers (foldable end-cap always reserved; `FOLD_SLOT=34` for ≥8px circle air) |
+
+
+**Caption rich text (Outline):** `captionToHtml` turns markdown `![alt](url)` / `[label](url)` / bare `https://` into allowlisted `<img>` / `<a>` (https + safe relative; rejects `javascript:`/`data:`/`//`/etc). Inline SVG in captions is never emitted — pack icons stay via `kind` → `iconForNode` only. **Map pills** keep plain `shortLabel` (emoji works); Map does not render caption images yet.
 
 Layout sidecar discovery (`resolveLayout` / frontmatter `layoutSidecar:`) stays in [`examples/_shared/layoutSidecar.js`](./examples/_shared/layoutSidecar.js) — fetch-oriented Pages helper, not a package export. `examples/_shared/mapView.js` **re-exports** the package Map so existing demo imports keep working.
 

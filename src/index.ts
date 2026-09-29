@@ -16,6 +16,11 @@ export { serialize } from './serialize.js';
 export { toggleFold, isCollapsed, setExpandLevel, type ExpandLevel } from './fold.js';
 export { toHtml } from './toHtml.js';
 export {
+  captionToHtml,
+  isAllowedCaptionUrl,
+  parseHopTarget,
+} from './captionRich.js';
+export {
   attachOutlineTree,
   expandLevelAnnouncement,
   foldToggleAnnouncement,

@@ -1,4 +1,5 @@
 import { isCollapsed } from './fold.js';
+import { captionToHtml } from './captionRich.js';
 import { iconForNode } from './icons.js';
 import { hasSealed } from './sealed.js';
 import type { OutlineFoldDoc, OutlineNode, ToHtmlOptions } from './types.js';
@@ -74,7 +75,7 @@ function renderNode(
     : '';
 
   return `<li role="treeitem" class="${p}-node${collapsed ? ` ${p}-collapsed` : ''}${locked ? ` ${p}-locked` : ''}" tabindex="-1" aria-level="${ariaLevel}"${ariaExpanded} ${dataAttrs}>
-  <div class="${p}-row">${foldBtn}${icon}<span class="${p}-title">${esc(node.title)}</span>${unlockBtn}</div>
+  <div class="${p}-row">${foldBtn}${icon}<span class="${p}-title">${captionToHtml(node.title)}</span>${unlockBtn}</div>
   ${body}${kids}
 </li>`;
 }

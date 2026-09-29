@@ -103,6 +103,15 @@ kbd {
   transform: rotate(90deg);
 }
 .of-title { flex: 1; }
+.of-caption-img {
+  display: inline-block; vertical-align: middle;
+  max-height: 30px; max-width: 120px; width: auto; height: auto;
+  margin: 0 .2em; border-radius: 3px;
+}
+.of-title a { color: var(--accent, #6cb6ff); }
+.of-title a.of-hop { color: #9ecbff; text-decoration: underline dotted; }
+.of-title a.of-hop:hover { color: #cfe0ef; }
+
 .of-node[data-id^="cue"] .of-title,
 .of-cue .of-title { color: #b8e0c8; }
 .of-node[role="treeitem"]:focus { outline: none; }

@@ -232,6 +232,26 @@ kbd {
   flex: 1;
 }
 
+.of-caption-img {
+  display: inline-block;
+  vertical-align: middle;
+  max-height: 30px;
+  max-width: 120px;
+  width: auto;
+  height: auto;
+  margin: 0 0.2em;
+  border-radius: 3px;
+}
+
+.of-title a {
+  color: var(--accent, #6cb6ff);
+}
+
+.of-title a.of-hop {
+  color: #9ecbff;
+  text-decoration: underline dotted;
+}
+
 .of-fold {
   flex: none;
   width: 44px;

@@ -52,6 +52,7 @@ const indexHtml = `<!DOCTYPE html>
 body{font:16px/1.5 system-ui,sans-serif;max-width:44rem;margin:2.5rem auto;padding:0 1.25rem;background:#0f1419;color:#e7ecf1}
 h1{font-size:1.35rem;font-weight:600;margin:0 0 .35rem}
 h2{font-size:1.05rem;font-weight:600;margin:1.6rem 0 .5rem;color:#cfe0ef}
+h3{font-size:.95rem;font-weight:600;margin:1rem 0 .35rem;color:#a8b8c8}
 .meta{color:#8b9bab;font-size:.9rem;margin:0 0 1.25rem}
 ul{padding-left:1.2rem;margin:.35rem 0 0}
 li{margin:.4rem 0}
@@ -63,6 +64,12 @@ code{font-size:.9em;background:#1a2330;padding:.1em .35em;border-radius:4px}
 <body>
 <h1>@audroam/outline-fold</h1>
 <p class="meta">Pure TS outline language demos (fiction + study maps). <strong>One shared viewer</strong>: parse → outlineView → mapView. <a href="https://github.com/colinwirt/audroam-outline-fold">Source</a> · MIT</p>
+<p class="note">Field maps (streetlamps · potholes) live under Wave-1 / Index map.</p>
+
+<h2>Demos index (Map)</h2>
+<ul>
+  <li><a href="examples/viewer/?doc=../demos-index/demos-index.md"><strong>Demos index</strong></a> — emoji map of all boards · open any demo from one outline</li>
+</ul>
 
 <h2>Shared Outline | Map viewer</h2>
 <ul>
@@ -72,17 +79,21 @@ code{font-size:.9em;background:#1a2330;padding:.1em .35em;border-radius:4px}
 </ul>
 
 <h2>Wave-1 handoffs (PLACEHOLDER sealed stub · unlock N/A)</h2>
+<h3>Field / asset maps (transport-style)</h3>
 <ul>
-  <li><a href="examples/viewer/?doc=../teacher-parent/teacher-parent.md">Teacher ↔ parent</a> — Vic need-to-know fiction</li>
   <li><a href="examples/viewer/?doc=../streetlamps/streetlamps.md">Streetlamps</a> — pole lon/lat + CMMS-class URLs</li>
   <li><a href="examples/viewer/?doc=../potholes/potholes.md">Potholes</a> — SSS-style ↔ CMMS loop</li>
+</ul>
+<h3>People / study handoffs</h3>
+<ul>
+  <li><a href="examples/viewer/?doc=../teacher-parent/teacher-parent.md">Teacher ↔ parent</a> — Vic need-to-know fiction</li>
   <li><a href="examples/viewer/?doc=../student-study/student-study.md">Student study</a> — Cornell/outline tutor cues</li>
   <li><a href="examples/viewer/?doc=../work-notes/work-notes.md">Work notes</a> — async squad handoff + URLs</li>
 </ul>
 
 <h2>Compliance / study maps (cleartext-first)</h2>
 <ul>
-  <li><a href="examples/viewer/?doc=../iso27001/iso27001.md">ISO/IEC 27001</a> — clauses 4–10 + Annex A themes</li>
+  <li><a href="examples/viewer/?doc=../iso27001/iso27001.md">ISO/IEC 27001</a> — clauses 4–10 + Annex A 2022 (all 93 controls)</li>
   <li><a href="examples/viewer/?doc=../soc2/soc2.md">SOC 2</a> — TSC CC1–CC9 + modules</li>
   <li><a href="examples/viewer/?doc=../pci-dss/pci-dss.md">PCI DSS</a> — Req 1–12 families</li>
   <li><a href="examples/viewer/?doc=../nist/nist.md">NIST CSF</a> — core functions + 800-53 pointer</li>
