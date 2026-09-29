@@ -5,7 +5,7 @@
  * with leaf/sibling count. Recomputed on every paint so fold expand/collapse
  * reflows without overlap.
  *
- * Scrapbook (0.2.8+): multi-line wrap, task lead SVG, text click ≠ fold; label text selectable (0.2.10); pan clears selection (0.2.11); keyboard only when Map focused (0.2.12); rich caption breaks+HTML + focus-on-click + camera follow/clamp (0.2.13); proportion follow + cameraRecentre + edit ensure (0.2.14).
+ * Scrapbook (0.2.8+): multi-line wrap, task lead SVG, text click ≠ fold; label text selectable (0.2.10); pan clears selection (0.2.11); keyboard only when Map focused (0.2.12); rich caption breaks+HTML + focus-on-click + camera follow/clamp (0.2.13); proportion follow + cameraRecentre + edit ensure (0.2.14); focusId is-focused ring (0.2.15).
  * Sealed nodes: omitted until unlocked (no gray stubs) — caller filters doc if needed.
  */
 import {
@@ -248,6 +248,32 @@ export { DEFAULT_WRAP_CH, DEFAULT_MAX_LINES, SOFT_SAFETY_MAX_LINES, SOFT_SAFETY_
  * Measure pill dimensions; optionally reserve fold chrome end-cap and task lead.
  * Multi-line: wrapCh default 32; maxLines omit/null = full body (soft safety only).
  */
+
+/**
+ * Map pill `<g>` class list. `is-focused` is driven by selection focusId (not
+ * only DOM :focus-visible) so click/arrow selection always shows the accent ring.
+ */
+export function mapNodeClassNames(opts: {
+  foldable?: boolean;
+  collapsed?: boolean;
+  cue?: boolean;
+  task?: TaskState | null;
+  bodyExpanded?: boolean;
+  focused?: boolean;
+}): string {
+  return [
+    'map-node',
+    opts.foldable ? '' : 'leaf',
+    opts.collapsed ? 'collapsed' : '',
+    opts.cue ? 'cue' : '',
+    opts.task === 'done' ? 'task-done' : opts.task ? 'task-open' : '',
+    opts.bodyExpanded ? 'body-expanded' : '',
+    opts.focused ? 'is-focused' : '',
+  ]
+    .filter(Boolean)
+    .join(' ');
+}
+
 export function pillSize(label: string, opts: PillSizeOptions = {}): PillSize {
   const measured = measurePill(label, {
     wrapCh: opts.wrapCh ?? DEFAULT_WRAP_CH,
@@ -1273,16 +1299,15 @@ export function createMapView(
           const textX = textLeft + textW / 2;
           const affordance = showMore || showLess ? MORE_AFFORDANCE_H : 0;
           const textCentreY = pos.y - affordance / 2;
-          const cls = [
-            'map-node',
-            foldable ? '' : 'leaf',
-            col ? 'collapsed' : '',
-            cue ? 'cue' : '',
-            task === 'done' ? 'task-done' : task ? 'task-open' : '',
-            bodyExpanded ? 'body-expanded' : '',
-          ]
-            .filter(Boolean)
-            .join(' ');
+          const focused = n.id === focusId;
+          const cls = mapNodeClassNames({
+            foldable,
+            collapsed: col,
+            cue,
+            task,
+            bodyExpanded,
+            focused,
+          });
           const foldHit = foldable
             ? `<rect class="map-fold-hit" x="${x + taskLead + textW}" y="${y}" width="${foldSlot}" height="${h}" fill="transparent" cursor="pointer"/>`
             : '';
@@ -1315,8 +1340,8 @@ export function createMapView(
             <text text-anchor="middle" y="3" fill="#C9A227" font-size="10">Thread</text>
           </g>`
             : '';
-          return `<g class="${cls}" data-id="${esc(n.id!)}" tabindex="${n.id === focusId ? 0 : -1}"
-      role="button" aria-label="${esc(label)}${task != null ? (task === 'done' ? ', task done' : ', task open') : ''}${foldable ? (col ? ', collapsed' : ', expanded') : ''}${showMore ? ', more text available' : ''}${showLess ? ', showing full body' : ''}"
+          return `<g class="${cls}" data-id="${esc(n.id!)}" tabindex="${focused ? 0 : -1}"
+      role="button" aria-current="${focused ? 'true' : 'false'}" aria-label="${esc(label)}${task != null ? (task === 'done' ? ', task done' : ', task open') : ''}${foldable ? (col ? ', collapsed' : ', expanded') : ''}${showMore ? ', more text available' : ''}${showLess ? ', showing full body' : ''}"
       ${foldable ? `aria-expanded="${col ? 'false' : 'true'}"` : ''}>
       <title>${esc(tip)}</title>
       <rect class="map-pill" x="${x}" y="${y}" width="${w}" height="${h}" rx="18" ry="18"/>

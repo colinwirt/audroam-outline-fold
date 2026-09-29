@@ -11,6 +11,14 @@ plus `<br>`/`<nr>` before wrap/measure/paint (Map) and `captionToHtml` (Outline)
 SVG multi-`tspan` paint path was already fine once wrap saw real LFs.
 
 
+### Map selection focus ring (focusId → `is-focused`)
+
+Click/arrow selection sets `focusId` and keyboard works, but the pill ring used
+`:focus-visible` only — mouse click and programmatic `focus()` after paint did not
+paint the accent stroke. Paint now adds `is-focused` (+ `aria-current`) from
+`focusId`; demo CSS styles `.map-node.is-focused .map-pill` (accent ring). Collapsed
+gold stroke yields to the focus accent when selected.
+
 ## 0.2.14 — 2026-09-29
 
 ### Map camera follow — proportion + disableable recentre + edit ensure

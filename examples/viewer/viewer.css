@@ -162,6 +162,8 @@ kbd {
 .map-node.cue .map-pill { fill: var(--cue); stroke: #6fa88a; }
 .map-node.collapsed .map-pill { stroke: var(--gold); stroke-width: 2.25; }
 .map-node:focus { outline: none; }
+/* Selection chrome from focusId (click/arrows) — not only :focus-visible */
+.map-node.is-focused .map-pill,
 .map-node:focus-visible .map-pill {
   stroke: var(--accent); stroke-width: 2.5;
 }

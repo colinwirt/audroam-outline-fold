@@ -65,6 +65,7 @@ export {
   createMapView,
   autoPackPositions,
   pillSize,
+  mapNodeClassNames,
   FOLD_SLOT,
   resolveMapFocus,
   mapNodeKeepsTextSelection,

@@ -27,6 +27,7 @@ import {
   clearSelectionForMapPan,
   mapPaintShouldRestoreFocus,
   mapKeyboardShouldHandle,
+  mapNodeClassNames,
 } from '../src/index.js';
 
 describe('scrapbook wrap (~30 + more/less)', () => {
@@ -412,5 +413,30 @@ describe('map keyboard focus contract (0.2.13)', () => {
     const host = { contains: (n: Node | null) => n === inside };
     expect(mapPaintShouldRestoreFocus(host, editor)).toBe(false);
     expect(mapPaintShouldRestoreFocus(host, inside)).toBe(true);
+  });
+});
+
+describe('map selection chrome is-focused (0.2.15)', () => {
+  it('adds is-focused when focused; keeps collapsed/cue/leaf flags', () => {
+    expect(mapNodeClassNames({ foldable: true, focused: true })).toBe(
+      'map-node is-focused',
+    );
+    expect(mapNodeClassNames({ foldable: false, focused: false })).toBe(
+      'map-node leaf',
+    );
+    expect(
+      mapNodeClassNames({
+        foldable: true,
+        collapsed: true,
+        cue: true,
+        focused: true,
+      }),
+    ).toBe('map-node collapsed cue is-focused');
+    expect(mapNodeClassNames({ foldable: true, task: 'done' })).toContain(
+      'task-done',
+    );
+    expect(mapNodeClassNames({ foldable: true, focused: false })).not.toContain(
+      'is-focused',
+    );
   });
 });

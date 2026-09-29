@@ -541,6 +541,8 @@ kbd {
 .preview-pane .map-node:focus {
   outline: none;
 }
+/* Selection chrome from focusId (click/arrows) — not only :focus-visible */
+.preview-pane .map-node.is-focused .map-pill,
 .preview-pane .map-node:focus-visible .map-pill {
   stroke: var(--accent);
   stroke-width: 2.5;
