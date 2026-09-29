@@ -5,7 +5,7 @@
  * with leaf/sibling count. Recomputed on every paint so fold expand/collapse
  * reflows without overlap.
  *
- * Scrapbook (0.2.8+): multi-line wrap, task lead SVG, text click ≠ fold; label text selectable (0.2.10); pan clears selection (0.2.11); keyboard only when Map focused (0.2.12); rich caption breaks+HTML + focus-on-click + camera follow/clamp (0.2.13).
+ * Scrapbook (0.2.8+): multi-line wrap, task lead SVG, text click ≠ fold; label text selectable (0.2.10); pan clears selection (0.2.11); keyboard only when Map focused (0.2.12); rich caption breaks+HTML + focus-on-click + camera follow/clamp (0.2.13); proportion follow + cameraRecentre + edit ensure (0.2.14).
  * Sealed nodes: omitted until unlocked (no gray stubs) — caller filters doc if needed.
  */
 import {
@@ -43,12 +43,16 @@ import {
   minKForContent,
   camToEnsureVisible,
   camToFrameRects,
+  followActionForFocus,
+  followActionForExpand,
   pillWorldRect,
   unionWorldRects,
   lerpCam,
   easeOutCubic,
   DEFAULT_FOLLOW_EASE_MS,
   DEFAULT_CAM_PADDING_PX,
+  DEFAULT_KEEP_VISIBLE_FRAC,
+  DEFAULT_RECENTRE_FRAC,
   type CamState,
   type WorldRect,
 } from './mapCamera.js';
@@ -140,6 +144,19 @@ export interface MapViewOptions {
   onAction?: (ev: { id: string; action: string; node: OutlineNode }) => void;
   /** Optional: thread chip navigate (`<thread:…>`). */
   onThread?: (ev: { id: string; thread: string; node: OutlineNode }) => void;
+  /**
+   * When true (default), expand/focus may recentre the group.
+   * When false, only gentle ensure-visible runs (edit ensure still on).
+   * Boolean or live getter.
+   */
+  cameraRecentre?: boolean | (() => boolean);
+  /**
+   * Edit mode: when true, always gentle-ensure the edit node (+ optional region)
+   * stays visible — even if cameraRecentre is off. Prefer ensure over recentre.
+   */
+  isEditing?: () => boolean;
+  /** Optional world rect for caret/typing region while editing (else focus pill). */
+  getEditRegion?: () => WorldRect | null | undefined;
 }
 
 export interface MapKeyboardWire {
@@ -160,6 +177,8 @@ export interface MapViewHandle {
   bindKeyboard: (wire?: MapKeyboardWire) => void;
   visibleList: (nodes?: OutlineNode[], out?: OutlineNode[]) => OutlineNode[];
   findNode: (nodes: OutlineNode[], id: string) => OutlineNode | null;
+  /** Gentle ensure edit node / caret region visible (host may call while typing). */
+  ensureEditVisible: () => void;
 }
 
 function walkNodes(
@@ -617,7 +636,16 @@ export function createMapView(
     onTaskToggle,
     onAction,
     onThread,
+    cameraRecentre: cameraRecentreOpt = true,
+    isEditing = () => false,
+    getEditRegion,
   } = opts;
+
+  function recentreEnabled(): boolean {
+    return typeof cameraRecentreOpt === 'function'
+      ? !!cameraRecentreOpt()
+      : cameraRecentreOpt !== false;
+  }
 
   if (!host.hasAttribute('tabindex')) host.setAttribute('tabindex', '-1');
 
@@ -632,6 +660,7 @@ export function createMapView(
   type PendingFollow =
     | { kind: 'focus' }
     | { kind: 'expand'; focusId: string }
+    | { kind: 'edit' }
     | null;
   let pendingFollow: PendingFollow = null;
 
@@ -744,44 +773,117 @@ export function createMapView(
     };
   }
 
+  function collectExpandKids(
+    focusId: string | undefined,
+    focusRect: WorldRect,
+    byId: Map<string, WorldRect>,
+  ): { group: WorldRect[]; kids: WorldRect[] } {
+    const group: WorldRect[] = [focusRect];
+    const kids: WorldRect[] = [];
+    if (!focusId) return { group, kids };
+    const doc = getDoc();
+    const focusNode = findNode(doc.nodes, focusId);
+    if (focusNode?.children && !isCollapsed(doc, focusId)) {
+      for (const c of focusNode.children) {
+        if (c.id && byId.has(c.id)) {
+          const r = byId.get(c.id)!;
+          group.push(r);
+          kids.push(r);
+        }
+      }
+    }
+    return { group, kids };
+  }
+
   function runPendingFollow(): void {
     const pending = pendingFollow;
     pendingFollow = null;
     if (!pending || userCamGesture) return;
     const vp = hostViewport();
     const { byId } = collectVisiblePillRects();
-    const focusId = pending.kind === 'expand' ? pending.focusId : getFocusId();
-    const focusRect = focusId ? byId.get(focusId) : undefined;
-    if (!focusRect) return;
+    const recentre = recentreEnabled();
+    const followOpts = {
+      keepFrac: DEFAULT_KEEP_VISIBLE_FRAC,
+      recentreFrac: DEFAULT_RECENTRE_FRAC,
+      recentre,
+    };
 
-    if (pending.kind === 'focus') {
-      const target = camToEnsureVisible(cam, vp, focusRect, {
+    if (pending.kind === 'edit') {
+      const focusId = getFocusId();
+      const region =
+        (typeof getEditRegion === 'function' ? getEditRegion() : null) ||
+        (focusId ? byId.get(focusId) : undefined);
+      if (!region) return;
+      const target = camToEnsureVisible(cam, vp, region, {
         paddingPx: DEFAULT_CAM_PADDING_PX,
         minK: CAM_MIN,
         maxK: CAM_MAX,
+        force: true,
       });
       easeCamTo(target);
       return;
     }
 
-    // expand: frame focus + visible children (one level)
-    const doc = getDoc();
-    const focusNode = findNode(doc.nodes, focusId);
-    const group: WorldRect[] = [focusRect];
-    if (focusNode?.children && focusId && !isCollapsed(doc, focusId)) {
-      for (const c of focusNode.children) {
-        if (c.id && byId.has(c.id)) group.push(byId.get(c.id)!);
+    const focusId = pending.kind === 'expand' ? pending.focusId : getFocusId();
+    const focusRect = focusId ? byId.get(focusId) : undefined;
+    if (!focusRect) return;
+
+    if (pending.kind === 'focus') {
+      const action = followActionForFocus(cam, vp, focusRect, followOpts);
+      if (action === 'noop') return;
+      if (action === 'recentre') {
+        easeCamTo(
+          camToFrameRects(cam, vp, [focusRect], {
+            paddingPx: DEFAULT_CAM_PADDING_PX,
+            focus: focusRect,
+            focusBias: 1,
+            minK: CAM_MIN,
+            maxK: CAM_MAX,
+            allowZoomOut: true,
+          }),
+        );
+        return;
       }
+      easeCamTo(
+        camToEnsureVisible(cam, vp, focusRect, {
+          paddingPx: DEFAULT_CAM_PADDING_PX,
+          minK: CAM_MIN,
+          maxK: CAM_MAX,
+        }),
+      );
+      return;
     }
-    const target = camToFrameRects(cam, vp, group, {
-      paddingPx: DEFAULT_CAM_PADDING_PX,
-      focus: focusRect,
-      focusBias: 0.6,
-      minK: CAM_MIN,
-      maxK: CAM_MAX,
-      allowZoomOut: true,
-    });
-    easeCamTo(target);
+
+    // expand: recentre hint when kids mostly off-screen (if recentre on)
+    const { group, kids } = collectExpandKids(focusId, focusRect, byId);
+    const action = followActionForExpand(cam, vp, focusRect, kids, followOpts);
+    if (action === 'noop') return;
+    if (action === 'recentre') {
+      easeCamTo(
+        camToFrameRects(cam, vp, group, {
+          paddingPx: DEFAULT_CAM_PADDING_PX,
+          focus: focusRect,
+          focusBias: 0.6,
+          minK: CAM_MIN,
+          maxK: CAM_MAX,
+          allowZoomOut: true,
+        }),
+      );
+      return;
+    }
+    easeCamTo(
+      camToEnsureVisible(cam, vp, focusRect, {
+        paddingPx: DEFAULT_CAM_PADDING_PX,
+        minK: CAM_MIN,
+        maxK: CAM_MAX,
+      }),
+    );
+  }
+
+  function ensureEditVisible(): void {
+    if (userCamGesture) return;
+    pendingFollow = { kind: 'edit' };
+    runPendingFollow();
   }
 
 
@@ -1345,9 +1447,12 @@ export function createMapView(
       focused.focus({ preventScroll: true });
     }
 
-    // Camera follow after layout settles (focus / expand). Resume-on-load
+    // Camera follow after layout settles (focus / expand / edit). Resume-on-load
     // leaves pendingFollow null so camera stays as restored until user acts.
     if (isActive()) {
+      if (!pendingFollow && isEditing()) {
+        pendingFollow = { kind: 'edit' };
+      }
       const hadFollow = !!pendingFollow;
       runPendingFollow();
       if (!hadFollow) {
@@ -1562,6 +1667,7 @@ export function createMapView(
     bindKeyboard,
     visibleList,
     findNode,
+    ensureEditVisible,
   };
 }
 

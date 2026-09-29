@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.2.14 — 2026-09-29
+
+### Map camera follow — proportion + disableable recentre + edit ensure
+
+Design amend #2 (Colin): replace binary fully-off and comfort-inset aggressive follow.
+
+- **Visible fraction** of focus pill: ≥ **~0.6** keep → no-op; below → gentle **ensure-visible**; **recentre** when `cameraRecentre` on and fraction **≲ 0.25** (or expand kids mostly off-screen)
+- **`cameraRecentre`** option (default **on**): off disables group recentre; ensure-visible for focus still runs
+- **Edit mode** (`isEditing` / `getEditRegion` / `ensureEditVisible()`): always gentle-ensure edit node + caret region — even when recentre off
+- **Expand hint:** with recentre on, kids mostly off-screen → frame focus + new kids (~60% bias)
+- Kept: viewport clamp; manual pan wins until next follow trigger; resume camera on load unchanged
+- Helpers: `visibleFractionOfRect`, `followActionForFocus`, `followActionForExpand`
+
 ## 0.2.13 — 2026-09-29
 
 ### Map / Outline caption rich newlines + tiny HTML

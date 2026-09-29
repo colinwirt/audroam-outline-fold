@@ -1,6 +1,11 @@
 /**
- * Map camera: viewport guard (clamp) + follow focus/expand framing (0.2.13).
+ * Map camera: viewport guard (clamp) + proportion follow focus/expand (0.2.14).
  * World space = layout/auto-pack coords; screen = world * k + cam.
+ *
+ * Follow uses visible fraction of focus (not binary fully-off):
+ *   ≥ keep (~0.6) → no-op
+ *   below keep → ensure-visible (gentle)
+ *   recentre when cameraRecentre on AND (expand kids hint OR fraction ≲ 0.25)
  */
 
 export interface CamState {
@@ -24,8 +29,14 @@ export interface WorldRect {
 
 export const DEFAULT_CAM_PADDING_PX = 56;
 export const DEFAULT_FOLLOW_EASE_MS = 280;
-/** Focus must sit this far inside the viewport to skip follow-pan. */
+/** Legacy comfort inset (fully-inside check); prefer visible-fraction APIs. */
 export const COMFORT_INSET_PX = 36;
+/** Visible fraction ≥ this → leave camera alone. */
+export const DEFAULT_KEEP_VISIBLE_FRAC = 0.6;
+/** Visible fraction ≤ this (with recentre on) → full recentre. */
+export const DEFAULT_RECENTRE_FRAC = 0.25;
+
+export type FollowAction = 'noop' | 'ensure' | 'recentre';
 
 export function pillWorldRect(
   cx: number,
@@ -67,8 +78,31 @@ export function worldRectToScreen(
 }
 
 /**
+ * Visible fraction of a world rect inside the viewport (area ∩ / area).
+ * Returns 0 when fully off-screen or zero-area; 1 when fully on-screen.
+ */
+export function visibleFractionOfRect(
+  cam: CamState,
+  viewport: ViewportSize,
+  rect: WorldRect,
+): number {
+  const sw = rect.w * cam.k;
+  const sh = rect.h * cam.k;
+  const area = sw * sh;
+  if (!(area > 0) || !Number.isFinite(area)) return 0;
+  const s = worldRectToScreen(rect, cam);
+  const iLeft = Math.max(0, s.left);
+  const iTop = Math.max(0, s.top);
+  const iRight = Math.min(viewport.w, s.right);
+  const iBottom = Math.min(viewport.h, s.bottom);
+  const iw = iRight - iLeft;
+  const ih = iBottom - iTop;
+  if (iw <= 0 || ih <= 0) return 0;
+  return Math.max(0, Math.min(1, (iw * ih) / area));
+}
+
+/**
  * True when the rect is fully (or nearly) inside the viewport with comfort inset.
- * Used to skip follow when focus is already comfortable.
  */
 export function isRectComfortablyVisible(
   cam: CamState,
@@ -84,6 +118,85 @@ export function isRectComfortablyVisible(
     s.right <= viewport.w - inset &&
     s.bottom <= viewport.h - inset
   );
+}
+
+/** True when world rect has any non-empty intersection with the viewport. */
+export function isRectIntersectingViewport(
+  cam: CamState,
+  viewport: ViewportSize,
+  rect: WorldRect,
+): boolean {
+  return visibleFractionOfRect(cam, viewport, rect) > 0;
+}
+
+/** Completely invisible: bbox ∩ viewport = ∅. */
+export function isRectFullyInvisible(
+  cam: CamState,
+  viewport: ViewportSize,
+  rect: WorldRect,
+): boolean {
+  return visibleFractionOfRect(cam, viewport, rect) <= 0;
+}
+
+/**
+ * Decide follow action for a focus change (click / arrows / hop).
+ * recentre=false → never returns 'recentre' (ensure still runs below keep).
+ */
+export function followActionForFocus(
+  cam: CamState,
+  viewport: ViewportSize,
+  focus: WorldRect,
+  opts: {
+    keepFrac?: number;
+    recentreFrac?: number;
+    recentre?: boolean;
+  } = {},
+): FollowAction {
+  const keep = opts.keepFrac ?? DEFAULT_KEEP_VISIBLE_FRAC;
+  const recentreAt = opts.recentreFrac ?? DEFAULT_RECENTRE_FRAC;
+  const recentre = opts.recentre !== false;
+  const frac = visibleFractionOfRect(cam, viewport, focus);
+  if (frac >= keep) return 'noop';
+  if (recentre && frac <= recentreAt) return 'recentre';
+  return 'ensure';
+}
+
+/**
+ * Decide follow action after expand / digits pack.
+ * Recentre hint when recentre on and new kids (or focus) mostly off-screen.
+ * When recentre off: ensure focus only if below keep.
+ */
+export function followActionForExpand(
+  cam: CamState,
+  viewport: ViewportSize,
+  focus: WorldRect,
+  newKids: WorldRect[],
+  opts: {
+    keepFrac?: number;
+    recentreFrac?: number;
+    recentre?: boolean;
+  } = {},
+): FollowAction {
+  const keep = opts.keepFrac ?? DEFAULT_KEEP_VISIBLE_FRAC;
+  const recentreAt = opts.recentreFrac ?? DEFAULT_RECENTRE_FRAC;
+  const recentre = opts.recentre !== false;
+  const focusFrac = visibleFractionOfRect(cam, viewport, focus);
+
+  if (recentre) {
+    let kidsFrac = 1;
+    if (newKids.length) {
+      const kidsUnion = unionWorldRects(newKids);
+      kidsFrac = kidsUnion
+        ? visibleFractionOfRect(cam, viewport, kidsUnion)
+        : 1;
+    }
+    // Expand hint: kids mostly off-screen, or focus very low → recentre group
+    if (newKids.length && kidsFrac <= recentreAt) return 'recentre';
+    if (focusFrac <= recentreAt) return 'recentre';
+  }
+
+  if (focusFrac >= keep) return 'noop';
+  return 'ensure';
 }
 
 /**
@@ -103,21 +216,15 @@ export function clampCamToContent(
   const pad = opts.paddingPx ?? DEFAULT_CAM_PADDING_PX;
   const minK = opts.minK ?? 0.35;
   const maxK = opts.maxK ?? 3.5;
-  // Pan-only clamp — do not force zoom-in on small content (that fights follow framing).
-  // Hard min/max k only; soft "don't shrink to a speck" is enforced in zoom-out callers.
   let k = Math.max(minK, Math.min(maxK, cam.k || 1));
   let x = cam.x;
   let y = cam.y;
 
-  // Intersection of viewport with content screen-rect must stay non-empty
-  // with `pad` margin (content edge must cross into the padded viewport).
   const cLeft = content.x * k;
   const cRight = (content.x + content.w) * k;
   const cTop = content.y * k;
   const cBottom = (content.y + content.h) * k;
 
-  // left < vw - pad  ⇒  cLeft + x < vw - pad  ⇒  x < vw - pad - cLeft
-  // right > pad      ⇒  cRight + x > pad      ⇒  x > pad - cRight
   const maxX = viewport.w - pad - cLeft;
   const minX = pad - cRight;
   const maxY = viewport.h - pad - cTop;
@@ -126,7 +233,6 @@ export function clampCamToContent(
   if (minX <= maxX) {
     x = Math.min(maxX, Math.max(minX, x));
   } else {
-    // Content wider than viewport (minus pads): centre on content
     x = (viewport.w - (cLeft + cRight)) / 2;
   }
   if (minY <= maxY) {
@@ -139,7 +245,7 @@ export function clampCamToContent(
 }
 
 /**
- * Target camera that frames `rects` with padding.
+ * Target camera that frames `rects` with padding (recentre).
  * Centroid bias: when `focus` is set, blend group centre toward focus (default 0.6).
  * Modest zoom-out only — never zooms in past current k (pan-first).
  */
@@ -179,25 +285,18 @@ export function camToFrameRects(
 
   let k = cam.k;
   if (allowZoomOut) {
-    const needW = group.w + (2 * pad) / Math.max(k, 0.01);
-    const needH = group.h + (2 * pad) / Math.max(k, 0.01);
-    // Iterate once with screen padding in world units ≈ pad/k
     const fit = Math.min(
       viewport.w / Math.max(1, group.w + (2 * pad) / k),
       viewport.h / Math.max(1, group.h + (2 * pad) / k),
     );
     if (Number.isFinite(fit) && fit > 0 && fit < k) {
-      // Modest zoom-out only (don't go below 70% of fit or minK)
       k = Math.max(minK, Math.min(k, Math.max(fit * 0.92, fit)));
     }
-    void needW;
-    void needH;
   }
   k = Math.max(minK, Math.min(maxK, k));
 
-  // Centre target point in viewport
-  let x = viewport.w / 2 - tx * k;
-  let y = viewport.h / 2 - ty * k;
+  const x = viewport.w / 2 - tx * k;
+  const y = viewport.h / 2 - ty * k;
 
   return clampCamToContent({ x, y, k }, viewport, group, {
     paddingPx: pad,
@@ -207,7 +306,9 @@ export function camToFrameRects(
 }
 
 /**
- * Ensure a single focus rect is visible: no-op if comfortable; else frame it.
+ * Gentle ensure-visible: minimum pan (and modest zoom-out if needed) so `rect`
+ * sits inside the viewport with padding. Does not centre unless required.
+ * No-op when visible fraction ≥ keep threshold (default 0.6).
  */
 export function camToEnsureVisible(
   cam: CamState,
@@ -216,21 +317,54 @@ export function camToEnsureVisible(
   opts: {
     paddingPx?: number;
     insetPx?: number;
+    keepFrac?: number;
     minK?: number;
     maxK?: number;
+    /** When true, always nudge even if above keep (edit mode). Default false. */
+    force?: boolean;
   } = {},
 ): CamState {
-  if (isRectComfortablyVisible(cam, viewport, focus, { insetPx: opts.insetPx })) {
+  const keep = opts.keepFrac ?? DEFAULT_KEEP_VISIBLE_FRAC;
+  const pad = opts.paddingPx ?? opts.insetPx ?? DEFAULT_CAM_PADDING_PX;
+  const minK = opts.minK ?? 0.35;
+  const maxK = opts.maxK ?? 3.5;
+  if (!opts.force && visibleFractionOfRect(cam, viewport, focus) >= keep) {
     return { ...cam };
   }
-  return camToFrameRects(cam, viewport, [focus], {
-    paddingPx: opts.paddingPx,
+
+  let k = Math.max(minK, Math.min(maxK, cam.k || 1));
+  // Modest zoom-out if focus larger than padded viewport
+  const needW = focus.w + (2 * pad) / Math.max(k, 0.01);
+  const needH = focus.h + (2 * pad) / Math.max(k, 0.01);
+  const fit = Math.min(viewport.w / Math.max(1, needW), viewport.h / Math.max(1, needH));
+  if (Number.isFinite(fit) && fit > 0 && fit < k) {
+    k = Math.max(minK, fit * 0.95);
+  }
+
+  let x = cam.x;
+  let y = cam.y;
+  // Recompute screen after possible k change (keep world point under same screen intent)
+  if (k !== cam.k) {
+    const cx = (viewport.w / 2 - cam.x) / cam.k;
+    const cy = (viewport.h / 2 - cam.y) / cam.k;
+    x = viewport.w / 2 - cx * k;
+    y = viewport.h / 2 - cy * k;
+  }
+
+  const s = worldRectToScreen(focus, { x, y, k });
+  let dx = 0;
+  let dy = 0;
+  if (s.left < pad) dx = pad - s.left;
+  else if (s.right > viewport.w - pad) dx = viewport.w - pad - s.right;
+  if (s.top < pad) dy = pad - s.top;
+  else if (s.bottom > viewport.h - pad) dy = viewport.h - pad - s.bottom;
+
+  return clampCamToContent(
+    { x: x + dx, y: y + dy, k },
+    viewport,
     focus,
-    focusBias: 1,
-    minK: opts.minK,
-    maxK: opts.maxK,
-    allowZoomOut: true,
-  });
+    { paddingPx: pad, minK, maxK },
+  );
 }
 
 /** Linear interpolate cameras (for ease). */
@@ -251,7 +385,6 @@ export function easeOutCubic(t: number): number {
 
 /**
  * Soft min zoom: content+padding should not shrink to a speck.
- * Only raises k when content is large enough that fit is below current intent.
  */
 export function minKForContent(
   viewport: ViewportSize,
@@ -266,7 +399,6 @@ export function minKForContent(
     viewport.h / Math.max(1, content.h),
   );
   if (!Number.isFinite(fit) || fit <= 0) return minK;
-  // When content is bigger than the viewport, don't zoom out below ~55% of fit.
   if (content.w * minK > viewport.w * 0.5 || content.h * minK > viewport.h * 0.5) {
     return Math.max(minK, Math.min(maxK, fit * 0.55));
   }
