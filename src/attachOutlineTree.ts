@@ -4,7 +4,8 @@ import {
   toggleFold,
   type ExpandLevel,
 } from './fold.js';
-import type { OutlineFoldDoc } from './types.js';
+import { shouldFireAction, toggleTask } from './task.js';
+import type { OutlineFoldDoc, OutlineNode, TaskToggleEvent } from './types.js';
 
 /** Live-region copy for expand-level keys (pure; unit-tested). */
 export function expandLevelAnnouncement(
@@ -43,6 +44,14 @@ export interface AttachOutlineTreeOptions {
   onUnlock?: (id: string) => void;
   /** Host Decrypt stub. If omitted, announces that host handler is required. */
   onDecrypt?: (id: string) => void;
+  /** Task SVG toggle — host owns persist / side effects. */
+  onTaskToggle?: (ev: TaskToggleEvent) => void;
+  /** Optional action hook on open→done when node.action set. */
+  onAction?: (action: string, ev: TaskToggleEvent) => void;
+  /** Thread chip click — host navigates. */
+  onThreadClick?: (thread: string, node: OutlineNode) => void;
+  /** When false, task clicks are ignored. Default true. */
+  allowTaskToggle?: boolean;
 }
 
 export interface AttachOutlineTreeHandle {
@@ -161,6 +170,20 @@ function syncRoving(
   }
 }
 
+function findNodeById(
+  nodes: OutlineNode[],
+  id: string,
+): OutlineNode | null {
+  for (const n of nodes) {
+    if (n.id === id) return n;
+    if (n.children?.length) {
+      const hit = findNodeById(n.children, id);
+      if (hit) return hit;
+    }
+  }
+  return null;
+}
+
 /**
  * Bind click + keyboard fold/nav on a `toHtml` tree (or a container that
  * holds one). Session-local only — never persists fold. No MFA/crypto.
@@ -230,6 +253,51 @@ export function attachOutlineTree(
       return;
     }
 
+    const taskBtn = target.closest<HTMLElement>('[data-toggle-task]');
+    if (taskBtn && rootEl.contains(taskBtn)) {
+      e.preventDefault();
+      e.stopPropagation();
+      if (opts.allowTaskToggle === false) {
+        announce(getLive(), 'Task toggle is read-only');
+        return;
+      }
+      const id = taskBtn.getAttribute('data-toggle-task');
+      if (!id) return;
+      const result = toggleTask(opts.getDoc(), id);
+      if (!result) return;
+      const ev: TaskToggleEvent = {
+        id,
+        from: result.from,
+        to: result.to,
+        node: result.node,
+      };
+      commit(result.doc, id, `Task ${result.to}: ${result.node.title}`);
+      opts.onTaskToggle?.(ev);
+      if (shouldFireAction(result.from, result.to) && result.node.action) {
+        const action = result.node.action;
+        if (opts.onAction) opts.onAction(action, ev);
+        else if (/^https:\/\//i.test(action)) {
+          try {
+            window.open(action, '_blank', 'noopener,noreferrer');
+          } catch {
+            /* ignore */
+          }
+        }
+      }
+      return;
+    }
+
+    const threadBtn = target.closest<HTMLElement>('[data-thread-node]');
+    if (threadBtn && rootEl.contains(threadBtn)) {
+      e.preventDefault();
+      e.stopPropagation();
+      const id = threadBtn.getAttribute('data-thread-node') || '';
+      const thread = threadBtn.getAttribute('data-thread') || '';
+      const node = findNodeById(opts.getDoc().nodes, id);
+      if (thread && node) opts.onThreadClick?.(thread, node);
+      return;
+    }
+
     const unlockBtn = target.closest<HTMLElement>('[data-unlock]');
     if (unlockBtn && rootEl.contains(unlockBtn)) {
       e.preventDefault();
@@ -277,8 +345,8 @@ export function attachOutlineTree(
     if (!active || !tree.contains(active)) return;
     // Unlock/Decrypt buttons: let them use Enter/Space natively; fold keys no-op.
     if (
-      active.matches('[data-unlock], [data-decrypt], .of-unlock') ||
-      active.closest('[data-unlock], [data-decrypt]')
+      active.matches('[data-unlock], [data-decrypt], [data-toggle-task], .of-unlock') ||
+      active.closest('[data-unlock], [data-decrypt], [data-toggle-task]')
     ) {
       return;
     }

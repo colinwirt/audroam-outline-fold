@@ -12,6 +12,7 @@ import type {
   OutlineFrontmatter,
   OutlineNode,
   SealedPayload,
+  TaskState,
 } from './types.js';
 
 const DEFAULT_COLLAPSED = '(+)';
@@ -30,6 +31,14 @@ const KIND_TRAILING =
 const FLAG_TRAILING =
   /\s*<(private|encrypted|db)(?::([^\s>]+))?>\s*$/i;
 const ENC_TRAILING = /\s*<enc:([^>]+)>\s*$/i;
+/** `<action:https://…>` or `<action:event:…>` — body must not contain `>`. */
+const ACTION_SPAN = /^<action:([^>]+)>\s*/i;
+const ACTION_TRAILING = /\s*<action:([^>]+)>\s*$/i;
+/** `<thread:pnid:…>` or `<thread:/path>` */
+const THREAD_SPAN = /^<thread:([^>]+)>\s*/i;
+const THREAD_TRAILING = /\s*<thread:([^>]+)>\s*$/i;
+/** Leading task checkbox marker — space required inside brackets for open. */
+const TASK_LEADING = /^\[([ xX\-])\]\s+/;
 
 /** Short `<design>` form — excluded reserved flag/kind/enc words. */
 const RESERVED_SHORT = new Set([
@@ -50,6 +59,9 @@ const RESERVED_SHORT = new Set([
   'id',
   'enc',
   't',
+  'action',
+  'thread',
+  'task',
 ]);
 
 function parseFrontmatter(text: string): {
@@ -168,6 +180,9 @@ function parseTitleAndMeta(
   dbRef?: string;
   sealed?: SealedPayload;
   inlineCollapsed?: boolean;
+  task?: TaskState;
+  action?: string;
+  thread?: string;
 } {
   let rest = content.trim();
   let id: string | undefined;
@@ -175,6 +190,21 @@ function parseTitleAndMeta(
   const flags: NodeFlag[] = [];
   let dbRef: string | undefined;
   let sealed: SealedPayload | undefined;
+  let task: TaskState | undefined;
+  let action: string | undefined;
+  let thread: string | undefined;
+
+  // Leading task marker only (mid-caption `[ ]` is plain text).
+  {
+    const tm = rest.match(TASK_LEADING);
+    if (tm) {
+      const ch = tm[1];
+      if (ch === 'x' || ch === 'X') task = 'done';
+      else if (ch === '-') task = 'pending';
+      else task = 'open';
+      rest = rest.slice(tm[0].length);
+    }
+  }
 
   // Prefer flags/kinds/enc before short ids so `<private>` is never an id.
   let progressed = true;
@@ -195,6 +225,22 @@ function parseTitleAndMeta(
     if (m) {
       const parsed = parseEncBody(m[1]);
       if (parsed) sealed = parsed;
+      rest = rest.slice(m[0].length);
+      progressed = true;
+      continue;
+    }
+
+    m = rest.match(ACTION_SPAN);
+    if (m) {
+      action = m[1].trim();
+      rest = rest.slice(m[0].length);
+      progressed = true;
+      continue;
+    }
+
+    m = rest.match(THREAD_SPAN);
+    if (m) {
+      thread = m[1].trim();
       rest = rest.slice(m[0].length);
       progressed = true;
       continue;
@@ -257,6 +303,22 @@ function parseTitleAndMeta(
       continue;
     }
 
+    m = rest.match(ACTION_TRAILING);
+    if (m) {
+      action = m[1].trim();
+      rest = rest.slice(0, rest.length - m[0].length).trimEnd();
+      progressed = true;
+      continue;
+    }
+
+    m = rest.match(THREAD_TRAILING);
+    if (m) {
+      thread = m[1].trim();
+      rest = rest.slice(0, rest.length - m[0].length).trimEnd();
+      progressed = true;
+      continue;
+    }
+
     m = rest.match(KIND_TRAILING);
     if (m) {
       kind = m[1].toLowerCase() as NodeKind;
@@ -299,6 +361,9 @@ function parseTitleAndMeta(
     dbRef,
     sealed,
     inlineCollapsed,
+    task,
+    action,
+    thread,
   };
 }
 
@@ -354,6 +419,9 @@ export function parse(text: string): OutlineFoldDoc {
     if (meta.flags) node.flags = meta.flags;
     if (meta.dbRef) node.dbRef = meta.dbRef;
     if (meta.sealed) node.sealed = meta.sealed;
+    if (meta.task) node.task = meta.task;
+    if (meta.action) node.action = meta.action;
+    if (meta.thread) node.thread = meta.thread;
     if (meta.inlineCollapsed && meta.id) {
       inlineCollapsedIds.push(meta.id);
     }

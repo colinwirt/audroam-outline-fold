@@ -262,14 +262,26 @@ const packed = autoPackPositions(doc, {
 | `createMapView(host, opts)` | Interactive SVG pills + pan/zoom + Map orientation keyboard |
 | `autoPackPositions(doc, opts?)` | Deterministic L→R positions for the fold-visible tree |
 | `resolveMapFocus(doc, focusId, dir, opts?)` | Map L→R focus resolver (↑↓ siblings · → child · ← parent; no fold-on-arrow) |
-| `pillSize(label, opts?)` / `FOLD_SLOT` | Pill measure helpers (foldable end-cap always reserved; `FOLD_SLOT=34` for ≥8px circle air) |
+| `pillSize(label, opts?)` / `FOLD_SLOT` / `TASK_LEAD` | Pill measure (multi-line wrap; foldable end-cap always reserved; `FOLD_SLOT=34`; task lead when task set) |
 
 
-**Caption rich text (Outline):** `captionToHtml` turns markdown `![alt](url)` / `[label](url)` / bare `https://` into allowlisted `<img>` / `<a>` (https + safe relative; rejects `javascript:`/`data:`/`//`/etc). Inline SVG in captions is never emitted — pack icons stay via `kind` → `iconForNode` only. **Map pills** keep plain `shortLabel` (emoji works); Map does not render caption images yet.
+**Caption rich text (Outline):** `captionToHtml` turns markdown `![alt](url)` / `[label](url)` / bare `https://` into allowlisted `<img>` / `<a>` (https + safe relative; rejects `javascript:`/`data:`/`//`/etc). Inline SVG in captions is never emitted — pack icons stay via `kind` → `iconForNode` only. **Map pills (0.2.8 scrapbook):** multi-line wrap (`wrapCh` default **32**, `maxLines` **6** + tooltip); newlines preserved; `FOLD_SLOT` (≥34) on text region only; optional task lead SVG for leading `[ ]`/`[x]`. Text/label click = select/focus only; **fold only via circle-+** (keyboard `.` / Space / Enter / digits-when-selected unchanged). Map does not render caption images yet.
+
+### Scrapbook pack (0.2.8)
+
+| Export | Role |
+|--------|------|
+| `wrapLines` / `pillSize` / `DEFAULT_WRAP_CH` | Multi-line measure; sidecar may set per-node `wrapCh` / `maxLines` |
+| `seedColdStartFold` / `measureLineageHeight` | Cold-start: try depth 3 → depth 2 → trim root children so visible lineage height ≤10 |
+| `mapResumeStorageKey` / `loadMapResume` / `createDebouncedResumeSave` | localStorage resume of fold + camera + nudges (`of-map:{origin}:{docKey}` / `of-map:pnid:{pnid}`) |
+| `overlayResumeOnLayout` / `isResumeStale` / `softResetResume` | Resume overlays authored sidecar; stale soft-reset |
+| `toggleTask` / `onTaskToggle` / `resolveTask` | Task SVG lead; host owns persist; `<action:…>` on open→done; `<thread:…>` chip |
+
+**Click vs fold:** text/label (and non-handle chrome) → select only; circle-+ → fold; task SVG → `onTaskToggle`. Space stays fold.
 
 Layout sidecar discovery (`resolveLayout` / frontmatter `layoutSidecar:`) stays in [`examples/_shared/layoutSidecar.js`](./examples/_shared/layoutSidecar.js) — fetch-oriented Pages helper, not a package export. `examples/_shared/mapView.js` **re-exports** the package Map so existing demo imports keep working.
 
-**Host / Build vendor import** (after `npm i @audroam/outline-fold@0.2.7` or copy `dist/`):
+**Host / Build vendor import** (after `npm i @audroam/outline-fold@0.2.8` or copy `dist/` / SHA pin):
 
 ```ts
 import { createMapView, autoPackPositions } from '@audroam/outline-fold';

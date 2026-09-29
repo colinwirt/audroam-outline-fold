@@ -8,6 +8,8 @@ export type {
   OutlineNode,
   OutlineViewCallbacks,
   SealedPayload,
+  TaskState,
+  TaskToggleEvent,
   ToHtmlOptions,
 } from './types.js';
 
@@ -27,7 +29,7 @@ export {
   type AttachOutlineTreeOptions,
   type AttachOutlineTreeHandle,
 } from './attachOutlineTree.js';
-export { ICONS, iconForNode, type IconName } from './icons.js';
+export { ICONS, iconForNode, iconForTask, type IconName } from './icons.js';
 export { hasSealed, isRemoteSealed, parseEncBody, formatEncTag } from './sealed.js';
 export {
   demoSeal,
@@ -72,3 +74,60 @@ export {
   type ResolveMapFocusOptions,
 } from './mapView.js';
 
+export {
+  DEFAULT_WRAP_CH,
+  DEFAULT_MAX_LINES,
+  TASK_LEAD,
+  CHAR_W,
+  LINE_H,
+  wrapLines,
+  measurePill,
+  type WrapResult,
+  type MeasurePillOpts,
+  type MeasuredPill,
+} from './mapLabel.js';
+
+export {
+  seedColdStartFold,
+  measureLineageHeight,
+  DEFAULT_LINEAGE_HEIGHT_CAP,
+} from './mapSeed.js';
+
+export {
+  mapResumeStorageKey,
+  pagesDocKey,
+  loadMapResume,
+  saveMapResume,
+  clearMapResume,
+  overlayResumeOnLayout,
+  softResetResume,
+  isResumeStale,
+  collectNodeIds,
+  createDebouncedResumeSave,
+  type MapResumeState,
+  type MapCameraState,
+  type MapNodeNudge,
+  type MapResumeKeyParts,
+  type ResumeLayoutLike,
+  type StaleCheckResult,
+  type DebouncedSave,
+} from './mapResume.js';
+
+export {
+  parseLeadingTask,
+  displayCaption,
+  parseActionTag,
+  parseThreadTag,
+  toggleTaskMarker,
+  taskStateOf,
+  resolveTask,
+  resolveAction,
+  resolveThread,
+  type ParsedTask,
+} from './taskChrome.js';
+
+export {
+  toggleTask,
+  nextTaskState,
+  shouldFireAction,
+} from './task.js';

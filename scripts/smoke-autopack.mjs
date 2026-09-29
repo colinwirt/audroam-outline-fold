@@ -12,6 +12,7 @@ import {
   autoPackPositions,
   pillSize,
   FOLD_SLOT,
+  displayCaption,
 } from '../dist/index.js';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -79,10 +80,29 @@ function childIds(d, id) {
 }
 const e8Kids = childIds(doc, 'e8');
 assert(e8Kids.length >= 8, 'e8 should have many kids');
-const kidYs = e8Kids.map((id) => expanded.nodes[id].y);
-const stackMid = (Math.min(...kidYs) + Math.max(...kidYs)) / 2;
-// Parent centre equals midpoint of child *centres* of first/last in stack —
-// algorithm uses midpoint of block (top+stackH/2) which equals mid of first/last centres for equal-height leaves.
+// Variable-height scrapbook pills: midpoint of stack block (first top → last bot).
+function findNode(nodes, id) {
+  for (const n of nodes) {
+    if (n.id === id) return n;
+    const hit = findNode(n.children || [], id);
+    if (hit) return hit;
+  }
+  return null;
+}
+const edges = e8Kids.map((id) => {
+  const n = findNode(doc.nodes, id);
+  const label = displayCaption(n.title);
+  const { h } = pillSize(label, {
+    reserveFold: !!(n.children && n.children.length),
+    wrapCh: 32,
+    maxLines: 6,
+  });
+  const y = expanded.nodes[id].y;
+  return { top: y - h / 2, bot: y + h / 2 };
+});
+const stackMid =
+  (Math.min(...edges.map((e) => e.top)) + Math.max(...edges.map((e) => e.bot))) /
+  2;
 const e8y = expanded.nodes.e8.y;
 assert(
   Math.abs(e8y - stackMid) < 1,

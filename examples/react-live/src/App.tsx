@@ -17,11 +17,20 @@ import {
   DEMO_PASSPHRASE,
   validateDocument,
   createMapView,
+  seedColdStartFold,
+  mapResumeStorageKey,
+  loadMapResume,
+  overlayResumeOnLayout,
+  softResetResume,
+  isResumeStale,
+  collectNodeIds,
+  createDebouncedResumeSave,
   type OutlineFoldDoc,
   type OutlineNode,
   type ValidationResult,
   type MapLayout,
   type MapViewHandle,
+  type MapResumeState,
 } from '@audroam/outline-fold';
 import seedMd from '../../outline-demo.md?raw';
 import {
@@ -88,6 +97,16 @@ export default function App() {
   const mapRef = useRef<MapViewHandle | null>(null);
   const layoutRef = useRef<MapLayout>({ _source: 'auto-pack', nodes: {} });
   const focusIdRef = useRef('root');
+  const resumeKeyRef = useRef(
+    mapResumeStorageKey({
+      kind: 'pages',
+      origin: typeof window !== 'undefined' ? window.location.origin : 'local',
+      docKey: 'react-live',
+    }),
+  );
+  const scheduleResumeRef = useRef(
+    createDebouncedResumeSave(resumeKeyRef.current, 400),
+  );
   const applyDocFromMapRef = useRef<(d: OutlineFoldDoc) => void>(() => {});
   /** When Map setDoc already painted via onChange, skip the renderDoc effect paint (keeps M11 FLIP). */
   const skipNextMapPaintRef = useRef(false);
@@ -125,17 +144,66 @@ export default function App() {
   useEffect(() => {
     return () => {
       if (saveTimer.current) clearTimeout(saveTimer.current);
+      scheduleResumeRef.current.flush();
     };
+  }, []);
+
+  // Cold-start / resume once for the initial active doc.
+  useEffect(() => {
+    loadDocBody(textRef.current);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const loadDocBody = useCallback((body: string) => {
     setText(body);
     textRef.current = body;
-    const next = runValidate(body);
+    let next = runValidate(body);
+    let doc = next.doc;
+    let layout: MapLayout = { _source: 'auto-pack', nodes: {} };
+    const docKey =
+      'react-live:' +
+      (getActive(libraryRef.current)?.id || 'active');
+    resumeKeyRef.current = mapResumeStorageKey({
+      kind: 'pages',
+      origin: window.location.origin,
+      docKey,
+    });
+    scheduleResumeRef.current = createDebouncedResumeSave(
+      resumeKeyRef.current,
+      400,
+    );
+    let resume = loadMapResume(resumeKeyRef.current);
+    if (doc) {
+      const known = collectNodeIds(doc.nodes);
+      if (resume) {
+        const stale = isResumeStale(resume, known);
+        if (stale.stale) resume = softResetResume(resume, { keepCamera: true });
+      }
+      if (resume?.fold?.ids) {
+        doc = {
+          ...doc,
+          fold: {
+            mode: resume.fold.mode || doc.fold.mode,
+            ids: [...resume.fold.ids],
+          },
+          frontmatter: doc.frontmatter
+            ? { ...doc.frontmatter, foldIds: [...resume.fold.ids] }
+            : doc.frontmatter,
+        };
+      } else {
+        doc = seedColdStartFold(doc);
+      }
+      layout = overlayResumeOnLayout(layout as Parameters<typeof overlayResumeOnLayout>[0], resume) as MapLayout;
+      next = { ...next, doc };
+      docRef.current = doc;
+    }
     setValidation(next);
-    layoutRef.current = { _source: 'auto-pack', nodes: {} };
-    const rootId = next.doc?.nodes?.[0]?.id;
-    focusIdRef.current = rootId || 'root';
+    layoutRef.current = layout;
+    const rootId = doc?.nodes?.[0]?.id;
+    focusIdRef.current =
+      (resume?.focusId && doc && collectNodeIds(doc.nodes).includes(resume.focusId)
+        ? resume.focusId
+        : rootId) || 'root';
   }, []);
 
   const onTextChange = useCallback(
@@ -507,10 +575,33 @@ export default function App() {
       onChange: () => {
         // Focus-only changes also paint here (no setDoc / no renderDoc change).
         mapRef.current?.paint();
+        const m = mapRef.current;
+        const d = docRef.current;
+        if (!m || !d) return;
+        const nudges: Record<string, { x: number; y: number; wrapCh?: number; maxLines?: number }> = {};
+        const nodes = layoutRef.current.nodes || {};
+        for (const [id, pos] of Object.entries(nodes)) {
+          if (pos && typeof pos.wrapCh === 'number') {
+            nudges[id] = {
+              x: pos.x,
+              y: pos.y,
+              wrapCh: pos.wrapCh,
+              maxLines: pos.maxLines,
+            };
+          }
+        }
+        const state: MapResumeState = {
+          version: 1,
+          fold: { mode: d.fold.mode, ids: [...d.fold.ids] },
+          camera: { x: m.cam.x, y: m.cam.y, k: m.cam.k },
+          nudges: Object.keys(nudges).length ? nudges : undefined,
+          focusId: focusIdRef.current,
+        };
+        scheduleResumeRef.current(state);
       },
       isActive: () => previewModeRef.current === 'map',
       ariaLabel:
-        'Outline mind map, left to right. Pan and zoom enabled. Fold via circle-+ or . / Space / Enter.',
+        'Outline mind map, left to right. Pan and zoom enabled. Fold via circle-+ or . / Space / Enter. Text click selects; fold only via circle-+.',
     });
     map.bindGestures();
     map.bindKeyboard({
@@ -521,7 +612,15 @@ export default function App() {
     if (previewModeRef.current === 'map') {
       map.ensurePositions();
       map.paint();
-      map.resetCam();
+      const resume = loadMapResume(resumeKeyRef.current);
+      if (resume?.camera && typeof resume.camera.k === 'number') {
+        map.cam.x = resume.camera.x;
+        map.cam.y = resume.camera.y;
+        map.cam.k = resume.camera.k;
+        map.applyCam();
+      } else {
+        map.resetCam();
+      }
     }
     return () => {
       host.innerHTML = '';

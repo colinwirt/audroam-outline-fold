@@ -1,5 +1,5 @@
 import { collectPayloads, formatPayloadsBlock } from './payloads.js';
-import type { OutlineFoldDoc, OutlineNode } from './types.js';
+import type { OutlineFoldDoc, OutlineNode, TaskState } from './types.js';
 
 const DEFAULT_COLLAPSED = '(+)';
 
@@ -10,13 +10,21 @@ function isCollapsed(doc: OutlineFoldDoc, id: string | undefined): boolean {
   return mode === '-' ? inList : !inList;
 }
 
+function taskMarker(task: TaskState): string {
+  if (task === 'done') return '[x] ';
+  if (task === 'pending') return '[-] ';
+  return '[ ] ';
+}
+
 /**
  * Caption-first trailing tags (v0.2 lean):
- * `title <kind:…>? <flag>* <id:…>? (+)?`
+ * `[ ]? title <action:…>? <thread:…>? <kind:…>? <flag>* <id:…>? (+)?`
  * Sealed material lives in the trailing `--- payloads ---` block, not on the line.
  */
 function formatTrailingSpans(node: OutlineNode): string {
   const parts: string[] = [];
+  if (node.action) parts.push(`<action:${node.action}>`);
+  if (node.thread) parts.push(`<thread:${node.thread}>`);
   if (node.kind) parts.push(`<kind:${node.kind}>`);
   if (node.flags) {
     for (const f of node.flags) {
@@ -37,7 +45,8 @@ function serializeNode(
     doc.frontmatter?.collapsedMarker ?? DEFAULT_COLLAPSED;
   const expandedMarker = doc.frontmatter?.expandedMarker;
   const indent = '  '.repeat(node.depth);
-  let line = `${indent}- ${node.title}${formatTrailingSpans(node)}`;
+  const lead = node.task ? taskMarker(node.task) : '';
+  let line = `${indent}- ${lead}${node.title}${formatTrailingSpans(node)}`;
   if (node.id && isCollapsed(doc, node.id)) {
     line += ` ${collapsedMarker}`;
   } else if (node.id && expandedMarker) {

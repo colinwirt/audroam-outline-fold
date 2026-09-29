@@ -6,7 +6,19 @@
  */
 export { parseDoc, loadDoc, parse, validateDocument } from './parseDoc.js';
 export { createOutlineView, toHtml, attachOutlineTree, serialize } from './outlineView.js';
-export { createMapView, autoPackPositions, pillSize, FOLD_SLOT } from './mapView.js';
+export {
+  createMapView,
+  autoPackPositions,
+  pillSize,
+  FOLD_SLOT,
+  DEFAULT_WRAP_CH,
+  DEFAULT_MAX_LINES,
+  seedColdStartFold,
+  mapResumeStorageKey,
+  pagesDocKey,
+  loadMapResume,
+  createDebouncedResumeSave,
+} from './mapView.js';
 export {
   resolveLayout,
   extractLayoutSidecarPointer,

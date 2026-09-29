@@ -17,6 +17,9 @@ export type NodeKind =
   | 'system-link'
   | string;
 
+/** Task checkbox state from leading `[ ]` / `[x]` / `[-]`. */
+export type TaskState = 'open' | 'done' | 'pending';
+
 /**
  * Sealed payload on a node (v0.2).
  * Cleartext caption stays lossy; secret material is either:
@@ -49,6 +52,15 @@ export interface OutlineNode {
   dbRef?: string;
   /** Sealed / encrypted payload (`<enc:…>`). Demo or host crypto opens it. */
   sealed?: SealedPayload;
+  /** Leading `[ ]` / `[x]` / `[-]` → task chrome (ASCII stripped from visible label). */
+  task?: TaskState;
+  /**
+   * Explicit action binding from `<action:https://…>` or `<action:event:…>`.
+   * Host runs on open→done only (package emits onTaskToggle; never auto-fires caption https).
+   */
+  action?: string;
+  /** Thread / deep-link ref from `<thread:…>` — host navigates on chip click. */
+  thread?: string;
 }
 
 export interface OutlineFrontmatter {
@@ -75,6 +87,14 @@ export interface OutlineViewCallbacks {
   onDecrypt?(id: string, kid?: string): void | Promise<void>;
 }
 
+/** Emitted when Map/Outline task SVG is toggled. Host owns persist / side effects. */
+export interface TaskToggleEvent {
+  id: string;
+  from: TaskState;
+  to: TaskState;
+  node: OutlineNode;
+}
+
 export interface ToHtmlOptions {
   callbacks?: OutlineViewCallbacks;
   /** Class prefix for generated elements. Default: "of" */
@@ -83,4 +103,9 @@ export interface ToHtmlOptions {
   lockedChrome?: boolean;
   /** Accessible name for role=tree root. Default: "Outline" */
   ariaLabel?: string;
+  /**
+   * When true, task SVG is a role=checkbox button (interactive). Host still
+   * must wire click → onTaskToggle / setDoc. Default true when task present.
+   */
+  interactiveTasks?: boolean;
 }

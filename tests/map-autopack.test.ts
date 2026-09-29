@@ -81,8 +81,23 @@ describe('autoPackPositions', () => {
     const expanded = pack(doc);
     const e8Kids = childIds(doc, 'e8');
     expect(e8Kids.length).toBeGreaterThanOrEqual(8);
-    const kidYs = e8Kids.map((id) => expanded.nodes[id].y);
-    const stackMid = (Math.min(...kidYs) + Math.max(...kidYs)) / 2;
+    // Variable-height pills (scrapbook wrap): midpoint is of the stack block
+    // (first kid top → last kid bottom), not of kid centres.
+    const edges = e8Kids.map((id) => {
+      const n = findNodeById(doc.nodes, id)!;
+      const { h } = pillSize(n.title, {
+        reserveFold: !!(n.children?.length),
+        reserveTask: !!n.task,
+        wrapCh: 32,
+        maxLines: 6,
+      });
+      const y = expanded.nodes[id].y;
+      return { top: y - h / 2, bot: y + h / 2 };
+    });
+    const stackMid =
+      (Math.min(...edges.map((e) => e.top)) +
+        Math.max(...edges.map((e) => e.bot))) /
+      2;
     expect(Math.abs(expanded.nodes.e8.y - stackMid)).toBeLessThan(1);
   });
 

@@ -17,13 +17,17 @@ export type IconName =
   | 'mfa'
   | 'unlock'
   | 'system-link'
-  | 'pending-approve';
+  | 'pending-approve'
+  | 'task-open'
+  | 'task-done'
+  | 'task-pending';
 
 const gold = '#C9A227';
+const muted = '#8b9bab';
 const stroke = gold;
 
-function svg(body: string, label: string): string {
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16" aria-label="${label}" fill="none" stroke="${stroke}" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">${body}</svg>`;
+function svg(body: string, label: string, strokeColor: string = stroke): string {
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16" aria-label="${label}" fill="none" stroke="${strokeColor}" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">${body}</svg>`;
 }
 
 export const ICONS: Record<IconName, string> = {
@@ -80,9 +84,25 @@ export const ICONS: Record<IconName, string> = {
     'pending approval',
   ),
   unlock: svg(
-
     '<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 7.5-2"/>',
     'unlock',
+  ),
+  /** Rounded empty square — open task. */
+  'task-open': svg(
+    '<rect x="5" y="5" width="14" height="14" rx="3"/>',
+    'task open',
+    muted,
+  ),
+  /** Rounded square + check — done task. */
+  'task-done': svg(
+    '<rect x="5" y="5" width="14" height="14" rx="3"/><path d="M8 12.5l2.5 2.5L16 9"/>',
+    'task done',
+  ),
+  /** Rounded square + dash — pending task. */
+  'task-pending': svg(
+    '<rect x="5" y="5" width="14" height="14" rx="3"/><path d="M8 12h8"/>',
+    'task pending',
+    muted,
   ),
 };
 
@@ -93,4 +113,11 @@ export function iconForNode(kind?: string, flags?: string[]): string {
   if (kind === 'system-link') return ICONS['system-link'];
   if (kind && kind in ICONS) return ICONS[kind as IconName];
   return ICONS.doc;
+}
+
+/** SVG for a task state (Map lead / Outline chrome). */
+export function iconForTask(state: 'open' | 'done' | 'pending'): string {
+  if (state === 'done') return ICONS['task-done'];
+  if (state === 'pending') return ICONS['task-pending'];
+  return ICONS['task-open'];
 }

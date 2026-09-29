@@ -5,7 +5,18 @@
  */
 import { loadDoc } from '../_shared/parseDoc.js';
 import { createOutlineView } from '../_shared/outlineView.js';
-import { createMapView } from '../_shared/mapView.js';
+import {
+  createMapView,
+  seedColdStartFold,
+  mapResumeStorageKey,
+  pagesDocKey,
+  loadMapResume,
+  overlayResumeOnLayout,
+  softResetResume,
+  isResumeStale,
+  collectNodeIds,
+  createDebouncedResumeSave,
+} from '../_shared/mapView.js';
 import { resolveLayout } from '../_shared/layoutSidecar.js';
 import {
   tryUnlock,
@@ -237,6 +248,43 @@ async function boot() {
 
   layout = await resolveLayout(loaded.raw, mdUrl, layoutUrl || undefined);
 
+  // Resume (localStorage) → overlays sidecar; else cold-start fold seed.
+  const resumeKey = mapResumeStorageKey({
+    kind: 'pages',
+    origin: window.location.origin,
+    docKey: pagesDocKey(
+      mdUrl.pathname,
+      layoutUrl ? layoutUrl.pathname : null,
+    ),
+  });
+  let resume = loadMapResume(resumeKey);
+  const knownIds = collectNodeIds(doc.nodes);
+  if (resume) {
+    const stale = isResumeStale(resume, knownIds);
+    if (stale.stale) {
+      resume = softResetResume(resume, { keepCamera: true });
+    }
+  }
+  if (resume?.fold?.ids) {
+    doc = {
+      ...doc,
+      fold: {
+        mode: resume.fold.mode || doc.fold.mode,
+        ids: [...resume.fold.ids],
+      },
+      frontmatter: doc.frontmatter
+        ? { ...doc.frontmatter, foldIds: [...resume.fold.ids] }
+        : doc.frontmatter,
+    };
+  } else {
+    doc = seedColdStartFold(doc);
+  }
+  layout = overlayResumeOnLayout(layout, resume);
+  if (resume?.focusId && findNode(doc.nodes, resume.focusId)) {
+    focusId = resume.focusId;
+  }
+  const scheduleResume = createDebouncedResumeSave(resumeKey, 400);
+
   const root = doc.nodes[0];
   const rootTitle = root?.title || 'Outline';
   pageTitle.textContent = rootTitle + ' · Outline | Map';
@@ -329,6 +377,36 @@ async function boot() {
     },
   });
 
+  function persistMapResume() {
+    const nudges = {};
+    if (layout?.nodes) {
+      for (const [id, pos] of Object.entries(layout.nodes)) {
+        if (
+          pos &&
+          (typeof pos.wrapCh === 'number' ||
+            typeof pos.maxLines === 'number' ||
+            layout._source !== 'auto-pack')
+        ) {
+          nudges[id] = {
+            x: pos.x,
+            y: pos.y,
+            wrapCh: pos.wrapCh,
+            maxLines: pos.maxLines,
+          };
+        }
+      }
+    }
+    scheduleResume({
+      version: 1,
+      fold: { mode: doc.fold.mode, ids: [...doc.fold.ids] },
+      camera: map
+        ? { x: map.cam.x, y: map.cam.y, k: map.cam.k }
+        : undefined,
+      nudges: Object.keys(nudges).length ? nudges : undefined,
+      focusId,
+    });
+  }
+
   map = createMapView(mapHost, {
     getDoc: () => doc,
     setDoc: (d) => {
@@ -339,13 +417,28 @@ async function boot() {
     setFocusId: (id) => {
       focusId = id;
     },
-    onChange: () => paint(),
+    onChange: () => {
+      paint();
+      persistMapResume();
+    },
+    onTaskToggle: () => {
+      /* session-local; serialize panel shows task via outline refresh */
+    },
     isActive: () => mode === 'map',
     ariaLabel: rootTitle + ' mind map, left to right. Pan and zoom enabled.',
   });
   map.ensurePositions();
   map.bindGestures();
   map.bindKeyboard({ panel, modeButton: btnMap });
+  if (resume?.camera && typeof resume.camera.k === 'number') {
+    map.cam.x = resume.camera.x;
+    map.cam.y = resume.camera.y;
+    map.cam.k = resume.camera.k;
+    map.applyCam();
+  }
+  // Persist camera after pan/zoom settles
+  mapHost.addEventListener('pointerup', () => persistMapResume());
+  mapHost.addEventListener('wheel', () => persistMapResume(), { passive: true });
 
   outlineHost.addEventListener('click', (e) => {
     const li = e.target.closest?.('[role="treeitem"]');

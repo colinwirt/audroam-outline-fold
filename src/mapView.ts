@@ -5,6 +5,7 @@
  * with leaf/sibling count. Recomputed on every paint so fold expand/collapse
  * reflows without overlap.
  *
+ * Scrapbook (0.2.8): multi-line wrap, task lead SVG, text click ≠ fold.
  * Sealed nodes: omitted until unlocked (no gray stubs) — caller filters doc if needed.
  */
 import {
@@ -13,10 +14,30 @@ import {
   setExpandLevel,
 } from './fold.js';
 import type { OutlineFoldDoc, OutlineNode } from './types.js';
+import {
+  measurePill,
+  DEFAULT_WRAP_CH,
+  DEFAULT_MAX_LINES,
+  TASK_LEAD,
+  LINE_H,
+  PILL_PAD_Y,
+} from './mapLabel.js';
+import {
+  displayCaption,
+  resolveTask,
+  resolveAction,
+  resolveThread,
+  toggleTaskMarker,
+  type TaskState,
+  type TaskToggleEvent,
+} from './taskChrome.js';
+import { toggleTask, shouldFireAction } from './task.js';
 
 export interface MapPoint {
   x: number;
   y: number;
+  wrapCh?: number;
+  maxLines?: number;
 }
 
 export interface MapViewBox {
@@ -40,6 +61,11 @@ export interface AutoPackOptions {
   gapY?: number;
   gapX?: number;
   margin?: number;
+  /** Default wrapCh when node layout omits it. */
+  wrapCh?: number;
+  maxLines?: number;
+  /** Optional per-id layout nudges (wrapCh/maxLines). */
+  nodeLayout?: Record<string, MapPoint>;
 }
 
 export interface AutoPackResult {
@@ -49,6 +75,9 @@ export interface AutoPackResult {
 
 export interface PillSizeOptions {
   reserveFold?: boolean;
+  reserveTask?: boolean;
+  wrapCh?: number;
+  maxLines?: number;
 }
 
 export interface PillSize {
@@ -56,6 +85,10 @@ export interface PillSize {
   h: number;
   textW: number;
   foldSlot: number;
+  taskLead: number;
+  lines: string[];
+  truncated: boolean;
+  fullText: string;
 }
 
 export interface MapViewOptions {
@@ -68,6 +101,12 @@ export interface MapViewOptions {
   ariaLabel?: string;
   /** Whether map mode is showing (gestures/keyboard). */
   isActive?: () => boolean;
+  /** Task checkbox toggle — host owns persist / side effects. */
+  onTaskToggle?: (ev: TaskToggleEvent) => void;
+  /** Optional: open→done action hook (`<action:…>`). */
+  onAction?: (ev: { id: string; action: string; node: OutlineNode }) => void;
+  /** Optional: thread chip navigate (`<thread:…>`). */
+  onThread?: (ev: { id: string; thread: string; node: OutlineNode }) => void;
 }
 
 export interface MapKeyboardWire {
@@ -135,6 +174,10 @@ function isCue(n: OutlineNode | null | undefined): boolean {
   return /^\s*cue\s*:/i.test(n.title || '');
 }
 
+/**
+ * Short single-line label (legacy / Outline). Map scrapbook uses displayCaption + wrap.
+ * Kept for tests that assert on · split.
+ */
 function shortLabel(title: string): string {
   const parts = String(title).split(' · ');
   if (parts.length >= 2) return parts[0].trim();
@@ -145,13 +188,37 @@ function shortLabel(title: string): string {
  * 34 = 2*(r+clear) with r≈9 and ≥8px clear for gold focus stroke (Design UX 2026-09-29 end-cap air). */
 export const FOLD_SLOT = 34;
 
+export { DEFAULT_WRAP_CH, DEFAULT_MAX_LINES, TASK_LEAD };
+
 /**
- * Measure pill dimensions; optionally reserve fold chrome end-cap.
+ * Measure pill dimensions; optionally reserve fold chrome end-cap and task lead.
+ * Multi-line when wrapCh/maxLines set (defaults: 32 / 6).
  */
 export function pillSize(label: string, opts: PillSizeOptions = {}): PillSize {
-  const textW = Math.max(88, Math.min(280, 18 + String(label).length * 7.2));
-  const foldSlot = opts.reserveFold ? FOLD_SLOT : 0;
-  return { w: textW + foldSlot, h: 44, textW, foldSlot };
+  const measured = measurePill(label, {
+    wrapCh: opts.wrapCh ?? DEFAULT_WRAP_CH,
+    maxLines: opts.maxLines ?? DEFAULT_MAX_LINES,
+    reserveFold: opts.reserveFold,
+    reserveTask: opts.reserveTask,
+    foldSlot: FOLD_SLOT,
+    taskLead: TASK_LEAD,
+  });
+  return measured;
+}
+
+function nodePillOpts(
+  n: OutlineNode,
+  nodeLayout?: Record<string, MapPoint>,
+  defaults?: { wrapCh?: number; maxLines?: number },
+): PillSizeOptions {
+  const lay = n.id && nodeLayout ? nodeLayout[n.id] : undefined;
+  const task = resolveTask(n);
+  return {
+    reserveFold: hasKids(n),
+    reserveTask: !!task,
+    wrapCh: lay?.wrapCh ?? defaults?.wrapCh ?? DEFAULT_WRAP_CH,
+    maxLines: lay?.maxLines ?? defaults?.maxLines ?? DEFAULT_MAX_LINES,
+  };
 }
 
 function connectorPath(
@@ -189,6 +256,37 @@ function prefersReducedMotion(): boolean {
   }
 }
 
+function taskGlyphSvg(state: TaskState, x: number, y: number): string {
+  const stroke = state === 'done' ? '#C9A227' : '#8b9bab';
+  const check =
+    state === 'done'
+      ? `<path d="M-4 0.5 l2.5 2.5 L4 -3" fill="none" stroke="${stroke}" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"/>`
+      : '';
+  return `<g class="map-task-glyph" transform="translate(${x} ${y})" aria-hidden="true">
+    <rect x="-7" y="-7" width="14" height="14" rx="3" fill="none" stroke="${stroke}" stroke-width="1.75"/>
+    ${check}
+  </g>`;
+}
+
+function multiLineText(
+  lines: string[],
+  textX: number,
+  centreY: number,
+  textW: number,
+): string {
+  const n = Math.max(1, lines.length);
+  const blockH = n * LINE_H;
+  const top = centreY - blockH / 2 + LINE_H * 0.75;
+  const tspans = lines
+    .map((line, i) => {
+      const dy = i === 0 ? 0 : LINE_H;
+      const show = line === '' ? '\u00a0' : esc(line);
+      return `<tspan x="${textX}" dy="${dy}">${show}</tspan>`;
+    })
+    .join('');
+  return `<text class="map-label" x="${textX}" y="${top}" text-anchor="middle">${tspans}</text>`;
+}
+
 /**
  * Deterministic L→R auto-pack for the *visible* (non-collapsed) tree.
  * Parent centres vertically on the midpoint of its child stack; height grows
@@ -204,6 +302,8 @@ export function autoPackPositions(
   const gapY = opts.gapY ?? 14;
   const gapX = opts.gapX ?? 56;
   const margin = opts.margin ?? 40;
+  const defaults = { wrapCh: opts.wrapCh, maxLines: opts.maxLines };
+  const nodeLayout = opts.nodeLayout;
 
   const visible: { n: OutlineNode; depth: number }[] = [];
   function walkVis(n: OutlineNode, depth: number): void {
@@ -217,14 +317,9 @@ export function autoPackPositions(
 
   const positions: Record<string, MapPoint> = {};
 
-  /**
-   * Place n with left edge at `left`. Visible children share kidLeft =
-   * left + parentW + gapX (sibling left-align under this parent only — M13).
-   * @returns subtree block height
-   */
   function layoutSubtree(n: OutlineNode, left: number, top: number): number {
-    const reserveFold = hasKids(n);
-    const { w, h } = pillSize(shortLabel(n.title), { reserveFold });
+    const label = displayCaption(n.title);
+    const { w, h } = pillSize(label, nodePillOpts(n, nodeLayout, defaults));
     const x = left + w / 2;
     const kids =
       hasKids(n) && !isNodeCollapsed(n.id!)
@@ -244,12 +339,10 @@ export function autoPackPositions(
       if (i < kids.length - 1) y += gapY;
     }
     const stackH = y - top;
-    // Parent pill centres on midpoint of visible child stack (M9).
     positions[n.id!] = { x, y: top + stackH / 2 };
     return Math.max(stackH, h);
   }
 
-  // Forest roots are siblings of an implicit parent — share left = margin.
   let top = margin;
   const roots = (doc.nodes || []).filter((r) => r?.id);
   for (let i = 0; i < roots.length; i++) {
@@ -263,8 +356,8 @@ export function autoPackPositions(
   for (const { n } of visible) {
     const pos = positions[n.id!];
     if (!pos) continue;
-    const reserveFold = hasKids(n);
-    const { w, h } = pillSize(shortLabel(n.title), { reserveFold });
+    const label = displayCaption(n.title);
+    const { w, h } = pillSize(label, nodePillOpts(n, nodeLayout, defaults));
     maxX = Math.max(maxX, pos.x + w / 2);
     maxY = Math.max(maxY, pos.y + h / 2);
   }
@@ -278,7 +371,6 @@ export function autoPackPositions(
   };
 }
 
-
 export type MapFocusDirection =
   | 'up'
   | 'down'
@@ -288,9 +380,7 @@ export type MapFocusDirection =
   | 'end';
 
 export interface ResolveMapFocusOptions {
-  /** Defaults to never-collapsed. */
   isNodeCollapsed?: (id: string) => boolean;
-  /** Optional layout centres; when present, siblings sort by y then document order. */
   positions?: Record<string, MapPoint>;
 }
 
@@ -344,16 +434,15 @@ export function resolveMapFocus(
     if (direction === 'end') return sibs[sibs.length - 1]?.id || null;
     if (i < 0) return sibs[0]?.id || null;
     if (direction === 'down') {
-      if (i >= sibs.length - 1) return null; // soft no-op on last sibling
+      if (i >= sibs.length - 1) return null;
       return sibs[i + 1]?.id || null;
     }
-    // up
     if (i <= 0) return null;
     return sibs[i - 1]?.id || null;
   }
 
   if (direction === 'right') {
-    if (!hasKids(focused) || isNodeCollapsed(focused.id)) return null; // soft no-op; never fold
+    if (!hasKids(focused) || isNodeCollapsed(focused.id)) return null;
     const first = (focused.children || []).find((c) => c?.id);
     return first?.id || null;
   }
@@ -361,10 +450,27 @@ export function resolveMapFocus(
   if (direction === 'left') {
     const p = parentOf(doc.nodes, focusId);
     if (p?.id) return p.id;
-    return null; // forest root — soft no-op; never fold
+    return null;
   }
 
   return null;
+}
+
+function patchNodeTitle(
+  nodes: OutlineNode[],
+  id: string,
+  title: string,
+): boolean {
+  for (const n of nodes) {
+    if (n.id === id) {
+      n.title = title;
+      return true;
+    }
+    if (n.children?.length && patchNodeTitle(n.children, id, title)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 /**
@@ -383,6 +489,9 @@ export function createMapView(
     onChange,
     ariaLabel = 'Outline mind map, left to right. Pan and zoom enabled.',
     isActive = () => true,
+    onTaskToggle,
+    onAction,
+    onThread,
   } = opts;
 
   const CAM_MIN = 0.35;
@@ -429,20 +538,29 @@ export function createMapView(
     return layout?._source === 'auto-pack';
   }
 
-  /**
-   * Auto-pack: full recompute from fold-visible tree every call.
-   * Sidecar: fill only missing ids (authored positions kept).
-   */
   function ensurePositions(): void {
     const layout = getLayout();
     const doc = getDoc();
     if (!layout.nodes) layout.nodes = {};
 
     if (isAutoPack(layout)) {
+      // Preserve wrapCh/maxLines nudges across recompute
+      const prior = layout.nodes;
       const packed = autoPackPositions(doc, {
         isNodeCollapsed: (id) => isCollapsed(doc, id),
+        nodeLayout: prior,
       });
-      layout.nodes = packed.nodes;
+      const merged: Record<string, MapPoint> = {};
+      for (const [id, pos] of Object.entries(packed.nodes)) {
+        const prev = prior[id];
+        merged[id] = {
+          x: pos.x,
+          y: pos.y,
+          wrapCh: prev?.wrapCh,
+          maxLines: prev?.maxLines,
+        };
+      }
+      layout.nodes = merged;
       layout.viewBox = packed.viewBox;
       return;
     }
@@ -483,7 +601,6 @@ export function createMapView(
     return out;
   }
 
-  /** Snapshot centres before paint for FLIP relocate (M11). */
   function snapshotPositions(): Record<string, MapPoint> {
     const snap: Record<string, MapPoint> = {};
     const layout = getLayout();
@@ -515,7 +632,6 @@ export function createMapView(
     });
     if (!movers.length) return;
 
-    // Soft: fade edges while nodes ease (avoids connector teleport jank).
     host.querySelectorAll<SVGElement>('.map-edge').forEach((el) => {
       el.style.transition = 'none';
       el.style.opacity = '0.25';
@@ -545,6 +661,58 @@ export function createMapView(
     });
   }
 
+  function applyTaskToggle(id: string): void {
+    const doc = getDoc();
+    const n = findNode(doc.nodes, id);
+    if (!n) return;
+    // Prefer structured node.task; fall back to title marker rewrite.
+    if (n.task) {
+      const result = toggleTask(doc, id);
+      if (!result) return;
+      setDoc(result.doc);
+      onTaskToggle?.({
+        id,
+        from: result.from,
+        to: result.to,
+        node: result.node,
+      });
+      if (shouldFireAction(result.from, result.to)) {
+        const action = resolveAction(result.node);
+        if (action) onAction?.({ id, action, node: result.node });
+      }
+      onChange?.();
+      return;
+    }
+    const cur = resolveTask(n);
+    if (!cur) return;
+    const from = cur;
+    const to: TaskState = from === 'done' ? 'open' : 'done';
+    const nextTitle = toggleTaskMarker(n.title, to);
+    const nextDoc: OutlineFoldDoc = {
+      frontmatter: doc.frontmatter
+        ? {
+            ...doc.frontmatter,
+            foldIds: doc.frontmatter.foldIds
+              ? [...doc.frontmatter.foldIds]
+              : undefined,
+          }
+        : undefined,
+      nodes: structuredClone(doc.nodes),
+      fold: { mode: doc.fold.mode, ids: [...doc.fold.ids] },
+    };
+    patchNodeTitle(nextDoc.nodes, id, nextTitle);
+    const nextNode = findNode(nextDoc.nodes, id)!;
+    // Also stamp structured fields for consistency
+    nextNode.task = to;
+    setDoc(nextDoc);
+    onTaskToggle?.({ id, from, to, node: nextNode });
+    if (shouldFireAction(from, to)) {
+      const action = resolveAction(nextNode);
+      if (action) onAction?.({ id, action, node: nextNode });
+    }
+    onChange?.();
+  }
+
   function paint(): void {
     const prev = snapshotPositions();
     const hadViewport = !!host.querySelector('#mapViewport');
@@ -563,32 +731,66 @@ export function createMapView(
       h: number;
       textW: number;
       foldSlot: number;
+      taskLead: number;
+      lines: string[];
+      truncated: boolean;
+      fullText: string;
       foldable: boolean;
       col: boolean;
       cue: boolean;
+      task: TaskState | null;
+      thread: string | null;
     };
     const nodes: NodePaint[] = [];
 
     function walk(n: OutlineNode): void {
       if (!n.id) return;
       const pos = layout.nodes![n.id] || { x: 100, y: 100 };
-      const label = shortLabel(n.title);
+      const label = displayCaption(n.title);
       const foldable = hasKids(n);
       const col = foldable && isCollapsed(doc, n.id);
-      const reserveFold = foldable;
-      const { w, h, textW, foldSlot } = pillSize(label, { reserveFold });
+      const taskParsed = resolveTask(n);
+      const size = pillSize(label, {
+        reserveFold: foldable,
+        reserveTask: !!taskParsed,
+        wrapCh: pos.wrapCh,
+        maxLines: pos.maxLines,
+      });
       const cue = isCue(n);
-      nodes.push({ n, pos, label, w, h, textW, foldSlot, foldable, col, cue });
+      const thread = resolveThread(n);
+      nodes.push({
+        n,
+        pos,
+        label,
+        w: size.w,
+        h: size.h,
+        textW: size.textW,
+        foldSlot: size.foldSlot,
+        taskLead: size.taskLead,
+        lines: size.lines,
+        truncated: size.truncated,
+        fullText: size.fullText || n.title,
+        foldable,
+        col,
+        cue,
+        task: taskParsed ?? null,
+        thread,
+      });
 
       if (foldable && !col) {
         for (const c of n.children!) {
           if (!c.id) continue;
           const cpos = layout.nodes![c.id] || { x: pos.x + 200, y: pos.y };
-          const clabel = shortLabel(c.title);
-          const cFold = hasKids(c);
-          const cs = pillSize(clabel, { reserveFold: cFold });
+          const clabel = displayCaption(c.title);
+          const cTask = resolveTask(c);
+          const cs = pillSize(clabel, {
+            reserveFold: hasKids(c),
+            reserveTask: !!cTask,
+            wrapCh: cpos.wrapCh,
+            maxLines: cpos.maxLines,
+          });
           edges.push({
-            d: connectorPath(pos.x, pos.y, w, cpos.x, cpos.y, cs.w),
+            d: connectorPath(pos.x, pos.y, size.w, cpos.x, cpos.y, cs.w),
           });
           walk(c);
         }
@@ -600,36 +802,77 @@ export function createMapView(
       .map((e) => `<path class="map-edge" d="${e.d}"/>`)
       .join('');
     const nodeSvg = nodes
-      .map(({ n, pos, label, w, h, textW, foldSlot, foldable, col, cue }) => {
-        const x = pos.x - w / 2;
-        const y = pos.y - h / 2;
-        // Label centres in the text region; fold `+` sits in reserved end-cap (M12).
-        const textX = x + textW / 2;
-        const cls = [
-          'map-node',
-          foldable ? '' : 'leaf',
-          col ? 'collapsed' : '',
-          cue ? 'cue' : '',
-        ]
-          .filter(Boolean)
-          .join(' ');
-        const marker =
-          foldable && col
-            ? `<g class="map-fold-indicator" transform="translate(${x + textW + foldSlot / 2} ${pos.y})" aria-hidden="true">
+      .map(
+        ({
+          n,
+          pos,
+          label,
+          w,
+          h,
+          textW,
+          foldSlot,
+          taskLead,
+          lines,
+          truncated,
+          fullText,
+          foldable,
+          col,
+          cue,
+          task,
+          thread,
+        }) => {
+          const x = pos.x - w / 2;
+          const y = pos.y - h / 2;
+          const textLeft = x + taskLead;
+          const textX = textLeft + textW / 2;
+          const cls = [
+            'map-node',
+            foldable ? '' : 'leaf',
+            col ? 'collapsed' : '',
+            cue ? 'cue' : '',
+            task === 'done' ? 'task-done' : task ? 'task-open' : '',
+          ]
+            .filter(Boolean)
+            .join(' ');
+          const foldHit = foldable
+            ? `<rect class="map-fold-hit" x="${x + taskLead + textW}" y="${y}" width="${foldSlot}" height="${h}" fill="transparent" cursor="pointer"/>`
+            : '';
+          const marker =
+            foldable && col
+              ? `<g class="map-fold-indicator" transform="translate(${x + taskLead + textW + foldSlot / 2} ${pos.y})" aria-hidden="true">
           <circle r="9"/>
           <path d="M -4 0 H 4 M 0 -4 V 4"/>
         </g>`
+              : '';
+          const taskHit =
+            task != null
+              ? `<rect class="map-task-hit" x="${x}" y="${Math.min(y, pos.y - 22)}" width="${Math.max(taskLead, 44)}" height="${Math.max(h, 44)}" fill="transparent" cursor="pointer" role="checkbox" aria-checked="${task === 'done' ? 'true' : 'false'}"/>`
+              : '';
+          const taskChrome =
+            task != null
+              ? taskGlyphSvg(task, x + taskLead / 2, pos.y)
+              : '';
+          const tip = truncated || fullText !== label ? fullText : n.title;
+          const threadChip = thread
+            ? `<g class="map-thread-hit" data-thread="${esc(thread)}" transform="translate(${textX} ${y + h - 6})" cursor="pointer">
+            <rect x="-36" y="-10" width="72" height="18" rx="9" fill="rgba(201,162,39,0.12)" stroke="#C9A227" stroke-width="1"/>
+            <text text-anchor="middle" y="3" fill="#C9A227" font-size="10">Thread</text>
+          </g>`
             : '';
-        // Native SVG tooltip for truncated labels (M5 soft).
-        return `<g class="${cls}" data-id="${esc(n.id!)}" tabindex="${n.id === focusId ? 0 : -1}"
-      role="button" aria-label="${esc(label)}${foldable ? (col ? ', collapsed' : ', expanded') : ''}"
+          return `<g class="${cls}" data-id="${esc(n.id!)}" tabindex="${n.id === focusId ? 0 : -1}"
+      role="button" aria-label="${esc(label)}${task != null ? (task === 'done' ? ', task done' : ', task open') : ''}${foldable ? (col ? ', collapsed' : ', expanded') : ''}"
       ${foldable ? `aria-expanded="${col ? 'false' : 'true'}"` : ''}>
-      <title>${esc(n.title)}</title>
+      <title>${esc(tip)}</title>
       <rect class="map-pill" x="${x}" y="${y}" width="${w}" height="${h}" rx="18" ry="18"/>
-      <text class="map-label" x="${textX}" y="${pos.y + 4}" text-anchor="middle">${esc(label)}</text>
+      ${taskChrome}
+      ${multiLineText(lines, textX, pos.y, textW)}
+      ${threadChip}
       ${marker}
+      ${taskHit}
+      ${foldHit}
     </g>`;
-      })
+        },
+      )
       .join('');
 
     host.innerHTML = `<svg class="map-svg" viewBox="0 0 ${Math.max(1, host.clientWidth || 1180)} ${Math.max(1, host.clientHeight || 520)}"
@@ -655,11 +898,31 @@ export function createMapView(
         e.stopPropagation();
         const id = g.getAttribute('data-id');
         if (!id) return;
-        setFocusId(id);
-        const n = findNode(getDoc().nodes, id);
-        if (n && hasKids(n)) {
-          setDoc(toggleFold(getDoc(), id));
+        const t = e.target as Element | null;
+        if (t?.closest?.('.map-fold-hit') || t?.closest?.('.map-fold-indicator')) {
+          setFocusId(id);
+          const n = findNode(getDoc().nodes, id);
+          if (n && hasKids(n)) {
+            setDoc(toggleFold(getDoc(), id));
+          }
+          onChange?.();
+          return;
         }
+        if (t?.closest?.('.map-task-hit') || t?.closest?.('.map-task-glyph')) {
+          setFocusId(id);
+          applyTaskToggle(id);
+          return;
+        }
+        if (t?.closest?.('.map-thread-hit')) {
+          setFocusId(id);
+          const n = findNode(getDoc().nodes, id);
+          const thread = n ? resolveThread(n) : null;
+          if (n && thread) onThread?.({ id, thread, node: n });
+          onChange?.();
+          return;
+        }
+        // Text / pill chrome: select + focus only — never fold.
+        setFocusId(id);
         onChange?.();
       });
     });
@@ -677,7 +940,7 @@ export function createMapView(
       isNodeCollapsed: (id) => isCollapsed(doc, id),
       positions: layout.nodes,
     });
-    if (!next) return; // soft no-op
+    if (!next) return;
     setFocusId(next);
     onChange?.();
   }
@@ -769,6 +1032,7 @@ export function createMapView(
   /**
    * Map-mode keyboard — orientation table (L→R). Outline keeps attachOutlineTree ARIA map.
    * Fold never on ←/→; fold via . / Space / Enter / digits when a node is selected.
+   * Space stays fold (not task toggle).
    */
   function bindKeyboard(wire: MapKeyboardWire = {}): void {
     document.addEventListener('keydown', (e) => {
@@ -803,10 +1067,10 @@ export function createMapView(
         applyFocusMove('end');
       } else if (e.key === 'ArrowRight') {
         e.preventDefault();
-        applyFocusMove('right'); // soft no-op if collapsed/leaf; never fold
+        applyFocusMove('right');
       } else if (e.key === 'ArrowLeft') {
         e.preventDefault();
-        applyFocusMove('left'); // parent only; never fold
+        applyFocusMove('left');
       } else if (e.key === 'Enter' || e.key === ' ' || e.key === '.') {
         if (selected && hasKids(n!) && n!.id) {
           e.preventDefault();
@@ -840,3 +1104,6 @@ export function createMapView(
     findNode,
   };
 }
+
+// Re-export shortLabel for tests that imported behaviour indirectly — not public API.
+export { shortLabel as _shortLabelForTests };

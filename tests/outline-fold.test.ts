@@ -40,7 +40,8 @@ describe('parse sample line', () => {
   it('parses caption with priority/vote then trailing id', () => {
     const doc = parse(`- [ ] Ship fold docs · P1 · 👍 <id:a1>\n`);
     expect(doc.nodes[0].id).toBe('a1');
-    expect(doc.nodes[0].title).toBe('[ ] Ship fold docs · P1 · 👍');
+    expect(doc.nodes[0].title).toBe('Ship fold docs · P1 · 👍');
+    expect(doc.nodes[0].task).toBe('open');
   });
 
   it('parses trailing flag then id with (+)', () => {

@@ -1,6 +1,6 @@
 import { isCollapsed } from './fold.js';
 import { captionToHtml } from './captionRich.js';
-import { iconForNode } from './icons.js';
+import { iconForNode, iconForTask } from './icons.js';
 import { hasSealed } from './sealed.js';
 import type { OutlineFoldDoc, OutlineNode, ToHtmlOptions } from './types.js';
 
@@ -28,6 +28,7 @@ function renderNode(
   const sealed = hasSealed(node);
   const hasKids = !!(node.children && node.children.length > 0);
   const ariaLevel = node.depth + 1;
+  const interactiveTasks = opts.interactiveTasks !== false;
 
   // data-kid only — never put raw ciphertext in the DOM / accessible name.
   const dataAttrs = [
@@ -41,6 +42,9 @@ function renderNode(
     sealed
       ? `data-sealed-mode="${node.sealed?.uri && !node.sealed?.ciphertext ? 'remote' : 'inline'}"`
       : '',
+    node.task ? `data-task="${esc(node.task)}"` : '',
+    node.action ? `data-action="${esc(node.action)}"` : '',
+    node.thread ? `data-thread="${esc(node.thread)}"` : '',
     node.id ? `data-testid="of-node-${esc(node.id)}"` : '',
   ]
     .filter(Boolean)
@@ -61,6 +65,23 @@ function renderNode(
       : `<button type="button" class="${p}-unlock" data-unlock="${esc(node.id ?? '')}" data-testid="of-unlock-${esc(node.id ?? '')}">Unlock (MFA)</button>`
     : '';
 
+  // Task SVG lead — ASCII `[ ]`/`[x]` stripped from title at parse time.
+  let taskChrome = '';
+  if (node.task && node.id) {
+    const checked = node.task === 'done';
+    const svg = iconForTask(node.task);
+    if (interactiveTasks) {
+      taskChrome = `<button type="button" class="${p}-task ${p}-task-${node.task}" data-toggle-task="${esc(node.id)}" data-testid="of-task-${esc(node.id)}" role="checkbox" aria-checked="${checked ? 'true' : 'false'}" aria-label="${checked ? 'Mark open' : 'Mark done'}" tabindex="-1">${svg}</button>`;
+    } else {
+      taskChrome = `<span class="${p}-task ${p}-task-${node.task}" data-testid="of-task-${esc(node.id)}" role="checkbox" aria-checked="${checked ? 'true' : 'false'}" aria-disabled="true">${svg}</span>`;
+    }
+  }
+
+  const threadChip =
+    node.thread && node.id
+      ? `<button type="button" class="${p}-thread" data-thread="${esc(node.thread)}" data-thread-node="${esc(node.id)}" data-testid="of-thread-${esc(node.id)}" tabindex="-1">Thread</button>`
+      : '';
+
   const body = locked
     ? `<div class="${p}-locked-chrome" aria-hidden="true">•••• locked ••••</div>`
     : '';
@@ -74,8 +95,8 @@ function renderNode(
     ? ` aria-expanded="${collapsed ? 'false' : 'true'}"`
     : '';
 
-  return `<li role="treeitem" class="${p}-node${collapsed ? ` ${p}-collapsed` : ''}${locked ? ` ${p}-locked` : ''}" tabindex="-1" aria-level="${ariaLevel}"${ariaExpanded} ${dataAttrs}>
-  <div class="${p}-row">${foldBtn}${icon}<span class="${p}-title">${captionToHtml(node.title)}</span>${unlockBtn}</div>
+  return `<li role="treeitem" class="${p}-node${collapsed ? ` ${p}-collapsed` : ''}${locked ? ` ${p}-locked` : ''}${node.task ? ` ${p}-has-task` : ''}" tabindex="-1" aria-level="${ariaLevel}"${ariaExpanded} ${dataAttrs}>
+  <div class="${p}-row">${foldBtn}${taskChrome}${icon}<span class="${p}-title">${captionToHtml(node.title)}</span>${threadChip}${unlockBtn}</div>
   ${body}${kids}
 </li>`;
 }
@@ -84,6 +105,7 @@ function renderNode(
  * Semantic HTML string for an outline doc. Wire via attachOutlineTree /
  * toggleFold / host onUnlock/onDecrypt — this function only emits markup.
  * Sealed ciphertext stays in the JS model; DOM gets `data-kid` / `data-sealed` only.
+ * Leading `[ ]`/`[x]` become SVG task chrome (ASCII stripped from title at parse).
  */
 export function toHtml(doc: OutlineFoldDoc, options: ToHtmlOptions = {}): string {
   const opts = {
@@ -91,6 +113,7 @@ export function toHtml(doc: OutlineFoldDoc, options: ToHtmlOptions = {}): string
     lockedChrome: options.lockedChrome ?? true,
     callbacks: options.callbacks,
     ariaLabel: options.ariaLabel,
+    interactiveTasks: options.interactiveTasks,
   };
   const p = opts.classPrefix;
   const label = esc(opts.ariaLabel ?? 'Outline');
