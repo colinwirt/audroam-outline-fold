@@ -141,7 +141,7 @@ function shortLabel(title: string): string {
   return title.length > 36 ? title.slice(0, 34) + '…' : title;
 }
 
-/** Reserved end-cap for collapsed fold `+` so chrome does not eat label width (M12). */
+/** Reserved end-cap on every foldable pill; circle-+ painted only when collapsed (M12 / fold-slot-always). */
 export const FOLD_SLOT = 22;
 
 /**
@@ -222,7 +222,7 @@ export function autoPackPositions(
    * @returns subtree block height
    */
   function layoutSubtree(n: OutlineNode, left: number, top: number): number {
-    const reserveFold = hasKids(n) && isNodeCollapsed(n.id!);
+    const reserveFold = hasKids(n);
     const { w, h } = pillSize(shortLabel(n.title), { reserveFold });
     const x = left + w / 2;
     const kids =
@@ -262,7 +262,7 @@ export function autoPackPositions(
   for (const { n } of visible) {
     const pos = positions[n.id!];
     if (!pos) continue;
-    const reserveFold = hasKids(n) && isNodeCollapsed(n.id!);
+    const reserveFold = hasKids(n);
     const { w, h } = pillSize(shortLabel(n.title), { reserveFold });
     maxX = Math.max(maxX, pos.x + w / 2);
     maxY = Math.max(maxY, pos.y + h / 2);
@@ -275,6 +275,95 @@ export function autoPackPositions(
       h: Math.max(300, Math.ceil(maxY + margin)),
     },
   };
+}
+
+
+export type MapFocusDirection =
+  | 'up'
+  | 'down'
+  | 'left'
+  | 'right'
+  | 'home'
+  | 'end';
+
+export interface ResolveMapFocusOptions {
+  /** Defaults to never-collapsed. */
+  isNodeCollapsed?: (id: string) => boolean;
+  /** Optional layout centres; when present, siblings sort by y then document order. */
+  positions?: Record<string, MapPoint>;
+}
+
+/**
+ * Map L→R orientation focus resolver (v1). Fold is never implied by a direction.
+ * Returns the next focus id, or `null` for a soft no-op.
+ */
+export function resolveMapFocus(
+  doc: OutlineFoldDoc,
+  focusId: string,
+  direction: MapFocusDirection,
+  opts: ResolveMapFocusOptions = {},
+): string | null {
+  const isNodeCollapsed = opts.isNodeCollapsed || (() => false);
+  const positions = opts.positions;
+  const focused = findNode(doc.nodes, focusId);
+  if (!focused?.id) return null;
+
+  function siblingSet(id: string): OutlineNode[] {
+    const p = parentOf(doc.nodes, id);
+    if (p === undefined) return [];
+    const list = p === null ? doc.nodes || [] : p.children || [];
+    return list.filter((n) => n?.id);
+  }
+
+  function sortSiblings(sibs: OutlineNode[]): OutlineNode[] {
+    const indexed = sibs.map((n, i) => ({ n, i }));
+    indexed.sort((a, b) => {
+      if (positions) {
+        const ay = positions[a.n.id!]?.y;
+        const by = positions[b.n.id!]?.y;
+        if (typeof ay === 'number' && typeof by === 'number' && ay !== by) {
+          return ay - by;
+        }
+      }
+      return a.i - b.i;
+    });
+    return indexed.map((x) => x.n);
+  }
+
+  if (
+    direction === 'up' ||
+    direction === 'down' ||
+    direction === 'home' ||
+    direction === 'end'
+  ) {
+    const sibs = sortSiblings(siblingSet(focusId));
+    if (!sibs.length) return null;
+    const i = sibs.findIndex((n) => n.id === focusId);
+    if (direction === 'home') return sibs[0]?.id || null;
+    if (direction === 'end') return sibs[sibs.length - 1]?.id || null;
+    if (i < 0) return sibs[0]?.id || null;
+    if (direction === 'down') {
+      if (i >= sibs.length - 1) return null; // soft no-op on last sibling
+      return sibs[i + 1]?.id || null;
+    }
+    // up
+    if (i <= 0) return null;
+    return sibs[i - 1]?.id || null;
+  }
+
+  if (direction === 'right') {
+    if (!hasKids(focused) || isNodeCollapsed(focused.id)) return null; // soft no-op; never fold
+    const first = (focused.children || []).find((c) => c?.id);
+    return first?.id || null;
+  }
+
+  if (direction === 'left') {
+    const p = parentOf(doc.nodes, focusId);
+    if (p?.id) return p.id;
+    return null; // forest root — soft no-op; never fold
+  }
+
+  return null;
 }
 
 /**
@@ -485,7 +574,7 @@ export function createMapView(
       const label = shortLabel(n.title);
       const foldable = hasKids(n);
       const col = foldable && isCollapsed(doc, n.id);
-      const reserveFold = foldable && col;
+      const reserveFold = foldable;
       const { w, h, textW, foldSlot } = pillSize(label, { reserveFold });
       const cue = isCue(n);
       nodes.push({ n, pos, label, w, h, textW, foldSlot, foldable, col, cue });
@@ -495,7 +584,7 @@ export function createMapView(
           if (!c.id) continue;
           const cpos = layout.nodes![c.id] || { x: pos.x + 200, y: pos.y };
           const clabel = shortLabel(c.title);
-          const cFold = hasKids(c) && isCollapsed(doc, c.id);
+          const cFold = hasKids(c);
           const cs = pillSize(clabel, { reserveFold: cFold });
           edges.push({
             d: connectorPath(pos.x, pos.y, w, cpos.x, cpos.y, cs.w),
@@ -580,12 +669,15 @@ export function createMapView(
     if (focused && isActive()) focused.focus({ preventScroll: true });
   }
 
-  function moveFocus(delta: number): void {
-    const list = visibleList();
-    const i = list.findIndex((n) => n.id === getFocusId());
-    const j = Math.max(0, Math.min(list.length - 1, (i < 0 ? 0 : i) + delta));
-    const target = list[j];
-    if (target?.id) setFocusId(target.id);
+  function applyFocusMove(direction: MapFocusDirection): void {
+    const doc = getDoc();
+    const layout = getLayout();
+    const next = resolveMapFocus(doc, getFocusId(), direction, {
+      isNodeCollapsed: (id) => isCollapsed(doc, id),
+      positions: layout.nodes,
+    });
+    if (!next) return; // soft no-op
+    setFocusId(next);
     onChange?.();
   }
 
@@ -674,7 +766,8 @@ export function createMapView(
   }
 
   /**
-   * Map-mode keyboard (Outline uses attachOutlineTree).
+   * Map-mode keyboard — orientation table (L→R). Outline keeps attachOutlineTree ARIA map.
+   * Fold never on ←/→; fold via . / Space / Enter / digits when a node is selected.
    */
   function bindKeyboard(wire: MapKeyboardWire = {}): void {
     document.addEventListener('keydown', (e) => {
@@ -691,54 +784,41 @@ export function createMapView(
       if (!inMap) return;
 
       const doc = getDoc();
-      const n = findNode(doc.nodes, getFocusId());
+      const focusId = getFocusId();
+      const n = focusId ? findNode(doc.nodes, focusId) : null;
+      const selected = !!(n && n.id);
+
       if (e.key === 'ArrowDown') {
         e.preventDefault();
-        moveFocus(1);
+        applyFocusMove('down');
       } else if (e.key === 'ArrowUp') {
         e.preventDefault();
-        moveFocus(-1);
+        applyFocusMove('up');
       } else if (e.key === 'Home') {
         e.preventDefault();
-        setFocusId(visibleList()[0]?.id || 'root');
-        onChange?.();
+        applyFocusMove('home');
       } else if (e.key === 'End') {
         e.preventDefault();
-        const v = visibleList();
-        setFocusId(v[v.length - 1]?.id || 'root');
-        onChange?.();
+        applyFocusMove('end');
       } else if (e.key === 'ArrowRight') {
         e.preventDefault();
-        if (n && hasKids(n) && n.id && isCollapsed(doc, n.id)) {
-          setDoc(toggleFold(doc, n.id));
-          onChange?.();
-        } else if (n && hasKids(n) && n.children![0]?.id) {
-          setFocusId(n.children![0].id!);
-          onChange?.();
-        }
+        applyFocusMove('right'); // soft no-op if collapsed/leaf; never fold
       } else if (e.key === 'ArrowLeft') {
         e.preventDefault();
-        if (n && hasKids(n) && n.id && !isCollapsed(doc, n.id)) {
-          setDoc(toggleFold(doc, n.id));
-          onChange?.();
-        } else {
-          const p = parentOf(doc.nodes, getFocusId());
-          if (p?.id) {
-            setFocusId(p.id);
-            onChange?.();
-          }
-        }
+        applyFocusMove('left'); // parent only; never fold
       } else if (e.key === 'Enter' || e.key === ' ' || e.key === '.') {
-        if (n && hasKids(n) && n.id) {
+        if (selected && hasKids(n!) && n!.id) {
           e.preventDefault();
-          setDoc(toggleFold(doc, n.id));
+          setDoc(toggleFold(doc, n!.id));
           onChange?.();
         }
       } else if (e.key === '*') {
+        if (!selected) return;
         e.preventDefault();
         setDoc(setExpandLevel(doc, '*'));
         onChange?.();
       } else if (e.key >= '0' && e.key <= '9') {
+        if (!selected) return;
         e.preventDefault();
         setDoc(setExpandLevel(doc, Number(e.key)));
         onChange?.();

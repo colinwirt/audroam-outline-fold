@@ -52,6 +52,7 @@ export {
   autoPackPositions,
   pillSize,
   FOLD_SLOT,
+  resolveMapFocus,
   type MapPoint,
   type MapViewBox,
   type MapLayout,
@@ -62,5 +63,7 @@ export {
   type MapViewOptions,
   type MapKeyboardWire,
   type MapViewHandle,
+  type MapFocusDirection,
+  type ResolveMapFocusOptions,
 } from './mapView.js';
 

@@ -7,4 +7,5 @@ export {
   autoPackPositions,
   pillSize,
   FOLD_SLOT,
+  resolveMapFocus,
 } from '../../dist/index.js';

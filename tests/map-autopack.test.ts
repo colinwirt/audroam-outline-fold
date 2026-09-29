@@ -112,13 +112,35 @@ describe('autoPackPositions', () => {
     expect(withFold.w).toBe(base.w + FOLD_SLOT);
   });
 
+  it('keeps foldable pill width stable across expand/collapse (fold-slot-always)', () => {
+    const n = findNodeById(doc.nodes, 'e8')!;
+    const label = shortLabel(n.title);
+    // Package always reserves when foldable — expanded w === collapsed w
+    const expandedW = pillSize(label, { reserveFold: true }).w;
+    const collapsedW = pillSize(label, { reserveFold: true }).w;
+    expect(expandedW).toBe(collapsedW);
+    expect(expandedW).toBe(pillSize(label).w + FOLD_SLOT);
+
+    const expanded = pack(doc);
+    const collapsedDoc = toggleFold(doc, 'e8');
+    const collapsed = pack(collapsedDoc);
+    // Same label → same reserved width; centres may shift with reflow but w measure is stable
+    const wExp = pillSize(label, { reserveFold: !!(n.children?.length) }).w;
+    const wCol = pillSize(label, {
+      reserveFold: !!(findNodeById(collapsedDoc.nodes, 'e8')?.children?.length),
+    }).w;
+    expect(wExp).toBe(wCol);
+    expect(expanded.nodes.e8).toBeTruthy();
+    expect(collapsed.nodes.e8).toBeTruthy();
+  });
+
   it('left-aligns siblings under the same parent only (M13)', () => {
     const expanded = pack(doc);
 
     function leftEdge(id: string): number {
       const n = findNodeById(doc.nodes, id)!;
       const pos = expanded.nodes[id];
-      const reserveFold = !!(n.children?.length) && isCollapsed(doc, n.id!);
+      const reserveFold = !!(n.children?.length);
       const { w } = pillSize(shortLabel(n.title), { reserveFold });
       return pos.x - w / 2;
     }

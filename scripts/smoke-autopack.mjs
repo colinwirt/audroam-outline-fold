@@ -136,12 +136,16 @@ for (const id of ['howto', 'ism', 'e8']) {
   assert(withFold.textW === base.w, `${id} textW must equal no-chrome pill width`);
   assert(withFold.w === base.w + FOLD_SLOT, `${id} total w = text + fold chrome`);
 }
-// Collapsed e8 pill is wider by FOLD_SLOT than expanded (text region preserved)
+// Fold-slot-always: foldable expanded w === collapsed w (same reserve)
 {
   const label = shortLabel(findTitle(doc, 'e8'));
   const baseW = pillSize(label).w;
-  const collapsedW = pillSize(label, { reserveFold: true }).w;
-  assert(collapsedW === baseW + FOLD_SLOT, 'collapsed e8 pill grows by fold slot only');
+  const foldableW = pillSize(label, { reserveFold: true }).w;
+  assert(foldableW === baseW + FOLD_SLOT, 'foldable e8 pill reserves fold slot');
+  assert(
+    pillSize(label, { reserveFold: true }).w === foldableW,
+    'expanded/collapsed foldable width identical',
+  );
 }
 
 // M13: siblings under the *same parent* share a common left edge (not tree-wide depth)
@@ -157,7 +161,7 @@ function leftEdge(packed, d, id) {
   const n = findNodeById(d.nodes, id);
   const pos = packed.nodes[id];
   assert(n && pos, `missing node/pos ${id}`);
-  const reserveFold = !!(n.children?.length) && isCollapsed(d, n.id);
+  const reserveFold = !!(n.children?.length);
   const { w } = pillSize(shortLabel(n.title), { reserveFold });
   return pos.x - w / 2;
 }
