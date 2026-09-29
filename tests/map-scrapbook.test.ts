@@ -23,6 +23,7 @@ import {
   isCollapsed,
   autoPackPositions,
   toggleFold,
+  mapNodeKeepsTextSelection,
 } from '../src/index.js';
 
 describe('scrapbook wrap (~30 + more/less)', () => {
@@ -210,5 +211,48 @@ describe('task toggle', () => {
     expect(shouldFireAction(r!.from, r!.to)).toBe(true);
     const mid = parse('- See [ ] later <id:x>\n');
     expect(mid.nodes[0].task).toBeUndefined();
+  });
+});
+
+describe('mapNodeKeepsTextSelection (label copy)', () => {
+  it('is false for null / collapsed selection', () => {
+    const el = { contains: () => true } as unknown as Element;
+    expect(mapNodeKeepsTextSelection(el, null)).toBe(false);
+    expect(
+      mapNodeKeepsTextSelection(el, {
+        isCollapsed: true,
+        anchorNode: {} as Node,
+        focusNode: {} as Node,
+      }),
+    ).toBe(false);
+  });
+
+  it('is true when anchor or focus is inside the node', () => {
+    const inside = { id: 'in' } as unknown as Node;
+    const outside = { id: 'out' } as unknown as Node;
+    const el = {
+      contains: (n: Node) => n === inside,
+    } as unknown as Element;
+    expect(
+      mapNodeKeepsTextSelection(el, {
+        isCollapsed: false,
+        anchorNode: inside,
+        focusNode: outside,
+      }),
+    ).toBe(true);
+    expect(
+      mapNodeKeepsTextSelection(el, {
+        isCollapsed: false,
+        anchorNode: outside,
+        focusNode: inside,
+      }),
+    ).toBe(true);
+    expect(
+      mapNodeKeepsTextSelection(el, {
+        isCollapsed: false,
+        anchorNode: outside,
+        focusNode: outside,
+      }),
+    ).toBe(false);
   });
 });

@@ -5,7 +5,7 @@
  * with leaf/sibling count. Recomputed on every paint so fold expand/collapse
  * reflows without overlap.
  *
- * Scrapbook (0.2.8): multi-line wrap, task lead SVG, text click ≠ fold.
+ * Scrapbook (0.2.8+): multi-line wrap, task lead SVG, text click ≠ fold; label text selectable (0.2.10).
  * Sealed nodes: omitted until unlocked (no gray stubs) — caller filters doc if needed.
  */
 import {
@@ -497,6 +497,21 @@ function patchNodeTitle(
 /**
  * Mount an interactive SVG mind-map into `host`.
  */
+
+/**
+ * True when a non-collapsed browser Selection intersects `nodeEl`
+ * (used so label text-drag can copy without a paint wiping the range).
+ */
+export function mapNodeKeepsTextSelection(
+  nodeEl: Element,
+  sel: { isCollapsed: boolean; anchorNode: Node | null; focusNode: Node | null } | null,
+): boolean {
+  if (!sel || sel.isCollapsed) return false;
+  const a = sel.anchorNode;
+  const f = sel.focusNode;
+  return (!!a && nodeEl.contains(a)) || (!!f && nodeEl.contains(f));
+}
+
 export function createMapView(
   host: HTMLElement,
   opts: MapViewOptions,
@@ -981,8 +996,30 @@ export function createMapView(
           return;
         }
         // Text / pill chrome: select + focus only — never fold.
+        // Label text-drag: keep native Selection (skip paint that would wipe it).
+        const prevFocus = getFocusId();
         setFocusId(id);
-        onChange?.();
+        const sel =
+          typeof window !== 'undefined' && window.getSelection
+            ? window.getSelection()
+            : null;
+        if (mapNodeKeepsTextSelection(g, sel)) {
+          try {
+            (g as unknown as HTMLElement).focus({ preventScroll: true });
+          } catch {
+            /* SVG focus */
+          }
+          return;
+        }
+        if (prevFocus !== id) {
+          onChange?.();
+        } else {
+          try {
+            (g as unknown as HTMLElement).focus({ preventScroll: true });
+          } catch {
+            /* SVG focus */
+          }
+        }
       });
     });
 

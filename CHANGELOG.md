@@ -13,6 +13,10 @@ Digit keystrokes (`0`–`9` / `*`) when a Map node is selected now expand/collap
 - Outside the subtree: fold state unchanged
 - Digits still require a selection (Design lock)
 
+### Map label text selection
+
+Pill labels allow native browser text selection / copy. Click still focuses the node for keyboard (digits / fold keys). Text drag does **not** fold — fold stays on circle-+ / fold-slot only. Paint is skipped when a selection intersects the node so the range is not wiped.
+
 Absolute `setExpandLevel(doc, n)` (Outline / cold-start seed) unchanged.
 
 ## 0.2.9 — 2026-09-29

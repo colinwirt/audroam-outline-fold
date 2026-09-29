@@ -60,6 +60,7 @@ export {
   pillSize,
   FOLD_SLOT,
   resolveMapFocus,
+  mapNodeKeepsTextSelection,
   type MapPoint,
   type MapViewBox,
   type MapLayout,

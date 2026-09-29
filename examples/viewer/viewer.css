@@ -163,7 +163,8 @@ kbd {
 }
 .map-label {
   fill: var(--text); font: 600 13px/1.2 var(--font);
-  pointer-events: none; user-select: none;
+  pointer-events: auto; cursor: text;
+  -webkit-user-select: text; user-select: text;
 }
 .map-node.cue .map-label { fill: var(--cue-text); }
 .map-fold-indicator { pointer-events: none; }
