@@ -89,6 +89,9 @@ export default function App() {
   const layoutRef = useRef<MapLayout>({ _source: 'auto-pack', nodes: {} });
   const focusIdRef = useRef('root');
   const applyDocFromMapRef = useRef<(d: OutlineFoldDoc) => void>(() => {});
+  /** When Map setDoc already painted via onChange, skip the renderDoc effect paint (keeps M11 FLIP). */
+  const skipNextMapPaintRef = useRef(false);
+  const prevPreviewModeRef = useRef(previewMode);
 
   if (validation.doc) {
     docRef.current = validation.doc;
@@ -492,6 +495,8 @@ export default function App() {
     const map = createMapView(host, {
       getDoc: () => docRef.current ?? emptyDoc,
       setDoc: (d) => {
+        // Mark before React state flush so renderDoc useEffect skips — onChange paints once (FLIP).
+        skipNextMapPaintRef.current = true;
         applyDocFromMapRef.current(d);
       },
       getLayout: () => layoutRef.current,
@@ -500,6 +505,7 @@ export default function App() {
         focusIdRef.current = id;
       },
       onChange: () => {
+        // Focus-only changes also paint here (no setDoc / no renderDoc change).
         mapRef.current?.paint();
       },
       isActive: () => previewModeRef.current === 'map',
@@ -523,15 +529,26 @@ export default function App() {
     };
   }, []);
 
+  // Entering Map: skip the sync renderDoc paint below; this effect paints once after layout.
+  if (previewMode === 'map' && prevPreviewModeRef.current !== 'map') {
+    skipNextMapPaintRef.current = true;
+  }
+  prevPreviewModeRef.current = previewMode;
+
   // Repaint Map when doc changes while Map mode is active.
+  // Skip when Map already painted via onChange after setDoc (fold) or enter-Map rAF will paint.
   useEffect(() => {
     if (previewMode !== 'map') return;
     const map = mapRef.current;
     if (!map) return;
+    if (skipNextMapPaintRef.current) {
+      skipNextMapPaintRef.current = false;
+      return;
+    }
     map.paint();
   }, [previewMode, renderDoc, validation]);
 
-  // When entering Map mode, fit camera once the host is visible.
+  // When entering Map mode, fit camera once the host is visible (single paint).
   useEffect(() => {
     if (previewMode !== 'map') return;
     const map = mapRef.current;
