@@ -38,12 +38,20 @@ export function parseLeadingTask(title: string): ParsedTask | null {
   return { state, label: String(title).slice(m[0].length) };
 }
 
-/** Display caption: strip leading task ASCII + optional action/thread tags. */
+/** Display caption: strip leading task ASCII + optional action/thread tags.
+ * Preserves newlines / break tokens for Map scrapbook wrap (0.2.13).
+ * Collapses horizontal whitespace runs only (spaces/tabs), not newlines.
+ */
 export function displayCaption(title: string): string {
   const task = parseLeadingTask(title);
   let s = task ? task.label : String(title);
   s = s.replace(ACTION_TAG, '').replace(THREAD_TAG, '');
-  return s.replace(/\s{2,}/g, ' ').trim();
+  // Per-line trim of horizontal ws; keep \n intact for normalizeCaptionBreaks.
+  s = s
+    .split(/\n/)
+    .map((line) => line.replace(/[ \t]{2,}/g, ' ').replace(/^[ \t]+|[ \t]+$/g, ''))
+    .join('\n');
+  return s.replace(/^\n+|\n+$/g, '');
 }
 
 export function parseActionTag(title: string): string | null {

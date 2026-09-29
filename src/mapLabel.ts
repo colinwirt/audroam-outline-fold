@@ -1,12 +1,19 @@
 /**
  * Multi-line scrapbook label measure for Map pills.
- * Newlines preserved; soft-wrap at wrapCh.
+ * Break tokens + tiny HTML normalized before wrap (0.2.13);
+ * measure counts visible characters only; richLines carry bold/italic for paint.
  *
  * Product lock (Design 2026-09-29 compromise):
  * - Default maxLines ≈ **30** + “more” / “less” (not harsh 6, not unlimited)
  * - Soft engine safety ~500 lines / ~50k chars ABOVE product clip
  * - bodyExpanded → measure with maxLines null (up to soft safety)
  */
+
+import {
+  captionStyleRuns,
+  captionVisibleText,
+  type CaptionStyleRun,
+} from './captionRich.js';
 
 export const DEFAULT_WRAP_CH = 32;
 /** Product default clip — generous journal leaf (~30 lines). */
@@ -25,6 +32,8 @@ export const MORE_AFFORDANCE_H = 18;
 
 export interface WrapResult {
   lines: string[];
+  /** Same lines as styled runs for Map SVG paint (bold/italic). */
+  richLines: CaptionStyleRun[][];
   truncated: boolean;
   fullText: string;
   softSafetyHit?: boolean;
@@ -32,8 +41,65 @@ export interface WrapResult {
   totalLines: number;
 }
 
+type StyledChar = { c: string; bold: boolean; italic: boolean };
+
+function runsToChars(runs: CaptionStyleRun[]): StyledChar[] {
+  const chars: StyledChar[] = [];
+  for (const r of runs) {
+    for (const c of r.text) {
+      chars.push({ c, bold: r.bold, italic: r.italic });
+    }
+  }
+  return chars;
+}
+
+function charsToRuns(chars: StyledChar[]): CaptionStyleRun[] {
+  if (!chars.length) return [{ text: '', bold: false, italic: false }];
+  const runs: CaptionStyleRun[] = [];
+  let cur: CaptionStyleRun = {
+    text: chars[0]!.c,
+    bold: chars[0]!.bold,
+    italic: chars[0]!.italic,
+  };
+  for (let i = 1; i < chars.length; i++) {
+    const ch = chars[i]!;
+    if (ch.bold === cur.bold && ch.italic === cur.italic) {
+      cur.text += ch.c;
+    } else {
+      runs.push(cur);
+      cur = { text: ch.c, bold: ch.bold, italic: ch.italic };
+    }
+  }
+  runs.push(cur);
+  return runs;
+}
+
+function softWrapChars(chars: StyledChar[], ch: number): StyledChar[][] {
+  if (chars.length === 0) return [[]];
+  const lines: StyledChar[][] = [];
+  let remaining = chars;
+  while (remaining.length > ch) {
+    let breakAt = -1;
+    for (let i = Math.min(ch, remaining.length - 1); i >= 0; i--) {
+      if (remaining[i]!.c === ' ') {
+        breakAt = i;
+        break;
+      }
+    }
+    if (breakAt <= 0) breakAt = ch;
+    let piece = remaining.slice(0, breakAt);
+    while (piece.length && piece[piece.length - 1]!.c === ' ') piece = piece.slice(0, -1);
+    lines.push(piece);
+    remaining = remaining.slice(breakAt);
+    while (remaining.length && remaining[0]!.c === ' ') remaining = remaining.slice(1);
+  }
+  if (remaining.length || lines.length === 0) lines.push(remaining);
+  return lines;
+}
+
 /**
  * Soft-wrap `text` at ~wrapCh.
+ * Normalizes breaks + strips/allowlists tiny HTML first (visible measure).
  * `maxLines`: number = product/hard clip; `null` = full body up to soft safety.
  */
 export function wrapLines(
@@ -41,35 +107,73 @@ export function wrapLines(
   wrapCh: number = DEFAULT_WRAP_CH,
   maxLines: number | null = DEFAULT_MAX_LINES,
 ): WrapResult {
-  let source = String(text ?? '');
+  const original = String(text ?? '');
+  let runs = captionStyleRuns(original);
+  // Soft-safety on visible length
+  let visible = captionVisibleText(original);
   let softSafetyHit = false;
-  if (source.length > SOFT_SAFETY_MAX_CHARS) {
-    source = source.slice(0, SOFT_SAFETY_MAX_CHARS);
+  if (visible.length > SOFT_SAFETY_MAX_CHARS) {
     softSafetyHit = true;
+    // Truncate runs to soft char budget
+    let left = SOFT_SAFETY_MAX_CHARS;
+    const trimmed: CaptionStyleRun[] = [];
+    for (const r of runs) {
+      if (left <= 0) break;
+      if (r.text.length <= left) {
+        trimmed.push(r);
+        left -= r.text.length;
+      } else {
+        trimmed.push({ ...r, text: r.text.slice(0, left) });
+        left = 0;
+      }
+    }
+    runs = trimmed;
+    visible = captionVisibleText(
+      // rebuild approx — visible from trimmed runs
+      runs.map((r) => r.text).join(''),
+    );
   }
 
   const ch = Math.max(8, Math.floor(wrapCh) || DEFAULT_WRAP_CH);
-  const paragraphs = source.split(/\n/);
-  const raw: string[] = [];
 
-  for (let pi = 0; pi < paragraphs.length; pi++) {
-    const para = paragraphs[pi];
-    if (para === '') {
-      raw.push('');
+  // Split runs into paragraphs on LF inside run text
+  const paragraphs: CaptionStyleRun[][] = [[]];
+  for (const r of runs) {
+    const parts = r.text.split('\n');
+    for (let pi = 0; pi < parts.length; pi++) {
+      if (pi > 0) paragraphs.push([]);
+      const piece = parts[pi]!;
+      if (piece.length || (pi === 0 && parts.length === 1)) {
+        paragraphs[paragraphs.length - 1]!.push({
+          text: piece,
+          bold: r.bold,
+          italic: r.italic,
+        });
+      }
+    }
+  }
+
+  const rawRich: CaptionStyleRun[][] = [];
+  for (const para of paragraphs) {
+    const paraText = para.map((r) => r.text).join('');
+    if (paraText === '' && para.length === 0) {
+      rawRich.push([{ text: '', bold: false, italic: false }]);
       continue;
     }
-    let remaining = para;
-    while (remaining.length > ch) {
-      let breakAt = remaining.lastIndexOf(' ', ch);
-      if (breakAt <= 0) breakAt = ch;
-      raw.push(remaining.slice(0, breakAt).trimEnd());
-      remaining = remaining.slice(breakAt).replace(/^\s+/, '');
+    if (paraText === '') {
+      rawRich.push([{ text: '', bold: false, italic: false }]);
+      continue;
     }
-    if (remaining.length || para.length === 0) raw.push(remaining);
+    const wrapped = softWrapChars(runsToChars(para), ch);
+    for (const lineChars of wrapped) {
+      rawRich.push(charsToRuns(lineChars));
+    }
   }
-  if (raw.length === 0) raw.push('');
+  if (rawRich.length === 0) {
+    rawRich.push([{ text: '', bold: false, italic: false }]);
+  }
 
-  const totalLines = raw.length;
+  const totalLines = rawRich.length;
 
   let cap: number;
   if (maxLines == null || !Number.isFinite(maxLines)) {
@@ -80,25 +184,65 @@ export function wrapLines(
   }
 
   let truncated = softSafetyHit;
-  let lines = raw;
-  if (raw.length > cap) {
+  let richLines = rawRich;
+  if (rawRich.length > cap) {
     truncated = true;
     if (maxLines == null || !Number.isFinite(maxLines)) softSafetyHit = true;
-    lines = raw.slice(0, cap);
-    const last = lines[cap - 1] ?? '';
-    lines[cap - 1] =
-      last.length >= ch
-        ? last.slice(0, Math.max(1, ch - 1)) + '…'
-        : last + '…';
-  } else if (softSafetyHit && lines.length) {
-    const last = lines[lines.length - 1] ?? '';
-    if (!last.endsWith('…')) lines[lines.length - 1] = last + '…';
+    richLines = rawRich.slice(0, cap);
+    const lastRuns = richLines[cap - 1] ?? [{ text: '', bold: false, italic: false }];
+    const lastPlain = lastRuns.map((r) => r.text).join('');
+    if (lastPlain.length >= ch) {
+      // Truncate last line runs to ch-1 + ellipsis
+      let left = Math.max(1, ch - 1);
+      const cut: CaptionStyleRun[] = [];
+      for (const r of lastRuns) {
+        if (left <= 0) break;
+        if (r.text.length <= left) {
+          cut.push(r);
+          left -= r.text.length;
+        } else {
+          cut.push({ ...r, text: r.text.slice(0, left) });
+          left = 0;
+        }
+      }
+      const ellipsisBold = cut.length ? cut[cut.length - 1]!.bold : false;
+      const ellipsisItalic = cut.length ? cut[cut.length - 1]!.italic : false;
+      cut.push({ text: '…', bold: ellipsisBold, italic: ellipsisItalic });
+      richLines[cap - 1] = cut;
+    } else {
+      const ellipsisBold = lastRuns.length
+        ? lastRuns[lastRuns.length - 1]!.bold
+        : false;
+      const ellipsisItalic = lastRuns.length
+        ? lastRuns[lastRuns.length - 1]!.italic
+        : false;
+      richLines[cap - 1] = [
+        ...lastRuns,
+        { text: '…', bold: ellipsisBold, italic: ellipsisItalic },
+      ];
+    }
+  } else if (softSafetyHit && richLines.length) {
+    const last = richLines[richLines.length - 1]!;
+    const plain = last.map((r) => r.text).join('');
+    if (!plain.endsWith('…')) {
+      richLines[richLines.length - 1] = [
+        ...last,
+        {
+          text: '…',
+          bold: last.length ? last[last.length - 1]!.bold : false,
+          italic: last.length ? last[last.length - 1]!.italic : false,
+        },
+      ];
+    }
   }
+
+  const lines = richLines.map((rs) => rs.map((r) => r.text).join(''));
 
   return {
     lines,
+    richLines,
     truncated,
-    fullText: String(text ?? ''),
+    fullText: original,
     softSafetyHit,
     totalLines,
   };
@@ -125,6 +269,7 @@ export interface MeasuredPill {
   foldSlot: number;
   taskLead: number;
   lines: string[];
+  richLines: CaptionStyleRun[][];
   truncated: boolean;
   fullText: string;
   softSafetyHit?: boolean;
@@ -195,6 +340,7 @@ export function measurePill(
     foldSlot,
     taskLead,
     lines: wrapped.lines,
+    richLines: wrapped.richLines,
     truncated: wrapped.truncated,
     fullText: wrapped.fullText,
     softSafetyHit: wrapped.softSafetyHit,

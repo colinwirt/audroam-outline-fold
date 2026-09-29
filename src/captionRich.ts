@@ -1,7 +1,8 @@
 /**
- * Safe rich captions for Outline toHtml.
+ * Safe rich captions for Outline toHtml + Map measure/paint.
  * Never trusts raw HTML. Inline SVG in captions is OUT (XSS).
  * Markdown images/links/bare https → allowlisted <img>/<a> only.
+ * Tiny HTML allowlist: <b>/<strong>, <i>/<em>, breaks (<br>/<nr> + \n/\r).
  */
 
 function esc(s: string): string {
@@ -51,6 +52,127 @@ export function parseHopTarget(url: string): string | null {
   return m ? m[1] : null;
 }
 
+/**
+ * Normalize break tokens BEFORE wrap/measure/paint.
+ * `\n` / `\r` / `\r\n` / `<br>` / `<br/>` / `<nr>` → LF.
+ * Collapses 3+ LFs to at most one blank line (paragraph gap).
+ */
+export function normalizeCaptionBreaks(text: string): string {
+  let s = String(text ?? '');
+  // CRLF first, then lone CR
+  s = s.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+  // <br>, <br/>, <br />, <nr>, <nr/> — any case; optional slash/space
+  s = s.replace(/<\s*br\s*\/?\s*>/gi, '\n');
+  s = s.replace(/<\s*nr\s*\/?\s*>/gi, '\n');
+  // At most one blank line (collapse 3+ newlines → 2)
+  s = s.replace(/\n{3,}/g, '\n\n');
+  return s;
+}
+
+export interface CaptionStyleRun {
+  text: string;
+  bold: boolean;
+  italic: boolean;
+}
+
+const OPEN_TAG =
+  /^<\s*(b|strong|i|em)\s*>/i;
+const CLOSE_TAG =
+  /^<\s*\/\s*(b|strong|i|em)\s*>/i;
+/** Allowlisted open tag WITH attributes → treat as disallowed (strip tag). */
+const OPEN_WITH_ATTRS =
+  /^<\s*(b|strong|i|em)\s+[^>]*>/i;
+/** Any other tag (open or close) — strip, keep going. */
+const ANY_TAG = /^<\/?[A-Za-z][^>]*>/;
+
+function tagKind(name: string): 'bold' | 'italic' | null {
+  const n = name.toLowerCase();
+  if (n === 'b' || n === 'strong') return 'bold';
+  if (n === 'i' || n === 'em') return 'italic';
+  return null;
+}
+
+/**
+ * Parse tiny HTML allowlist into styled runs.
+ * Input should already be break-normalized (LF only; no <br>/<nr>).
+ * - <b>/<strong>, <i>/<em> without attributes → style
+ * - Tags with attributes → strip tag, keep inner text
+ * - Unknown tags → strip tag, keep inner text
+ * - Nesting OK; pathological depth flattens via boolean flags
+ * - Raw `<` that is not a tag stays as text (escaped at render)
+ */
+export function parseTinyHtmlRuns(text: string): CaptionStyleRun[] {
+  const s = String(text ?? '');
+  const runs: CaptionStyleRun[] = [];
+  let bold = 0;
+  let italic = 0;
+  let i = 0;
+  let buf = '';
+
+  const flush = () => {
+    if (!buf) return;
+    runs.push({
+      text: buf,
+      bold: bold > 0,
+      italic: italic > 0,
+    });
+    buf = '';
+  };
+
+  while (i < s.length) {
+    if (s[i] === '<') {
+      const rest = s.slice(i);
+      let m = OPEN_TAG.exec(rest);
+      if (m) {
+        flush();
+        const kind = tagKind(m[1]);
+        if (kind === 'bold') bold++;
+        else if (kind === 'italic') italic++;
+        i += m[0].length;
+        continue;
+      }
+      m = CLOSE_TAG.exec(rest);
+      if (m) {
+        flush();
+        const kind = tagKind(m[1]);
+        if (kind === 'bold') bold = Math.max(0, bold - 1);
+        else if (kind === 'italic') italic = Math.max(0, italic - 1);
+        i += m[0].length;
+        continue;
+      }
+      m = OPEN_WITH_ATTRS.exec(rest);
+      if (m) {
+        // Disallowed attrs — strip tag only
+        i += m[0].length;
+        continue;
+      }
+      m = ANY_TAG.exec(rest);
+      if (m) {
+        // Unknown / unsafe tag — strip, keep inner text later
+        i += m[0].length;
+        continue;
+      }
+    }
+    buf += s[i];
+    i++;
+  }
+  flush();
+  return runs;
+}
+
+/** Visible plain text after break-normalize + tiny-HTML strip (for wrap/measure). */
+export function captionVisibleText(text: string): string {
+  const normalized = normalizeCaptionBreaks(text);
+  return parseTinyHtmlRuns(normalized)
+    .map((r) => r.text)
+    .join('');
+}
+
+/** Style runs after break-normalize (Map paint). */
+export function captionStyleRuns(text: string): CaptionStyleRun[] {
+  return parseTinyHtmlRuns(normalizeCaptionBreaks(text));
+}
+
 type Token =
   | { kind: 'text'; value: string }
   | { kind: 'img'; alt: string; url: string }
@@ -58,7 +180,7 @@ type Token =
 
 /**
  * Tokenize caption: images, markdown links, bare https:// — leftover is text.
- * Does not interpret HTML tags.
+ * Does not interpret HTML tags (handled later on text tokens).
  */
 function tokenize(title: string): Token[] {
   const s = String(title);
@@ -117,17 +239,54 @@ function renderLink(label: string, url: string): string {
 }
 
 /**
+ * Emit allowlisted tiny HTML for a text segment (already break-normalized).
+ * `\n` → `<br>`; bold/italic tags without attrs; everything else escaped/stripped.
+ */
+export function tinyHtmlToSafeHtml(segment: string): string {
+  const runs = parseTinyHtmlRuns(segment);
+  let out = '';
+  for (const r of runs) {
+    // Escape text, then turn LF into <br>
+    const parts = r.text.split('\n');
+    const escaped = parts.map((p) => esc(p)).join('<br>');
+    if (!escaped) {
+      // empty between breaks already handled via split
+      continue;
+    }
+    let chunk = escaped;
+    if (r.italic) chunk = `<i>${chunk}</i>`;
+    if (r.bold) chunk = `<b>${chunk}</b>`;
+    out += chunk;
+  }
+  return out;
+}
+
+/**
  * Convert a node title/caption to safe HTML for the Outline title span.
- * Escapes by default; only allowlisted markdown img/a/bare-https become tags.
+ * Order: normalize breaks → markdown img/a → tiny HTML allowlist on text.
+ * Escapes by default; only allowlisted markdown img/a/bare-https and tiny HTML.
  * Inline SVG strings in captions are never emitted as markup.
  */
 export function captionToHtml(title: string): string {
   if (!title) return '';
-  return tokenize(title)
+  const normalized = normalizeCaptionBreaks(title);
+  return tokenize(normalized)
     .map((t) => {
-      if (t.kind === 'text') return esc(t.value);
+      if (t.kind === 'text') return tinyHtmlToSafeHtml(t.value);
       if (t.kind === 'img') return renderImg(t.alt, t.url);
       return renderLink(t.label, t.url);
     })
     .join('');
+}
+
+/**
+ * SVG tspan innards for a style run (escaped text; nbsp if empty line binder).
+ */
+export function captionRunToTspanInner(run: CaptionStyleRun): string {
+  const show = run.text === '' ? '\u00a0' : esc(run.text);
+  const attrs: string[] = [];
+  if (run.bold) attrs.push('font-weight="700"');
+  if (run.italic) attrs.push('font-style="italic"');
+  const a = attrs.length ? ' ' + attrs.join(' ') : '';
+  return `<tspan${a}>${show}</tspan>`;
 }

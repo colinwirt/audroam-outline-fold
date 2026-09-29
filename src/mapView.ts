@@ -5,7 +5,7 @@
  * with leaf/sibling count. Recomputed on every paint so fold expand/collapse
  * reflows without overlap.
  *
- * Scrapbook (0.2.8+): multi-line wrap, task lead SVG, text click ≠ fold; label text selectable (0.2.10); pan clears selection (0.2.11); keyboard only when Map focused (0.2.12).
+ * Scrapbook (0.2.8+): multi-line wrap, task lead SVG, text click ≠ fold; label text selectable (0.2.10); pan clears selection (0.2.11); keyboard only when Map focused (0.2.12); rich caption breaks+HTML + focus-on-click + camera follow/clamp (0.2.13).
  * Sealed nodes: omitted until unlocked (no gray stubs) — caller filters doc if needed.
  */
 import {
@@ -34,6 +34,24 @@ import {
   type TaskState,
   type TaskToggleEvent,
 } from './taskChrome.js';
+import {
+  captionRunToTspanInner,
+  type CaptionStyleRun,
+} from './captionRich.js';
+import {
+  clampCamToContent,
+  minKForContent,
+  camToEnsureVisible,
+  camToFrameRects,
+  pillWorldRect,
+  unionWorldRects,
+  lerpCam,
+  easeOutCubic,
+  DEFAULT_FOLLOW_EASE_MS,
+  DEFAULT_CAM_PADDING_PX,
+  type CamState,
+  type WorldRect,
+} from './mapCamera.js';
 import { toggleTask, shouldFireAction } from './task.js';
 
 export interface MapPoint {
@@ -95,6 +113,7 @@ export interface PillSize {
   foldSlot: number;
   taskLead: number;
   lines: string[];
+  richLines: CaptionStyleRun[][];
   truncated: boolean;
   fullText: string;
   softSafetyHit?: boolean;
@@ -295,7 +314,8 @@ function multiLineText(
   lines: string[],
   textX: number,
   centreY: number,
-  textW: number,
+  _textW: number,
+  richLines?: CaptionStyleRun[][],
 ): string {
   const n = Math.max(1, lines.length);
   const blockH = n * LINE_H;
@@ -303,6 +323,17 @@ function multiLineText(
   const tspans = lines
     .map((line, i) => {
       const dy = i === 0 ? 0 : LINE_H;
+      const runs = richLines?.[i];
+      if (runs && runs.length) {
+        const inner = runs
+          .map((r) => {
+            const text =
+              r.text === '' && runs.length === 1 ? '\u00a0' : r.text;
+            return captionRunToTspanInner({ ...r, text });
+          })
+          .join('');
+        return `<tspan x="${textX}" dy="${dy}">${inner || '\u00a0'}</tspan>`;
+      }
       const show = line === '' ? '\u00a0' : esc(line);
       return `<tspan x="${textX}" dy="${dy}">${show}</tspan>`;
     })
@@ -588,10 +619,196 @@ export function createMapView(
     onThread,
   } = opts;
 
+  if (!host.hasAttribute('tabindex')) host.setAttribute('tabindex', '-1');
+
   const CAM_MIN = 0.35;
   const CAM_MAX = 3.5;
   const cam = { x: 0, y: 0, k: 1 };
   const ANIM_MS = 280;
+  /** User pan/wheel wins until next follow trigger. */
+  let userCamGesture = false;
+  let followAnim: { raf: number; start: number; from: CamState; to: CamState } | null =
+    null;
+  type PendingFollow =
+    | { kind: 'focus' }
+    | { kind: 'expand'; focusId: string }
+    | null;
+  let pendingFollow: PendingFollow = null;
+
+  function hostViewport(): { w: number; h: number } {
+    const rect = host.getBoundingClientRect();
+    return {
+      w: Math.max(1, rect.width || host.clientWidth || 1180),
+      h: Math.max(1, rect.height || host.clientHeight || 520),
+    };
+  }
+
+  function cancelFollowAnim(): void {
+    if (followAnim) {
+      cancelAnimationFrame(followAnim.raf);
+      followAnim = null;
+    }
+  }
+
+  function collectVisiblePillRects(): {
+    rects: WorldRect[];
+    byId: Map<string, WorldRect>;
+  } {
+    const doc = getDoc();
+    const layout = getLayout();
+    const rects: WorldRect[] = [];
+    const byId = new Map<string, WorldRect>();
+    const defaults = { wrapCh: DEFAULT_WRAP_CH, maxLines: DEFAULT_MAX_LINES };
+    function walk(n: OutlineNode): void {
+      if (!n.id || !layout.nodes?.[n.id]) return;
+      const pos = layout.nodes[n.id]!;
+      const label = displayCaption(n.title);
+      const foldable = hasKids(n);
+      const size = pillSize(label, {
+        reserveFold: foldable,
+        reserveTask: !!resolveTask(n),
+        wrapCh: pos.wrapCh ?? defaults.wrapCh,
+        maxLines: pos.maxLines,
+        bodyExpanded: !!pos.bodyExpanded,
+      });
+      const r = pillWorldRect(pos.x, pos.y, size.w, size.h);
+      rects.push(r);
+      byId.set(n.id, r);
+      if (foldable && !isCollapsed(doc, n.id)) {
+        for (const c of n.children || []) walk(c);
+      }
+    }
+    for (const root of doc.nodes || []) walk(root);
+    return { rects, byId };
+  }
+
+  function clampCamNow(): void {
+    const { rects } = collectVisiblePillRects();
+    const content = unionWorldRects(rects);
+    if (!content) return;
+    const next = clampCamToContent(cam, hostViewport(), content, {
+      paddingPx: DEFAULT_CAM_PADDING_PX,
+      minK: CAM_MIN,
+      maxK: CAM_MAX,
+    });
+    cam.x = next.x;
+    cam.y = next.y;
+    cam.k = next.k;
+  }
+
+  function easeCamTo(target: CamState, ms = DEFAULT_FOLLOW_EASE_MS): void {
+    cancelFollowAnim();
+    const from: CamState = { x: cam.x, y: cam.y, k: cam.k };
+    if (
+      Math.abs(from.x - target.x) < 0.5 &&
+      Math.abs(from.y - target.y) < 0.5 &&
+      Math.abs(from.k - target.k) < 0.001
+    ) {
+      cam.x = target.x;
+      cam.y = target.y;
+      cam.k = target.k;
+      applyCam();
+      return;
+    }
+    const start = performance.now();
+    const step = (now: number) => {
+      if (userCamGesture) {
+        followAnim = null;
+        return;
+      }
+      const t = Math.min(1, (now - start) / ms);
+      const eased = easeOutCubic(t);
+      const cur = lerpCam(from, target, eased);
+      cam.x = cur.x;
+      cam.y = cur.y;
+      cam.k = cur.k;
+      applyCam();
+      if (t < 1) {
+        followAnim = {
+          raf: requestAnimationFrame(step),
+          start,
+          from,
+          to: target,
+        };
+      } else {
+        followAnim = null;
+        clampCamNow();
+        applyCam();
+      }
+    };
+    followAnim = {
+      raf: requestAnimationFrame(step),
+      start,
+      from,
+      to: target,
+    };
+  }
+
+  function runPendingFollow(): void {
+    const pending = pendingFollow;
+    pendingFollow = null;
+    if (!pending || userCamGesture) return;
+    const vp = hostViewport();
+    const { byId } = collectVisiblePillRects();
+    const focusId = pending.kind === 'expand' ? pending.focusId : getFocusId();
+    const focusRect = focusId ? byId.get(focusId) : undefined;
+    if (!focusRect) return;
+
+    if (pending.kind === 'focus') {
+      const target = camToEnsureVisible(cam, vp, focusRect, {
+        paddingPx: DEFAULT_CAM_PADDING_PX,
+        minK: CAM_MIN,
+        maxK: CAM_MAX,
+      });
+      easeCamTo(target);
+      return;
+    }
+
+    // expand: frame focus + visible children (one level)
+    const doc = getDoc();
+    const focusNode = findNode(doc.nodes, focusId);
+    const group: WorldRect[] = [focusRect];
+    if (focusNode?.children && focusId && !isCollapsed(doc, focusId)) {
+      for (const c of focusNode.children) {
+        if (c.id && byId.has(c.id)) group.push(byId.get(c.id)!);
+      }
+    }
+    const target = camToFrameRects(cam, vp, group, {
+      paddingPx: DEFAULT_CAM_PADDING_PX,
+      focus: focusRect,
+      focusBias: 0.6,
+      minK: CAM_MIN,
+      maxK: CAM_MAX,
+      allowZoomOut: true,
+    });
+    easeCamTo(target);
+  }
+
+
+  /** Ensure Map owns focus so digits/arrows/fold keys work after a node click.
+   * Prefer the focused pill; fall back to host. Never steal from textarea on paint
+   * alone — mapPaintShouldRestoreFocus still gates paint restore.
+   */
+  function focusMapForKeys(prefer?: Element | null): void {
+    try {
+      if (!host.hasAttribute('tabindex')) {
+        host.setAttribute('tabindex', '-1');
+      }
+      if (prefer && typeof (prefer as HTMLElement).focus === 'function') {
+        (prefer as HTMLElement).focus({ preventScroll: true });
+        if (
+          typeof document !== 'undefined' &&
+          document.activeElement &&
+          host.contains(document.activeElement)
+        ) {
+          return;
+        }
+      }
+      host.focus({ preventScroll: true });
+    } catch {
+      /* focus not available */
+    }
+  }
 
   function applyCam(): void {
     const g = host.querySelector('#mapViewport');
@@ -616,15 +833,29 @@ export function createMapView(
   }
 
   function zoomAt(clientX: number, clientY: number, factor: number): void {
+    userCamGesture = true;
+    cancelFollowAnim();
     const rect = host.getBoundingClientRect();
     const mx = clientX - rect.left;
     const my = clientY - rect.top;
-    const next = Math.max(CAM_MIN, Math.min(CAM_MAX, cam.k * factor));
+    let next = Math.max(CAM_MIN, Math.min(CAM_MAX, cam.k * factor));
+    const { rects } = collectVisiblePillRects();
+    const content = unionWorldRects(rects);
+    if (content && factor < 1) {
+      next = Math.max(
+        next,
+        minKForContent(hostViewport(), content, {
+          minK: CAM_MIN,
+          maxK: CAM_MAX,
+        }),
+      );
+    }
     const wx = (mx - cam.x) / cam.k;
     const wy = (my - cam.y) / cam.k;
     cam.k = next;
     cam.x = mx - wx * cam.k;
     cam.y = my - wy * cam.k;
+    clampCamNow();
     applyCam();
   }
 
@@ -832,6 +1063,7 @@ export function createMapView(
       foldSlot: number;
       taskLead: number;
       lines: string[];
+      richLines: CaptionStyleRun[][];
       truncated: boolean;
       fullText: string;
       foldable: boolean;
@@ -871,6 +1103,7 @@ export function createMapView(
         foldSlot: size.foldSlot,
         taskLead: size.taskLead,
         lines: size.lines,
+        richLines: size.richLines,
         truncated: size.truncated,
         fullText: size.fullText || n.title,
         foldable,
@@ -920,6 +1153,7 @@ export function createMapView(
           foldSlot,
           taskLead,
           lines,
+          richLines,
           truncated,
           fullText,
           foldable,
@@ -985,7 +1219,7 @@ export function createMapView(
       <title>${esc(tip)}</title>
       <rect class="map-pill" x="${x}" y="${y}" width="${w}" height="${h}" rx="18" ry="18"/>
       ${taskChrome}
-      ${multiLineText(lines, textX, textCentreY, textW)}
+      ${multiLineText(lines, textX, textCentreY, textW, richLines)}
       ${moreChrome}
       ${threadChip}
       ${marker}
@@ -1022,21 +1256,36 @@ export function createMapView(
         const t = e.target as Element | null;
         if (t?.closest?.('.map-fold-hit') || t?.closest?.('.map-fold-indicator')) {
           setFocusId(id);
+          // Focus host/pill BEFORE paint so Map keys work (0.2.13).
+          focusMapForKeys(g);
           const n = findNode(getDoc().nodes, id);
+          userCamGesture = false;
           if (n && hasKids(n)) {
+            const wasCollapsed = isCollapsed(getDoc(), id);
             setDoc(toggleFold(getDoc(), id));
+            pendingFollow = wasCollapsed
+              ? { kind: 'expand', focusId: id }
+              : { kind: 'focus' };
+          } else {
+            pendingFollow = { kind: 'focus' };
           }
           onChange?.();
           return;
         }
         if (t?.closest?.('.map-task-hit') || t?.closest?.('.map-task-glyph')) {
           setFocusId(id);
+          focusMapForKeys(g);
+          userCamGesture = false;
+          pendingFollow = { kind: 'focus' };
           applyTaskToggle(id);
           return;
         }
         if (t?.closest?.('.map-body-more-hit')) {
           // Body more/less — orthogonal to child fold / task.
           setFocusId(id);
+          focusMapForKeys(g);
+          userCamGesture = false;
+          pendingFollow = { kind: 'focus' };
           const hit = t.closest('.map-body-more-hit') as Element;
           const action = hit.getAttribute('data-body-action');
           const lay = getLayout();
@@ -1051,6 +1300,9 @@ export function createMapView(
         }
         if (t?.closest?.('.map-thread-hit')) {
           setFocusId(id);
+          focusMapForKeys(g);
+          userCamGesture = false;
+          pendingFollow = { kind: 'focus' };
           const n = findNode(getDoc().nodes, id);
           const thread = n ? resolveThread(n) : null;
           if (n && thread) onThread?.({ id, thread, node: n });
@@ -1061,26 +1313,23 @@ export function createMapView(
         // Label text-drag: keep native Selection (skip paint that would wipe it).
         const prevFocus = getFocusId();
         setFocusId(id);
+        // Always move focus into Map on node click so arrows/digits/fold keys work.
+        focusMapForKeys(g);
+        userCamGesture = false;
+        pendingFollow = { kind: 'focus' };
         const sel =
           typeof window !== 'undefined' && window.getSelection
             ? window.getSelection()
             : null;
         if (mapNodeKeepsTextSelection(g, sel)) {
-          try {
-            (g as unknown as HTMLElement).focus({ preventScroll: true });
-          } catch {
-            /* SVG focus */
-          }
+          // Still ensure visible without wiping selection via paint when possible.
+          runPendingFollow();
           return;
         }
         if (prevFocus !== id) {
           onChange?.();
         } else {
-          try {
-            (g as unknown as HTMLElement).focus({ preventScroll: true });
-          } catch {
-            /* SVG focus */
-          }
+          runPendingFollow();
         }
       });
     });
@@ -1095,6 +1344,17 @@ export function createMapView(
     ) {
       focused.focus({ preventScroll: true });
     }
+
+    // Camera follow after layout settles (focus / expand). Resume-on-load
+    // leaves pendingFollow null so camera stays as restored until user acts.
+    if (isActive()) {
+      const hadFollow = !!pendingFollow;
+      runPendingFollow();
+      if (!hadFollow) {
+        clampCamNow();
+        applyCam();
+      }
+    }
   }
 
   function applyFocusMove(direction: MapFocusDirection): void {
@@ -1106,6 +1366,8 @@ export function createMapView(
     });
     if (!next) return;
     setFocusId(next);
+    userCamGesture = false;
+    pendingFollow = { kind: 'focus' };
     onChange?.();
   }
 
@@ -1157,9 +1419,13 @@ export function createMapView(
         dragging = true;
         lastX = e.clientX;
         lastY = e.clientY;
+        userCamGesture = true;
+        cancelFollowAnim();
         beginPanGuard();
       } else if (pointers.size === 2) {
         dragging = false;
+        userCamGesture = true;
+        cancelFollowAnim();
         beginPanGuard();
         const pts = [...pointers.values()];
         pinchStartDist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
@@ -1191,6 +1457,7 @@ export function createMapView(
         cam.y += e.clientY - lastY;
         lastX = e.clientX;
         lastY = e.clientY;
+        clampCamNow();
         applyCam();
       },
       { passive: false },

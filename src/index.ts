@@ -21,6 +21,13 @@ export {
   captionToHtml,
   isAllowedCaptionUrl,
   parseHopTarget,
+  normalizeCaptionBreaks,
+  captionVisibleText,
+  captionStyleRuns,
+  parseTinyHtmlRuns,
+  tinyHtmlToSafeHtml,
+  captionRunToTspanInner,
+  type CaptionStyleRun,
 } from './captionRich.js';
 export {
   attachOutlineTree,
@@ -141,3 +148,21 @@ export {
   nextTaskState,
   shouldFireAction,
 } from './task.js';
+
+export {
+  clampCamToContent,
+  camToEnsureVisible,
+  camToFrameRects,
+  isRectComfortablyVisible,
+  pillWorldRect,
+  unionWorldRects,
+  worldRectToScreen,
+  lerpCam,
+  easeOutCubic,
+  DEFAULT_CAM_PADDING_PX,
+  DEFAULT_FOLLOW_EASE_MS,
+  COMFORT_INSET_PX,
+  type CamState,
+  type ViewportSize,
+  type WorldRect,
+} from './mapCamera.js';

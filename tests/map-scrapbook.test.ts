@@ -383,3 +383,34 @@ describe('mapKeyboardShouldHandle', () => {
     ).toBe(false);
   });
 });
+
+describe('map keyboard focus contract (0.2.13)', () => {
+  it('still rejects TEXTAREA/INPUT; accepts host-contained focus', () => {
+    const inside = { id: 'host-child' } as unknown as Node;
+    const host = { contains: (n: Node | null) => n === inside };
+    expect(
+      mapKeyboardShouldHandle({
+        isActive: true,
+        target: { tagName: 'TEXTAREA' },
+        activeElement: inside,
+        host,
+      }),
+    ).toBe(false);
+    expect(
+      mapKeyboardShouldHandle({
+        isActive: true,
+        target: { tagName: 'DIV' },
+        activeElement: inside,
+        host,
+      }),
+    ).toBe(true);
+  });
+
+  it('paint restore still requires prior focus inside host (no editor steal)', () => {
+    const inside = { id: 'pill' } as unknown as Node;
+    const editor = { id: 'ta' } as unknown as Node;
+    const host = { contains: (n: Node | null) => n === inside };
+    expect(mapPaintShouldRestoreFocus(host, editor)).toBe(false);
+    expect(mapPaintShouldRestoreFocus(host, inside)).toBe(true);
+  });
+});

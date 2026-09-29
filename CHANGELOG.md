@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.2.13 — 2026-09-29
+
+### Map / Outline caption rich newlines + tiny HTML
+
+Design lock (Colin treat-now): normalize break tokens **before** wrap/measure/paint, and allow a tiny safe HTML subset for emphasis.
+
+- Breaks: `\n` / `\r` / `\r\n` / `<br>` / `<br/>` / `<nr>` (any case) → line breaks; collapse 3+ LFs to one blank line
+- Allowlist: `<b>`/`<strong>`, `<i>`/`<em>` (no attributes); everything else stripped (inner text kept) or escaped at render
+- Shared helpers: `normalizeCaptionBreaks`, `captionVisibleText`, `captionStyleRuns` / `parseTinyHtmlRuns`
+- Map: measure counts **visible** chars; SVG paint uses `font-weight` / `font-style` on tspans
+- Outline `captionToHtml` / `toHtml`: same normalize + allowlist (`<br>` + bold/italic); markdown links unchanged
+- `displayCaption` preserves newlines (horizontal ws only)
+
+### Map camera follow + viewport guard
+
+Design lock (Colin treat-now): keep painted content on-screen and follow focus/expand.
+
+- **Clamp** pan/zoom so viewport always intersects content + ~56px padding (no empty infinity)
+- **Focus change** (click / arrows): ease focus into view when clipped or far; no jump if already comfortable
+- **Expand children** (fold / `.` / Space / digits): after auto-pack, frame focus + newly visible kids, centroid biased ~60% toward focus
+- Manual pan/wheel wins until the next follow trigger; resume camera on load unchanged (follow only after user acts)
+
+### Map focus-on-click (fix 0.2.12 over-tight gate)
+
+Clicking a Map node (pill / fold-slot / task / more / thread) now `focus()`es the map host (or pill) **before** paint so arrows / digits / `.` / Space / Enter work after select. Still: paint does **not** steal focus from textarea/editor; `mapKeyboardShouldHandle` still rejects `TEXTAREA`/`INPUT`/`SELECT`/contenteditable.
+
 ## 0.2.12 — 2026-09-29
 
 ### Map keyboard only when Map has focus
