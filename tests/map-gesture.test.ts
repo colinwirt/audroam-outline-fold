@@ -5,6 +5,13 @@ import {
   nextGestureMode,
   panFrame,
   pinchFrame,
+  decayVelocity,
+  inertiaEligible,
+  isDoubleTap,
+  isTwoFingerTap,
+  rubberOffset,
+  softAxis,
+  softZoom,
   wheelIntent,
 } from '../src/mapGesture.js';
 
@@ -68,6 +75,45 @@ describe('wheel', () => {
     const z = wheelIntent({ ...base, ctrlKey: true }, 'pan', 800);
     expect(z.kind).toBe('zoom');
     if (z.kind === 'zoom') expect(z.s).toBeCloseTo(-0.1);
+  });
+
+  it('rubber-bands overshoot under the 56px cap and decays inertia', () => {
+    expect(rubberOffset(0)).toBe(0);
+    expect(rubberOffset(1000)).toBeLessThan(56);
+    expect(softAxis(80, 0, 10)).toBeGreaterThan(10);
+    expect(softAxis(80, 0, 10)).toBeLessThan(10 + 56);
+    expect(softZoom(3, 2)).toBeGreaterThan(2);
+    expect(softZoom(3, 2)).toBeLessThan(2 * 1.25);
+    expect(decayVelocity(1, 250)).toBeCloseTo(Math.exp(-1));
+    expect(
+      inertiaEligible({
+        pointerType: 'touch',
+        speedPxPerMs: 0.4,
+        sinceLastMoveMs: 10,
+        reducedMotion: false,
+        enabled: true,
+      }),
+    ).toBe(true);
+    expect(
+      inertiaEligible({
+        pointerType: 'mouse',
+        speedPxPerMs: 1,
+        sinceLastMoveMs: 10,
+        reducedMotion: false,
+        enabled: true,
+      }),
+    ).toBe(false);
+    expect(isDoubleTap(200, 10)).toBe(true);
+    expect(isDoubleTap(400, 10)).toBe(false);
+    expect(
+      isTwoFingerTap({
+        secondDownDelayMs: 40,
+        spanMs: 120,
+        movedA: 2,
+        movedB: 3,
+        scaleLive: false,
+      }),
+    ).toBe(true);
   });
 
   it('restores wheel-zoom when asked', () => {

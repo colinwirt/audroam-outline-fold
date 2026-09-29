@@ -17,9 +17,17 @@ import {
   anchorPan,
   anchorPinch,
   nextGestureMode,
+  inertiaEligible,
+  isDoubleTap,
+  isTwoFingerTap,
   panFrame,
   pinchFrame,
   slopPx,
+  softAxis,
+  softZoom,
+  velocityFromSamples,
+  capSpeed,
+  decayVelocity,
   wheelIntent,
   type Cam as GestureCam,
   type PanAnchor,
@@ -175,6 +183,15 @@ export interface MapViewOptions {
    * "every wheel notch zooms" behaviour. Ctrl/Cmd+wheel always zooms.
    */
   wheel?: 'pan' | 'zoom';
+  /** Phase-2 gesture switches. Defaults match the locked spec. */
+  gestures?: {
+    wheel?: 'pan' | 'zoom';
+    inertia?: boolean;
+    rubberBand?: boolean;
+    doubleTapZoom?: boolean;
+    twoFingerTapZoomOut?: boolean;
+  };
+  onCameraSettle?: (cam: { x: number; y: number; k: number }) => void;
 }
 
 export interface MapKeyboardWire {
@@ -189,6 +206,9 @@ export interface MapViewHandle {
   ensurePositions: () => void;
   resetCam: () => void;
   zoomAt: (clientX: number, clientY: number, factor: number) => void;
+  zoomBy: (factor: number) => void;
+  panBy: (dx: number, dy: number) => void;
+  fit: () => void;
   applyCam: () => void;
   cam: { x: number; y: number; k: number };
   bindGestures: () => void;
@@ -741,7 +761,14 @@ export function createMapView(
     isEditing = () => false,
     getEditRegion,
     wheel: wheelMode = 'pan',
+    gestures: gestureOpts = {},
+    onCameraSettle,
   } = opts;
+  const wheelSetting = gestureOpts.wheel ?? wheelMode;
+  const inertiaOn = gestureOpts.inertia !== false;
+  const rubberOn = gestureOpts.rubberBand !== false;
+  const doubleTapOn = gestureOpts.doubleTapZoom !== false;
+  const twoFingerZoomOut = gestureOpts.twoFingerTapZoomOut !== false;
 
   function recentreEnabled(): boolean {
     return typeof cameraRecentreOpt === 'function'
@@ -838,6 +865,104 @@ export function createMapView(
     cam.x = next.x;
     cam.y = next.y;
     cam.k = next.k;
+  }
+
+  function reducedMotion(): boolean {
+    try {
+      return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    } catch {
+      return false;
+    }
+  }
+
+  let motionRaf = 0;
+  function stopMotion(): void {
+    if (motionRaf) cancelAnimationFrame(motionRaf);
+    motionRaf = 0;
+  }
+
+  function settleCam(): void {
+    onCameraSettle?.({ x: cam.x, y: cam.y, k: cam.k });
+  }
+
+  function animateCamTo(target: { x: number; y: number; k: number }, ms: number): void {
+    stopMotion();
+    if (reducedMotion() || ms <= 0) {
+      cam.x = target.x;
+      cam.y = target.y;
+      cam.k = target.k;
+      applyCam();
+      settleCam();
+      return;
+    }
+    const from = { x: cam.x, y: cam.y, k: cam.k };
+    const start = performance.now();
+    const step = (now: number) => {
+      const t = Math.min(1, (now - start) / ms);
+      const e = 1 - Math.pow(1 - t, 3);
+      cam.x = from.x + (target.x - from.x) * e;
+      cam.y = from.y + (target.y - from.y) * e;
+      cam.k = from.k + (target.k - from.k) * e;
+      applyCam();
+      if (t < 1) motionRaf = requestAnimationFrame(step);
+      else {
+        motionRaf = 0;
+        settleCam();
+      }
+    };
+    motionRaf = requestAnimationFrame(step);
+  }
+
+  function contentUnion() {
+    return unionWorldRects(collectVisiblePillRects().rects);
+  }
+
+  function hardCam(raw: { x: number; y: number; k: number }) {
+    const content = contentUnion();
+    if (!content) return { ...raw };
+    return clampCamToContent(raw, hostViewport(), content, {
+      paddingPx: DEFAULT_CAM_PADDING_PX,
+      minK: CAM_MIN,
+      maxK: CAM_MAX,
+    });
+  }
+
+  function fit(): void {
+    stopMotion();
+    cancelFollowAnim();
+    userCamGesture = true;
+    const content = contentUnion();
+    const vp = hostViewport();
+    if (!content) return;
+    const pad = DEFAULT_CAM_PADDING_PX;
+    const fitK = Math.min(
+      (vp.w - pad * 2) / Math.max(1, content.w),
+      (vp.h - pad * 2) / Math.max(1, content.h),
+    );
+    const k = Math.max(CAM_MIN, Math.min(1, fitK));
+    const target = hardCam({
+      k,
+      x: (vp.w - content.w * k) / 2 - content.x * k,
+      y: (vp.h - content.h * k) / 2 - content.y * k,
+    });
+    animateCamTo(target, 250);
+  }
+
+  function zoomBy(factor: number): void {
+    const rect = host.getBoundingClientRect();
+    zoomAt(rect.left + rect.width / 2, rect.top + rect.height / 2, factor);
+    settleCam();
+  }
+
+  function panBy(dx: number, dy: number): void {
+    stopMotion();
+    cancelFollowAnim();
+    userCamGesture = true;
+    cam.x += dx;
+    cam.y += dy;
+    clampCamNow();
+    applyCam();
+    settleCam();
   }
 
   function easeCamTo(target: CamState, ms = DEFAULT_FOLLOW_EASE_MS): void {
@@ -1577,6 +1702,7 @@ export function createMapView(
   }
 
   function applyFocusMove(direction: MapFocusDirection): void {
+    stopMotion();
     const doc = getDoc();
     const layout = getLayout();
     const next = resolveMapFocus(doc, getFocusId(), direction, {
@@ -1614,6 +1740,14 @@ export function createMapView(
     let swallowClick = false;
     let releasing = false;
     let longPressTimer = 0;
+    let samples: { t: number; x: number; y: number }[] = [];
+    let lastTap = { t: 0, x: 0, y: 0 };
+    let firstDownAt = 0;
+    let secondDownAt = 0;
+    let pinchScaleLive = false;
+    let gestureActive = false;
+    let gestureK0 = 1;
+    let wheelSettle = 0;
 
     function localPt(e: PointerEvent): Pt {
       const rect = host.getBoundingClientRect();
@@ -1642,11 +1776,70 @@ export function createMapView(
     }
 
     function applyGestureCam(next: GestureCam): void {
-      cam.x = next.x;
-      cam.y = next.y;
-      cam.k = next.k;
-      clampCamNow();
+      const hard = hardCam(next);
+      if (!rubberOn) {
+        cam.x = hard.x;
+        cam.y = hard.y;
+        cam.k = hard.k;
+      } else {
+        const lo = hardCam({ x: -1e9, y: -1e9, k: hard.k });
+        const hi = hardCam({ x: 1e9, y: 1e9, k: hard.k });
+        cam.x = softAxis(next.x, Math.min(lo.x, hi.x), Math.max(lo.x, hi.x));
+        cam.y = softAxis(next.y, Math.min(lo.y, hi.y), Math.max(lo.y, hi.y));
+        cam.k = softZoom(next.k, hard.k);
+      }
       applyCam();
+    }
+
+    function springBack(): void {
+      const target = hardCam(cam);
+      animateCamTo(target, 200);
+    }
+
+    function maybeInertia(pointerType: string): boolean {
+      const now = performance.now();
+      const vel = velocityFromSamples(samples, now);
+      const speed = Math.hypot(vel.vx, vel.vy);
+      if (
+        !inertiaEligible({
+          pointerType,
+          speedPxPerMs: speed,
+          sinceLastMoveMs: vel.sinceLastMoveMs,
+          reducedMotion: reducedMotion(),
+          enabled: inertiaOn,
+        })
+      ) {
+        return false;
+      }
+      const capped = capSpeed(vel.vx, vel.vy);
+      let vx = capped.vx;
+      let vy = capped.vy;
+      let prev = now;
+      stopMotion();
+      const step = (t: number) => {
+        const dt = t - prev;
+        prev = t;
+        vx = decayVelocity(vx, dt);
+        vy = decayVelocity(vy, dt);
+        if (Math.hypot(vx, vy) < 0.02) {
+          motionRaf = 0;
+          springBack();
+          return;
+        }
+        const before = hardCam(cam);
+        cam.x += vx * dt;
+        cam.y += vy * dt;
+        const after = hardCam(cam);
+        if (after.x === before.x) vx = 0;
+        if (after.y === before.y) vy = 0;
+        cam.x = after.x;
+        cam.y = after.y;
+        cam.k = after.k;
+        applyCam();
+        motionRaf = requestAnimationFrame(step);
+      };
+      motionRaf = requestAnimationFrame(step);
+      return true;
     }
 
     function recognise(kind: 'pan' | 'pinch'): void {
@@ -1712,6 +1905,7 @@ export function createMapView(
         const ds = drivers();
         if (mode === 'pinch' && pinch && ds.length >= 2) {
           applyGestureCam(pinchFrame(pinch, ds[0], ds[1]));
+          pinchScaleLive = pinch.scaleLive;
         } else if (mode === 'pan' && pan && ds.length === 1) {
           applyGestureCam(panFrame(pan, ds[0]));
         } else if (mode === 'pending' && ds.length === 1) {
@@ -1742,7 +1936,8 @@ export function createMapView(
         e.preventDefault();
         userCamGesture = true;
         cancelFollowAnim();
-        const intent = wheelIntent(e, wheelMode, Math.max(1, host.clientHeight));
+        if (gestureActive && (e.ctrlKey || e.metaKey)) return;
+        const intent = wheelIntent(e, wheelSetting, Math.max(1, host.clientHeight));
         if (intent.kind === 'zoom') {
           zoomAt(e.clientX, e.clientY, Math.pow(2, intent.s));
           return;
@@ -1751,6 +1946,8 @@ export function createMapView(
         cam.y -= intent.dy;
         clampCamNow();
         applyCam();
+        window.clearTimeout(wheelSettle);
+        wheelSettle = window.setTimeout(() => settleCam(), 150);
       },
       { passive: false, signal },
     );
@@ -1761,7 +1958,8 @@ export function createMapView(
       const onLabel = !!target?.closest?.('.map-label');
       const type = e.pointerType || 'mouse';
       const barrel = type === 'pen' && (e.buttons & 2) !== 0;
-      if ((type === 'mouse' || type === 'pen') && onLabel && !barrel) return;
+      if (e.button > 1) return;
+      if ((type === 'mouse' || type === 'pen') && onLabel && !barrel && e.button !== 1) return;
 
       if (type === 'touch' && e.isPrimary) {
         const stale = [...pointers.values()].some((p) => p.type === 'touch');
@@ -1773,7 +1971,10 @@ export function createMapView(
       }
 
       cancelFollowAnim();
+      stopMotion();
       focusMapForKeys();
+      if (pointers.size === 0) firstDownAt = performance.now();
+      else if (pointers.size === 1) secondDownAt = performance.now();
       const pt = localPt(e);
       const role: Tracked['role'] = pointers.size >= 2 ? 'spare' : 'driver';
       pointers.set(e.pointerId, {
@@ -1827,7 +2028,12 @@ export function createMapView(
         const pt = localPt(e);
         p.x = pt.x;
         p.y = pt.y;
-        if (mode === 'pan' || mode === 'pinch') e.preventDefault();
+        if (mode === 'pan' || mode === 'pinch') {
+          e.preventDefault();
+          const now = performance.now();
+          samples.push({ t: now, x: pt.x, y: pt.y });
+          if (samples.length > 12) samples.shift();
+        }
         schedule();
       },
       { passive: false, signal },
@@ -1858,10 +2064,48 @@ export function createMapView(
         return;
       }
       if (ds.length === 0) {
+        const wasPinch = mode === 'pinch';
+        const wasPan = mode === 'pan';
+        const moved = Math.hypot(had.x - had.sx, had.y - had.sy);
+        const now = performance.now();
         mode = 'idle';
         pinch = null;
         pan = null;
         endPanGuard();
+        if (
+          twoFingerZoomOut &&
+          wasPinch &&
+          isTwoFingerTap({
+            secondDownDelayMs: secondDownAt - firstDownAt,
+            spanMs: now - firstDownAt,
+            movedA: moved,
+            movedB: moved,
+            scaleLive: pinchScaleLive,
+          })
+        ) {
+          const rect = host.getBoundingClientRect();
+          zoomAt(rect.left + had.x, rect.top + had.y, 0.5);
+          springBack();
+        } else if (
+          doubleTapOn &&
+          !wasPan &&
+          !wasPinch &&
+          moved <= 30 &&
+          !(e.target as Element | null)?.closest?.('.map-node') &&
+          isDoubleTap(now - lastTap.t, Math.hypot(had.x - lastTap.x, had.y - lastTap.y))
+        ) {
+          const rect = host.getBoundingClientRect();
+          zoomAt(rect.left + had.x, rect.top + had.y, 2);
+          springBack();
+          lastTap = { t: 0, x: 0, y: 0 };
+        } else if (!wasPan && !wasPinch) {
+          lastTap = { t: now, x: had.x, y: had.y };
+          settleCam();
+        } else if (!maybeInertia(had.type)) {
+          springBack();
+        }
+        samples = [];
+        pinchScaleLive = false;
       }
     };
     host.addEventListener('pointerup', endPointer, { signal });
@@ -1877,6 +2121,32 @@ export function createMapView(
     document.addEventListener('visibilitychange', () => {
       if (document.hidden) resetPointers(swallowClick);
     }, { signal });
+
+    const onGesture = (ev: Event) => {
+      const e = ev as Event & { scale?: number; clientX?: number; clientY?: number };
+      if (e.type === 'gesturestart') {
+        e.preventDefault?.();
+        gestureActive = true;
+        gestureK0 = cam.k;
+        userCamGesture = true;
+        cancelFollowAnim();
+        return;
+      }
+      if (e.type === 'gesturechange' && typeof e.scale === 'number') {
+        e.preventDefault?.();
+        const factor = (gestureK0 * e.scale) / Math.max(0.0001, cam.k);
+        zoomAt(e.clientX || 0, e.clientY || 0, factor);
+        return;
+      }
+      if (e.type === 'gestureend') {
+        gestureActive = false;
+        springBack();
+      }
+    };
+    host.addEventListener('gesturestart', onGesture, { signal });
+    host.addEventListener('gesturechange', onGesture, { signal });
+    host.addEventListener('gestureend', onGesture, { signal });
+    window.addEventListener('pagehide', () => resetPointers(false), { signal });
 
     window.addEventListener('resize', () => {
       if (!isActive()) return;
@@ -1925,7 +2195,27 @@ export function createMapView(
       const n = focusId ? findNode(doc.nodes, focusId) : null;
       const selected = !!(n && n.id);
 
-      if (e.key === 'ArrowDown') {
+      if (e.shiftKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight' || e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+        e.preventDefault();
+        stopMotion();
+        const vp = hostViewport();
+        const stepX = vp.w * 0.1;
+        const stepY = vp.h * 0.1;
+        const dx = e.key === 'ArrowLeft' ? stepX : e.key === 'ArrowRight' ? -stepX : 0;
+        const dy = e.key === 'ArrowUp' ? stepY : e.key === 'ArrowDown' ? -stepY : 0;
+        panBy(dx, dy);
+      } else if (e.key === '+' || e.key === '=') {
+        e.preventDefault();
+        stopMotion();
+        zoomBy(1.2);
+      } else if (e.key === '-' || e.key === '_') {
+        e.preventDefault();
+        stopMotion();
+        zoomBy(1 / 1.2);
+      } else if (e.key === 'f' || e.key === 'F') {
+        e.preventDefault();
+        fit();
+      } else if (e.key === 'ArrowDown') {
         e.preventDefault();
         applyFocusMove('down');
       } else if (e.key === 'ArrowUp') {
@@ -1989,6 +2279,9 @@ export function createMapView(
     ensurePositions,
     resetCam,
     zoomAt,
+    zoomBy,
+    panBy,
+    fit,
     applyCam,
     cam,
     bindGestures,
@@ -2002,3 +2295,37 @@ export function createMapView(
 
 // Re-export shortLabel for tests that imported behaviour indirectly — not public API.
 export { shortLabel as _shortLabelForTests };
+
+/** Zoom − / + / Fit controls. Buttons are at least 44px. Pan arrows stay off unless asked. */
+export function mountMapControls(
+  map: Pick<MapViewHandle, 'zoomBy' | 'fit' | 'panBy' | 'cam'>,
+  container: HTMLElement,
+  opts: { panArrows?: boolean } = {},
+): HTMLElement {
+  const bar = document.createElement('div');
+  bar.className = 'of-map-controls';
+  bar.style.display = 'flex';
+  bar.style.gap = '8px';
+  const mk = (label: string, fn: () => void) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.textContent = label;
+    b.setAttribute('aria-label', label);
+    b.style.minWidth = '44px';
+    b.style.minHeight = '44px';
+    b.addEventListener('click', fn);
+    bar.appendChild(b);
+    return b;
+  };
+  mk('Zoom out', () => map.zoomBy(1 / 1.2));
+  mk('Zoom in', () => map.zoomBy(1.2));
+  mk('Fit', () => map.fit());
+  if (opts.panArrows) {
+    mk('Pan left', () => map.panBy(40, 0));
+    mk('Pan right', () => map.panBy(-40, 0));
+    mk('Pan up', () => map.panBy(0, 40));
+    mk('Pan down', () => map.panBy(0, -40));
+  }
+  container.appendChild(bar);
+  return bar;
+}

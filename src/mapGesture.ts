@@ -110,6 +110,95 @@ function clampStep(s: number): number {
   return Math.max(-0.25, Math.min(0.25, s));
 }
 
+/** Overshoot resistance. Result stays below `limit` (56px pan, or ln(1.25) for zoom). */
+export function rubberOffset(distance: number, limit = 56, c = 0.15): number {
+  if (distance <= 0 || limit <= 0) return 0;
+  return (distance * limit * c) / (limit + c * distance);
+}
+
+/** Pull an axis toward the hard range, leaving at most `limit` of overshoot. */
+export function softAxis(value: number, min: number, max: number, limit = 56, c = 0.15): number {
+  if (value > max) return max + rubberOffset(value - max, limit, c);
+  if (value < min) return min - rubberOffset(min - value, limit, c);
+  return value;
+}
+
+/** Zoom overshoot in log space. `hardK` is already inside [minK, maxK]. */
+export function softZoom(kRaw: number, hardK: number, limitLn = Math.log(1.25), c = 0.15): number {
+  if (kRaw <= 0 || hardK <= 0) return hardK;
+  if (Math.abs(kRaw - hardK) < 1e-6) return hardK;
+  const past = kRaw > hardK;
+  const d = Math.abs(Math.log(kRaw / hardK));
+  const shown = rubberOffset(d, limitLn, c);
+  return hardK * Math.exp(past ? shown : -shown);
+}
+
+export const INERTIA_TAU_MS = 250;
+
+export function decayVelocity(v: number, dtMs: number, tau = INERTIA_TAU_MS): number {
+  if (dtMs <= 0) return v;
+  return v * Math.exp(-dtMs / tau);
+}
+
+/** Touch/pen only, fast enough, finger not paused, motion allowed. */
+export function inertiaEligible(opts: {
+  pointerType: string;
+  speedPxPerMs: number;
+  sinceLastMoveMs: number;
+  reducedMotion: boolean;
+  enabled: boolean;
+}): boolean {
+  if (!opts.enabled || opts.reducedMotion) return false;
+  if (opts.pointerType !== 'touch' && opts.pointerType !== 'pen') return false;
+  if (opts.sinceLastMoveMs > 50) return false;
+  return opts.speedPxPerMs >= 0.25;
+}
+
+export function capSpeed(vx: number, vy: number, max = 3): { vx: number; vy: number } {
+  const s = Math.hypot(vx, vy);
+  if (s <= max || s === 0) return { vx, vy };
+  const k = max / s;
+  return { vx: vx * k, vy: vy * k };
+}
+
+/** Speed from samples in the last 100ms. Units are px/ms. */
+export function velocityFromSamples(
+  samples: { t: number; x: number; y: number }[],
+  now: number,
+): { vx: number; vy: number; sinceLastMoveMs: number } {
+  const recent = samples.filter((s) => now - s.t <= 100);
+  if (recent.length < 2) {
+    const last = samples[samples.length - 1];
+    return { vx: 0, vy: 0, sinceLastMoveMs: last ? now - last.t : Infinity };
+  }
+  const a = recent[0];
+  const b = recent[recent.length - 1];
+  const dt = b.t - a.t;
+  const since = now - b.t;
+  if (dt <= 0) return { vx: 0, vy: 0, sinceLastMoveMs: since };
+  return { vx: (b.x - a.x) / dt, vy: (b.y - a.y) / dt, sinceLastMoveMs: since };
+}
+
+export function isDoubleTap(dtMs: number, distPx: number): boolean {
+  return dtMs > 0 && dtMs <= 300 && distPx <= 30;
+}
+
+export function isTwoFingerTap(opts: {
+  secondDownDelayMs: number;
+  spanMs: number;
+  movedA: number;
+  movedB: number;
+  scaleLive: boolean;
+}): boolean {
+  return (
+    opts.secondDownDelayMs <= 150 &&
+    opts.spanMs <= 300 &&
+    opts.movedA <= 10 &&
+    opts.movedB <= 10 &&
+    !opts.scaleLive
+  );
+}
+
 /** Plain wheel pans. Ctrl/Cmd or wheel:'zoom' zooms. Shift with no deltaX scrolls sideways. */
 export function wheelIntent(
   e: {

@@ -63,6 +63,7 @@ export { validateDocument } from './validate.js';
 
 export {
   createMapView,
+  mountMapControls,
   autoPackPositions,
   pillSize,
   mapNodeClassNames,
