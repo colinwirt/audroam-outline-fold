@@ -5,7 +5,7 @@
  * with leaf/sibling count. Recomputed on every paint so fold expand/collapse
  * reflows without overlap.
  *
- * Scrapbook (0.2.8+): multi-line wrap, task lead SVG, text click ≠ fold; label text selectable (0.2.10); pan clears selection (0.2.11).
+ * Scrapbook (0.2.8+): multi-line wrap, task lead SVG, text click ≠ fold; label text selectable (0.2.10); pan clears selection (0.2.11); keyboard only when Map focused (0.2.12).
  * Sealed nodes: omitted until unlocked (no gray stubs) — caller filters doc if needed.
  */
 import {
@@ -124,7 +124,9 @@ export interface MapViewOptions {
 }
 
 export interface MapKeyboardWire {
+  /** @deprecated Ignored for key gating since 0.2.12 (host/modeButton only). Kept for call-site compat. */
   panel?: HTMLElement | null;
+  /** When focused (e.g. after clicking Map), digit/fold/arrow keys still apply. */
   modeButton?: HTMLElement | null;
 }
 
@@ -527,6 +529,47 @@ export function clearSelectionForMapPan(
   }
 }
 
+/**
+ * True when paint may re-focus the selected map node. Only when focus is
+ * already inside the map host — never steal from a textarea/editor.
+ */
+export function mapPaintShouldRestoreFocus(
+  host: { contains: (node: Node | null) => boolean },
+  activeElement: Node | null,
+): boolean {
+  return !!(activeElement && host.contains(activeElement));
+}
+
+type MapKbTarget = {
+  tagName?: string;
+  isContentEditable?: boolean;
+} | null;
+
+/**
+ * Gate for Map document keydown: digits / fold / arrows only when Map (or its
+ * mode button) owns focus/target — not while typing in INPUT/TEXTAREA/SELECT
+ * or contenteditable.
+ */
+export function mapKeyboardShouldHandle(opts: {
+  isActive: boolean;
+  target: MapKbTarget;
+  activeElement: Node | null;
+  host: { contains: (node: Node | null) => boolean };
+  modeButton?: Node | null;
+}): boolean {
+  if (!opts.isActive) return false;
+  const tag = (opts.target?.tagName || '').toUpperCase();
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return false;
+  if (opts.target?.isContentEditable) return false;
+  const ae = opts.activeElement;
+  if (opts.modeButton && ae === opts.modeButton) return true;
+  if (ae && opts.host.contains(ae)) return true;
+  if (opts.target && opts.host.contains(opts.target as unknown as Node)) {
+    return true;
+  }
+  return false;
+}
+
 export function createMapView(
   host: HTMLElement,
   opts: MapViewOptions,
@@ -766,6 +809,10 @@ export function createMapView(
   }
 
   function paint(): void {
+    // Snapshot before DOM rebuild — never steal focus from the editor.
+    const paintFocusOwner =
+      typeof document !== 'undefined' ? document.activeElement : null;
+
     const prev = snapshotPositions();
     const hadViewport = !!host.querySelector('#mapViewport');
 
@@ -1041,7 +1088,13 @@ export function createMapView(
     const focused = host.querySelector(
       `[data-id="${CSS.escape(getFocusId())}"]`,
     ) as HTMLElement | null;
-    if (focused && isActive()) focused.focus({ preventScroll: true });
+    if (
+      focused &&
+      isActive() &&
+      mapPaintShouldRestoreFocus(host, paintFocusOwner)
+    ) {
+      focused.focus({ preventScroll: true });
+    }
   }
 
   function applyFocusMove(direction: MapFocusDirection): void {
@@ -1174,17 +1227,17 @@ export function createMapView(
    */
   function bindKeyboard(wire: MapKeyboardWire = {}): void {
     document.addEventListener('keydown', (e) => {
-      if (!isActive()) return;
-      const tag =
-        (e.target && (e.target as HTMLElement).tagName) || '';
-      if (tag === 'INPUT' || tag === 'TEXTAREA') return;
-      const panel = wire.panel;
-      const inMap =
-        host.contains(document.activeElement) ||
-        document.activeElement === document.body ||
-        (!!wire.modeButton && document.activeElement === wire.modeButton) ||
-        (!!panel && panel.contains(document.activeElement));
-      if (!inMap) return;
+      if (
+        !mapKeyboardShouldHandle({
+          isActive: isActive(),
+          target: e.target as { tagName?: string; isContentEditable?: boolean } | null,
+          activeElement: document.activeElement,
+          host,
+          modeButton: wire.modeButton ?? null,
+        })
+      ) {
+        return;
+      }
 
       const doc = getDoc();
       const focusId = getFocusId();

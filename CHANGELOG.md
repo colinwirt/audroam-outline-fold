@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.12 — 2026-09-29
+
+### Map keyboard only when Map has focus
+
+`createMapView` no longer steals focus on every `paint()`/`onChange` (that made react-live jump focus into Map after each editor keystroke). Map digit / fold / arrow keys run only when focus or the event target is inside the map host (or the Map mode button) — not while typing in a textarea/input. Pan-vs-selection fix from 0.2.11 kept.
+
+## 0.2.11 — 2026-09-29
 ## 0.2.11 — 2026-09-29
 
 ### Map pan no longer drag-selects text

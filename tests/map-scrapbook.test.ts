@@ -25,6 +25,8 @@ import {
   toggleFold,
   mapNodeKeepsTextSelection,
   clearSelectionForMapPan,
+  mapPaintShouldRestoreFocus,
+  mapKeyboardShouldHandle,
 } from '../src/index.js';
 
 describe('scrapbook wrap (~30 + more/less)', () => {
@@ -282,5 +284,102 @@ describe('clearSelectionForMapPan (pan vs label copy)', () => {
         },
       }),
     ).not.toThrow();
+  });
+});
+
+describe('mapPaintShouldRestoreFocus', () => {
+  it('is true only when activeElement is inside the map host', () => {
+    const inside = { id: 'node' } as unknown as Node;
+    const outside = { id: 'textarea' } as unknown as Node;
+    const host = {
+      contains: (n: Node | null) => n === inside,
+    };
+    expect(mapPaintShouldRestoreFocus(host, inside)).toBe(true);
+    expect(mapPaintShouldRestoreFocus(host, outside)).toBe(false);
+    expect(mapPaintShouldRestoreFocus(host, null)).toBe(false);
+  });
+});
+
+describe('mapKeyboardShouldHandle', () => {
+  const inside = { id: 'node' } as unknown as Node;
+  const outside = { id: 'editor' } as unknown as Node;
+  const modeBtn = { id: 'map-btn' } as unknown as Node;
+  const host = {
+    contains: (n: Node | null) => n === inside,
+  };
+
+  it('rejects when inactive or typing in textarea/input', () => {
+    expect(
+      mapKeyboardShouldHandle({
+        isActive: false,
+        target: { tagName: 'DIV' },
+        activeElement: inside,
+        host,
+      }),
+    ).toBe(false);
+    expect(
+      mapKeyboardShouldHandle({
+        isActive: true,
+        target: { tagName: 'TEXTAREA' },
+        activeElement: outside,
+        host,
+      }),
+    ).toBe(false);
+    expect(
+      mapKeyboardShouldHandle({
+        isActive: true,
+        target: { tagName: 'INPUT' },
+        activeElement: outside,
+        host,
+      }),
+    ).toBe(false);
+    expect(
+      mapKeyboardShouldHandle({
+        isActive: true,
+        target: { tagName: 'DIV', isContentEditable: true },
+        activeElement: outside,
+        host,
+      }),
+    ).toBe(false);
+  });
+
+  it('accepts focus inside map host or on mode button', () => {
+    expect(
+      mapKeyboardShouldHandle({
+        isActive: true,
+        target: { tagName: 'DIV' },
+        activeElement: inside,
+        host,
+      }),
+    ).toBe(true);
+    expect(
+      mapKeyboardShouldHandle({
+        isActive: true,
+        target: { tagName: 'BUTTON' },
+        activeElement: modeBtn,
+        host,
+        modeButton: modeBtn,
+      }),
+    ).toBe(true);
+    expect(
+      mapKeyboardShouldHandle({
+        isActive: true,
+        target: { tagName: 'DIV' },
+        activeElement: outside,
+        host,
+      }),
+    ).toBe(false);
+  });
+
+  it('does not treat document.body alone as in-map', () => {
+    const body = { id: 'body' } as unknown as Node;
+    expect(
+      mapKeyboardShouldHandle({
+        isActive: true,
+        target: { tagName: 'BODY' },
+        activeElement: body,
+        host,
+      }),
+    ).toBe(false);
   });
 });

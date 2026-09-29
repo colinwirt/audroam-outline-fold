@@ -62,6 +62,8 @@ export {
   resolveMapFocus,
   mapNodeKeepsTextSelection,
   clearSelectionForMapPan,
+  mapPaintShouldRestoreFocus,
+  mapKeyboardShouldHandle,
   type MapPoint,
   type MapViewBox,
   type MapLayout,
