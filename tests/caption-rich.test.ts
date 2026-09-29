@@ -40,12 +40,13 @@ describe('parseHopTarget', () => {
 });
 
 describe('captionToHtml', () => {
-  it('strips raw HTML/SVG tags and never emits them as markup', () => {
+  it('shows unknown tags as escaped text and never as elements', () => {
     const html = captionToHtml('<script>alert(1)</script> <svg onload=x></svg>');
     expect(html).not.toContain('<script');
     expect(html).not.toContain('<svg');
-    // Design: strip unknown tags, keep inner text (script body) — never execute.
-    expect(html).toContain('alert(1)');
+    expect(html).toContain('&lt;script&gt;alert(1)&lt;/script&gt;');
+    expect(html).toContain('&lt;svg onload=x&gt;');
+    expect(html).toContain('&lt;/svg&gt;');
   });
 
   it('renders allowlisted markdown image', () => {

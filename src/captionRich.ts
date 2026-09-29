@@ -84,10 +84,10 @@ const OPEN_TAG =
   /^<\s*(b|strong|i|em)\s*>/i;
 const CLOSE_TAG =
   /^<\s*\/\s*(b|strong|i|em)\s*>/i;
-/** Allowlisted open tag WITH attributes → treat as disallowed (strip tag). */
+/** Allowlisted open tag WITH attributes (onclick and the like) — show as text. */
 const OPEN_WITH_ATTRS =
   /^<\s*(b|strong|i|em)\s+[^>]*>/i;
-/** Any other tag (open or close) — strip, keep going. */
+/** Any other tag (open or close) — show as text, never as an element. */
 const ANY_TAG = /^<\/?[A-Za-z][^>]*>/;
 
 function tagKind(name: string): 'bold' | 'italic' | null {
@@ -101,8 +101,8 @@ function tagKind(name: string): 'bold' | 'italic' | null {
  * Parse tiny HTML allowlist into styled runs.
  * Input should already be break-normalized (LF only; no <br>/<nr>).
  * - <b>/<strong>, <i>/<em> without attributes → style
- * - Tags with attributes → strip tag, keep inner text
- * - Unknown tags → strip tag, keep inner text
+ * - Tags with attributes → literal text (not an element)
+ * - Unknown tags → literal text, including the tag source
  * - Nesting OK; pathological depth flattens via boolean flags
  * - Raw `<` that is not a tag stays as text (escaped at render)
  */
@@ -147,13 +147,13 @@ export function parseTinyHtmlRuns(text: string): CaptionStyleRun[] {
       }
       m = OPEN_WITH_ATTRS.exec(rest);
       if (m) {
-        // Disallowed attrs — strip tag only
+        buf += m[0];
         i += m[0].length;
         continue;
       }
       m = ANY_TAG.exec(rest);
       if (m) {
-        // Unknown / unsafe tag — strip, keep inner text later
+        buf += m[0];
         i += m[0].length;
         continue;
       }

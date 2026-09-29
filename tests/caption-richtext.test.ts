@@ -53,18 +53,28 @@ describe('tiny HTML allowlist', () => {
     expect(strong.find((r) => r.text === 'E')?.italic).toBe(true);
   });
 
-  it('strips tags with attributes; keeps inner text', () => {
-    expect(captionVisibleText('<b onclick=evil>hi</b>')).toBe('hi');
+  it('shows attributed allowlisted tags as literal text, not elements', () => {
+    expect(captionVisibleText('<b onclick=evil>hi</b>')).toBe(
+      '<b onclick=evil>hi',
+    );
     const html = captionToHtml('<b onclick=evil>hi</b>');
-    expect(html).toBe('hi');
-    expect(html).not.toContain('onclick');
+    expect(html).toBe('&lt;b onclick=evil&gt;hi');
+    expect(html).not.toContain('<b');
   });
 
-  it('strips unknown/malicious tags; keeps inner text safe', () => {
+  it('shows unknown tags as literal text in outline HTML and map runs', () => {
     const html = captionToHtml('<script>alert(1)</script> <img src=x onerror=y>');
     expect(html).not.toContain('<script');
     expect(html).not.toContain('<img');
-    expect(html).toContain('alert(1)');
+    expect(html).toContain('&lt;script&gt;alert(1)&lt;/script&gt;');
+    expect(html).toContain('&lt;img src=x onerror=y&gt;');
+    const doc = parse(`- See <script>no</script> <b>ok</b> <id:n1>\n`);
+    const outline = toHtml(doc);
+    expect(outline).toContain('&lt;script&gt;no&lt;/script&gt;');
+    expect(outline).toContain('<b>ok</b>');
+    expect(outline).not.toMatch(/<script[\s>]/);
+    const runs = captionStyleRuns('<div>x</div>');
+    expect(runs.map((r) => r.text).join('')).toBe('<div>x</div>');
   });
 
   it('emits <b>/<i> and <br> in Outline captionToHtml', () => {

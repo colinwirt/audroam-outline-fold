@@ -285,6 +285,27 @@ test.describe('react-live Map keyboard focus (0.2.16 gate)', () => {
     await expectSelected(page, HOST, 'suppliers');
   });
 
+  test('unknown caption tags are visible text and not elements', async ({ page }) => {
+    await page.goto('react-live/');
+    await page.getByLabel('Outline source').fill(
+      '- hi <script>nope</script> <b onclick="x">no</b> <b>ok</b> <id:t1>\n',
+    );
+    const tree = page.locator('.tree');
+    await expect(tree.locator('script')).toHaveCount(0);
+    await expect(tree.locator('[onclick]')).toHaveCount(0);
+    await expect(tree).toContainText('<script>nope</script>');
+    await expect(tree).toContainText('<b onclick="x">');
+    await expect(tree.locator('b')).toHaveText('ok');
+
+    const host = page.locator(HOST);
+    await page.getByRole('button', { name: 'Map', exact: true }).click();
+    await expect(host).toBeVisible();
+    await expect(host.locator('script')).toHaveCount(0);
+    await expect(host.locator('[onclick]')).toHaveCount(0);
+    await expect(host.locator('.map-label')).toContainText('<script>nope</script>');
+    await expect(host.locator('tspan[font-weight="700"]')).toContainText('ok');
+  });
+
   test('9: build stamp shows expected package version (+ git sha)', async ({ page }) => {
     await page.goto('react-live/');
     const stamp = page.getByTestId('pkg-stamp');
