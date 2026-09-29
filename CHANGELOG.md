@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.2.15 — 2026-09-29
+
+### Caption breaks: literal `\n` / `\r` / `\r\n` escapes
+
+Design lock follow-up (react-live dogfood): markdown captions are single-line in the
+textarea, so typing `\n` stores two characters (backslash + n), not a real LF.
+`normalizeCaptionBreaks` now converts those literal escapes **and** real LF/CR/CRLF
+plus `<br>`/`<nr>` before wrap/measure/paint (Map) and `captionToHtml` (Outline).
+SVG multi-`tspan` paint path was already fine once wrap saw real LFs.
+
+
 ## 0.2.14 — 2026-09-29
 
 ### Map camera follow — proportion + disableable recentre + edit ensure

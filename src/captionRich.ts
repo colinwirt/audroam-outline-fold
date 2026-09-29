@@ -2,7 +2,7 @@
  * Safe rich captions for Outline toHtml + Map measure/paint.
  * Never trusts raw HTML. Inline SVG in captions is OUT (XSS).
  * Markdown images/links/bare https → allowlisted <img>/<a> only.
- * Tiny HTML allowlist: <b>/<strong>, <i>/<em>, breaks (<br>/<nr> + \n/\r).
+ * Tiny HTML allowlist: <b>/<strong>, <i>/<em>, breaks (<br>/<nr> + real/literal \n/\r).
  */
 
 function esc(s: string): string {
@@ -54,12 +54,17 @@ export function parseHopTarget(url: string): string | null {
 
 /**
  * Normalize break tokens BEFORE wrap/measure/paint.
- * `\n` / `\r` / `\r\n` / `<br>` / `<br/>` / `<nr>` → LF.
+ * Real LF/CR/CRLF, literal escape sequences `\n`/`\r`/`\r\n` (two chars
+ * backslash+letter — what a line-oriented markdown textarea stores), and
+ * `<br>` / `<br/>` / `<nr>` → LF.
  * Collapses 3+ LFs to at most one blank line (paragraph gap).
  */
 export function normalizeCaptionBreaks(text: string): string {
   let s = String(text ?? '');
-  // CRLF first, then lone CR
+  // Literal escapes first (editor may store backslash-n, not a real LF).
+  // Order: \r\n before \n / \r so CRLF escape is one break, not two.
+  s = s.replace(/\\r\\n/g, '\n').replace(/\\n/g, '\n').replace(/\\r/g, '\n');
+  // Real CRLF first, then lone CR
   s = s.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
   // <br>, <br/>, <br />, <nr>, <nr/> — any case; optional slash/space
   s = s.replace(/<\s*br\s*\/?\s*>/gi, '\n');

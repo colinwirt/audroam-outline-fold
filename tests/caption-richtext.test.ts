@@ -7,6 +7,7 @@ import {
   captionToHtml,
   wrapLines,
   measurePill,
+  displayCaption,
   toHtml,
   parse,
 } from '../src/index.js';
@@ -29,6 +30,13 @@ describe('normalizeCaptionBreaks', () => {
 
   it('collapses 3+ newlines to one blank line', () => {
     expect(normalizeCaptionBreaks('a\n\n\n\nb')).toBe('a\n\nb');
+  });
+
+  it('turns literal backslash-n / backslash-r escapes into line breaks', () => {
+    // What a line-oriented markdown textarea stores when the user types \n
+    expect(normalizeCaptionBreaks('a\\nb')).toBe('a\nb');
+    expect(normalizeCaptionBreaks('a\\rb')).toBe('a\nb');
+    expect(normalizeCaptionBreaks('a\\r\\nb')).toBe('a\nb');
   });
 });
 
@@ -79,6 +87,21 @@ describe('wrap/measure use visible chars after normalize', () => {
   it('wrapLines splits on br/nr/newlines', () => {
     const { lines } = wrapLines('one<br>two<nr>three', 32, 30);
     expect(lines).toEqual(['one', 'two', 'three']);
+  });
+
+  it('wrapLines + captionToHtml split on literal \\n (react-live textarea)', () => {
+    const { lines } = wrapLines('Line1\\nLine2', 32, 30);
+    expect(lines).toEqual(['Line1', 'Line2']);
+    const html = captionToHtml('Hello\\nWorld');
+    expect(html).toBe('Hello<br>World');
+  });
+
+  it('parse → displayCaption → wrapLines multi-line from literal \\n in md', () => {
+    const doc = parse(`- Hello\\nWorld <id:n1>\n`);
+    const title = doc.nodes[0]!.title;
+    expect(title).toBe('Hello\\nWorld');
+    const { lines } = wrapLines(displayCaption(title), 32, 30);
+    expect(lines).toEqual(['Hello', 'World']);
   });
 
   it('measure ignores markup length for wrap width', () => {

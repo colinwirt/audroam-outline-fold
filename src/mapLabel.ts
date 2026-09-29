@@ -1,6 +1,6 @@
 /**
  * Multi-line scrapbook label measure for Map pills.
- * Break tokens + tiny HTML normalized before wrap (0.2.13);
+ * Break tokens + tiny HTML normalized before wrap (0.2.13; literal \n 0.2.15);
  * measure counts visible characters only; richLines carry bold/italic for paint.
  *
  * Product lock (Design 2026-09-29 compromise):

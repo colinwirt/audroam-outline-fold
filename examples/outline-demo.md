@@ -9,6 +9,7 @@ collapsedMarker: "(+)"
     - [-] Seasonal flat white syrup · supplier TBD <id:menu-syrup>
     - [x] Allergen line on board · approved:Jess · done Wed <id:menu-allergen>
     - pros: weekend tourist traffic · cons: barista training time <id:menu-notes>
+    - Board special\nTwo lines (literal backslash-n; 0.2.15) <id:menu-multiline>
   - Seasonal supplier update · Q4 fruit <id:suppliers>
     - Berries · Yarra Valley co-op · ETA next Tue <id:sup-berries>
     - Milk · keep current dairy · no change <id:sup-milk>
