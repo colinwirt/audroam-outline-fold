@@ -15,7 +15,7 @@ export type {
 
 export { parse } from './parse.js';
 export { serialize } from './serialize.js';
-export { toggleFold, isCollapsed, setExpandLevel, type ExpandLevel } from './fold.js';
+export { toggleFold, isCollapsed, setExpandLevel, type ExpandLevel, type SetExpandLevelOptions } from './fold.js';
 export { toHtml } from './toHtml.js';
 export {
   captionToHtml,

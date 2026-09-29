@@ -394,6 +394,100 @@ fold-: root
     expect(next.frontmatter?.foldIds).toEqual([]);
   });
 
+
+  it('under: digit 1 expands the selected node (shows its children)', () => {
+    const doc = parse(`---
+fold-:
+---
+- Root <id:root>
+  - Child <id:child>
+    - Grand <id:grand>
+      - Deep <id:deep>
+  - Sibling <id:sib>
+- Other root <id:other>
+  - Other child <id:ochild>
+`);
+    // Select child: digit 1 → expand child, collapse grand; leave root/other alone
+    const collapsed = setExpandLevel(doc, 1); // absolute: everything collapsed first
+    expect(isCollapsed(collapsed, 'root')).toBe(true);
+    const next = setExpandLevel(collapsed, 1, { under: 'child' });
+    expect(isCollapsed(next, 'child')).toBe(false);
+    expect(isCollapsed(next, 'grand')).toBe(true);
+    // Outside subtree unchanged
+    expect(isCollapsed(next, 'root')).toBe(true);
+    expect(isCollapsed(next, 'other')).toBe(true);
+  });
+
+  it('under: digit 2 shows grandchildren; digit 0 collapses subtree', () => {
+    const doc = parse(`---
+fold-:
+---
+- Root <id:root>
+  - Child <id:child>
+    - Grand <id:grand>
+      - Deep <id:deep>
+`);
+    const at2 = setExpandLevel(doc, 2, { under: 'root' });
+    expect(isCollapsed(at2, 'root')).toBe(false);
+    expect(isCollapsed(at2, 'child')).toBe(false);
+    expect(isCollapsed(at2, 'grand')).toBe(true);
+
+    const at0 = setExpandLevel(at2, 0, { under: 'root' });
+    expect(isCollapsed(at0, 'root')).toBe(true);
+    expect(isCollapsed(at0, 'child')).toBe(true);
+    expect(isCollapsed(at0, 'grand')).toBe(true);
+  });
+
+  it('under: * expands only the selected subtree', () => {
+    const doc = parse(`---
+fold-: root, child, grand, other
+---
+- Root <id:root>
+  - Child <id:child>
+    - Grand <id:grand>
+      - Deep <id:deep>
+- Other root <id:other>
+  - Other child <id:ochild>
+`);
+    expect(isCollapsed(doc, 'root')).toBe(true);
+    expect(isCollapsed(doc, 'other')).toBe(true);
+    const next = setExpandLevel(doc, '*', { under: 'root' });
+    expect(isCollapsed(next, 'root')).toBe(false);
+    expect(isCollapsed(next, 'child')).toBe(false);
+    expect(isCollapsed(next, 'grand')).toBe(false);
+    // Sibling forest root unchanged
+    expect(isCollapsed(next, 'other')).toBe(true);
+  });
+
+  it('under: unknown id is a no-op', () => {
+    const doc = parse(`---
+fold-: root
+---
+- Root <id:root>
+  - Child <id:child>
+`);
+    const next = setExpandLevel(doc, 1, { under: 'missing' });
+    expect(isCollapsed(next, 'root')).toBe(true);
+    expect(next.fold.ids).toEqual(doc.fold.ids);
+  });
+
+  it('under: works under fold+', () => {
+    const doc = parse(`---
+fold+:
+---
+- Root <id:root>
+  - Child <id:child>
+    - Grand <id:grand>
+      - Deep <id:deep>
+`);
+    const next = setExpandLevel(doc, 1, { under: 'root' });
+    expect(next.fold.mode).toBe('+');
+    expect(isCollapsed(next, 'root')).toBe(false);
+    expect(next.fold.ids).toContain('root');
+    expect(isCollapsed(next, 'child')).toBe(true);
+    expect(next.fold.ids).not.toContain('child');
+  });
+
   it('rejects invalid level', () => {
     const doc = parse(`- Root <id:root>\n  - Child <id:c>\n`);
     expect(() => setExpandLevel(doc, 10)).toThrow(/0–9/);

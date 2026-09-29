@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.2.10 — 2026-09-29
+
+### Map digits relative to selection
+
+Digit keystrokes (`0`–`9` / `*`) when a Map node is selected now expand/collapse **relative to that node** via `setExpandLevel(doc, n, { under: focusId })`:
+
+- `1` = expand the selected node (show its children); deeper foldables collapse
+- `2`+ = show that many levels under the selection
+- `0` = collapse the selected subtree
+- `*` = expand all foldables under the selection
+- Outside the subtree: fold state unchanged
+- Digits still require a selection (Design lock)
+
+Absolute `setExpandLevel(doc, n)` (Outline / cold-start seed) unchanged.
+
 ## 0.2.9 — 2026-09-29
 
 ### Map scrapbook body — generous ~30-line clip + more/less

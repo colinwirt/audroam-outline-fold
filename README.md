@@ -262,10 +262,12 @@ const packed = autoPackPositions(doc, {
 | `createMapView(host, opts)` | Interactive SVG pills + pan/zoom + Map orientation keyboard |
 | `autoPackPositions(doc, opts?)` | Deterministic L→R positions for the fold-visible tree |
 | `resolveMapFocus(doc, focusId, dir, opts?)` | Map L→R focus resolver (↑↓ siblings · → child · ← parent; no fold-on-arrow) |
+
+**Map keyboard (when a node is selected):** `.` / Space / Enter toggle fold on the focus node; digits `0`–`9` / `*` call `setExpandLevel(doc, n, { under: focusId })` — depth **under the selection** (`1` = show that node’s children). Digits are no-ops with no selection. Outline `attachOutlineTree` digits stay tree-absolute.
 | `pillSize(label, opts?)` / `FOLD_SLOT` / `TASK_LEAD` | Pill measure (multi-line wrap; foldable end-cap always reserved; `FOLD_SLOT=34`; task lead when task set) |
 
 
-**Caption rich text (Outline):** `captionToHtml` turns markdown `![alt](url)` / `[label](url)` / bare `https://` into allowlisted `<img>` / `<a>` (https + safe relative; rejects `javascript:`/`data:`/`//`/etc). Inline SVG in captions is never emitted — pack icons stay via `kind` → `iconForNode` only. **Map pills (0.2.9 scrapbook):** multi-line wrap (`wrapCh` default **32**, product `maxLines` **~30** + **more/less**; soft safety ~500/50k); newlines preserved; `FOLD_SLOT` (≥34) on text region only; optional task lead SVG for leading `[ ]`/`[x]`. Text/label click = select/focus only; **fold only via circle-+** (keyboard `.` / Space / Enter / digits-when-selected unchanged). Map does not render caption images yet.
+**Caption rich text (Outline):** `captionToHtml` turns markdown `![alt](url)` / `[label](url)` / bare `https://` into allowlisted `<img>` / `<a>` (https + safe relative; rejects `javascript:`/`data:`/`//`/etc). Inline SVG in captions is never emitted — pack icons stay via `kind` → `iconForNode` only. **Map pills (0.2.10 scrapbook):** multi-line wrap (`wrapCh` default **32**, product `maxLines` **~30** + **more/less**; soft safety ~500/50k); newlines preserved; `FOLD_SLOT` (≥34) on text region only; optional task lead SVG for leading `[ ]`/`[x]`. Text/label click = select/focus only; **fold only via circle-+** (keyboard `.` / Space / Enter; **digits / `*` when selected** = depth under that node via `setExpandLevel(..., { under })`). Map does not render caption images yet.
 
 ### Scrapbook pack (0.2.8)
 

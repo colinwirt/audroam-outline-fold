@@ -1091,6 +1091,7 @@ export function createMapView(
   /**
    * Map-mode keyboard — orientation table (L→R). Outline keeps attachOutlineTree ARIA map.
    * Fold never on ←/→; fold via . / Space / Enter / digits when a node is selected.
+   * Digits / * are relative to the selected node (1 = show that node's children).
    * Space stays fold (not task toggle).
    */
   function bindKeyboard(wire: MapKeyboardWire = {}): void {
@@ -1139,12 +1140,14 @@ export function createMapView(
       } else if (e.key === '*') {
         if (!selected) return;
         e.preventDefault();
-        setDoc(setExpandLevel(doc, '*'));
+        // Expand-all relative to selection (subtree), not whole forest.
+        setDoc(setExpandLevel(doc, '*', { under: n!.id! }));
         onChange?.();
       } else if (e.key >= '0' && e.key <= '9') {
         if (!selected) return;
         e.preventDefault();
-        setDoc(setExpandLevel(doc, Number(e.key)));
+        // Digit N = depth under the selected node (1 = show its children).
+        setDoc(setExpandLevel(doc, Number(e.key), { under: n!.id! }));
         onChange?.();
       }
     });
