@@ -6,7 +6,7 @@
 |--------|------|
 | `parseDoc.js` | `parse(md) → doc` (+ validate) |
 | `outlineView.js` | `createOutlineView` → `toHtml` + `attachOutlineTree` |
-| `mapView.js` | **Re-exports** package `createMapView` / `autoPackPositions` / `pillSize` / `FOLD_SLOT` |
+| `mapView.js` | **Re-exports** package `createMapView` / `autoPackPositions` / `pillSize` / `FOLD_SLOT` / scrapbook seed+resume helpers |
 | `layoutSidecar.js` | frontmatter pointer / sibling `*.layout.json` / **auto-pack** flag (Pages-only) |
 | `unlockStub.js` | PLACEHOLDER → stub unlock N/A; demo crypto unlock |
 
