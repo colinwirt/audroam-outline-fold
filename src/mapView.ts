@@ -13,6 +13,19 @@ import {
   isCollapsed,
   setExpandLevel,
 } from './fold.js';
+import {
+  anchorPan,
+  anchorPinch,
+  nextGestureMode,
+  panFrame,
+  pinchFrame,
+  slopPx,
+  wheelIntent,
+  type Cam as GestureCam,
+  type PanAnchor,
+  type PinchAnchor,
+  type Pt,
+} from './mapGesture.js';
 import type { OutlineFoldDoc, OutlineNode } from './types.js';
 import {
   measurePill,
@@ -157,6 +170,11 @@ export interface MapViewOptions {
   isEditing?: () => boolean;
   /** Optional world rect for caret/typing region while editing (else focus pill). */
   getEditRegion?: () => WorldRect | null | undefined;
+  /**
+   * Wheel default is pan (trackpad scroll). `'zoom'` restores the old
+   * "every wheel notch zooms" behaviour. Ctrl/Cmd+wheel always zooms.
+   */
+  wheel?: 'pan' | 'zoom';
 }
 
 export interface MapKeyboardWire {
@@ -174,6 +192,7 @@ export interface MapViewHandle {
   applyCam: () => void;
   cam: { x: number; y: number; k: number };
   bindGestures: () => void;
+  unbindGestures: () => void;
   bindKeyboard: (wire?: MapKeyboardWire) => void;
   visibleList: (nodes?: OutlineNode[], out?: OutlineNode[]) => OutlineNode[];
   findNode: (nodes: OutlineNode[], id: string) => OutlineNode | null;
@@ -721,6 +740,7 @@ export function createMapView(
     cameraRecentre: cameraRecentreOpt = true,
     isEditing = () => false,
     getEditRegion,
+    wheel: wheelMode = 'pan',
   } = opts;
 
   function recentreEnabled(): boolean {
@@ -1570,13 +1590,39 @@ export function createMapView(
     onChange?.();
   }
 
+  let gestureAbort: AbortController | null = null;
+
   function bindGestures(): void {
-    let dragging = false;
-    let lastX = 0;
-    let lastY = 0;
-    const pointers = new Map<number, { x: number; y: number }>();
-    let pinchStartDist = 0;
-    let pinchStartK = 1;
+    if (gestureAbort) return;
+    const ac = new AbortController();
+    gestureAbort = ac;
+    const signal = ac.signal;
+    host.style.touchAction = 'none';
+
+    type Tracked = Pt & {
+      id: number;
+      type: string;
+      sx: number;
+      sy: number;
+      role: 'driver' | 'spare' | 'select';
+    };
+    const pointers = new Map<number, Tracked>();
+    let mode: 'idle' | 'pending' | 'pan' | 'pinch' = 'idle';
+    let pinch: PinchAnchor | null = null;
+    let pan: PanAnchor | null = null;
+    let raf = 0;
+    let swallowClick = false;
+    let releasing = false;
+    let longPressTimer = 0;
+
+    function localPt(e: PointerEvent): Pt {
+      const rect = host.getBoundingClientRect();
+      return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+    }
+
+    function drivers(): Tracked[] {
+      return [...pointers.values()].filter((p) => p.role === 'driver');
+    }
 
     function beginPanGuard(): void {
       host.classList.add('panning');
@@ -1595,85 +1641,242 @@ export function createMapView(
       host.style.removeProperty('-webkit-user-select');
     }
 
+    function applyGestureCam(next: GestureCam): void {
+      cam.x = next.x;
+      cam.y = next.y;
+      cam.k = next.k;
+      clampCamNow();
+      applyCam();
+    }
+
+    function recognise(kind: 'pan' | 'pinch'): void {
+      const was = mode;
+      mode = kind;
+      if (was === 'pending' || was === 'idle') {
+        userCamGesture = true;
+        swallowClick = true;
+        beginPanGuard();
+      }
+      for (const p of drivers()) {
+        try {
+          host.setPointerCapture(p.id);
+        } catch {
+          /* already captured or gone */
+        }
+      }
+    }
+
+    function startPan(p: Pt): void {
+      pan = anchorPan(cam, p);
+      pinch = null;
+      recognise('pan');
+    }
+
+    function startPinch(a: Pt, b: Pt): void {
+      pinch = anchorPinch(cam, a, b);
+      pan = null;
+      recognise('pinch');
+    }
+
+    function clearLongPress(): void {
+      if (longPressTimer) window.clearTimeout(longPressTimer);
+      longPressTimer = 0;
+    }
+
+    function resetPointers(swallow: boolean): void {
+      clearLongPress();
+      if (raf) cancelAnimationFrame(raf);
+      raf = 0;
+      releasing = true;
+      for (const id of pointers.keys()) {
+        try {
+          host.releasePointerCapture(id);
+        } catch {
+          /* not captured */
+        }
+      }
+      releasing = false;
+      pointers.clear();
+      pinch = null;
+      pan = null;
+      mode = 'idle';
+      endPanGuard();
+      if (!swallow) swallowClick = false;
+    }
+
+    function schedule(): void {
+      if (raf) return;
+      raf = requestAnimationFrame(() => {
+        raf = 0;
+        if (!isActive()) return;
+        const ds = drivers();
+        if (mode === 'pinch' && pinch && ds.length >= 2) {
+          applyGestureCam(pinchFrame(pinch, ds[0], ds[1]));
+        } else if (mode === 'pan' && pan && ds.length === 1) {
+          applyGestureCam(panFrame(pan, ds[0]));
+        } else if (mode === 'pending' && ds.length === 1) {
+          const p = ds[0];
+          const moved = Math.hypot(p.x - p.sx, p.y - p.sy);
+          if (moved > slopPx(p.type)) startPan(p);
+        }
+      });
+    }
+
+    host.addEventListener(
+      'click',
+      (e) => {
+        if (!swallowClick) return;
+        swallowClick = false;
+        e.preventDefault();
+        e.stopPropagation();
+      },
+      { capture: true, signal },
+    );
+
     host.addEventListener(
       'wheel',
       (e) => {
         if (!isActive()) return;
+        const target = e.target as Element | null;
+        if (target?.closest?.('textarea, input, [contenteditable="true"]')) return;
         e.preventDefault();
-        const factor = e.deltaY < 0 ? 1.12 : 1 / 1.12;
-        zoomAt(e.clientX, e.clientY, factor);
+        userCamGesture = true;
+        cancelFollowAnim();
+        const intent = wheelIntent(e, wheelMode, Math.max(1, host.clientHeight));
+        if (intent.kind === 'zoom') {
+          zoomAt(e.clientX, e.clientY, Math.pow(2, intent.s));
+          return;
+        }
+        cam.x -= intent.dx;
+        cam.y -= intent.dy;
+        clampCamNow();
+        applyCam();
       },
-      { passive: false },
+      { passive: false, signal },
     );
 
     host.addEventListener('pointerdown', (e) => {
       if (!isActive()) return;
-      // Label / node chrome: keep native select-to-copy — do not pan.
-      if ((e.target as Element | null)?.closest?.('.map-node')) return;
-      // Canvas background / empty space → pan; suppress text selection.
-      e.preventDefault();
-      // preventDefault skips native focus — keep the host as focus owner.
-      focusMapForKeys();
-      pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
-      host.setPointerCapture?.(e.pointerId);
-      if (pointers.size === 1) {
-        dragging = true;
-        lastX = e.clientX;
-        lastY = e.clientY;
-        userCamGesture = true;
-        cancelFollowAnim();
-        beginPanGuard();
-      } else if (pointers.size === 2) {
-        dragging = false;
-        userCamGesture = true;
-        cancelFollowAnim();
-        beginPanGuard();
-        const pts = [...pointers.values()];
-        pinchStartDist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
-        pinchStartK = cam.k;
+      const target = e.target as Element | null;
+      const onLabel = !!target?.closest?.('.map-label');
+      const type = e.pointerType || 'mouse';
+      const barrel = type === 'pen' && (e.buttons & 2) !== 0;
+      if ((type === 'mouse' || type === 'pen') && onLabel && !barrel) return;
+
+      if (type === 'touch' && e.isPrimary) {
+        const stale = [...pointers.values()].some((p) => p.type === 'touch');
+        if (stale) resetPointers(false);
       }
-    });
+      if (type === 'pen' && [...pointers.values()].some((p) => p.type === 'touch')) return;
+      if ([...pointers.values()].some((p) => p.type === 'pen' && p.role !== 'spare') && type === 'touch') {
+        return;
+      }
+
+      cancelFollowAnim();
+      focusMapForKeys();
+      const pt = localPt(e);
+      const role: Tracked['role'] = pointers.size >= 2 ? 'spare' : 'driver';
+      pointers.set(e.pointerId, {
+        id: e.pointerId,
+        type,
+        x: pt.x,
+        y: pt.y,
+        sx: pt.x,
+        sy: pt.y,
+        role,
+      });
+
+      const count = drivers().length;
+      const next = nextGestureMode(mode, count, false);
+      if (next === 'pinch' && mode !== 'pinch') {
+        clearLongPress();
+        const ds = drivers();
+        startPinch(ds[0], ds[1]);
+      } else if (next === 'pinch') {
+        clearLongPress();
+      } else {
+        mode = 'pending';
+        if (type === 'touch' && onLabel) {
+          const label = target!.closest('.map-label') as Element;
+          clearLongPress();
+          longPressTimer = window.setTimeout(() => {
+            const p = pointers.get(e.pointerId);
+            if (!p || mode !== 'pending') return;
+            if (Math.hypot(p.x - p.sx, p.y - p.sy) > 10) return;
+            p.role = 'select';
+            mode = 'idle';
+            window.setTimeout(() => {
+              const sel = window.getSelection?.();
+              if (sel && sel.toString()) return;
+              const node = label.querySelector('tspan') || label;
+              const range = document.createRange();
+              range.selectNodeContents(node);
+              sel?.removeAllRanges();
+              sel?.addRange(range);
+            }, 100);
+          }, 500);
+        }
+      }
+    }, { signal });
 
     host.addEventListener(
       'pointermove',
       (e) => {
-        if (!isActive()) return;
-        if (!pointers.has(e.pointerId)) return;
-        e.preventDefault();
-        pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
-        if (pointers.size === 2) {
-          const pts = [...pointers.values()];
-          const dist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
-          if (pinchStartDist > 0) {
-            const midX = (pts[0].x + pts[1].x) / 2;
-            const midY = (pts[0].y + pts[1].y) / 2;
-            const target = pinchStartK * (dist / pinchStartDist);
-            const factor = target / cam.k;
-            zoomAt(midX, midY, factor);
-          }
-          return;
-        }
-        if (!dragging) return;
-        cam.x += e.clientX - lastX;
-        cam.y += e.clientY - lastY;
-        lastX = e.clientX;
-        lastY = e.clientY;
-        clampCamNow();
-        applyCam();
+        const p = pointers.get(e.pointerId);
+        if (!p || p.role === 'select') return;
+        const pt = localPt(e);
+        p.x = pt.x;
+        p.y = pt.y;
+        if (mode === 'pan' || mode === 'pinch') e.preventDefault();
+        schedule();
       },
-      { passive: false },
+      { passive: false, signal },
     );
 
     const endPointer = (e: PointerEvent): void => {
+      const had = pointers.get(e.pointerId);
       pointers.delete(e.pointerId);
-      if (pointers.size < 2) pinchStartDist = 0;
-      if (pointers.size === 0) {
-        dragging = false;
+      if (!had || had.role === 'spare') {
+        if (pointers.size === 0) {
+          mode = 'idle';
+          endPanGuard();
+        }
+        return;
+      }
+      clearLongPress();
+      for (const p of pointers.values()) {
+        if (drivers().length >= 2) break;
+        if (p.role === 'spare') p.role = 'driver';
+      }
+      const ds = drivers();
+      if (mode === 'pinch' && ds.length >= 2) {
+        startPinch(ds[0], ds[1]);
+        return;
+      }
+      if (ds.length === 1 && (mode === 'pinch' || mode === 'pan')) {
+        startPan(ds[0]);
+        return;
+      }
+      if (ds.length === 0) {
+        mode = 'idle';
+        pinch = null;
+        pan = null;
         endPanGuard();
       }
     };
-    host.addEventListener('pointerup', endPointer);
-    host.addEventListener('pointercancel', endPointer);
+    host.addEventListener('pointerup', endPointer, { signal });
+    host.addEventListener('pointercancel', (e) => {
+      endPointer(e);
+      if (pointers.size === 0) resetPointers(swallowClick);
+    }, { signal });
+    host.addEventListener('lostpointercapture', () => {
+      if (releasing) return;
+      if (pointers.size) resetPointers(swallowClick);
+    }, { signal });
+    window.addEventListener('blur', () => resetPointers(swallowClick), { signal });
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) resetPointers(swallowClick);
+    }, { signal });
 
     window.addEventListener('resize', () => {
       if (!isActive()) return;
@@ -1684,7 +1887,13 @@ export function createMapView(
           `0 0 ${Math.max(1, host.clientWidth)} ${Math.max(1, host.clientHeight)}`,
         );
       }
-    });
+    }, { signal });
+  }
+
+  function unbindGestures(): void {
+    gestureAbort?.abort();
+    gestureAbort = null;
+    host.style.touchAction = '';
   }
 
   /**
@@ -1783,6 +1992,7 @@ export function createMapView(
     applyCam,
     cam,
     bindGestures,
+    unbindGestures,
     bindKeyboard,
     visibleList,
     findNode,
