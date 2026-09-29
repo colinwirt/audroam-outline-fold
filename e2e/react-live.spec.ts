@@ -242,14 +242,29 @@ test.describe('react-live Map keyboard focus (0.2.16 gate)', () => {
   test('label drag-select copies text; background pan clears it without moving selection', async ({ page }) => {
     const host = await openMap(page);
     await clickNode(page, host, 'suppliers');
-    const label = host.locator('.map-node[data-id="suppliers"] .map-label').first();
-    const b = (await label.boundingBox())!;
-    await page.mouse.move(b.x + 2, b.y + b.height / 2);
-    await page.mouse.down();
-    await page.mouse.move(b.x + b.width * 0.6, b.y + b.height / 2, { steps: 8 });
-    await page.mouse.up();
-    const selected = await page.evaluate(() => window.getSelection()?.toString() || '');
-    expect(selected.length, 'label text drag produces a selection').toBeGreaterThan(2);
+    const labelSel = `${HOST} .map-node[data-id="suppliers"] .map-label`;
+    const labelText = ((await page.locator(labelSel).textContent()) || '').replace(/\s+/g, ' ');
+    const lb = (await page.locator(labelSel).boundingBox())!;
+    const cy = lb.y + lb.height / 2;
+    // Real mouse drag across the label. Chromium's SVG text hit-testing has
+    // dead spots at some sub-glyph x positions (varies with CI fonts), so try a
+    // few nearby start points; any real drag selection proves the label is
+    // selectable and not swallowed by pan/preventDefault/user-select.
+    let selected = '';
+    for (const dx of [2, 1, 3, 5, 0.5, 7, 10, 13]) {
+      await page.evaluate(() => window.getSelection()?.removeAllRanges());
+      await page.mouse.move(lb.x + dx, cy);
+      await page.mouse.down();
+      await page.mouse.move(lb.x + lb.width * 0.6, cy, { steps: 10 });
+      await page.mouse.up();
+      selected = await page.evaluate(() => window.getSelection()?.toString() || '');
+      if (selected.trim().length > 2) break;
+      await page.waitForTimeout(600); // avoid double-click counting between tries
+    }
+    expect(selected.trim().length, 'label text drag produces a selection').toBeGreaterThan(2);
+    expect(labelText, 'selection is label text (copyable)').toContain(
+      selected.replace(/\s+/g, ' ').trim().slice(0, 6),
+    );
     await expectSelected(page, HOST, 'suppliers');
     // keys still work after drag-select
     await press(page, 'ArrowUp');
