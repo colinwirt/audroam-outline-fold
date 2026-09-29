@@ -389,3 +389,168 @@ kbd {
   color: var(--muted);
   margin-bottom: 0.25rem;
 }
+
+/* Package version stamp */
+.pkg-stamp {
+  color: var(--muted);
+  font-size: 0.75rem;
+  margin: -0.5rem 0 1rem;
+}
+.pkg-stamp code {
+  background: var(--panel);
+  padding: 0.1em 0.35em;
+  border-radius: 4px;
+  font-size: 0.9em;
+  color: var(--accent);
+}
+
+/* Outline | Map segmented control */
+.pane-label-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+}
+.pane-label-row > span:first-child {
+  margin-right: 0.25rem;
+}
+.seg {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--panel);
+}
+.seg button {
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  padding: 0.35rem 0.85rem;
+  font: inherit;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  min-height: 32px;
+  min-width: 72px;
+  text-transform: none;
+  letter-spacing: 0;
+}
+.seg button[aria-pressed="true"] {
+  background: #143040;
+  color: var(--text);
+  box-shadow: inset 0 0 0 1px rgba(108, 182, 255, 0.45);
+}
+.map-tools {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+  margin-left: auto;
+}
+.map-tools button {
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 0.3rem 0.55rem;
+  font: inherit;
+  font-size: 0.7rem;
+  font-weight: 600;
+  cursor: pointer;
+  min-height: 28px;
+  text-transform: none;
+  letter-spacing: 0;
+}
+.map-tools button:hover {
+  border-color: var(--accent);
+}
+
+/* Map preview (package createMapView SVG) */
+.preview-pane {
+  --map-bg: #0a1f28;
+  --gold: #c9a227;
+  --cue: #3d6b52;
+  --cue-text: #e8f5ee;
+  --connector: #9bb0d0;
+  --pill-fill: #0c222c;
+  --pill-stroke: #7a9bb0;
+  --font: system-ui, -apple-system, "Segoe UI", "Inter", sans-serif;
+}
+.preview-pane-map {
+  background: var(--map-bg);
+}
+.preview-pane .map-wrap {
+  flex: 1;
+  position: relative;
+  min-height: 280px;
+  touch-action: none;
+  cursor: grab;
+  overflow: hidden;
+  background: var(--map-bg);
+}
+.preview-pane .map-wrap.panning {
+  cursor: grabbing;
+}
+.preview-pane .map-svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.preview-pane .map-node {
+  cursor: pointer;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+.preview-pane .map-node.leaf {
+  cursor: default;
+}
+.preview-pane .map-pill {
+  fill: var(--pill-fill);
+  stroke: var(--pill-stroke);
+  stroke-width: 1.5;
+}
+.preview-pane .map-node.cue .map-pill {
+  fill: var(--cue);
+  stroke: #6fa88a;
+}
+.preview-pane .map-node.collapsed .map-pill {
+  stroke: var(--gold);
+  stroke-width: 2.25;
+}
+.preview-pane .map-node:focus {
+  outline: none;
+}
+.preview-pane .map-node:focus-visible .map-pill {
+  stroke: var(--accent);
+  stroke-width: 2.5;
+}
+.preview-pane .map-label {
+  fill: var(--text);
+  font: 600 13px/1.2 var(--font);
+  pointer-events: none;
+  user-select: none;
+}
+.preview-pane .map-node.cue .map-label {
+  fill: var(--cue-text);
+}
+.preview-pane .map-fold-indicator {
+  pointer-events: none;
+}
+.preview-pane .map-fold-indicator circle {
+  fill: var(--map-bg);
+  stroke: var(--gold);
+  stroke-width: 1.75;
+}
+.preview-pane .map-fold-indicator path {
+  stroke: var(--gold);
+  stroke-width: 1.75;
+  stroke-linecap: round;
+}
+.preview-pane .map-edge {
+  fill: none;
+  stroke: var(--connector);
+  stroke-width: 1.5;
+  opacity: 0.85;
+}
+.preview-pane .of-node[data-collapsed="true"] > .of-children {
+  display: none;
+}

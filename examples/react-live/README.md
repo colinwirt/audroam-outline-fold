@@ -1,6 +1,8 @@
 # React live parser (OSS example)
 
-Online-parser style demo for `@audroam/outline-fold`: textarea source → live `parse` → `toHtml` preview; fold clicks use `toggleFold` only (no re-parse) and sync `serialize(doc)` back into the textarea.
+Online-parser style demo for `@audroam/outline-fold`: textarea source → live `validateDocument` → **Outline** (`toHtml` + fold clicks) or **Map** (`createMapView`, same package renderer as 0.2.7+). Fold state is shared — `toggleFold` / Map fold sync via `serialize(doc)` back into the textarea.
+
+Map mode uses **auto-pack** layout (no sidecar), pan/zoom (wheel / pinch / drag + Zoom± / Reset), and package keyboard (no fold-on-Left; fold via `.` / Space / Enter; digits when selected). Package version is stamped in the header from the built `package.json`.
 
 This is an **OSS example only** — not the Audroam Angular SPA.
 
@@ -8,11 +10,9 @@ A small multi-doc library lives in this browser’s `localStorage` (`audroam-out
 
 **Download .md** exports the active textarea as a Markdown file named from the doc title (e.g. `cafe-ops.md`). **Download library** / **Import library** use the full localStorage JSON (client-side Blob only; import can merge or replace).
 
-
-
 ## Run
 
-From the package root (`packages/outline-fold`):
+From the package root:
 
 ```bash
 npm run demo:react
@@ -25,7 +25,6 @@ Or:
 npm run build
 npm --prefix examples/react-live install
 npm --prefix examples/react-live run dev
-# equivalent: npx vite --config examples/react-live/vite.config.ts
 ```
 
 Production build of the demo: `npm run demo:react:build` (output under `examples/react-live/dist/`).

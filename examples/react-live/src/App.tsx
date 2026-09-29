@@ -16,9 +16,12 @@ import {
   demoOpen,
   DEMO_PASSPHRASE,
   validateDocument,
+  createMapView,
   type OutlineFoldDoc,
   type OutlineNode,
   type ValidationResult,
+  type MapLayout,
+  type MapViewHandle,
 } from '@audroam/outline-fold';
 import seedMd from '../../outline-demo.md?raw';
 import {
@@ -52,9 +55,10 @@ function runValidate(text: string): ValidationResult {
 }
 
 /**
- * Read-only fold view: edit in the textarea; clicks call toggleFold only
- * (no re-parse). After fold, serialize syncs fold-/fold+ back into the source.
- * Multi-doc library in localStorage (browser-only notetaker).
+ * Live parser: edit in the textarea; Outline preview via toHtml + toggleFold;
+ * Map preview via package createMapView (auto-pack). Shared fold state —
+ * serialize syncs fold-/fold+ back into the source. Multi-doc library in
+ * localStorage (browser-only notetaker).
  */
 export default function App() {
   const [library, setLibrary] = useState<DocLibrary>(() =>
@@ -75,6 +79,16 @@ export default function App() {
   textRef.current = text;
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const importFileRef = useRef<HTMLInputElement | null>(null);
+  const [previewMode, setPreviewMode] = useState<'outline' | 'map'>('outline');
+  const previewModeRef = useRef(previewMode);
+  previewModeRef.current = previewMode;
+  const mapHostRef = useRef<HTMLDivElement | null>(null);
+  const mapBtnRef = useRef<HTMLButtonElement | null>(null);
+  const previewPaneRef = useRef<HTMLElement | null>(null);
+  const mapRef = useRef<MapViewHandle | null>(null);
+  const layoutRef = useRef<MapLayout>({ _source: 'auto-pack', nodes: {} });
+  const focusIdRef = useRef('root');
+  const applyDocFromMapRef = useRef<(d: OutlineFoldDoc) => void>(() => {});
 
   if (validation.doc) {
     docRef.current = validation.doc;
@@ -114,7 +128,11 @@ export default function App() {
   const loadDocBody = useCallback((body: string) => {
     setText(body);
     textRef.current = body;
-    setValidation(runValidate(body));
+    const next = runValidate(body);
+    setValidation(next);
+    layoutRef.current = { _source: 'auto-pack', nodes: {} };
+    const rootId = next.doc?.nodes?.[0]?.id;
+    focusIdRef.current = rootId || 'root';
   }, []);
 
   const onTextChange = useCallback(
@@ -142,6 +160,20 @@ export default function App() {
     },
     [flushBodyToLibrary],
   );
+
+  const applyDocFromMap = useCallback(
+    (next: OutlineFoldDoc) => {
+      docRef.current = next;
+      const synced = serialize(next);
+      setValidation(runValidate(synced));
+      setText(synced);
+      textRef.current = synced;
+      if (saveTimer.current) clearTimeout(saveTimer.current);
+      flushBodyToLibrary(synced);
+    },
+    [flushBodyToLibrary],
+  );
+  applyDocFromMapRef.current = applyDocFromMap;
 
   const switchDoc = useCallback(
     (nextId: string) => {
@@ -448,6 +480,71 @@ export default function App() {
     }
   }, [revealed, html]);
 
+
+  // Mount package Map once; Outline|Map share docRef + serialize via setDoc.
+  useEffect(() => {
+    const host = mapHostRef.current;
+    if (!host || mapRef.current) return;
+    const emptyDoc: OutlineFoldDoc = {
+      nodes: [],
+      fold: { mode: '-', ids: [] },
+    };
+    const map = createMapView(host, {
+      getDoc: () => docRef.current ?? emptyDoc,
+      setDoc: (d) => {
+        applyDocFromMapRef.current(d);
+      },
+      getLayout: () => layoutRef.current,
+      getFocusId: () => focusIdRef.current,
+      setFocusId: (id) => {
+        focusIdRef.current = id;
+      },
+      onChange: () => {
+        mapRef.current?.paint();
+      },
+      isActive: () => previewModeRef.current === 'map',
+      ariaLabel:
+        'Outline mind map, left to right. Pan and zoom enabled. Fold via circle-+ or . / Space / Enter.',
+    });
+    map.bindGestures();
+    map.bindKeyboard({
+      panel: previewPaneRef.current,
+      modeButton: mapBtnRef.current,
+    });
+    mapRef.current = map;
+    if (previewModeRef.current === 'map') {
+      map.ensurePositions();
+      map.paint();
+      map.resetCam();
+    }
+    return () => {
+      host.innerHTML = '';
+      mapRef.current = null;
+    };
+  }, []);
+
+  // Repaint Map when doc changes while Map mode is active.
+  useEffect(() => {
+    if (previewMode !== 'map') return;
+    const map = mapRef.current;
+    if (!map) return;
+    map.paint();
+  }, [previewMode, renderDoc, validation]);
+
+  // When entering Map mode, fit camera once the host is visible.
+  useEffect(() => {
+    if (previewMode !== 'map') return;
+    const map = mapRef.current;
+    if (!map) return;
+    // rAF so host has non-zero size after un-hiding
+    const id = requestAnimationFrame(() => {
+      map.ensurePositions();
+      map.paint();
+      map.resetCam();
+    });
+    return () => cancelAnimationFrame(id);
+  }, [previewMode]);
+
   useEffect(() => {
     document.documentElement.style.colorScheme = 'dark';
   }, []);
@@ -464,12 +561,18 @@ export default function App() {
         <h1>@audroam/outline-fold — React live parser</h1>
         <p className="meta">
           Edit outline source on the left · live <code>validateDocument</code> +{' '}
-          <code>toHtml</code> on the right. Invalid docs still render what parse can build;
-          issues appear under the editor. Download/share is gated when <code>!ok</code>.
-          Click <kbd>(+)</kbd> to <code>toggleFold</code>; fold state syncs via{' '}
-          <code>serialize</code>. Drafts stay in this browser’s <code>localStorage</code>{' '}
-          (outline text only — no secrets). Unlock/Decrypt uses demo key sources.
-          OSS example only — not production MFA.
+          Outline <code>toHtml</code> / Map <code>createMapView</code> on the right
+          (package <code>@{__OUTLINE_FOLD_VERSION__}</code>). Invalid docs still render what
+          parse can build; issues appear under the editor. Download/share is gated when{' '}
+          <code>!ok</code>. Outline: click <kbd>(+)</kbd> to <code>toggleFold</code>. Map:
+          auto-pack + pan/zoom; fold via circle-+ or <kbd>.</kbd> / Space / Enter (no
+          fold-on-Left); digits when selected. Shared fold syncs via <code>serialize</code>.
+          Drafts stay in this browser’s <code>localStorage</code> (outline text only — no
+          secrets). Unlock/Decrypt uses demo key sources. OSS example only — not production
+          MFA.
+        </p>
+        <p className="pkg-stamp" aria-label="Package version">
+          Package <code>@audroam/outline-fold@{__OUTLINE_FOLD_VERSION__}</code>
         </p>
       </header>
 
@@ -568,15 +671,66 @@ export default function App() {
           ) : null}
         </section>
 
-        <section className="pane preview-pane">
-          <div className="pane-label">Preview</div>
-          {html ? (
-            <div
-              className="tree"
-              onClick={onTreeClick}
-              dangerouslySetInnerHTML={{ __html: html }}
-            />
-          ) : (
+        <section
+          className={
+            'pane preview-pane' + (previewMode === 'map' ? ' preview-pane-map' : '')
+          }
+          ref={(el) => {
+            previewPaneRef.current = el;
+          }}
+        >
+          <div className="pane-label pane-label-row">
+            <span>Preview</span>
+            <div className="seg" role="group" aria-label="Preview mode">
+              <button
+                type="button"
+                aria-pressed={previewMode === 'outline'}
+                onClick={() => setPreviewMode('outline')}
+              >
+                Outline
+              </button>
+              <button
+                type="button"
+                ref={mapBtnRef}
+                aria-pressed={previewMode === 'map'}
+                onClick={() => setPreviewMode('map')}
+              >
+                Map
+              </button>
+            </div>
+            {previewMode === 'map' ? (
+              <div className="map-tools" role="toolbar" aria-label="Map view tools">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const host = mapHostRef.current;
+                    const map = mapRef.current;
+                    if (!host || !map) return;
+                    const r = host.getBoundingClientRect();
+                    map.zoomAt(r.left + r.width / 2, r.top + r.height / 2, 1.2);
+                  }}
+                >
+                  Zoom +
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const host = mapHostRef.current;
+                    const map = mapRef.current;
+                    if (!host || !map) return;
+                    const r = host.getBoundingClientRect();
+                    map.zoomAt(r.left + r.width / 2, r.top + r.height / 2, 1 / 1.2);
+                  }}
+                >
+                  Zoom −
+                </button>
+                <button type="button" onClick={() => mapRef.current?.resetCam()}>
+                  Reset
+                </button>
+              </div>
+            ) : null}
+          </div>
+          {!html ? (
             <div className="parse-error" role="alert">
               <strong>Nothing to render yet</strong>
               <pre>
@@ -584,7 +738,19 @@ export default function App() {
                   'Empty document'}
               </pre>
             </div>
-          )}
+          ) : null}
+          <div
+            className="tree"
+            hidden={!html || previewMode !== 'outline'}
+            onClick={onTreeClick}
+            dangerouslySetInnerHTML={{ __html: html || '' }}
+          />
+          <div
+            ref={mapHostRef}
+            className="map-wrap"
+            hidden={!html || previewMode !== 'map'}
+            aria-label="Map preview"
+          />
         </section>
       </div>
     </div>

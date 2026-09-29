@@ -35,7 +35,7 @@ npx serve -l 4173 .   # then open the live demos below
 | NIST CSF study | […/viewer/?doc=…/nist.md](https://colinwirt.github.io/audroam-outline-fold/examples/viewer/?doc=../nist/nist.md) |
 | AU gov cyber study | […/viewer/?doc=…/aust-gov-cyber.md](https://colinwirt.github.io/audroam-outline-fold/examples/viewer/?doc=../aust-gov-cyber/aust-gov-cyber.md) |
 | Fixtures (md + viewer links) | […/examples/fixtures/](https://colinwirt.github.io/audroam-outline-fold/examples/fixtures/) |
-| React live parser | […/react-live/](https://colinwirt.github.io/audroam-outline-fold/react-live/) |
+| React live parser (Outline \| Map) | […/react-live/](https://colinwirt.github.io/audroam-outline-fold/react-live/) |
 | Cafe ops 2D map | […/examples/canvas-2d/](https://colinwirt.github.io/audroam-outline-fold/examples/canvas-2d/) |
 | Cafe ops 3D map | […/examples/3d/](https://colinwirt.github.io/audroam-outline-fold/examples/3d/) |
 
