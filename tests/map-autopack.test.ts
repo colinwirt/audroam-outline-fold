@@ -112,6 +112,16 @@ describe('autoPackPositions', () => {
     expect(withFold.w).toBe(base.w + FOLD_SLOT);
   });
 
+  it('gives circle-+ ≥6px air inside FOLD_SLOT (end-cap air)', () => {
+    const circleR = 9;
+    const minClear = 6;
+    expect(FOLD_SLOT).toBeGreaterThanOrEqual(2 * (circleR + minClear));
+    // Preferred lock: ≥8px clear with gold focus → 2*(9+8)=34
+    expect(FOLD_SLOT).toBe(34);
+    const clear = FOLD_SLOT / 2 - circleR;
+    expect(clear).toBeGreaterThanOrEqual(8);
+  });
+
   it('keeps foldable pill width stable across expand/collapse (fold-slot-always)', () => {
     const n = findNodeById(doc.nodes, 'e8')!;
     const label = shortLabel(n.title);

@@ -136,6 +136,13 @@ for (const id of ['howto', 'ism', 'e8']) {
   assert(withFold.textW === base.w, `${id} textW must equal no-chrome pill width`);
   assert(withFold.w === base.w + FOLD_SLOT, `${id} total w = text + fold chrome`);
 }
+// End-cap air: FOLD_SLOT ≥ 2*(r+6); preferred 34 = 2*(9+8)
+{
+  const circleR = 9;
+  assert(FOLD_SLOT >= 2 * (circleR + 6), `FOLD_SLOT ${FOLD_SLOT} needs ≥6px clear`);
+  assert(FOLD_SLOT === 34, `FOLD_SLOT preferred lock is 34 (got ${FOLD_SLOT})`);
+  assert(FOLD_SLOT / 2 - circleR >= 8, '≥8px clear each side of centred circle');
+}
 // Fold-slot-always: foldable expanded w === collapsed w (same reserve)
 {
   const label = shortLabel(findTitle(doc, 'e8'));

@@ -261,11 +261,11 @@ const packed = autoPackPositions(doc, {
 | `createMapView(host, opts)` | Interactive SVG pills + pan/zoom + Map orientation keyboard |
 | `autoPackPositions(doc, opts?)` | Deterministic L→R positions for the fold-visible tree |
 | `resolveMapFocus(doc, focusId, dir, opts?)` | Map L→R focus resolver (↑↓ siblings · → child · ← parent; no fold-on-arrow) |
-| `pillSize(label, opts?)` / `FOLD_SLOT` | Pill measure helpers (foldable end-cap always reserved) |
+| `pillSize(label, opts?)` / `FOLD_SLOT` | Pill measure helpers (foldable end-cap always reserved; `FOLD_SLOT=34` for ≥8px circle air) |
 
 Layout sidecar discovery (`resolveLayout` / frontmatter `layoutSidecar:`) stays in [`examples/_shared/layoutSidecar.js`](./examples/_shared/layoutSidecar.js) — fetch-oriented Pages helper, not a package export. `examples/_shared/mapView.js` **re-exports** the package Map so existing demo imports keep working.
 
-**Host / Build vendor import** (after `npm i @audroam/outline-fold@0.2.6` or copy `dist/`):
+**Host / Build vendor import** (after `npm i @audroam/outline-fold@0.2.7` or copy `dist/`):
 
 ```ts
 import { createMapView, autoPackPositions } from '@audroam/outline-fold';

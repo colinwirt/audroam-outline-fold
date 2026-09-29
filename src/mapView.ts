@@ -141,8 +141,9 @@ function shortLabel(title: string): string {
   return title.length > 36 ? title.slice(0, 34) + '…' : title;
 }
 
-/** Reserved end-cap on every foldable pill; circle-+ painted only when collapsed (M12 / fold-slot-always). */
-export const FOLD_SLOT = 22;
+/** Reserved end-cap on every foldable pill; circle-+ painted only when collapsed (M12 / fold-slot-always).
+ * 34 = 2*(r+clear) with r≈9 and ≥8px clear for gold focus stroke (Design UX 2026-09-29 end-cap air). */
+export const FOLD_SLOT = 34;
 
 /**
  * Measure pill dimensions; optionally reserve fold chrome end-cap.
