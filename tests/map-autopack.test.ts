@@ -1,0 +1,146 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { describe, expect, it } from 'vitest';
+import {
+  parse,
+  isCollapsed,
+  toggleFold,
+  autoPackPositions,
+  pillSize,
+  FOLD_SLOT,
+} from '../src/index.js';
+
+const md = readFileSync(
+  join(__dirname, '../examples/aust-gov-cyber/aust-gov-cyber.md'),
+  'utf8',
+);
+
+const PILL_H = 44;
+const GAP_Y = 14;
+
+function pack(d: ReturnType<typeof parse>) {
+  return autoPackPositions(d, {
+    isNodeCollapsed: (id) => isCollapsed(d, id),
+    gapY: GAP_Y,
+  });
+}
+
+function shortLabel(title: string): string {
+  const parts = String(title).split(' · ');
+  if (parts.length >= 2) return parts[0].trim();
+  return title.length > 36 ? title.slice(0, 34) + '…' : title;
+}
+
+function findNodeById(
+  nodes: ReturnType<typeof parse>['nodes'],
+  id: string,
+): (typeof nodes)[number] | null {
+  for (const n of nodes) {
+    if (n.id === id) return n;
+    const hit = findNodeById(n.children || [], id);
+    if (hit) return hit;
+  }
+  return null;
+}
+
+function childIds(d: ReturnType<typeof parse>, id: string): string[] {
+  const n = findNodeById(d.nodes, id);
+  return (n?.children || []).filter((c) => c.id).map((c) => c.id!);
+}
+
+describe('autoPackPositions', () => {
+  const doc = parse(md);
+
+  it('places many visible nodes and grows viewBox with leaves', () => {
+    const expanded = pack(doc);
+    expect(Object.keys(expanded.nodes).length).toBeGreaterThan(10);
+    expect(expanded.viewBox.h).toBeGreaterThan(960);
+    expect(expanded.nodes.root).toBeTruthy();
+    expect(expanded.nodes.root.x - 140).toBeGreaterThanOrEqual(0);
+  });
+
+  it('keeps near-column sibling gaps ≥ gapY (M2/M3)', () => {
+    const expanded = pack(doc);
+    const boxes = Object.keys(expanded.nodes).map((id) => {
+      const p = expanded.nodes[id];
+      return { id, top: p.y - PILL_H / 2, bot: p.y + PILL_H / 2, x: p.x, y: p.y };
+    });
+    for (let i = 0; i < boxes.length; i++) {
+      for (let j = i + 1; j < boxes.length; j++) {
+        const a = boxes[i];
+        const b = boxes[j];
+        if (Math.abs(a.x - b.x) > 120) continue;
+        const gap = a.y < b.y ? b.top - a.bot : a.top - b.bot;
+        if (gap > GAP_Y * 3) continue;
+        expect(gap).toBeGreaterThanOrEqual(GAP_Y - 0.01);
+      }
+    }
+  });
+
+  it('centres parent on child stack midpoint (M9)', () => {
+    const expanded = pack(doc);
+    const e8Kids = childIds(doc, 'e8');
+    expect(e8Kids.length).toBeGreaterThanOrEqual(8);
+    const kidYs = e8Kids.map((id) => expanded.nodes[id].y);
+    const stackMid = (Math.min(...kidYs) + Math.max(...kidYs)) / 2;
+    expect(Math.abs(expanded.nodes.e8.y - stackMid)).toBeLessThan(1);
+  });
+
+  it('collapses omit kids and shrink height; re-expand restores (M10)', () => {
+    const expanded = pack(doc);
+    const collapsedDoc = toggleFold(doc, 'e8');
+    expect(isCollapsed(collapsedDoc, 'e8')).toBe(true);
+    const collapsed = pack(collapsedDoc);
+    expect(collapsed.viewBox.h).toBeLessThan(expanded.viewBox.h - 100);
+    expect(collapsed.nodes['e8-1']).toBeUndefined();
+    expect(collapsed.nodes.e8).toBeTruthy();
+
+    const reexpanded = pack(toggleFold(collapsedDoc, 'e8'));
+    expect(Math.abs(reexpanded.viewBox.h - expanded.viewBox.h)).toBeLessThan(1);
+    expect(Math.abs(reexpanded.nodes.e8.y - expanded.nodes.e8.y)).toBeLessThan(1);
+  });
+
+  it('reserves fold chrome end-cap without shrinking text (M12)', () => {
+    const n = findNodeById(doc.nodes, 'e8');
+    expect(n).toBeTruthy();
+    const label = shortLabel(n!.title);
+    const base = pillSize(label);
+    const withFold = pillSize(label, { reserveFold: true });
+    expect(base.foldSlot).toBe(0);
+    expect(withFold.foldSlot).toBe(FOLD_SLOT);
+    expect(withFold.textW).toBe(base.w);
+    expect(withFold.w).toBe(base.w + FOLD_SLOT);
+  });
+
+  it('left-aligns siblings under the same parent only (M13)', () => {
+    const expanded = pack(doc);
+
+    function leftEdge(id: string): number {
+      const n = findNodeById(doc.nodes, id)!;
+      const pos = expanded.nodes[id];
+      const reserveFold = !!(n.children?.length) && isCollapsed(doc, n.id!);
+      const { w } = pillSize(shortLabel(n.title), { reserveFold });
+      return pos.x - w / 2;
+    }
+
+    let groups = 0;
+    function walk(nodes: typeof doc.nodes) {
+      for (const n of nodes) {
+        if (!n?.id) continue;
+        if (n.children?.length && !isCollapsed(doc, n.id)) {
+          const kids = childIds(doc, n.id).filter((id) => expanded.nodes[id]);
+          if (kids.length >= 2) {
+            const ref = leftEdge(kids[0]);
+            for (const id of kids) {
+              expect(Math.abs(leftEdge(id) - ref)).toBeLessThan(0.01);
+            }
+            groups++;
+          }
+          walk(n.children);
+        }
+      }
+    }
+    walk(doc.nodes);
+    expect(groups).toBeGreaterThanOrEqual(2);
+  });
+});

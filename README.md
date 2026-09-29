@@ -39,7 +39,7 @@ npx serve -l 4173 .   # then open the live demos below
 | Cafe ops 2D map | […/examples/canvas-2d/](https://colinwirt.github.io/audroam-outline-fold/examples/canvas-2d/) |
 | Cafe ops 3D map | […/examples/3d/](https://colinwirt.github.io/audroam-outline-fold/examples/3d/) |
 
-Shared core: [`examples/_shared/`](./examples/_shared/) — `parseDoc` → `createOutlineView` → `createMapView` (package owns `parse` / `toHtml` / `attachOutlineTree` / `toggleFold`). No per-page map forks.
+Shared Pages helpers: [`examples/_shared/`](./examples/_shared/) — `parseDoc` → `createOutlineView` → Map (re-exports package). Package owns `parse` / `toHtml` / `attachOutlineTree` / `toggleFold` / **`createMapView`** / **`autoPackPositions`**. No per-page map forks.
 
 The viewer chrome shows **Package** / **Viewer** / **Git** build stamps (injected at site build). Hard-refresh (`Ctrl+Shift+R` / `Cmd+Shift+R`) or use a private window to bypass cache and confirm you have the latest Pages build.
 
@@ -142,7 +142,7 @@ Unlock reveals **session-only** plaintext under the node (default: do **not** wr
 
 | In this package | In the host app |
 |-----------------|-----------------|
-| Grammar, fold state, icons, HTML chrome | Authentication / MFA challenge |
+| Grammar, fold state, icons, HTML chrome, Map SVG | Authentication / MFA challenge |
 | Trailer / inline sealed fields | Key management, remote blob fetch |
 | `demoSeal` / `demoOpen` (**demo only**) | Production crypto / ACL key release |
 | `onUnlock` / `onDecrypt` **types** | Real key release callbacks |
@@ -164,6 +164,10 @@ import {
   toHtml,
   attachOutlineTree,
   validateDocument,
+  createMapView,
+  autoPackPositions,
+  pillSize,
+  FOLD_SLOT,
   demoSeal,
   demoOpen,
   DEMO_PASSPHRASE,
@@ -211,6 +215,62 @@ Wired by **`attachOutlineTree`** (cafe demo + host outline-view). Tab enters/lea
 **0.2.3:** `attachOutlineTree` + ARIA `tree` / `treeitem` / `group` markup from `toHtml` (children stay in the DOM when collapsed; CSS hides).
 
 
+
+
+## Map (`createMapView` / `autoPackPositions`)
+
+SVG left-to-right mind map for a parsed outline. **No auth.** MIT-clean drop-in for hosts (e.g. Audroam `/outline-view`).
+
+```ts
+import {
+  parse,
+  createMapView,
+  autoPackPositions,
+  isCollapsed,
+} from '@audroam/outline-fold';
+
+const doc = parse(md);
+const layout = {
+  version: 1,
+  layout: 'ithoughts-lr',
+  viewBox: { w: 1200, h: 960 },
+  nodes: {},
+  _source: 'auto-pack', // full recompute each paint; omit / set sidecar to keep authored x,y
+};
+
+const map = createMapView(hostEl, {
+  getDoc: () => doc,
+  setDoc: (d) => { doc = d; },
+  getLayout: () => layout,
+  getFocusId: () => focusId,
+  setFocusId: (id) => { focusId = id; },
+  onChange: () => map.paint(),
+});
+map.bindGestures();
+map.bindKeyboard({ panel: mapPanel });
+map.paint();
+
+// Headless layout only (tests / server):
+const packed = autoPackPositions(doc, {
+  isNodeCollapsed: (id) => isCollapsed(doc, id),
+});
+```
+
+| Export | Role |
+|--------|------|
+| `createMapView(host, opts)` | Interactive SVG pills + pan/zoom + fold keyboard |
+| `autoPackPositions(doc, opts?)` | Deterministic L→R positions for the fold-visible tree |
+| `pillSize(label, opts?)` / `FOLD_SLOT` | Pill measure helpers (fold chrome end-cap) |
+
+Layout sidecar discovery (`resolveLayout` / frontmatter `layoutSidecar:`) stays in [`examples/_shared/layoutSidecar.js`](./examples/_shared/layoutSidecar.js) — fetch-oriented Pages helper, not a package export. `examples/_shared/mapView.js` **re-exports** the package Map so existing demo imports keep working.
+
+**Host / Build vendor import** (after `npm i @audroam/outline-fold@0.2.5` or copy `dist/`):
+
+```ts
+import { createMapView, autoPackPositions } from '@audroam/outline-fold';
+// or from vendor dist:
+import { createMapView, autoPackPositions } from './vendor/outline-fold/index.js';
+```
 
 ## Document validation
 

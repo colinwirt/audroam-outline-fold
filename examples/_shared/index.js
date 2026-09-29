@@ -1,7 +1,8 @@
 /**
  * Shared Pages demo core.
  * parse(md) → doc; outlineView(doc); mapView(doc, layoutSidecar).
- * Package owns parse / toHtml / attachOutlineTree / toggleFold.
+ * Package owns parse / toHtml / attachOutlineTree / toggleFold / createMapView / autoPackPositions.
+ * mapView.js re-exports the package Map; layoutSidecar stays Pages-only.
  */
 export { parseDoc, loadDoc, parse, validateDocument } from './parseDoc.js';
 export { createOutlineView, toHtml, attachOutlineTree, serialize } from './outlineView.js';

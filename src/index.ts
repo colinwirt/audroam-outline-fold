@@ -46,3 +46,21 @@ export type {
   ValidateOptions,
 } from './validate.js';
 export { validateDocument } from './validate.js';
+
+export {
+  createMapView,
+  autoPackPositions,
+  pillSize,
+  FOLD_SLOT,
+  type MapPoint,
+  type MapViewBox,
+  type MapLayout,
+  type AutoPackOptions,
+  type AutoPackResult,
+  type PillSizeOptions,
+  type PillSize,
+  type MapViewOptions,
+  type MapKeyboardWire,
+  type MapViewHandle,
+} from './mapView.js';
+

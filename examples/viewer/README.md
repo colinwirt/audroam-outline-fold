@@ -13,7 +13,7 @@ examples/viewer/?doc=../outline-demo.md
 | `doc` (or `md`) | Markdown outline URL (same-origin, under `examples/`) |
 | `layout` | Optional sidecar JSON; else frontmatter `layoutSidecar:` / sibling `*.layout.json`; else **auto-pack** |
 
-Uses shared core only (`../_shared/`): `parseDoc` → `createOutlineView` → `createMapView` → `resolveLayout`.
+Uses shared core (`../_shared/`): `parseDoc` → `createOutlineView` → `createMapView` (package Map, re-exported) → `resolveLayout` (Pages-only).
 
 ## Versions on the page
 

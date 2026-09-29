@@ -6,12 +6,12 @@
 |--------|------|
 | `parseDoc.js` | `parse(md) → doc` (+ validate) |
 | `outlineView.js` | `createOutlineView` → `toHtml` + `attachOutlineTree` |
-| `mapView.js` | `createMapView` → SVG L→R pills + pan/zoom |
-| `layoutSidecar.js` | frontmatter pointer / sibling `*.layout.json` / **auto-pack** |
+| `mapView.js` | **Re-exports** package `createMapView` / `autoPackPositions` / `pillSize` / `FOLD_SLOT` |
+| `layoutSidecar.js` | frontmatter pointer / sibling `*.layout.json` / **auto-pack** flag (Pages-only) |
 | `unlockStub.js` | PLACEHOLDER → stub unlock N/A; demo crypto unlock |
 
 **Viewer:** [`../viewer/`](../viewer/) — `?doc=<md>` + optional `&layout=`. All Pages outline demos open here (old paths redirect).
 
-Package (`dist/`) owns grammar: `parse`, `toHtml`, `attachOutlineTree`, `toggleFold`, `setExpandLevel`.
+Package (`dist/` / `@audroam/outline-fold`) owns grammar + Map: `parse`, `toHtml`, `attachOutlineTree`, `toggleFold`, `setExpandLevel`, **`createMapView`**, **`autoPackPositions`**.
 
-Demos import from here — no duplicated per-page parse/render logic.
+Demos may import Map from here (thin re-export) or directly from `../../dist/index.js` — one source of truth.

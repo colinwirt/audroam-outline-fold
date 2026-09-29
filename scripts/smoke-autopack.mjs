@@ -5,12 +5,14 @@
 import { readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { parse, isCollapsed, toggleFold } from '../dist/index.js';
 import {
+  parse,
+  isCollapsed,
+  toggleFold,
   autoPackPositions,
   pillSize,
   FOLD_SLOT,
-} from '../examples/_shared/mapView.js';
+} from '../dist/index.js';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const md = readFileSync(
