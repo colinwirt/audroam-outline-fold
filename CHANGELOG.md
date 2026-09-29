@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.11 — 2026-09-29
+
+### Map pan no longer drag-selects text
+
+Panning the canvas (pointer drag on background / pinch) clears `window.getSelection()` and temporarily sets `user-select: none` on the map host so the gesture does not paint a huge accidental text range. Intentional drag-select on node labels for copy is unchanged (`pointerdown` on `.map-node` still skips the pan path).
+
+## 0.2.10 — 2026-09-29
 ## 0.2.10 — 2026-09-29
 
 ### Map digits relative to selection

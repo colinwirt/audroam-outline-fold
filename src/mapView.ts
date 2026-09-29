@@ -5,7 +5,7 @@
  * with leaf/sibling count. Recomputed on every paint so fold expand/collapse
  * reflows without overlap.
  *
- * Scrapbook (0.2.8+): multi-line wrap, task lead SVG, text click ≠ fold; label text selectable (0.2.10).
+ * Scrapbook (0.2.8+): multi-line wrap, task lead SVG, text click ≠ fold; label text selectable (0.2.10); pan clears selection (0.2.11).
  * Sealed nodes: omitted until unlocked (no gray stubs) — caller filters doc if needed.
  */
 import {
@@ -510,6 +510,21 @@ export function mapNodeKeepsTextSelection(
   const a = sel.anchorNode;
   const f = sel.focusNode;
   return (!!a && nodeEl.contains(a)) || (!!f && nodeEl.contains(f));
+}
+
+/**
+ * Clear the browser Selection when a map pan/pinch gesture starts so
+ * background drag does not paint a huge text range. Label drag-select
+ * never hits this path (`pointerdown` on `.map-node` returns early).
+ */
+export function clearSelectionForMapPan(
+  sel: { removeAllRanges: () => void } | null | undefined,
+): void {
+  try {
+    sel?.removeAllRanges();
+  } catch {
+    /* Selection API can throw in odd contexts */
+  }
 }
 
 export function createMapView(
@@ -1049,6 +1064,23 @@ export function createMapView(
     let pinchStartDist = 0;
     let pinchStartK = 1;
 
+    function beginPanGuard(): void {
+      host.classList.add('panning');
+      host.style.userSelect = 'none';
+      host.style.setProperty('-webkit-user-select', 'none');
+      clearSelectionForMapPan(
+        typeof window !== 'undefined' && window.getSelection
+          ? window.getSelection()
+          : null,
+      );
+    }
+
+    function endPanGuard(): void {
+      host.classList.remove('panning');
+      host.style.userSelect = '';
+      host.style.removeProperty('-webkit-user-select');
+    }
+
     host.addEventListener(
       'wheel',
       (e) => {
@@ -1062,52 +1094,61 @@ export function createMapView(
 
     host.addEventListener('pointerdown', (e) => {
       if (!isActive()) return;
+      // Label / node chrome: keep native select-to-copy — do not pan.
       if ((e.target as Element | null)?.closest?.('.map-node')) return;
+      // Canvas background / empty space → pan; suppress text selection.
+      e.preventDefault();
       pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
       host.setPointerCapture?.(e.pointerId);
       if (pointers.size === 1) {
         dragging = true;
         lastX = e.clientX;
         lastY = e.clientY;
-        host.classList.add('panning');
+        beginPanGuard();
       } else if (pointers.size === 2) {
         dragging = false;
+        beginPanGuard();
         const pts = [...pointers.values()];
         pinchStartDist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
         pinchStartK = cam.k;
       }
     });
 
-    host.addEventListener('pointermove', (e) => {
-      if (!isActive()) return;
-      if (!pointers.has(e.pointerId)) return;
-      pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
-      if (pointers.size === 2) {
-        const pts = [...pointers.values()];
-        const dist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
-        if (pinchStartDist > 0) {
-          const midX = (pts[0].x + pts[1].x) / 2;
-          const midY = (pts[0].y + pts[1].y) / 2;
-          const target = pinchStartK * (dist / pinchStartDist);
-          const factor = target / cam.k;
-          zoomAt(midX, midY, factor);
+    host.addEventListener(
+      'pointermove',
+      (e) => {
+        if (!isActive()) return;
+        if (!pointers.has(e.pointerId)) return;
+        e.preventDefault();
+        pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+        if (pointers.size === 2) {
+          const pts = [...pointers.values()];
+          const dist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+          if (pinchStartDist > 0) {
+            const midX = (pts[0].x + pts[1].x) / 2;
+            const midY = (pts[0].y + pts[1].y) / 2;
+            const target = pinchStartK * (dist / pinchStartDist);
+            const factor = target / cam.k;
+            zoomAt(midX, midY, factor);
+          }
+          return;
         }
-        return;
-      }
-      if (!dragging) return;
-      cam.x += e.clientX - lastX;
-      cam.y += e.clientY - lastY;
-      lastX = e.clientX;
-      lastY = e.clientY;
-      applyCam();
-    });
+        if (!dragging) return;
+        cam.x += e.clientX - lastX;
+        cam.y += e.clientY - lastY;
+        lastX = e.clientX;
+        lastY = e.clientY;
+        applyCam();
+      },
+      { passive: false },
+    );
 
     const endPointer = (e: PointerEvent): void => {
       pointers.delete(e.pointerId);
       if (pointers.size < 2) pinchStartDist = 0;
       if (pointers.size === 0) {
         dragging = false;
-        host.classList.remove('panning');
+        endPanGuard();
       }
     };
     host.addEventListener('pointerup', endPointer);

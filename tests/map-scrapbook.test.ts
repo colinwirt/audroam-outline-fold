@@ -24,6 +24,7 @@ import {
   autoPackPositions,
   toggleFold,
   mapNodeKeepsTextSelection,
+  clearSelectionForMapPan,
 } from '../src/index.js';
 
 describe('scrapbook wrap (~30 + more/less)', () => {
@@ -254,5 +255,32 @@ describe('mapNodeKeepsTextSelection (label copy)', () => {
         focusNode: outside,
       }),
     ).toBe(false);
+  });
+});
+
+describe('clearSelectionForMapPan (pan vs label copy)', () => {
+  it('calls removeAllRanges when a selection is present', () => {
+    let cleared = 0;
+    clearSelectionForMapPan({
+      removeAllRanges: () => {
+        cleared += 1;
+      },
+    });
+    expect(cleared).toBe(1);
+  });
+
+  it('is a no-op for null / undefined selection', () => {
+    expect(() => clearSelectionForMapPan(null)).not.toThrow();
+    expect(() => clearSelectionForMapPan(undefined)).not.toThrow();
+  });
+
+  it('swallows Selection API errors', () => {
+    expect(() =>
+      clearSelectionForMapPan({
+        removeAllRanges: () => {
+          throw new Error('boom');
+        },
+      }),
+    ).not.toThrow();
   });
 });

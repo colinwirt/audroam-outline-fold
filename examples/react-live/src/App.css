@@ -509,6 +509,8 @@ kbd {
 }
 .preview-pane .map-wrap.panning {
   cursor: grabbing;
+  -webkit-user-select: none;
+  user-select: none;
 }
 .preview-pane .map-svg {
   display: block;

@@ -61,6 +61,7 @@ export {
   FOLD_SLOT,
   resolveMapFocus,
   mapNodeKeepsTextSelection,
+  clearSelectionForMapPan,
   type MapPoint,
   type MapViewBox,
   type MapLayout,
