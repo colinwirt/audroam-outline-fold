@@ -17,7 +17,10 @@ export interface MapNodeNudge {
   x: number;
   y: number;
   wrapCh?: number;
-  maxLines?: number;
+  /** Product clip; null = unlimited (soft safety only). Default ~30 when omitted. */
+  maxLines?: number | null;
+  /** Remember more/less body reveal (orthogonal to child fold). */
+  bodyExpanded?: boolean;
 }
 
 export interface MapResumeState {
@@ -41,7 +44,13 @@ export interface MapResumeKeyParts {
 export interface ResumeLayoutLike {
   nodes?: Record<
     string,
-    { x?: number; y?: number; wrapCh?: number; maxLines?: number }
+    {
+      x?: number;
+      y?: number;
+      wrapCh?: number;
+      maxLines?: number | null;
+      bodyExpanded?: boolean;
+    }
   >;
   [key: string]: unknown;
 }
@@ -184,6 +193,7 @@ export function overlayResumeOnLayout<T extends ResumeLayoutLike>(
       y: p.y,
       wrapCh: p.wrapCh,
       maxLines: p.maxLines,
+      bodyExpanded: p.bodyExpanded,
     };
   }
   for (const [id, nudge] of Object.entries(resume.nudges)) {
@@ -194,7 +204,15 @@ export function overlayResumeOnLayout<T extends ResumeLayoutLike>(
       wrapCh:
         typeof nudge.wrapCh === 'number' ? nudge.wrapCh : base.wrapCh,
       maxLines:
-        typeof nudge.maxLines === 'number' ? nudge.maxLines : base.maxLines,
+        nudge.maxLines === null
+          ? null
+          : typeof nudge.maxLines === 'number'
+            ? nudge.maxLines
+            : base.maxLines,
+      bodyExpanded:
+        typeof nudge.bodyExpanded === 'boolean'
+          ? nudge.bodyExpanded
+          : base.bodyExpanded,
     };
   }
   return { ...layout, nodes };

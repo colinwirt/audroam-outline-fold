@@ -578,15 +578,31 @@ export default function App() {
         const m = mapRef.current;
         const d = docRef.current;
         if (!m || !d) return;
-        const nudges: Record<string, { x: number; y: number; wrapCh?: number; maxLines?: number }> = {};
+        const nudges: Record<
+          string,
+          {
+            x: number;
+            y: number;
+            wrapCh?: number;
+            maxLines?: number | null;
+            bodyExpanded?: boolean;
+          }
+        > = {};
         const nodes = layoutRef.current.nodes || {};
         for (const [id, pos] of Object.entries(nodes)) {
-          if (pos && typeof pos.wrapCh === 'number') {
+          if (
+            pos &&
+            (typeof pos.wrapCh === 'number' ||
+              typeof pos.maxLines === 'number' ||
+              pos.maxLines === null ||
+              pos.bodyExpanded === true)
+          ) {
             nudges[id] = {
               x: pos.x,
               y: pos.y,
               wrapCh: pos.wrapCh,
               maxLines: pos.maxLines,
+              bodyExpanded: pos.bodyExpanded,
             };
           }
         }

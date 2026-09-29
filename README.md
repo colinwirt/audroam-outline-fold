@@ -265,13 +265,13 @@ const packed = autoPackPositions(doc, {
 | `pillSize(label, opts?)` / `FOLD_SLOT` / `TASK_LEAD` | Pill measure (multi-line wrap; foldable end-cap always reserved; `FOLD_SLOT=34`; task lead when task set) |
 
 
-**Caption rich text (Outline):** `captionToHtml` turns markdown `![alt](url)` / `[label](url)` / bare `https://` into allowlisted `<img>` / `<a>` (https + safe relative; rejects `javascript:`/`data:`/`//`/etc). Inline SVG in captions is never emitted — pack icons stay via `kind` → `iconForNode` only. **Map pills (0.2.8 scrapbook):** multi-line wrap (`wrapCh` default **32**, `maxLines` **6** + tooltip); newlines preserved; `FOLD_SLOT` (≥34) on text region only; optional task lead SVG for leading `[ ]`/`[x]`. Text/label click = select/focus only; **fold only via circle-+** (keyboard `.` / Space / Enter / digits-when-selected unchanged). Map does not render caption images yet.
+**Caption rich text (Outline):** `captionToHtml` turns markdown `![alt](url)` / `[label](url)` / bare `https://` into allowlisted `<img>` / `<a>` (https + safe relative; rejects `javascript:`/`data:`/`//`/etc). Inline SVG in captions is never emitted — pack icons stay via `kind` → `iconForNode` only. **Map pills (0.2.9 scrapbook):** multi-line wrap (`wrapCh` default **32**, product `maxLines` **~30** + **more/less**; soft safety ~500/50k); newlines preserved; `FOLD_SLOT` (≥34) on text region only; optional task lead SVG for leading `[ ]`/`[x]`. Text/label click = select/focus only; **fold only via circle-+** (keyboard `.` / Space / Enter / digits-when-selected unchanged). Map does not render caption images yet.
 
 ### Scrapbook pack (0.2.8)
 
 | Export | Role |
 |--------|------|
-| `wrapLines` / `pillSize` / `DEFAULT_WRAP_CH` | Multi-line measure; sidecar may set per-node `wrapCh` / `maxLines` |
+| `wrapLines` / `pillSize` / `DEFAULT_WRAP_CH` / `DEFAULT_MAX_LINES` | Multi-line measure; default maxLines **30** + more/less (`bodyExpanded`); soft safety 500/50k; sidecar `wrapCh` / `maxLines` / `bodyExpanded` |
 | `seedColdStartFold` / `measureLineageHeight` | Cold-start: try depth 3 → depth 2 → trim root children so visible lineage height ≤10 |
 | `mapResumeStorageKey` / `loadMapResume` / `createDebouncedResumeSave` | localStorage resume of fold + camera + nudges (`of-map:{origin}:{docKey}` / `of-map:pnid:{pnid}`) |
 | `overlayResumeOnLayout` / `isResumeStale` / `softResetResume` | Resume overlays authored sidecar; stale soft-reset |

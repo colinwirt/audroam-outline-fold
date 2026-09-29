@@ -385,6 +385,8 @@ async function boot() {
           pos &&
           (typeof pos.wrapCh === 'number' ||
             typeof pos.maxLines === 'number' ||
+            pos.maxLines === null ||
+            pos.bodyExpanded === true ||
             layout._source !== 'auto-pack')
         ) {
           nudges[id] = {
@@ -392,6 +394,7 @@ async function boot() {
             y: pos.y,
             wrapCh: pos.wrapCh,
             maxLines: pos.maxLines,
+            bodyExpanded: pos.bodyExpanded,
           };
         }
       }

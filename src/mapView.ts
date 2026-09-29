@@ -18,9 +18,12 @@ import {
   measurePill,
   DEFAULT_WRAP_CH,
   DEFAULT_MAX_LINES,
+  SOFT_SAFETY_MAX_LINES,
+  SOFT_SAFETY_MAX_CHARS,
   TASK_LEAD,
   LINE_H,
   PILL_PAD_Y,
+  MORE_AFFORDANCE_H,
 } from './mapLabel.js';
 import {
   displayCaption,
@@ -37,7 +40,10 @@ export interface MapPoint {
   x: number;
   y: number;
   wrapCh?: number;
-  maxLines?: number;
+  /** Product clip; null = unlimited (soft safety). Default ~30 when omitted. */
+  maxLines?: number | null;
+  /** more/less body reveal — orthogonal to child fold. */
+  bodyExpanded?: boolean;
 }
 
 export interface MapViewBox {
@@ -63,7 +69,8 @@ export interface AutoPackOptions {
   margin?: number;
   /** Default wrapCh when node layout omits it. */
   wrapCh?: number;
-  maxLines?: number;
+  /** Default maxLines; omit/null = full body. */
+  maxLines?: number | null;
   /** Optional per-id layout nudges (wrapCh/maxLines). */
   nodeLayout?: Record<string, MapPoint>;
 }
@@ -77,7 +84,8 @@ export interface PillSizeOptions {
   reserveFold?: boolean;
   reserveTask?: boolean;
   wrapCh?: number;
-  maxLines?: number;
+  maxLines?: number | null;
+  bodyExpanded?: boolean;
 }
 
 export interface PillSize {
@@ -89,6 +97,12 @@ export interface PillSize {
   lines: string[];
   truncated: boolean;
   fullText: string;
+  softSafetyHit?: boolean;
+  totalLines: number;
+  showMore: boolean;
+  showLess: boolean;
+  bodyExpanded: boolean;
+  effectiveMaxLines: number | null;
 }
 
 export interface MapViewOptions {
@@ -188,16 +202,17 @@ function shortLabel(title: string): string {
  * 34 = 2*(r+clear) with r≈9 and ≥8px clear for gold focus stroke (Design UX 2026-09-29 end-cap air). */
 export const FOLD_SLOT = 34;
 
-export { DEFAULT_WRAP_CH, DEFAULT_MAX_LINES, TASK_LEAD };
+export { DEFAULT_WRAP_CH, DEFAULT_MAX_LINES, SOFT_SAFETY_MAX_LINES, SOFT_SAFETY_MAX_CHARS, TASK_LEAD };
 
 /**
  * Measure pill dimensions; optionally reserve fold chrome end-cap and task lead.
- * Multi-line when wrapCh/maxLines set (defaults: 32 / 6).
+ * Multi-line: wrapCh default 32; maxLines omit/null = full body (soft safety only).
  */
 export function pillSize(label: string, opts: PillSizeOptions = {}): PillSize {
   const measured = measurePill(label, {
     wrapCh: opts.wrapCh ?? DEFAULT_WRAP_CH,
-    maxLines: opts.maxLines ?? DEFAULT_MAX_LINES,
+    maxLines: opts.maxLines,
+    bodyExpanded: opts.bodyExpanded,
     reserveFold: opts.reserveFold,
     reserveTask: opts.reserveTask,
     foldSlot: FOLD_SLOT,
@@ -209,15 +224,21 @@ export function pillSize(label: string, opts: PillSizeOptions = {}): PillSize {
 function nodePillOpts(
   n: OutlineNode,
   nodeLayout?: Record<string, MapPoint>,
-  defaults?: { wrapCh?: number; maxLines?: number },
+  defaults?: { wrapCh?: number; maxLines?: number | null },
 ): PillSizeOptions {
   const lay = n.id && nodeLayout ? nodeLayout[n.id] : undefined;
-  const task = resolveTask(n);
+  const maxLines =
+    lay?.maxLines !== undefined
+      ? lay.maxLines
+      : defaults?.maxLines !== undefined
+        ? defaults.maxLines
+        : undefined;
   return {
     reserveFold: hasKids(n),
-    reserveTask: !!task,
+    reserveTask: !!resolveTask(n),
     wrapCh: lay?.wrapCh ?? defaults?.wrapCh ?? DEFAULT_WRAP_CH,
-    maxLines: lay?.maxLines ?? defaults?.maxLines ?? DEFAULT_MAX_LINES,
+    maxLines,
+    bodyExpanded: !!lay?.bodyExpanded,
   };
 }
 
@@ -558,6 +579,7 @@ export function createMapView(
           y: pos.y,
           wrapCh: prev?.wrapCh,
           maxLines: prev?.maxLines,
+          bodyExpanded: prev?.bodyExpanded,
         };
       }
       layout.nodes = merged;
@@ -740,6 +762,9 @@ export function createMapView(
       cue: boolean;
       task: TaskState | null;
       thread: string | null;
+      showMore: boolean;
+      showLess: boolean;
+      bodyExpanded: boolean;
     };
     const nodes: NodePaint[] = [];
 
@@ -755,6 +780,7 @@ export function createMapView(
         reserveTask: !!taskParsed,
         wrapCh: pos.wrapCh,
         maxLines: pos.maxLines,
+        bodyExpanded: !!pos.bodyExpanded,
       });
       const cue = isCue(n);
       const thread = resolveThread(n);
@@ -775,6 +801,9 @@ export function createMapView(
         cue,
         task: taskParsed ?? null,
         thread,
+        showMore: size.showMore,
+        showLess: size.showLess,
+        bodyExpanded: size.bodyExpanded,
       });
 
       if (foldable && !col) {
@@ -788,6 +817,7 @@ export function createMapView(
             reserveTask: !!cTask,
             wrapCh: cpos.wrapCh,
             maxLines: cpos.maxLines,
+            bodyExpanded: !!cpos.bodyExpanded,
           });
           edges.push({
             d: connectorPath(pos.x, pos.y, size.w, cpos.x, cpos.y, cs.w),
@@ -820,17 +850,23 @@ export function createMapView(
           cue,
           task,
           thread,
+          showMore,
+          showLess,
+          bodyExpanded,
         }) => {
           const x = pos.x - w / 2;
           const y = pos.y - h / 2;
           const textLeft = x + taskLead;
           const textX = textLeft + textW / 2;
+          const affordance = showMore || showLess ? MORE_AFFORDANCE_H : 0;
+          const textCentreY = pos.y - affordance / 2;
           const cls = [
             'map-node',
             foldable ? '' : 'leaf',
             col ? 'collapsed' : '',
             cue ? 'cue' : '',
             task === 'done' ? 'task-done' : task ? 'task-open' : '',
+            bodyExpanded ? 'body-expanded' : '',
           ]
             .filter(Boolean)
             .join(' ');
@@ -850,22 +886,30 @@ export function createMapView(
               : '';
           const taskChrome =
             task != null
-              ? taskGlyphSvg(task, x + taskLead / 2, pos.y)
+              ? taskGlyphSvg(task, x + taskLead / 2, textCentreY)
               : '';
           const tip = truncated || fullText !== label ? fullText : n.title;
+          const bodyAction = showMore ? 'more' : showLess ? 'less' : '';
+          const moreChrome = bodyAction
+            ? `<g class="map-body-more-hit" data-body-action="${bodyAction}" transform="translate(${textX} ${y + h - 8})" cursor="pointer">
+            <rect x="-28" y="-10" width="56" height="16" rx="8" fill="transparent"/>
+            <text text-anchor="middle" y="3" fill="#8b9bab" font-size="11">${bodyAction}</text>
+          </g>`
+            : '';
           const threadChip = thread
-            ? `<g class="map-thread-hit" data-thread="${esc(thread)}" transform="translate(${textX} ${y + h - 6})" cursor="pointer">
+            ? `<g class="map-thread-hit" data-thread="${esc(thread)}" transform="translate(${textX} ${y + h - (affordance ? affordance + 4 : 6)})" cursor="pointer">
             <rect x="-36" y="-10" width="72" height="18" rx="9" fill="rgba(201,162,39,0.12)" stroke="#C9A227" stroke-width="1"/>
             <text text-anchor="middle" y="3" fill="#C9A227" font-size="10">Thread</text>
           </g>`
             : '';
           return `<g class="${cls}" data-id="${esc(n.id!)}" tabindex="${n.id === focusId ? 0 : -1}"
-      role="button" aria-label="${esc(label)}${task != null ? (task === 'done' ? ', task done' : ', task open') : ''}${foldable ? (col ? ', collapsed' : ', expanded') : ''}"
+      role="button" aria-label="${esc(label)}${task != null ? (task === 'done' ? ', task done' : ', task open') : ''}${foldable ? (col ? ', collapsed' : ', expanded') : ''}${showMore ? ', more text available' : ''}${showLess ? ', showing full body' : ''}"
       ${foldable ? `aria-expanded="${col ? 'false' : 'true'}"` : ''}>
       <title>${esc(tip)}</title>
       <rect class="map-pill" x="${x}" y="${y}" width="${w}" height="${h}" rx="18" ry="18"/>
       ${taskChrome}
-      ${multiLineText(lines, textX, pos.y, textW)}
+      ${multiLineText(lines, textX, textCentreY, textW)}
+      ${moreChrome}
       ${threadChip}
       ${marker}
       ${taskHit}
@@ -911,6 +955,21 @@ export function createMapView(
         if (t?.closest?.('.map-task-hit') || t?.closest?.('.map-task-glyph')) {
           setFocusId(id);
           applyTaskToggle(id);
+          return;
+        }
+        if (t?.closest?.('.map-body-more-hit')) {
+          // Body more/less — orthogonal to child fold / task.
+          setFocusId(id);
+          const hit = t.closest('.map-body-more-hit') as Element;
+          const action = hit.getAttribute('data-body-action');
+          const lay = getLayout();
+          if (!lay.nodes) lay.nodes = {};
+          const cur = lay.nodes[id] || { x: 100, y: 100 };
+          lay.nodes[id] = {
+            ...cur,
+            bodyExpanded: action === 'more',
+          };
+          onChange?.();
           return;
         }
         if (t?.closest?.('.map-thread-hit')) {
