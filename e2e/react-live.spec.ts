@@ -244,7 +244,9 @@ test.describe('react-live Map keyboard focus (0.2.16 gate)', () => {
     await clickNode(page, host, 'suppliers');
     const labelSel = `${HOST} .map-node[data-id="suppliers"] .map-label`;
     const labelText = ((await page.locator(labelSel).textContent()) || '').replace(/\s+/g, ' ');
-    const lb = (await page.locator(labelSel).boundingBox())!;
+    // First line only: CI fonts can wrap the caption to 2 lines, and the text
+    // bbox centre would then fall between lines (on the pill, not a glyph).
+    const lb = (await page.locator(`${labelSel} tspan`).first().boundingBox())!;
     const cy = lb.y + lb.height / 2;
     // Real mouse drag across the label. Chromium's SVG text hit-testing has
     // dead spots at some sub-glyph x positions (varies with CI fonts), so try a
