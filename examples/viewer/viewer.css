@@ -148,6 +148,9 @@ kbd {
   position: relative; min-height: 520px; height: min(72vh, 720px);
   touch-action: none; cursor: grab; overflow: hidden;
 }
+.map-wrap:focus { outline: none; }
+/* 0.2.16: host is the single keyboard focus owner (tabindex=0). */
+.map-wrap:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .map-wrap.panning {
   cursor: grabbing;
   -webkit-user-select: none;

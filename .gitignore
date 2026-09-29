@@ -8,3 +8,5 @@ dist/
 examples/react-live/node_modules/
 examples/react-live/dist/
 site/
+playwright-report/
+test-results/

@@ -6,3 +6,4 @@ declare module '*.md?raw' {
 }
 
 declare const __OUTLINE_FOLD_VERSION__: string;
+declare const __OUTLINE_FOLD_GIT__: string;

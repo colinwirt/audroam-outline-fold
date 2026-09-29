@@ -1,6 +1,6 @@
 {
   "name": "@audroam/outline-fold",
-  "version": "0.2.15",
+  "version": "0.2.16",
   "description": "Pure TS outline language: parse/serialize, fold-/fold+, sealed payloads, demo crypto, toHtml, createMapView/autoPack. Host owns MFA/key release.",
   "type": "module",
   "main": "./dist/index.js",
@@ -26,6 +26,8 @@
     "demo:react": "npm run build && npm --prefix examples/react-live install && npm --prefix examples/react-live run dev",
     "demo:react:build": "npm run build && npm --prefix examples/react-live install && npm --prefix examples/react-live run build",
     "build:site": "npm run demo:react:build && node scripts/build-site.mjs",
+    "build:site:e2e": "VITE_BASE=/audroam-outline-fold/react-live/ npm run build:site",
+    "test:e2e": "playwright test",
     "demo:seal": "npm run build && node scripts/generate-demo-sealed.mjs"
   },
   "keywords": [
@@ -37,6 +39,7 @@
   "author": "Colin Wirt / Audroam",
   "license": "MIT",
   "devDependencies": {
+    "@playwright/test": "^1.63.0",
     "typescript": "^5.6.3",
     "vitest": "^2.1.4"
   },

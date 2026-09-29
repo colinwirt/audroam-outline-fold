@@ -1,5 +1,53 @@
 # Changelog
 
+## 0.2.16 — 2026-09-29
+
+### Map keyboard: single stable focus owner (regression fix, 0.2.12–0.2.15)
+
+**Root cause.** Node click focused the per-node `<g tabindex>`; the same click's
+`onChange → paint()` rewrote `host.innerHTML`, detaching that `<g>` so DOM focus
+fell to `<body>`. The post-paint restore then checked `host.contains(oldNode)` on
+the now-detached element (always false), so focus was never restored and the
+keydown gate (`mapKeyboardShouldHandle`, no body fallback since 0.2.12) rejected
+every arrow / digit / `.` / Space / Enter. Only the first key after re-clicking the
+*already* selected node (no repaint) worked, which is why it looked key-specific.
+
+**Fix.**
+- The map **host** is the only focus owner: `tabindex="0"` (upgrades `-1`),
+  `role="tree"`; nodes are **not** focusable (`role="treeitem"`, stable `id`,
+  `aria-selected`) and the host carries **`aria-activedescendant`** → selected node.
+  Paint never destroys the host, so focus survives every repaint.
+- Focus snapshot is a **boolean taken before** the DOM rebuild
+  (`mapHostOwnsFocus`); `mapPaintFocusAction` decides `none | keep | focus-host`
+  (never steals from a textarea; re-focuses the host, never a node).
+- **Keydown bound on the host** (plus the optional mode button) instead of
+  `document`; modifier chords (Ctrl/Meta/Alt) are left to the browser.
+- Canvas background pointerdown also focuses the host (pan `preventDefault`
+  suppressed native focus). Space is always swallowed on the host (no page scroll).
+- Keyboard fold / digits / `*` now run camera follow like circle-+ (selection and
+  newly shown kids stay in view).
+- New exports: `mapHostOwnsFocus`, `mapPaintFocusAction`, `mapNodeDomId`.
+  `mapPaintShouldRestoreFocus` kept (deprecated alias).
+
+### react-live / Pages viewer
+- Host focus-visible outline CSS; build stamp now shows **git sha**
+  (`data-testid="pkg-stamp"` / `pkg-git`).
+- Typing in the textarea no longer resets in-memory (cold-start / resume) fold to
+  the text frontmatter unless the fold line itself changed.
+- Cafe fixture: 3-line caption `staff-close` and a 35-line body node
+  `staff-handbook` (more/less); generator template synced (fiction only).
+
+### Stability gate (CI)
+- Playwright headless Chromium e2e (`e2e/`, `npm run test:e2e`) against locally
+  built site/ served under `/audroam-outline-fold/` (react-live + Pages viewer):
+  click → host focus + activedescendant + ring; every arrow (incl. edge no-ops);
+  Space/Enter/`.` fold; `1`/`2`/`3` depth; textarea typing never drives Map and
+  keeps focus; textarea ↔ map round trips; re-click same node; label drag-select +
+  pan; pill hit-test (fails on overlays); version + sha stamps.
+- `ci.yml` job `e2e`; `pages.yml` runs e2e before upload and a post-deploy
+  `verify` job against the live Pages URL (waits for stamp == version + sha).
+- Unit tests: `tests/map-focus-owner.test.ts`.
+
 ## 0.2.15 — 2026-09-29
 
 ### Caption breaks: literal `\n` / `\r` / `\r\n` escapes

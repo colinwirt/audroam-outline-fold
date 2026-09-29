@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import { execSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vite';
@@ -9,6 +10,20 @@ const packageRoot = path.resolve(__dirname, '../..');
 const packageVersion = JSON.parse(
   fs.readFileSync(path.join(packageRoot, 'package.json'), 'utf8'),
 ).version as string;
+
+/** Short git SHA for the visible build stamp (Pages gate / e2e). */
+function resolveGitShort(): string {
+  if (process.env.GITHUB_SHA) return process.env.GITHUB_SHA.slice(0, 7);
+  try {
+    return execSync('git rev-parse --short=7 HEAD', {
+      cwd: packageRoot,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    }).trim();
+  } catch {
+    return 'local';
+  }
+}
 
 /** Pages path: /{repo}/react-live/ when GITHUB_REPOSITORY is set; override with VITE_BASE. */
 function resolveBase(): string {
@@ -24,6 +39,7 @@ export default defineConfig({
   root: __dirname,
   define: {
     __OUTLINE_FOLD_VERSION__: JSON.stringify(packageVersion),
+    __OUTLINE_FOLD_GIT__: JSON.stringify(resolveGitShort()),
   },
   resolve: {
     alias: {

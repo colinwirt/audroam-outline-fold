@@ -5,7 +5,7 @@
  * with leaf/sibling count. Recomputed on every paint so fold expand/collapse
  * reflows without overlap.
  *
- * Scrapbook (0.2.8+): multi-line wrap, task lead SVG, text click ≠ fold; label text selectable (0.2.10); pan clears selection (0.2.11); keyboard only when Map focused (0.2.12); rich caption breaks+HTML + focus-on-click + camera follow/clamp (0.2.13); proportion follow + cameraRecentre + edit ensure (0.2.14); focusId is-focused ring (0.2.15).
+ * Scrapbook (0.2.8+): multi-line wrap, task lead SVG, text click ≠ fold; label text selectable (0.2.10); pan clears selection (0.2.11); keyboard only when Map focused (0.2.12); rich caption breaks+HTML + focus-on-click + camera follow/clamp (0.2.13); proportion follow + cameraRecentre + edit ensure (0.2.14); focusId is-focused ring (0.2.15); single stable focus owner = host tabindex=0 + aria-activedescendant, keydown on host (0.2.16).
  * Sealed nodes: omitted until unlocked (no gray stubs) — caller filters doc if needed.
  */
 import {
@@ -606,14 +606,65 @@ export function clearSelectionForMapPan(
 }
 
 /**
- * True when paint may re-focus the selected map node. Only when focus is
- * already inside the map host — never steal from a textarea/editor.
+ * True when the map host owns DOM focus (host itself or a descendant).
+ * Evaluate BEFORE a paint rebuild: after `innerHTML` the old descendant is
+ * detached and `host.contains(old)` is false (the 0.2.12–0.2.15 regression).
+ */
+export function mapHostOwnsFocus(
+  host: { contains: (node: Node | null) => boolean },
+  activeElement: Node | null,
+): boolean {
+  if (!activeElement) return false;
+  if ((activeElement as unknown) === (host as unknown)) return true;
+  return host.contains(activeElement);
+}
+
+/**
+ * @deprecated since 0.2.16 — use {@link mapHostOwnsFocus} on a snapshot taken
+ * before the DOM rebuild, then {@link mapPaintFocusAction}. Kept for compat:
+ * true only when `activeElement` is (inside) the host.
  */
 export function mapPaintShouldRestoreFocus(
   host: { contains: (node: Node | null) => boolean },
   activeElement: Node | null,
 ): boolean {
-  return !!(activeElement && host.contains(activeElement));
+  return mapHostOwnsFocus(host, activeElement);
+}
+
+/**
+ * Post-paint focus plan (0.2.16 single focus owner).
+ *
+ * - `hadFocus` MUST be the boolean snapshot from {@link mapHostOwnsFocus}
+ *   taken before `innerHTML` (never an element reference re-checked later).
+ * - If the map did not own focus before paint → `'none'` (never steal from a
+ *   textarea / editor / other control).
+ * - If it did and focus is still on the host → `'keep'`.
+ * - If it did but the rebuild dropped focus (to body or a detached node) →
+ *   `'focus-host'`: re-focus the stable host (tabindex=0), never a per-node
+ *   element that the next paint would destroy again.
+ */
+export function mapPaintFocusAction(opts: {
+  hadFocus: boolean;
+  isActive: boolean;
+  host: { contains: (node: Node | null) => boolean };
+  activeElementAfter: Node | null;
+}): 'none' | 'keep' | 'focus-host' {
+  if (!opts.hadFocus || !opts.isActive) return 'none';
+  const ae = opts.activeElementAfter;
+  if (ae && (ae as unknown) === (opts.host as unknown)) return 'keep';
+  if (ae && (ae as { isConnected?: boolean }).isConnected !== false && opts.host.contains(ae)) {
+    return 'keep';
+  }
+  return 'focus-host';
+}
+
+/**
+ * Stable DOM id for a map node `<g>` so the host can point
+ * `aria-activedescendant` at the selected node. `prefix` is per map instance.
+ */
+export function mapNodeDomId(prefix: string, nodeId: string): string {
+  const safe = String(nodeId).replace(/[^A-Za-z0-9_-]/g, (c) => `_${c.charCodeAt(0).toString(16)}_`);
+  return `${prefix}-n-${safe}`;
 }
 
 type MapKbTarget = {
@@ -632,19 +683,24 @@ export function mapKeyboardShouldHandle(opts: {
   activeElement: Node | null;
   host: { contains: (node: Node | null) => boolean };
   modeButton?: Node | null;
+  /** Ctrl/Meta/Alt held — leave to browser/app (copy, tab switch, …). */
+  modifier?: boolean;
 }): boolean {
   if (!opts.isActive) return false;
+  if (opts.modifier) return false;
   const tag = (opts.target?.tagName || '').toUpperCase();
   if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return false;
   if (opts.target?.isContentEditable) return false;
   const ae = opts.activeElement;
   if (opts.modeButton && ae === opts.modeButton) return true;
-  if (ae && opts.host.contains(ae)) return true;
+  if (mapHostOwnsFocus(opts.host, ae)) return true;
   if (opts.target && opts.host.contains(opts.target as unknown as Node)) {
     return true;
   }
   return false;
 }
+
+let mapInstanceSeq = 0;
 
 export function createMapView(
   host: HTMLElement,
@@ -673,7 +729,19 @@ export function createMapView(
       : cameraRecentreOpt !== false;
   }
 
-  if (!host.hasAttribute('tabindex')) host.setAttribute('tabindex', '-1');
+  // 0.2.16 single stable focus owner: the host (tabindex=0) keeps DOM focus
+  // across paint(); nodes are not focusable; aria-activedescendant names the
+  // selected node. paint() rewrites host.innerHTML, so focusing a node <g>
+  // lost focus to <body> on the next paint and Map keys stopped working.
+  const domPrefix = `ofmap${++mapInstanceSeq}`;
+  ensureHostFocusable();
+  if (!host.hasAttribute('role')) host.setAttribute('role', 'tree');
+  if (!host.hasAttribute('aria-label')) host.setAttribute('aria-label', ariaLabel);
+
+  function ensureHostFocusable(): void {
+    const ti = host.getAttribute('tabindex');
+    if (ti == null || Number(ti) < 0) host.setAttribute('tabindex', '0');
+  }
 
   const CAM_MIN = 0.35;
   const CAM_MAX = 3.5;
@@ -689,6 +757,7 @@ export function createMapView(
     | { kind: 'edit' }
     | null;
   let pendingFollow: PendingFollow = null;
+  let keyboardBound = false;
 
   function hostViewport(): { w: number; h: number } {
     const rect = host.getBoundingClientRect();
@@ -913,28 +982,28 @@ export function createMapView(
   }
 
 
-  /** Ensure Map owns focus so digits/arrows/fold keys work after a node click.
-   * Prefer the focused pill; fall back to host. Never steal from textarea on paint
-   * alone — mapPaintShouldRestoreFocus still gates paint restore.
+  /** Move DOM focus to the stable map host so digits/arrows/fold keys work
+   * after a node/canvas click. Only called from user gestures inside the map
+   * (never from paint alone), so it cannot steal focus from an editor.
    */
-  function focusMapForKeys(prefer?: Element | null): void {
+  function focusMapForKeys(): void {
     try {
-      if (!host.hasAttribute('tabindex')) {
-        host.setAttribute('tabindex', '-1');
-      }
-      if (prefer && typeof (prefer as HTMLElement).focus === 'function') {
-        (prefer as HTMLElement).focus({ preventScroll: true });
-        if (
-          typeof document !== 'undefined' &&
-          document.activeElement &&
-          host.contains(document.activeElement)
-        ) {
-          return;
-        }
-      }
+      ensureHostFocusable();
+      if (typeof document !== 'undefined' && document.activeElement === host) return;
       host.focus({ preventScroll: true });
     } catch {
       /* focus not available */
+    }
+  }
+
+  /** Point aria-activedescendant at the selected node (or clear it). */
+  function syncActiveDescendant(): void {
+    const id = getFocusId();
+    const domId = id ? mapNodeDomId(domPrefix, id) : '';
+    if (domId && host.querySelector(`#${CSS.escape(domId)}`)) {
+      host.setAttribute('aria-activedescendant', domId);
+    } else {
+      host.removeAttribute('aria-activedescendant');
     }
   }
 
@@ -1168,9 +1237,11 @@ export function createMapView(
   }
 
   function paint(): void {
-    // Snapshot before DOM rebuild — never steal focus from the editor.
-    const paintFocusOwner =
-      typeof document !== 'undefined' ? document.activeElement : null;
+    // Boolean snapshot BEFORE the DOM rebuild (an element ref would be detached
+    // afterwards). Never steal focus from the editor.
+    const hadMapFocus =
+      typeof document !== 'undefined' &&
+      mapHostOwnsFocus(host, document.activeElement);
 
     const prev = snapshotPositions();
     const hadViewport = !!host.querySelector('#mapViewport');
@@ -1340,8 +1411,8 @@ export function createMapView(
             <text text-anchor="middle" y="3" fill="#C9A227" font-size="10">Thread</text>
           </g>`
             : '';
-          return `<g class="${cls}" data-id="${esc(n.id!)}" tabindex="${focused ? 0 : -1}"
-      role="button" aria-current="${focused ? 'true' : 'false'}" aria-label="${esc(label)}${task != null ? (task === 'done' ? ', task done' : ', task open') : ''}${foldable ? (col ? ', collapsed' : ', expanded') : ''}${showMore ? ', more text available' : ''}${showLess ? ', showing full body' : ''}"
+          return `<g class="${cls}" id="${esc(mapNodeDomId(domPrefix, n.id!))}" data-id="${esc(n.id!)}"
+      role="treeitem" aria-selected="${focused ? 'true' : 'false'}" aria-current="${focused ? 'true' : 'false'}" aria-label="${esc(label)}${task != null ? (task === 'done' ? ', task done' : ', task open') : ''}${foldable ? (col ? ', collapsed' : ', expanded') : ''}${showMore ? ', more text available' : ''}${showLess ? ', showing full body' : ''}"
       ${foldable ? `aria-expanded="${col ? 'false' : 'true'}"` : ''}>
       <title>${esc(tip)}</title>
       <rect class="map-pill" x="${x}" y="${y}" width="${w}" height="${h}" rx="18" ry="18"/>
@@ -1358,8 +1429,7 @@ export function createMapView(
       .join('');
 
     host.innerHTML = `<svg class="map-svg" viewBox="0 0 ${Math.max(1, host.clientWidth || 1180)} ${Math.max(1, host.clientHeight || 520)}"
-      preserveAspectRatio="xMidYMid meet" role="img"
-      aria-label="${esc(ariaLabel)}">
+      preserveAspectRatio="xMidYMid meet" role="none" focusable="false">
       <rect width="100%" height="100%" fill="var(--map-bg)"/>
       <g id="mapViewport">
         <rect x="0" y="0" width="${vb.w}" height="${vb.h}" fill="var(--map-bg)" opacity="0"/>
@@ -1384,7 +1454,7 @@ export function createMapView(
         if (t?.closest?.('.map-fold-hit') || t?.closest?.('.map-fold-indicator')) {
           setFocusId(id);
           // Focus host/pill BEFORE paint so Map keys work (0.2.13).
-          focusMapForKeys(g);
+          focusMapForKeys();
           const n = findNode(getDoc().nodes, id);
           userCamGesture = false;
           if (n && hasKids(n)) {
@@ -1401,7 +1471,7 @@ export function createMapView(
         }
         if (t?.closest?.('.map-task-hit') || t?.closest?.('.map-task-glyph')) {
           setFocusId(id);
-          focusMapForKeys(g);
+          focusMapForKeys();
           userCamGesture = false;
           pendingFollow = { kind: 'focus' };
           applyTaskToggle(id);
@@ -1410,7 +1480,7 @@ export function createMapView(
         if (t?.closest?.('.map-body-more-hit')) {
           // Body more/less — orthogonal to child fold / task.
           setFocusId(id);
-          focusMapForKeys(g);
+          focusMapForKeys();
           userCamGesture = false;
           pendingFollow = { kind: 'focus' };
           const hit = t.closest('.map-body-more-hit') as Element;
@@ -1427,7 +1497,7 @@ export function createMapView(
         }
         if (t?.closest?.('.map-thread-hit')) {
           setFocusId(id);
-          focusMapForKeys(g);
+          focusMapForKeys();
           userCamGesture = false;
           pendingFollow = { kind: 'focus' };
           const n = findNode(getDoc().nodes, id);
@@ -1440,8 +1510,8 @@ export function createMapView(
         // Label text-drag: keep native Selection (skip paint that would wipe it).
         const prevFocus = getFocusId();
         setFocusId(id);
-        // Always move focus into Map on node click so arrows/digits/fold keys work.
-        focusMapForKeys(g);
+        // Always move focus to the map host on node click so keys work.
+        focusMapForKeys();
         userCamGesture = false;
         pendingFollow = { kind: 'focus' };
         const sel =
@@ -1461,16 +1531,15 @@ export function createMapView(
       });
     });
 
-    const focused = host.querySelector(
-      `[data-id="${CSS.escape(getFocusId())}"]`,
-    ) as HTMLElement | null;
-    if (
-      focused &&
-      isActive() &&
-      mapPaintShouldRestoreFocus(host, paintFocusOwner)
-    ) {
-      focused.focus({ preventScroll: true });
-    }
+    syncActiveDescendant();
+    const focusPlan = mapPaintFocusAction({
+      hadFocus: hadMapFocus,
+      isActive: isActive(),
+      host,
+      activeElementAfter:
+        typeof document !== 'undefined' ? document.activeElement : null,
+    });
+    if (focusPlan === 'focus-host') focusMapForKeys();
 
     // Camera follow after layout settles (focus / expand / edit). Resume-on-load
     // leaves pendingFollow null so camera stays as restored until user acts.
@@ -1543,6 +1612,8 @@ export function createMapView(
       if ((e.target as Element | null)?.closest?.('.map-node')) return;
       // Canvas background / empty space → pan; suppress text selection.
       e.preventDefault();
+      // preventDefault skips native focus — keep the host as focus owner.
+      focusMapForKeys();
       pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
       host.setPointerCapture?.(e.pointerId);
       if (pointers.size === 1) {
@@ -1623,19 +1694,23 @@ export function createMapView(
    * Space stays fold (not task toggle).
    */
   function bindKeyboard(wire: MapKeyboardWire = {}): void {
-    document.addEventListener('keydown', (e) => {
+    if (keyboardBound) return;
+    keyboardBound = true;
+    const modeButton = wire.modeButton ?? null;
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.defaultPrevented) return;
       if (
         !mapKeyboardShouldHandle({
           isActive: isActive(),
           target: e.target as { tagName?: string; isContentEditable?: boolean } | null,
           activeElement: document.activeElement,
           host,
-          modeButton: wire.modeButton ?? null,
+          modeButton,
+          modifier: e.ctrlKey || e.metaKey || e.altKey,
         })
       ) {
         return;
       }
-
       const doc = getDoc();
       const focusId = getFocusId();
       const n = focusId ? findNode(doc.nodes, focusId) : null;
@@ -1660,9 +1735,17 @@ export function createMapView(
         e.preventDefault();
         applyFocusMove('left');
       } else if (e.key === 'Enter' || e.key === ' ' || e.key === '.') {
+        // Space on the focused host would scroll the page — always swallow.
+        if (e.key === ' ') e.preventDefault();
         if (selected && hasKids(n!) && n!.id) {
           e.preventDefault();
+          const wasCollapsed = isCollapsed(doc, n!.id);
           setDoc(toggleFold(doc, n!.id));
+          // Keep the selection (and newly shown kids) in view, like circle-+.
+          userCamGesture = false;
+          pendingFollow = wasCollapsed
+            ? { kind: 'expand', focusId: n!.id }
+            : { kind: 'focus' };
           onChange?.();
         }
       } else if (e.key === '*') {
@@ -1670,15 +1753,26 @@ export function createMapView(
         e.preventDefault();
         // Expand-all relative to selection (subtree), not whole forest.
         setDoc(setExpandLevel(doc, '*', { under: n!.id! }));
+        userCamGesture = false;
+        pendingFollow = { kind: 'expand', focusId: n!.id! };
         onChange?.();
       } else if (e.key >= '0' && e.key <= '9') {
         if (!selected) return;
         e.preventDefault();
         // Digit N = depth under the selected node (1 = show its children).
         setDoc(setExpandLevel(doc, Number(e.key), { under: n!.id! }));
+        userCamGesture = false;
+        pendingFollow =
+          e.key === '0' ? { kind: 'focus' } : { kind: 'expand', focusId: n!.id! };
         onChange?.();
       }
-    });
+    };
+    // Keydown on the stable focus owner (host) — events from any descendant
+    // bubble here. Mode button kept so keys work right after clicking "Map".
+    host.addEventListener('keydown', onKey);
+    if (modeButton && !host.contains(modeButton)) {
+      modeButton.addEventListener('keydown', onKey);
+    }
   }
 
   return {

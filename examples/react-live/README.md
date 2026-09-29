@@ -33,5 +33,5 @@ Seed content: `../outline-demo.md` (cafe fiction). Unlock/Decrypt buttons are st
 
 ## Map FLIP (host wiring)
 
-Map relocate animation (M11 FLIP, ~280ms) lives in the package (`createMapView` / `paint`). The host must **not double-paint** after a fold: `onChange → paint()` runs the FLIP; a second `paint()` from a React `useEffect` on the updated doc would rewrite `innerHTML` and kill the animation. This demo sets a skip flag in `setDoc` so the `renderDoc` effect skips that redundant paint (focus-only `onChange` still paints for the focus ring).
+Map relocate animation (M11 FLIP, ~280ms) lives in the package (`createMapView` / `paint`). The host must **not double-paint** after a fold: `onChange → paint()` runs the FLIP; a second `paint()` from a React `useEffect` on the updated doc would rewrite `innerHTML` and kill the animation. This demo sets a skip flag in `setDoc` so the `renderDoc` effect skips that redundant paint (focus-only `onChange` still paints for the focus ring). Since 0.2.16 the Map host `<div>` is the single keyboard focus owner (`tabindex=0`, `aria-activedescendant`); repaint never drops focus. Real-browser e2e: `npm run build:site:e2e && npm run test:e2e` from the package root.
 

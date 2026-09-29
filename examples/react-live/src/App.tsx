@@ -63,6 +63,12 @@ function runValidate(text: string): ValidationResult {
   return validateDocument(text);
 }
 
+/** Signature of the fold state authored in the source text. */
+function foldSig(d: OutlineFoldDoc | null | undefined): string {
+  if (!d) return '';
+  return d.fold.mode + ':' + [...d.fold.ids].sort().join(',');
+}
+
 /**
  * Live parser: edit in the textarea; Outline preview via toHtml + toggleFold;
  * Map preview via package createMapView (auto-pack). Shared fold state —
@@ -111,6 +117,8 @@ export default function App() {
   /** When Map setDoc already painted via onChange, skip the renderDoc effect paint (keeps M11 FLIP). */
   const skipNextMapPaintRef = useRef(false);
   const prevPreviewModeRef = useRef(previewMode);
+  /** Fold signature parsed from the current source text (before resume/seed overlay). */
+  const textFoldSigRef = useRef(foldSig(validation.doc));
 
   if (validation.doc) {
     docRef.current = validation.doc;
@@ -158,6 +166,7 @@ export default function App() {
     setText(body);
     textRef.current = body;
     let next = runValidate(body);
+    textFoldSigRef.current = foldSig(next.doc);
     let doc = next.doc;
     let layout: MapLayout = { _source: 'auto-pack', nodes: {} };
     const docKey =
@@ -210,7 +219,27 @@ export default function App() {
     (next: string) => {
       setText(next);
       textRef.current = next;
-      setValidation(runValidate(next));
+      let result = runValidate(next);
+      const sig = foldSig(result.doc);
+      // Typing a caption must not reset Map/Outline fold to the text's
+      // frontmatter when the user did not edit the fold line (cold-start seed /
+      // resume fold lives in memory only until the next fold action serializes).
+      const cur = docRef.current;
+      if (result.doc && cur && sig === textFoldSigRef.current && foldSig(cur) !== sig) {
+        const ids = [...cur.fold.ids];
+        result = {
+          ...result,
+          doc: {
+            ...result.doc,
+            fold: { mode: cur.fold.mode, ids },
+            frontmatter: result.doc.frontmatter
+              ? { ...result.doc.frontmatter, foldIds: [...ids] }
+              : result.doc.frontmatter,
+          },
+        };
+      }
+      textFoldSigRef.current = sig;
+      setValidation(result);
       scheduleAutosave(next);
     },
     [scheduleAutosave],
@@ -223,7 +252,9 @@ export default function App() {
       const next = toggleFold(current, id);
       docRef.current = next;
       const synced = serialize(next);
-      setValidation(runValidate(synced));
+      const syncedResult = runValidate(synced);
+      textFoldSigRef.current = foldSig(syncedResult.doc);
+      setValidation(syncedResult);
       setText(synced);
       textRef.current = synced;
       if (saveTimer.current) clearTimeout(saveTimer.current);
@@ -236,7 +267,9 @@ export default function App() {
     (next: OutlineFoldDoc) => {
       docRef.current = next;
       const synced = serialize(next);
-      setValidation(runValidate(synced));
+      const syncedResult = runValidate(synced);
+      textFoldSigRef.current = foldSig(syncedResult.doc);
+      setValidation(syncedResult);
       setText(synced);
       textRef.current = synced;
       if (saveTimer.current) clearTimeout(saveTimer.current);
@@ -703,8 +736,12 @@ export default function App() {
           secrets). Unlock/Decrypt uses demo key sources. OSS example only — not production
           MFA.
         </p>
-        <p className="pkg-stamp" aria-label="Package version">
+        <p className="pkg-stamp" aria-label="Package version" data-testid="pkg-stamp">
           Package <code>@audroam/outline-fold@{__OUTLINE_FOLD_VERSION__}</code>
+          {' · '}
+          <span className="pkg-git">
+            git <code data-testid="pkg-git">{__OUTLINE_FOLD_GIT__}</code>
+          </span>
         </p>
       </header>
 

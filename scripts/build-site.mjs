@@ -117,8 +117,9 @@ writeFileSync(join(site, 'index.html'), indexHtml);
 // Viewer build stamps (visible on examples/viewer when JS loads)
 const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'));
 let gitShort = 'unknown';
-try {
-  gitShort = execSync('git rev-parse --short HEAD', {
+if (process.env.GITHUB_SHA) gitShort = process.env.GITHUB_SHA.slice(0, 7);
+else try {
+  gitShort = execSync('git rev-parse --short=7 HEAD', {
     cwd: root,
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'ignore'],
