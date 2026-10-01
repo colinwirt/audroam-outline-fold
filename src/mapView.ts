@@ -1828,6 +1828,7 @@ export function createMapView(
     let releasing = false;
     let longPressTimer = 0;
     let touchSelectTimer = 0;
+    let lastFingerDown = 0;
     const SELECT_PAUSE_MS = 400;
     let samples: { t: number; x: number; y: number }[] = [];
     let lastTap = { t: 0, x: 0, y: 0 };
@@ -2057,7 +2058,19 @@ export function createMapView(
       const type = e.pointerType || 'mouse';
       const barrel = type === 'pen' && (e.buttons & 2) !== 0;
       if (e.button > 1) return;
-      if ((type === 'mouse' || type === 'pen') && onLabel && !barrel && e.button !== 1) return;
+      const coarse = window.matchMedia?.('(pointer: coarse)')?.matches ?? false;
+      const finger = type === 'touch' || (coarse && type === 'mouse' && e.button === 0);
+      if (type === 'mouse' && performance.now() - lastFingerDown < 700) return;
+      if (!finger && (type === 'mouse' || type === 'pen') && onLabel && !barrel && e.button !== 1) return;
+      if (finger) {
+        lastFingerDown = performance.now();
+        e.preventDefault();
+        try {
+          host.setPointerCapture(e.pointerId);
+        } catch {
+          /* capture is optional; moves still pan */
+        }
+      }
 
       if (type === 'touch' && e.isPrimary) {
         const stale = [...pointers.values()].some((p) => p.type === 'touch');
@@ -2080,7 +2093,7 @@ export function createMapView(
         '.map-fold-hit, .map-fold-indicator, .map-task-hit, .map-task-glyph, .map-body-more-hit, .map-thread-hit, .map-link-hit',
       );
       const selectId =
-        type === 'touch' && nodeEl && !control ? nodeEl.getAttribute('data-id') || '' : '';
+        finger && nodeEl && !control ? nodeEl.getAttribute('data-id') || '' : '';
       pointers.set(e.pointerId, {
         id: e.pointerId,
         type,
@@ -2116,15 +2129,13 @@ export function createMapView(
             swallowClick = true;
           }, SELECT_PAUSE_MS);
         }
-        if (type === 'touch' && onLabel) {
+        if (finger && onLabel) {
           const label = target!.closest('.map-label') as Element;
           clearLongPress();
           longPressTimer = window.setTimeout(() => {
             const p = pointers.get(e.pointerId);
             if (!p || mode !== 'pending') return;
-            if (Math.hypot(p.x - p.sx, p.y - p.sy) > 10) return;
-            p.role = 'select';
-            mode = 'idle';
+            if (Math.hypot(p.x - p.sx, p.y - p.sy) > slopPx(p.type)) return;
             window.setTimeout(() => {
               const sel = window.getSelection?.();
               if (sel && sel.toString()) return;
@@ -2143,11 +2154,13 @@ export function createMapView(
       'pointermove',
       (e) => {
         const p = pointers.get(e.pointerId);
-        if (!p || p.role === 'select') return;
+        if (!p) return;
         const pt = localPt(e);
         p.x = pt.x;
         p.y = pt.y;
-        if (mode === 'pan' || mode === 'pinch') {
+        if (p.role === 'select') p.role = 'driver';
+        if (mode === 'idle') mode = 'pending';
+        if (mode === 'pan' || mode === 'pinch' || mode === 'pending') {
           e.preventDefault();
           const now = performance.now();
           samples.push({ t: now, x: pt.x, y: pt.y });
@@ -2237,7 +2250,6 @@ export function createMapView(
     }, { signal });
     host.addEventListener('lostpointercapture', () => {
       if (releasing) return;
-      if (pointers.size) resetPointers(swallowClick);
     }, { signal });
     window.addEventListener('blur', () => resetPointers(swallowClick), { signal });
     document.addEventListener('visibilitychange', () => {
