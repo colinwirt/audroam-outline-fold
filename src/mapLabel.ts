@@ -41,33 +41,34 @@ export interface WrapResult {
   totalLines: number;
 }
 
-type StyledChar = { c: string; bold: boolean; italic: boolean };
+type StyledChar = { c: string; bold: boolean; italic: boolean; code: boolean };
 
 function runsToChars(runs: CaptionStyleRun[]): StyledChar[] {
   const chars: StyledChar[] = [];
   for (const r of runs) {
     for (const c of r.text) {
-      chars.push({ c, bold: r.bold, italic: r.italic });
+      chars.push({ c, bold: r.bold, italic: r.italic, code: r.code });
     }
   }
   return chars;
 }
 
 function charsToRuns(chars: StyledChar[]): CaptionStyleRun[] {
-  if (!chars.length) return [{ text: '', bold: false, italic: false }];
+  if (!chars.length) return [{ text: '', bold: false, italic: false, code: false }];
   const runs: CaptionStyleRun[] = [];
   let cur: CaptionStyleRun = {
     text: chars[0]!.c,
     bold: chars[0]!.bold,
     italic: chars[0]!.italic,
+    code: chars[0]!.code,
   };
   for (let i = 1; i < chars.length; i++) {
     const ch = chars[i]!;
-    if (ch.bold === cur.bold && ch.italic === cur.italic) {
+    if (ch.bold === cur.bold && ch.italic === cur.italic && ch.code === cur.code) {
       cur.text += ch.c;
     } else {
       runs.push(cur);
-      cur = { text: ch.c, bold: ch.bold, italic: ch.italic };
+      cur = { text: ch.c, bold: ch.bold, italic: ch.italic, code: ch.code };
     }
   }
   runs.push(cur);
@@ -148,6 +149,7 @@ export function wrapLines(
           text: piece,
           bold: r.bold,
           italic: r.italic,
+          code: r.code,
         });
       }
     }
@@ -157,11 +159,11 @@ export function wrapLines(
   for (const para of paragraphs) {
     const paraText = para.map((r) => r.text).join('');
     if (paraText === '' && para.length === 0) {
-      rawRich.push([{ text: '', bold: false, italic: false }]);
+      rawRich.push([{ text: '', bold: false, italic: false, code: false }]);
       continue;
     }
     if (paraText === '') {
-      rawRich.push([{ text: '', bold: false, italic: false }]);
+      rawRich.push([{ text: '', bold: false, italic: false, code: false }]);
       continue;
     }
     const wrapped = softWrapChars(runsToChars(para), ch);
@@ -170,7 +172,7 @@ export function wrapLines(
     }
   }
   if (rawRich.length === 0) {
-    rawRich.push([{ text: '', bold: false, italic: false }]);
+    rawRich.push([{ text: '', bold: false, italic: false, code: false }]);
   }
 
   const totalLines = rawRich.length;
@@ -189,7 +191,7 @@ export function wrapLines(
     truncated = true;
     if (maxLines == null || !Number.isFinite(maxLines)) softSafetyHit = true;
     richLines = rawRich.slice(0, cap);
-    const lastRuns = richLines[cap - 1] ?? [{ text: '', bold: false, italic: false }];
+    const lastRuns = richLines[cap - 1] ?? [{ text: '', bold: false, italic: false, code: false }];
     const lastPlain = lastRuns.map((r) => r.text).join('');
     if (lastPlain.length >= ch) {
       // Truncate last line runs to ch-1 + ellipsis
@@ -207,7 +209,7 @@ export function wrapLines(
       }
       const ellipsisBold = cut.length ? cut[cut.length - 1]!.bold : false;
       const ellipsisItalic = cut.length ? cut[cut.length - 1]!.italic : false;
-      cut.push({ text: '…', bold: ellipsisBold, italic: ellipsisItalic });
+      cut.push({ text: '…', bold: ellipsisBold, italic: ellipsisItalic, code: false });
       richLines[cap - 1] = cut;
     } else {
       const ellipsisBold = lastRuns.length
@@ -218,7 +220,7 @@ export function wrapLines(
         : false;
       richLines[cap - 1] = [
         ...lastRuns,
-        { text: '…', bold: ellipsisBold, italic: ellipsisItalic },
+        { text: '…', bold: ellipsisBold, italic: ellipsisItalic, code: false },
       ];
     }
   } else if (softSafetyHit && richLines.length) {
@@ -231,6 +233,7 @@ export function wrapLines(
           text: '…',
           bold: last.length ? last[last.length - 1]!.bold : false,
           italic: last.length ? last[last.length - 1]!.italic : false,
+          code: false,
         },
       ];
     }

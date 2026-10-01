@@ -78,22 +78,24 @@ export interface CaptionStyleRun {
   text: string;
   bold: boolean;
   italic: boolean;
+  code: boolean;
 }
 
 const OPEN_TAG =
-  /^<\s*(b|strong|i|em)\s*>/i;
+  /^<\s*(b|strong|i|em|code)\s*>/i;
 const CLOSE_TAG =
-  /^<\s*\/\s*(b|strong|i|em)\s*>/i;
+  /^<\s*\/\s*(b|strong|i|em|code)\s*>/i;
 /** Allowlisted open tag WITH attributes (onclick and the like) — show as text. */
 const OPEN_WITH_ATTRS =
-  /^<\s*(b|strong|i|em)\s+[^>]*>/i;
+  /^<\s*(b|strong|i|em|code)\s+[^>]*>/i;
 /** Any other tag (open or close) — show as text, never as an element. */
 const ANY_TAG = /^<\/?[A-Za-z][^>]*>/;
 
-function tagKind(name: string): 'bold' | 'italic' | null {
+function tagKind(name: string): 'bold' | 'italic' | 'code' | null {
   const n = name.toLowerCase();
   if (n === 'b' || n === 'strong') return 'bold';
   if (n === 'i' || n === 'em') return 'italic';
+  if (n === 'code') return 'code';
   return null;
 }
 
@@ -106,11 +108,12 @@ function tagKind(name: string): 'bold' | 'italic' | null {
  * - Nesting OK; pathological depth flattens via boolean flags
  * - Raw `<` that is not a tag stays as text (escaped at render)
  */
-export function parseTinyHtmlRuns(text: string): CaptionStyleRun[] {
+function parseTagRuns(text: string): CaptionStyleRun[] {
   const s = String(text ?? '');
   const runs: CaptionStyleRun[] = [];
   let bold = 0;
   let italic = 0;
+  let code = 0;
   let i = 0;
   let buf = '';
 
@@ -120,6 +123,7 @@ export function parseTinyHtmlRuns(text: string): CaptionStyleRun[] {
       text: buf,
       bold: bold > 0,
       italic: italic > 0,
+      code: code > 0,
     });
     buf = '';
   };
@@ -133,6 +137,7 @@ export function parseTinyHtmlRuns(text: string): CaptionStyleRun[] {
         const kind = tagKind(m[1]);
         if (kind === 'bold') bold++;
         else if (kind === 'italic') italic++;
+        else if (kind === 'code') code++;
         i += m[0].length;
         continue;
       }
@@ -142,6 +147,7 @@ export function parseTinyHtmlRuns(text: string): CaptionStyleRun[] {
         const kind = tagKind(m[1]);
         if (kind === 'bold') bold = Math.max(0, bold - 1);
         else if (kind === 'italic') italic = Math.max(0, italic - 1);
+        else if (kind === 'code') code = Math.max(0, code - 1);
         i += m[0].length;
         continue;
       }
@@ -162,6 +168,23 @@ export function parseTinyHtmlRuns(text: string): CaptionStyleRun[] {
     i++;
   }
   flush();
+  return runs;
+}
+
+/** Backticks and <code> become code runs. Backtick contents are not parsed as HTML. */
+export function parseTinyHtmlRuns(text: string): CaptionStyleRun[] {
+  const s = String(text ?? '');
+  const runs: CaptionStyleRun[] = [];
+  const re = /`([^`\n]+)`/g;
+  let last = 0;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(s)) !== null) {
+    if (m.index > last) runs.push(...parseTagRuns(s.slice(last, m.index)));
+    runs.push({ text: m[1], bold: false, italic: false, code: true });
+    last = m.index + m[0].length;
+  }
+  if (last < s.length) runs.push(...parseTagRuns(s.slice(last)));
+  else if (last === 0) runs.push(...parseTagRuns(s));
   return runs;
 }
 
@@ -261,6 +284,7 @@ export function tinyHtmlToSafeHtml(segment: string): string {
     let chunk = escaped;
     if (r.italic) chunk = `<i>${chunk}</i>`;
     if (r.bold) chunk = `<b>${chunk}</b>`;
+    if (r.code) chunk = `<code class="of-code">${chunk}</code>`;
     out += chunk;
   }
   return out;
@@ -326,6 +350,7 @@ export function captionRunToTspanInner(run: CaptionStyleRun): string {
   const attrs: string[] = [];
   if (run.bold) attrs.push('font-weight="700"');
   if (run.italic) attrs.push('font-style="italic"');
+  if (run.code) attrs.push('font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace"');
   const a = attrs.length ? ' ' + attrs.join(' ') : '';
   return `<tspan${a}>${show}</tspan>`;
 }

@@ -77,6 +77,15 @@ describe('tiny HTML allowlist', () => {
     expect(runs.map((r) => r.text).join('')).toBe('<div>x</div>');
   });
 
+  it('renders backticks and code tags as mono', () => {
+    const html = captionToHtml('run `npm test` and <code>id</code>');
+    expect(html).toContain('<code class="of-code">npm test</code>');
+    expect(html).toContain('<code class="of-code">id</code>');
+    const runs = captionStyleRuns('`npm test`');
+    expect(runs.some((r) => r.code && r.text === 'npm test')).toBe(true);
+    expect(captionVisibleText('use `id`')).toBe('use id');
+  });
+
   it('emits <b>/<i> and <br> in Outline captionToHtml', () => {
     const html = captionToHtml('Hello<br/>World <b>bold</b> <i>it</i>');
     expect(html).toContain('<br>');
