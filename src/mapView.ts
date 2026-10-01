@@ -1731,6 +1731,8 @@ export function createMapView(
       sx: number;
       sy: number;
       role: 'driver' | 'spare' | 'select';
+      /** Pill to select after a still touch. Empty for mouse and for control hits. */
+      selectId?: string;
     };
     const pointers = new Map<number, Tracked>();
     let mode: 'idle' | 'pending' | 'pan' | 'pinch' = 'idle';
@@ -1740,6 +1742,8 @@ export function createMapView(
     let swallowClick = false;
     let releasing = false;
     let longPressTimer = 0;
+    let touchSelectTimer = 0;
+    const SELECT_PAUSE_MS = 400;
     let samples: { t: number; x: number; y: number }[] = [];
     let lastTap = { t: 0, x: 0, y: 0 };
     let firstDownAt = 0;
@@ -1859,7 +1863,13 @@ export function createMapView(
       }
     }
 
+    function clearTouchSelect(): void {
+      if (touchSelectTimer) window.clearTimeout(touchSelectTimer);
+      touchSelectTimer = 0;
+    }
+
     function startPan(p: Pt): void {
+      clearTouchSelect();
       pan = anchorPan(cam, p);
       pinch = null;
       recognise('pan');
@@ -1878,6 +1888,7 @@ export function createMapView(
 
     function resetPointers(swallow: boolean): void {
       clearLongPress();
+      clearTouchSelect();
       if (raf) cancelAnimationFrame(raf);
       raf = 0;
       releasing = true;
@@ -1977,6 +1988,12 @@ export function createMapView(
       else if (pointers.size === 1) secondDownAt = performance.now();
       const pt = localPt(e);
       const role: Tracked['role'] = pointers.size >= 2 ? 'spare' : 'driver';
+      const nodeEl = (target as Element | null)?.closest?.('.map-node');
+      const control = (target as Element | null)?.closest?.(
+        '.map-fold-hit, .map-fold-indicator, .map-task-hit, .map-task-glyph, .map-body-more-hit, .map-thread-hit',
+      );
+      const selectId =
+        type === 'touch' && nodeEl && !control ? nodeEl.getAttribute('data-id') || '' : '';
       pointers.set(e.pointerId, {
         id: e.pointerId,
         type,
@@ -1985,6 +2002,7 @@ export function createMapView(
         sx: pt.x,
         sy: pt.y,
         role,
+        selectId,
       });
 
       const count = drivers().length;
@@ -1997,6 +2015,20 @@ export function createMapView(
         clearLongPress();
       } else {
         mode = 'pending';
+        if (selectId) {
+          clearTouchSelect();
+          touchSelectTimer = window.setTimeout(() => {
+            const p = pointers.get(e.pointerId);
+            if (!p || mode !== 'pending' || !p.selectId) return;
+            if (Math.hypot(p.x - p.sx, p.y - p.sy) > slopPx('touch')) return;
+            setFocusId(p.selectId);
+            focusMapForKeys();
+            userCamGesture = false;
+            pendingFollow = { kind: 'focus' };
+            onChange?.();
+            swallowClick = true;
+          }, SELECT_PAUSE_MS);
+        }
         if (type === 'touch' && onLabel) {
           const label = target!.closest('.map-label') as Element;
           clearLongPress();
@@ -2050,6 +2082,7 @@ export function createMapView(
         return;
       }
       clearLongPress();
+      clearTouchSelect();
       for (const p of pointers.values()) {
         if (drivers().length >= 2) break;
         if (p.role === 'spare') p.role = 'driver';
@@ -2099,6 +2132,8 @@ export function createMapView(
           springBack();
           lastTap = { t: 0, x: 0, y: 0 };
         } else if (!wasPan && !wasPinch) {
+          if (had.type === 'touch' && had.selectId) swallowClick = true;
+          clearTouchSelect();
           lastTap = { t: now, x: had.x, y: had.y };
           settleCam();
         } else if (!maybeInertia(had.type)) {
