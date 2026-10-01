@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   captionToHtml,
+  captionLinks,
   isAllowedCaptionUrl,
   parseHopTarget,
 } from '../src/captionRich.js';
@@ -98,6 +99,12 @@ describe('captionToHtml', () => {
     );
     expect(html).toContain('href="?doc=../streetlamps/streetlamps.md"');
     expect(html).toContain('target="_blank"');
+  });
+
+  it('lists relative doc links for the map popup', () => {
+    expect(captionLinks('[Open](?doc=../iso27001/iso27001.md)')).toEqual([
+      { label: 'Open', href: '?doc=../iso27001/iso27001.md', hopId: null },
+    ]);
   });
 });
 

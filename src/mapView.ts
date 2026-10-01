@@ -8,6 +8,7 @@
  * Scrapbook (0.2.8+): multi-line wrap, task lead SVG, text click ≠ fold; label text selectable (0.2.10); pan clears selection (0.2.11); keyboard only when Map focused (0.2.12); rich caption breaks+HTML + focus-on-click + camera follow/clamp (0.2.13); proportion follow + cameraRecentre + edit ensure (0.2.14); focusId is-focused ring (0.2.15); single stable focus owner = host tabindex=0 + aria-activedescendant, keydown on host (0.2.16).
  * Sealed nodes: omitted until unlocked (no gray stubs) — caller filters doc if needed.
  */
+import { captionLinks } from './captionRich.js';
 import {
   toggleFold,
   isCollapsed,
@@ -391,6 +392,15 @@ function taskGlyphSvg(state: TaskState, x: number, y: number): string {
   return `<g class="map-task-glyph" transform="translate(${x} ${y})" aria-hidden="true">
     <rect x="-7" y="-7" width="14" height="14" rx="3" fill="none" stroke="${stroke}" stroke-width="1.75"/>
     ${check}
+  </g>`;
+}
+
+function globeGlyphSvg(x: number, y: number): string {
+  return `<g class="map-link-hit" transform="translate(${x} ${y})" cursor="pointer">
+    <rect x="-16" y="-16" width="32" height="32" rx="10" fill="transparent"/>
+    <circle r="8" fill="none" stroke="#8ec8ff" stroke-width="1.4"/>
+    <ellipse rx="3.2" ry="8" fill="none" stroke="#8ec8ff" stroke-width="1.2"/>
+    <path d="M -8 0 H 8 M -6.5 -4 H 6.5 M -6.5 4 H 6.5" fill="none" stroke="#8ec8ff" stroke-width="1"/>
   </g>`;
 }
 
@@ -1131,6 +1141,60 @@ export function createMapView(
    * after a node/canvas click. Only called from user gestures inside the map
    * (never from paint alone), so it cannot steal focus from an editor.
    */
+  function showLinkPop(anchor: Element, title: string): void {
+    host.querySelector('.map-link-pop')?.remove();
+    const links = captionLinks(title);
+    if (!links.length) return;
+    const pop = document.createElement('div');
+    pop.className = 'map-link-pop';
+    pop.setAttribute('role', 'dialog');
+    pop.style.cssText = [
+      'position:absolute',
+      'z-index:5',
+      'min-width:8rem',
+      'max-width:18rem',
+      'padding:8px 10px',
+      'border-radius:10px',
+      'background:#13202b',
+      'border:1px solid #3d5a73',
+      'box-shadow:0 8px 24px rgba(0,0,0,.35)',
+      'display:flex',
+      'flex-direction:column',
+      'gap:6px',
+    ].join(';');
+    for (const link of links) {
+      const a = document.createElement('a');
+      a.href = link.href;
+      a.textContent = link.label;
+      a.style.cssText = 'color:#8ec8ff;font:13px/1.35 system-ui,sans-serif;word-break:break-all';
+      if (link.hopId) {
+        a.addEventListener('click', (ev) => {
+          ev.preventDefault();
+          ev.stopPropagation();
+          const hop = link.hopId;
+          if (!hop) return;
+          setFocusId(hop);
+          focusMapForKeys();
+          userCamGesture = false;
+          pendingFollow = { kind: 'focus' };
+          pop.remove();
+          onChange?.();
+        });
+      } else {
+        a.target = '_blank';
+        a.rel = 'noopener noreferrer';
+      }
+      pop.appendChild(a);
+    }
+    const hostStyle = getComputedStyle(host);
+    if (hostStyle.position === 'static') host.style.position = 'relative';
+    host.appendChild(pop);
+    const r = anchor.getBoundingClientRect();
+    const hr = host.getBoundingClientRect();
+    pop.style.left = `${Math.max(8, r.left - hr.left)}px`;
+    pop.style.top = `${r.bottom - hr.top + 6}px`;
+  }
+
   function focusMapForKeys(): void {
     try {
       ensureHostFocusable();
@@ -1550,6 +1614,11 @@ export function createMapView(
             <text text-anchor="middle" y="3" fill="#8b9bab" font-size="11">${bodyAction}</text>
           </g>`
             : '';
+          const links = captionLinks(n.title || '');
+          const globe =
+            links.length > 0
+              ? globeGlyphSvg(x + w - 16, y + 16)
+              : '';
           const threadChip = thread
             ? `<g class="map-thread-hit" data-thread="${esc(thread)}" transform="translate(${textX} ${y + h - (affordance ? affordance + 4 : 6)})" cursor="pointer">
             <rect x="-36" y="-10" width="72" height="18" rx="9" fill="rgba(201,162,39,0.12)" stroke="#C9A227" stroke-width="1"/>
@@ -1562,6 +1631,7 @@ export function createMapView(
       <title>${esc(tip)}</title>
       <rect class="map-pill" x="${x}" y="${y}" width="${w}" height="${h}" rx="18" ry="18"/>
       ${taskChrome}
+      ${globe}
       ${multiLineText(lines, textX, textCentreY, textW, richLines)}
       ${moreChrome}
       ${threadChip}
@@ -1638,6 +1708,11 @@ export function createMapView(
             bodyExpanded: action === 'more',
           };
           onChange?.();
+          return;
+        }
+        if (t?.closest?.('.map-link-hit')) {
+          const n = findNode(getDoc().nodes, id);
+          showLinkPop(t.closest('.map-link-hit') as Element, n?.title || '');
           return;
         }
         if (t?.closest?.('.map-thread-hit')) {
@@ -1990,7 +2065,7 @@ export function createMapView(
       const role: Tracked['role'] = pointers.size >= 2 ? 'spare' : 'driver';
       const nodeEl = (target as Element | null)?.closest?.('.map-node');
       const control = (target as Element | null)?.closest?.(
-        '.map-fold-hit, .map-fold-indicator, .map-task-hit, .map-task-glyph, .map-body-more-hit, .map-thread-hit',
+        '.map-fold-hit, .map-fold-indicator, .map-task-hit, .map-task-glyph, .map-body-more-hit, .map-thread-hit, .map-link-hit',
       );
       const selectId =
         type === 'touch' && nodeEl && !control ? nodeEl.getAttribute('data-id') || '' : '';

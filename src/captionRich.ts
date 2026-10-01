@@ -272,6 +272,25 @@ export function tinyHtmlToSafeHtml(segment: string): string {
  * Escapes by default; only allowlisted markdown img/a/bare-https and tiny HTML.
  * Inline SVG strings in captions are never emitted as markup.
  */
+export type CaptionLink = { label: string; href: string; hopId: string | null };
+
+/** Markdown and bare https links that captionToHtml would turn into anchors. */
+export function captionLinks(title: string): CaptionLink[] {
+  const out: CaptionLink[] = [];
+  for (const t of tokenize(normalizeCaptionBreaks(title))) {
+    if (t.kind !== 'link') continue;
+    const hopId = parseHopTarget(t.url);
+    if (hopId) {
+      out.push({ label: t.label, href: `#id:${hopId}`, hopId });
+      continue;
+    }
+    if (t.url.trim().startsWith('#')) continue;
+    if (!isAllowedCaptionUrl(t.url, { allowHttp: true })) continue;
+    out.push({ label: t.label, href: t.url, hopId: null });
+  }
+  return out;
+}
+
 export function captionToHtml(title: string): string {
   if (!title) return '';
   const normalized = normalizeCaptionBreaks(title);

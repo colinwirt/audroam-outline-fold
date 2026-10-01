@@ -19,6 +19,7 @@ export { toggleFold, isCollapsed, setExpandLevel, type ExpandLevel, type SetExpa
 export { toHtml } from './toHtml.js';
 export {
   captionToHtml,
+  captionLinks,
   isAllowedCaptionUrl,
   parseHopTarget,
   normalizeCaptionBreaks,
