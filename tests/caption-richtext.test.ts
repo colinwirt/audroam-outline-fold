@@ -11,6 +11,7 @@ import {
   toHtml,
   parse,
 } from '../src/index.js';
+import { setRunMeasurer } from '../src/svgTextMeasure.js';
 
 describe('normalizeCaptionBreaks', () => {
   it('turns LF / CR / CRLF into line breaks', () => {
@@ -130,6 +131,29 @@ describe('wrap/measure use visible chars after normalize', () => {
       plain.lines.map((l) => l.replace(/…$/, '')),
     );
     expect(rich.richLines[0]!.some((r) => r.bold)).toBe(true);
+  });
+
+  it('reads fontSize from frontmatter and lets a measurer set the pill width', () => {
+    const doc = parse('---\nfontSize: 18\n---\n- Hi <id:n1>\n');
+    expect(doc.frontmatter?.fontSize).toBe(18);
+    setRunMeasurer((run) => (run.code ? run.text.length * 20 : run.text.length * 10));
+    try {
+      const plain = measurePill('abcd', { fontSize: 18 });
+      const code = measurePill('`abcd`', { fontSize: 18 });
+      expect(plain.fontPx).toBe(18);
+      expect(code.textW).toBeGreaterThan(plain.textW);
+    } finally {
+      setRunMeasurer(null);
+    }
+  });
+
+  it('sizes the pill from the measured line, not the wrap column', () => {
+    const short = measurePill('Hi', { wrapCh: 32 });
+    const long = measurePill('a'.repeat(32), { wrapCh: 32 });
+    const code = measurePill('`' + 'a'.repeat(32) + '`', { wrapCh: 32 });
+    expect(short.textW).toBeLessThan(long.textW);
+    expect(long.textW).toBeLessThan(code.textW);
+    expect(short.textW).not.toBe(Math.round(32 * 7.2));
   });
 });
 

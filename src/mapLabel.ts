@@ -1,7 +1,9 @@
 /**
  * Multi-line scrapbook label measure for Map pills.
  * Break tokens + tiny HTML normalized before wrap (0.2.13; literal \n 0.2.15);
- * measure counts visible characters only; richLines carry bold/italic for paint.
+ * measure counts visible characters only; richLines carry bold/italic/code for paint.
+ * wrapCh is only the max line before a break. The pill border is the widest
+ * measured line plus PILL_PAD_X, not a fixed column.
  *
  * Product lock (Design 2026-09-29 compromise):
  * - Default maxLines ≈ **30** + “more” / “less” (not harsh 6, not unlimited)
@@ -14,6 +16,7 @@ import {
   captionVisibleText,
   type CaptionStyleRun,
 } from './captionRich.js';
+import { measureRunWidth } from './svgTextMeasure.js';
 
 export const DEFAULT_WRAP_CH = 32;
 /** Product default clip — generous journal leaf (~30 lines). */
@@ -22,11 +25,19 @@ export const DEFAULT_MAX_LINES = 30;
 export const SOFT_SAFETY_MAX_LINES = 500;
 export const SOFT_SAFETY_MAX_CHARS = 50_000;
 
+/** Painted label size when frontmatter and the layout file omit fontSize. */
+export const DEFAULT_FONT_PX = 16;
+/** Advances below were tuned at this size. Other sizes scale from it. */
+export const BASE_FONT_PX = 13;
 export const CHAR_W = 7.2;
+/** 13px monospace advance. Wider than the proportional average, so code lines grow the pill. */
+export const CODE_CHAR_W = 8.4;
 export const LINE_H = 16;
 export const PILL_PAD_Y = 10;
 export const TASK_LEAD = 28;
-export const MIN_TEXT_W = 88;
+export const MIN_TEXT_W = 36;
+/** Air between the glyphs and the pill border. The border is this plus the measured line. */
+export const PILL_PAD_X = 16;
 /** Extra height reserved for “more”/“less” affordance when clipped or expanded. */
 export const MORE_AFFORDANCE_H = 18;
 
@@ -263,6 +274,7 @@ export interface MeasurePillOpts {
   taskLead?: number;
   /** Reserve height for more/less chrome when truncated or expanded-from-clip. */
   reserveMoreAffordance?: boolean;
+  fontSize?: number;
 }
 
 export interface MeasuredPill {
@@ -281,6 +293,7 @@ export interface MeasuredPill {
   showLess: boolean;
   bodyExpanded: boolean;
   effectiveMaxLines: number | null;
+  fontPx: number;
 }
 
 /**
@@ -298,6 +311,57 @@ export function resolveEffectiveMaxLines(
   return DEFAULT_MAX_LINES;
 }
 
+export function clampFontPx(value: number | undefined): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return DEFAULT_FONT_PX;
+  return Math.min(48, Math.max(11, value));
+}
+
+/** Per-node layout, then the layout file, then outline frontmatter, then 16. */
+export function resolveFontPx(
+  node: number | undefined,
+  layout: number | undefined,
+  frontmatter: number | undefined,
+): number {
+  if (typeof node === 'number' && Number.isFinite(node)) return clampFontPx(node);
+  if (typeof layout === 'number' && Number.isFinite(layout)) return clampFontPx(layout);
+  if (typeof frontmatter === 'number' && Number.isFinite(frontmatter)) return clampFontPx(frontmatter);
+  return DEFAULT_FONT_PX;
+}
+
+export function lineBox(fontPx: number): number {
+  return (clampFontPx(fontPx) / BASE_FONT_PX) * LINE_H;
+}
+
+/** Predicted width when the document cannot measure painted SVG text. */
+export function lineAdvance(runs: CaptionStyleRun[], fontPx = BASE_FONT_PX): number {
+  const scale = clampFontPx(fontPx) / BASE_FONT_PX;
+  let w = 0;
+  for (const run of runs) {
+    const advance = run.code ? CODE_CHAR_W : CHAR_W;
+    w += run.text.length * advance * scale;
+  }
+  return w;
+}
+
+/** Painted width of one line. Uses SVG text when a document is available. */
+export function lineWidth(runs: CaptionStyleRun[], fontPx: number): number {
+  const px = clampFontPx(fontPx);
+  let measured = 0;
+  let complete = true;
+  for (const run of runs) {
+    const width = measureRunWidth(
+      { text: run.text, code: run.code, bold: run.bold, italic: run.italic },
+      px,
+    );
+    if (width == null) {
+      complete = false;
+      break;
+    }
+    measured += width;
+  }
+  return complete ? measured : lineAdvance(runs, px);
+}
+
 export function measurePill(
   label: string,
   opts: MeasurePillOpts = {},
@@ -310,9 +374,12 @@ export function measurePill(
   });
   const foldSlot = opts.reserveFold ? (opts.foldSlot ?? 34) : 0;
   const taskLead = opts.reserveTask ? (opts.taskLead ?? TASK_LEAD) : 0;
+  const fontPx = clampFontPx(opts.fontSize);
   const wrapped = wrapLines(label, wrapCh, effectiveMaxLines);
-  const textW = Math.max(MIN_TEXT_W, Math.round(wrapCh * CHAR_W));
+  const widest = wrapped.richLines.reduce((max, line) => Math.max(max, lineWidth(line, fontPx)), 0);
+  const textW = Math.max(MIN_TEXT_W, Math.round(widest + PILL_PAD_X * 2));
   const lineCount = Math.max(1, wrapped.lines.length);
+  const box = lineBox(fontPx);
 
   // “more” when product-clipped (not only soft-safety); “less” when expanded and
   // content would exceed default/authored skim.
@@ -333,7 +400,7 @@ export function measurePill(
     (showMore || showLess || showLessSoft);
 
   const h =
-    Math.max(44, PILL_PAD_Y * 2 + lineCount * LINE_H) +
+    Math.max(44, PILL_PAD_Y * 2 + lineCount * box) +
     (needsAffordance ? MORE_AFFORDANCE_H : 0);
 
   return {
@@ -352,5 +419,6 @@ export function measurePill(
     showLess: showLess || showLessSoft,
     bodyExpanded,
     effectiveMaxLines,
+    fontPx,
   };
 }

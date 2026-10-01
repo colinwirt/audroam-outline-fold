@@ -2,7 +2,11 @@ import { describe, expect, it } from 'vitest';
 import {
   anchorPan,
   anchorPinch,
+  afterLift,
+  flingClearsContent,
   nextGestureMode,
+  translationClearsContent,
+  INERTIA_TAU_MS,
   panFrame,
   pinchFrame,
   decayVelocity,
@@ -50,13 +54,63 @@ describe('pan anchor', () => {
 });
 
 describe('finger-count state machine', () => {
-  it('promotes two fingers to pinch and the remaining finger to pan', () => {
+  it('promotes two fingers to pinch and holds that pinch when one finger lifts', () => {
     expect(nextGestureMode('pending', 2, false)).toBe('pinch');
-    expect(nextGestureMode('pinch', 1, true)).toBe('pan');
+    expect(nextGestureMode('pinch', 1, true)).toBe('pinch');
     expect(nextGestureMode('pending', 1, false)).toBe('pending');
     expect(nextGestureMode('pending', 1, true)).toBe('pan');
     expect(nextGestureMode('pinch', 3, false)).toBe('pinch');
     expect(nextGestureMode('pan', 0, false)).toBe('idle');
+  });
+});
+
+describe('lift after pinch', () => {
+  it('holds the remaining finger and skips the fling once every finger is up', () => {
+    const held = afterLift('pinch', 1, false);
+    expect(held).toEqual({
+      mode: 'pinch',
+      singlePanLocked: true,
+      action: 'hold',
+      skipFling: false,
+    });
+    expect(afterLift(held.mode, 0, held.singlePanLocked)).toEqual({
+      mode: 'idle',
+      singlePanLocked: false,
+      action: 'release',
+      skipFling: true,
+    });
+  });
+
+  it('still retargets a pinch that has two drivers', () => {
+    expect(afterLift('pinch', 2, false).action).toBe('retarget-pinch');
+  });
+
+  it('lets a later one-finger gesture pan after the lock has cleared', () => {
+    expect(afterLift('pan', 1, false).action).toBe('retarget-pan');
+    expect(afterLift('pan', 0, false).skipFling).toBe(false);
+  });
+});
+
+describe('fling noise', () => {
+  const cam = { x: 0, y: 0, k: 1 };
+  const content = { x: 0, y: 0, w: 200, h: 80 };
+  const viewport = { w: 400, h: 800 };
+
+  it('keeps a shift that still shows the map', () => {
+    expect(translationClearsContent(50, 20, cam, content, viewport)).toBe(false);
+  });
+
+  it('drops a shift that leaves the map fully outside the viewport', () => {
+    expect(translationClearsContent(-500, 0, cam, content, viewport)).toBe(true);
+    expect(translationClearsContent(0, -900, cam, content, viewport)).toBe(true);
+  });
+
+  it('drops a coast that would leave the map and keeps a short one', () => {
+    const coast = 2 * INERTIA_TAU_MS;
+    expect(flingClearsContent(-2, 0, cam, content, viewport)).toBe(
+      translationClearsContent(-coast, 0, cam, content, viewport),
+    );
+    expect(flingClearsContent(-0.05, 0, cam, content, viewport)).toBe(false);
   });
 });
 

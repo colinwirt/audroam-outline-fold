@@ -76,6 +76,9 @@ export function serialize(doc: OutlineFoldDoc): string {
   if (doc.frontmatter?.expandedMarker) {
     lines.push(`expandedMarker: "${doc.frontmatter.expandedMarker}"`);
   }
+  if (typeof doc.frontmatter?.fontSize === 'number') {
+    lines.push(`fontSize: ${doc.frontmatter.fontSize}`);
+  }
   lines.push('---', '');
   for (const n of doc.nodes) serializeNode(n, doc, lines);
   const payloads = collectPayloads(doc.nodes);

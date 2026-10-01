@@ -68,6 +68,8 @@ export interface OutlineFrontmatter {
   foldIds?: string[];
   collapsedMarker?: string;
   expandedMarker?: string;
+  /** Map label size in px. Overridden by the layout file and by a node fontSize. */
+  fontSize?: number;
 }
 
 export interface FoldState {

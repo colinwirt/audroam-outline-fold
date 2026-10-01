@@ -107,6 +107,11 @@ function parseFrontmatter(text: string): {
       fm.expandedMarker = unquote(em[1].trim());
       continue;
     }
+    const fontSize = line.match(/^fontSize\s*:\s*(\d+(?:\.\d+)?)\s*$/i);
+    if (fontSize) {
+      fm.fontSize = Number(fontSize[1]);
+      continue;
+    }
   }
 
   return { fm, body };

@@ -81,7 +81,9 @@ export function panFrame(anchor: PanAnchor, p: Pt): Cam {
 
 /**
  * Finger-count transitions. A second finger always becomes a pinch.
- * Dropping to one finger continues as a pan. A third finger does not change mode.
+ * A pinch keeps its mode when one finger lifts, so the remaining finger
+ * cannot pan or fling. One-finger pan resumes only after a later gesture
+ * that starts from idle. A third finger does not change mode.
  */
 export function nextGestureMode(
   mode: GestureMode,
@@ -90,7 +92,8 @@ export function nextGestureMode(
 ): GestureMode {
   if (pointerCount >= 2) return 'pinch';
   if (pointerCount === 1) {
-    if (mode === 'pinch' || mode === 'pan') return 'pan';
+    if (mode === 'pinch') return 'pinch';
+    if (mode === 'pan') return 'pan';
     return movedPastSlop ? 'pan' : 'pending';
   }
   return 'idle';
@@ -152,6 +155,65 @@ export function inertiaEligible(opts: {
   if (opts.pointerType !== 'touch' && opts.pointerType !== 'pen') return false;
   if (opts.sinceLastMoveMs > 50) return false;
   return opts.speedPxPerMs >= 0.25;
+}
+
+export type LiftAction = 'retarget-pinch' | 'hold' | 'retarget-pan' | 'release';
+
+/**
+ * What a driver-pointer lift does. A pinch that still has two drivers retargets.
+ * One remaining finger holds: no one-finger pan until a later gesture that
+ * starts with every finger up. `singlePanLocked` remembers that hold so the
+ * final lift does not fling.
+ */
+export function afterLift(
+  mode: GestureMode,
+  driversLeft: number,
+  singlePanLocked: boolean,
+): { mode: GestureMode; singlePanLocked: boolean; action: LiftAction; skipFling: boolean } {
+  if (mode === 'pinch' && driversLeft >= 2) {
+    return { mode: 'pinch', singlePanLocked, action: 'retarget-pinch', skipFling: false };
+  }
+  if (mode === 'pinch' && driversLeft >= 1) {
+    return { mode: 'pinch', singlePanLocked: true, action: 'hold', skipFling: false };
+  }
+  if (mode === 'pan' && driversLeft === 1 && !singlePanLocked) {
+    return { mode: 'pan', singlePanLocked, action: 'retarget-pan', skipFling: false };
+  }
+  if (driversLeft === 0) {
+    return { mode: 'idle', singlePanLocked: false, action: 'release', skipFling: singlePanLocked };
+  }
+  return { mode, singlePanLocked, action: 'hold', skipFling: false };
+}
+
+/**
+ * True when shifting the camera by (dx, dy) would leave the content union
+ * with no intersection with the viewport. That sample is noise, not a pan.
+ */
+export function translationClearsContent(
+  dx: number,
+  dy: number,
+  cam: { x: number; y: number; k: number },
+  content: { x: number; y: number; w: number; h: number },
+  viewport: { w: number; h: number },
+): boolean {
+  if (content.w <= 0 || content.h <= 0 || viewport.w <= 0 || viewport.h <= 0) return false;
+  const left = content.x * cam.k + cam.x + dx;
+  const right = left + content.w * cam.k;
+  const top = content.y * cam.k + cam.y + dy;
+  const bottom = top + content.h * cam.k;
+  return right <= 0 || left >= viewport.w || bottom <= 0 || top >= viewport.h;
+}
+
+/** Coast distance is v * tau. A coast that clears the viewport is noise. */
+export function flingClearsContent(
+  vx: number,
+  vy: number,
+  cam: { x: number; y: number; k: number },
+  content: { x: number; y: number; w: number; h: number },
+  viewport: { w: number; h: number },
+  tau = INERTIA_TAU_MS,
+): boolean {
+  return translationClearsContent(vx * tau, vy * tau, cam, content, viewport);
 }
 
 export function capSpeed(vx: number, vy: number, max = 3): { vx: number; vy: number } {

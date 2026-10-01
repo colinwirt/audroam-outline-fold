@@ -175,7 +175,9 @@ kbd {
   stroke: var(--accent); stroke-width: 2.5;
 }
 .map-label {
-  fill: var(--text); font: 600 13px/1.2 var(--font);
+  fill: var(--text);
+  font-family: var(--font);
+  font-weight: 400;
   pointer-events: auto; cursor: text;
   -webkit-user-select: text; user-select: text;
 }

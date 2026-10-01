@@ -557,7 +557,8 @@ kbd {
 }
 .preview-pane .map-label {
   fill: var(--text);
-  font: 600 13px/1.2 var(--font);
+  font-family: var(--font);
+  font-weight: 400;
   pointer-events: auto;
   cursor: text;
   -webkit-user-select: text;

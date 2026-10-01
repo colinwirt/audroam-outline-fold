@@ -15,6 +15,7 @@ import {
   setExpandLevel,
 } from './fold.js';
 import {
+  afterLift,
   anchorPan,
   anchorPinch,
   nextGestureMode,
@@ -29,6 +30,8 @@ import {
   velocityFromSamples,
   capSpeed,
   decayVelocity,
+  translationClearsContent,
+  flingClearsContent,
   wheelIntent,
   type Cam as GestureCam,
   type PanAnchor,
@@ -46,7 +49,11 @@ import {
   LINE_H,
   PILL_PAD_Y,
   MORE_AFFORDANCE_H,
+  DEFAULT_FONT_PX,
+  lineBox,
+  resolveFontPx,
 } from './mapLabel.js';
+import { LABEL_FONT_FAMILY } from './svgTextMeasure.js';
 import {
   displayCaption,
   resolveTask,
@@ -88,6 +95,8 @@ export interface MapPoint {
   maxLines?: number | null;
   /** more/less body reveal — orthogonal to child fold. */
   bodyExpanded?: boolean;
+  /** Label size in px. Overrides the layout file and outline frontmatter. */
+  fontSize?: number;
 }
 
 export interface MapViewBox {
@@ -99,6 +108,8 @@ export interface MapViewBox {
 export interface MapLayout {
   viewBox?: MapViewBox;
   nodes?: Record<string, MapPoint>;
+  /** Label size in px for nodes that omit fontSize. */
+  fontSize?: number;
   /** `'auto-pack'` triggers full recompute each paint; other values keep sidecar coords. */
   _source?: string;
   version?: number;
@@ -115,6 +126,8 @@ export interface AutoPackOptions {
   wrapCh?: number;
   /** Default maxLines; omit/null = full body. */
   maxLines?: number | null;
+  /** Default label size when a node omits fontSize. */
+  fontSize?: number;
   /** Optional per-id layout nudges (wrapCh/maxLines). */
   nodeLayout?: Record<string, MapPoint>;
 }
@@ -130,6 +143,7 @@ export interface PillSizeOptions {
   wrapCh?: number;
   maxLines?: number | null;
   bodyExpanded?: boolean;
+  fontSize?: number;
 }
 
 export interface PillSize {
@@ -148,6 +162,7 @@ export interface PillSize {
   showLess: boolean;
   bodyExpanded: boolean;
   effectiveMaxLines: number | null;
+  fontPx: number;
 }
 
 export interface MapViewOptions {
@@ -286,7 +301,7 @@ export { DEFAULT_WRAP_CH, DEFAULT_MAX_LINES, SOFT_SAFETY_MAX_LINES, SOFT_SAFETY_
 
 /**
  * Measure pill dimensions; optionally reserve fold chrome end-cap and task lead.
- * Multi-line: wrapCh default 32; maxLines omit/null = full body (soft safety only).
+ * Multi-line wraps at wrapCh. The border follows the measured line, not that wrap width.
  */
 
 /**
@@ -319,6 +334,7 @@ export function pillSize(label: string, opts: PillSizeOptions = {}): PillSize {
     wrapCh: opts.wrapCh ?? DEFAULT_WRAP_CH,
     maxLines: opts.maxLines,
     bodyExpanded: opts.bodyExpanded,
+    fontSize: opts.fontSize,
     reserveFold: opts.reserveFold,
     reserveTask: opts.reserveTask,
     foldSlot: FOLD_SLOT,
@@ -330,7 +346,7 @@ export function pillSize(label: string, opts: PillSizeOptions = {}): PillSize {
 function nodePillOpts(
   n: OutlineNode,
   nodeLayout?: Record<string, MapPoint>,
-  defaults?: { wrapCh?: number; maxLines?: number | null },
+  defaults?: { wrapCh?: number; maxLines?: number | null; fontSize?: number },
 ): PillSizeOptions {
   const lay = n.id && nodeLayout ? nodeLayout[n.id] : undefined;
   const maxLines =
@@ -345,6 +361,7 @@ function nodePillOpts(
     wrapCh: lay?.wrapCh ?? defaults?.wrapCh ?? DEFAULT_WRAP_CH,
     maxLines,
     bodyExpanded: !!lay?.bodyExpanded,
+    fontSize: lay?.fontSize ?? defaults?.fontSize,
   };
 }
 
@@ -410,13 +427,15 @@ function multiLineText(
   centreY: number,
   _textW: number,
   richLines?: CaptionStyleRun[][],
+  fontPx = DEFAULT_FONT_PX,
 ): string {
   const n = Math.max(1, lines.length);
-  const blockH = n * LINE_H;
-  const top = centreY - blockH / 2 + LINE_H * 0.75;
+  const box = lineBox(fontPx);
+  const blockH = n * box;
+  const top = centreY - blockH / 2 + box * 0.75;
   const tspans = lines
     .map((line, i) => {
-      const dy = i === 0 ? 0 : LINE_H;
+      const dy = i === 0 ? 0 : box;
       const runs = richLines?.[i];
       if (runs && runs.length) {
         const inner = runs
@@ -432,7 +451,7 @@ function multiLineText(
       return `<tspan x="${textX}" dy="${dy}">${show}</tspan>`;
     })
     .join('');
-  return `<text class="map-label" x="${textX}" y="${top}" text-anchor="middle">${tspans}</text>`;
+  return `<text class="map-label" x="${textX}" y="${top}" text-anchor="middle" font-size="${fontPx}" font-weight="400" font-family="${LABEL_FONT_FAMILY}">${tspans}</text>`;
 }
 
 /**
@@ -450,7 +469,7 @@ export function autoPackPositions(
   const gapY = opts.gapY ?? 14;
   const gapX = opts.gapX ?? 56;
   const margin = opts.margin ?? 40;
-  const defaults = { wrapCh: opts.wrapCh, maxLines: opts.maxLines };
+  const defaults = { wrapCh: opts.wrapCh, maxLines: opts.maxLines, fontSize: opts.fontSize };
   const nodeLayout = opts.nodeLayout;
 
   const visible: { n: OutlineNode; depth: number }[] = [];
@@ -851,6 +870,7 @@ export function createMapView(
         wrapCh: pos.wrapCh ?? defaults.wrapCh,
         maxLines: pos.maxLines,
         bodyExpanded: !!pos.bodyExpanded,
+        fontSize: resolveFontPx(pos.fontSize, layout.fontSize, doc.frontmatter?.fontSize),
       });
       const r = pillWorldRect(pos.x, pos.y, size.w, size.h);
       rects.push(r);
@@ -1290,6 +1310,7 @@ export function createMapView(
       const packed = autoPackPositions(doc, {
         isNodeCollapsed: (id) => isCollapsed(doc, id),
         nodeLayout: prior,
+        fontSize: resolveFontPx(undefined, layout.fontSize, doc.frontmatter?.fontSize),
       });
       const merged: Record<string, MapPoint> = {};
       for (const [id, pos] of Object.entries(packed.nodes)) {
@@ -1300,6 +1321,7 @@ export function createMapView(
           wrapCh: prev?.wrapCh,
           maxLines: prev?.maxLines,
           bodyExpanded: prev?.bodyExpanded,
+          fontSize: prev?.fontSize,
         };
       }
       layout.nodes = merged;
@@ -1492,6 +1514,7 @@ export function createMapView(
       showMore: boolean;
       showLess: boolean;
       bodyExpanded: boolean;
+      fontPx: number;
     };
     const nodes: NodePaint[] = [];
 
@@ -1508,6 +1531,7 @@ export function createMapView(
         wrapCh: pos.wrapCh,
         maxLines: pos.maxLines,
         bodyExpanded: !!pos.bodyExpanded,
+        fontSize: resolveFontPx(pos.fontSize, layout.fontSize, doc.frontmatter?.fontSize),
       });
       const cue = isCue(n);
       const thread = resolveThread(n);
@@ -1532,6 +1556,7 @@ export function createMapView(
         showMore: size.showMore,
         showLess: size.showLess,
         bodyExpanded: size.bodyExpanded,
+        fontPx: size.fontPx,
       });
 
       if (foldable && !col) {
@@ -1546,6 +1571,7 @@ export function createMapView(
             wrapCh: cpos.wrapCh,
             maxLines: cpos.maxLines,
             bodyExpanded: !!cpos.bodyExpanded,
+            fontSize: resolveFontPx(cpos.fontSize, layout.fontSize, doc.frontmatter?.fontSize),
           });
           edges.push({
             d: connectorPath(pos.x, pos.y, size.w, cpos.x, cpos.y, cs.w),
@@ -1582,6 +1608,7 @@ export function createMapView(
           showMore,
           showLess,
           bodyExpanded,
+          fontPx,
         }) => {
           const x = pos.x - w / 2;
           const y = pos.y - h / 2;
@@ -1642,7 +1669,7 @@ export function createMapView(
       <rect class="map-pill" x="${x}" y="${y}" width="${w}" height="${h}" rx="18" ry="18"/>
       ${taskChrome}
       ${globe}
-      ${multiLineText(lines, textX, textCentreY, textW, richLines)}
+      ${multiLineText(lines, textX, textCentreY, textW, richLines, fontPx)}
       ${moreChrome}
       ${threadChip}
       ${marker}
@@ -1835,6 +1862,8 @@ export function createMapView(
     let firstDownAt = 0;
     let secondDownAt = 0;
     let pinchScaleLive = false;
+    /** Pinch dropped to one finger. One-finger pan stays off until none remain. */
+    let singlePanLocked = false;
     let gestureActive = false;
     let gestureK0 = 1;
     let wheelSettle = 0;
@@ -1902,6 +1931,11 @@ export function createMapView(
         return false;
       }
       const capped = capSpeed(vel.vx, vel.vy);
+      const content = contentUnion();
+      const vp = hostViewport();
+      if (content && flingClearsContent(capped.vx, capped.vy, cam, content, vp)) {
+        return false;
+      }
       let vx = capped.vx;
       let vy = capped.vy;
       let prev = now;
@@ -1990,6 +2024,7 @@ export function createMapView(
       pointers.clear();
       pinch = null;
       pan = null;
+      singlePanLocked = false;
       mode = 'idle';
       endPanGuard();
       if (!swallow) swallowClick = false;
@@ -2005,8 +2040,17 @@ export function createMapView(
           applyGestureCam(pinchFrame(pinch, ds[0], ds[1]));
           pinchScaleLive = pinch.scaleLive;
         } else if (mode === 'pan' && pan && ds.length === 1) {
-          applyGestureCam(panFrame(pan, ds[0]));
-        } else if (mode === 'pending' && ds.length === 1) {
+          const next = panFrame(pan, ds[0]);
+          const content = contentUnion();
+          const vp = hostViewport();
+          if (
+            content &&
+            translationClearsContent(next.x - cam.x, next.y - cam.y, cam, content, vp)
+          ) {
+            return;
+          }
+          applyGestureCam(next);
+        } else if (mode === 'pending' && ds.length === 1 && !singlePanLocked) {
           const p = ds[0];
           const moved = Math.hypot(p.x - p.sx, p.y - p.sy);
           if (moved > slopPx(p.type)) startPan(p);
@@ -2188,17 +2232,26 @@ export function createMapView(
         if (p.role === 'spare') p.role = 'driver';
       }
       const ds = drivers();
-      if (mode === 'pinch' && ds.length >= 2) {
+      const wasPinch = mode === 'pinch';
+      const wasPan = mode === 'pan';
+      const lift = afterLift(mode, ds.length, singlePanLocked);
+      mode = lift.mode;
+      singlePanLocked = lift.singlePanLocked;
+      if (lift.action === 'retarget-pinch') {
         startPinch(ds[0], ds[1]);
         return;
       }
-      if (ds.length === 1 && (mode === 'pinch' || mode === 'pan')) {
+      if (lift.action === 'hold') {
+        samples = [];
+        pan = null;
+        return;
+      }
+      if (lift.action === 'retarget-pan') {
         startPan(ds[0]);
         return;
       }
       if (ds.length === 0) {
-        const wasPinch = mode === 'pinch';
-        const wasPan = mode === 'pan';
+        const skipFling = lift.skipFling;
         const moved = Math.hypot(had.x - had.sx, had.y - had.sy);
         const now = performance.now();
         mode = 'idle';
@@ -2236,7 +2289,7 @@ export function createMapView(
           clearTouchSelect();
           lastTap = { t: now, x: had.x, y: had.y };
           settleCam();
-        } else if (!maybeInertia(had.type)) {
+        } else if (skipFling || !maybeInertia(had.type)) {
           springBack();
         }
         samples = [];
