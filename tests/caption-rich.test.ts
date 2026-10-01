@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   captionToHtml,
   captionLinks,
+  captionWithoutLinks,
   isAllowedCaptionUrl,
   parseHopTarget,
 } from '../src/captionRich.js';
@@ -105,6 +106,12 @@ describe('captionToHtml', () => {
     expect(captionLinks('[Open](?doc=../iso27001/iso27001.md)')).toEqual([
       { label: 'Open', href: '?doc=../iso27001/iso27001.md', hopId: null },
     ]);
+  });
+
+  it('drops markdown links from map pill text and keeps the caption', () => {
+    expect(
+      captionWithoutLinks('Index · this map · [Open](?doc=../demos-index/demos-index.md)'),
+    ).toBe('Index · this map ·');
   });
 });
 

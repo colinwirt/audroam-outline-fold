@@ -5,7 +5,7 @@ collapsedMarker: "(+)"
   - ⚠️ FICTION / STUDY ONLY · demo boards · no live secrets · no real org findings <id:banner>
   - 🚀 Start here <kind:feature> <id:start>
     - 🗺️ Index · this map · [Open](?doc=../demos-index/demos-index.md) <id:start-index>
-    - 🖥️ Viewer · pass ?doc= (+ optional &layout=) · [Open](../viewer/) <id:start-viewer>
+    - 🖥️ Viewer · pass ?doc= (+ optional &layout=) <id:start-viewer>
     - 🪐 Solar System · dual view + layout sidecar · [Open](?doc=../solar-system/solar-system.md&layout=../solar-system/solar-system.layout.json) <id:start-solar>
     - ☕ Cafe ops · real demo seal · [Open](?doc=../outline-demo.md) <id:start-cafe>
   - 🛣️ Field / asset maps · transport-style boards (streetlamps · potholes) <kind:globe> <id:field>

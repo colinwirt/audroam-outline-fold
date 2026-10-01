@@ -274,6 +274,21 @@ export function tinyHtmlToSafeHtml(segment: string): string {
  */
 export type CaptionLink = { label: string; href: string; hopId: string | null };
 
+/** Map pill text: same caption with markdown links and bare URLs removed. */
+export function captionWithoutLinks(title: string): string {
+  const parts: string[] = [];
+  for (const t of tokenize(normalizeCaptionBreaks(title))) {
+    if (t.kind === 'text') parts.push(t.value);
+    else if (t.kind === 'img') parts.push(t.alt);
+  }
+  return parts
+    .join('')
+    .split('\n')
+    .map((line) => line.replace(/[ \t]{2,}/g, ' ').trim())
+    .join('\n')
+    .replace(/^\n+|\n+$/g, '');
+}
+
 /** Markdown and bare https links that captionToHtml would turn into anchors. */
 export function captionLinks(title: string): CaptionLink[] {
   const out: CaptionLink[] = [];

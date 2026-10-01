@@ -8,7 +8,7 @@
  * Scrapbook (0.2.8+): multi-line wrap, task lead SVG, text click ≠ fold; label text selectable (0.2.10); pan clears selection (0.2.11); keyboard only when Map focused (0.2.12); rich caption breaks+HTML + focus-on-click + camera follow/clamp (0.2.13); proportion follow + cameraRecentre + edit ensure (0.2.14); focusId is-focused ring (0.2.15); single stable focus owner = host tabindex=0 + aria-activedescendant, keydown on host (0.2.16).
  * Sealed nodes: omitted until unlocked (no gray stubs) — caller filters doc if needed.
  */
-import { captionLinks } from './captionRich.js';
+import { captionLinks, captionWithoutLinks } from './captionRich.js';
 import {
   toggleFold,
   isCollapsed,
@@ -466,7 +466,7 @@ export function autoPackPositions(
   const positions: Record<string, MapPoint> = {};
 
   function layoutSubtree(n: OutlineNode, left: number, top: number): number {
-    const label = displayCaption(n.title);
+    const label = captionWithoutLinks(displayCaption(n.title));
     const { w, h } = pillSize(label, nodePillOpts(n, nodeLayout, defaults));
     const x = left + w / 2;
     const kids =
@@ -504,7 +504,7 @@ export function autoPackPositions(
   for (const { n } of visible) {
     const pos = positions[n.id!];
     if (!pos) continue;
-    const label = displayCaption(n.title);
+    const label = captionWithoutLinks(displayCaption(n.title));
     const { w, h } = pillSize(label, nodePillOpts(n, nodeLayout, defaults));
     maxX = Math.max(maxX, pos.x + w / 2);
     maxY = Math.max(maxY, pos.y + h / 2);
@@ -843,7 +843,7 @@ export function createMapView(
     function walk(n: OutlineNode): void {
       if (!n.id || !layout.nodes?.[n.id]) return;
       const pos = layout.nodes[n.id]!;
-      const label = displayCaption(n.title);
+      const label = captionWithoutLinks(displayCaption(n.title));
       const foldable = hasKids(n);
       const size = pillSize(label, {
         reserveFold: foldable,
@@ -1141,6 +1141,15 @@ export function createMapView(
    * after a node/canvas click. Only called from user gestures inside the map
    * (never from paint alone), so it cannot steal focus from an editor.
    */
+  function dismissLinkPop(): void {
+    const pop = host.querySelector('.map-link-pop') as HTMLElement | null;
+    if (!pop || pop.dataset.closing === '1') return;
+    pop.dataset.closing = '1';
+    pop.style.transition = 'opacity 180ms ease';
+    pop.style.opacity = '0';
+    window.setTimeout(() => pop.remove(), 180);
+  }
+
   function showLinkPop(anchor: Element, title: string): void {
     host.querySelector('.map-link-pop')?.remove();
     const links = captionLinks(title);
@@ -1161,6 +1170,7 @@ export function createMapView(
       'display:flex',
       'flex-direction:column',
       'gap:6px',
+      'opacity:1',
     ].join(';');
     for (const link of links) {
       const a = document.createElement('a');
@@ -1488,7 +1498,7 @@ export function createMapView(
     function walk(n: OutlineNode): void {
       if (!n.id) return;
       const pos = layout.nodes![n.id] || { x: 100, y: 100 };
-      const label = displayCaption(n.title);
+      const label = captionWithoutLinks(displayCaption(n.title));
       const foldable = hasKids(n);
       const col = foldable && isCollapsed(doc, n.id);
       const taskParsed = resolveTask(n);
@@ -1528,7 +1538,7 @@ export function createMapView(
         for (const c of n.children!) {
           if (!c.id) continue;
           const cpos = layout.nodes![c.id] || { x: pos.x + 200, y: pos.y };
-          const clabel = displayCaption(c.title);
+          const clabel = captionWithoutLinks(displayCaption(c.title));
           const cTask = resolveTask(c);
           const cs = pillSize(clabel, {
             reserveFold: hasKids(c),
@@ -1606,7 +1616,7 @@ export function createMapView(
             task != null
               ? taskGlyphSvg(task, x + taskLead / 2, textCentreY)
               : '';
-          const tip = truncated || fullText !== label ? fullText : n.title;
+          const tip = fullText || label;
           const bodyAction = showMore ? 'more' : showLess ? 'less' : '';
           const moreChrome = bodyAction
             ? `<g class="map-body-more-hit" data-body-action="${bodyAction}" transform="translate(${textX} ${y + h - 8})" cursor="pointer">
@@ -1944,6 +1954,7 @@ export function createMapView(
     }
 
     function startPan(p: Pt): void {
+      dismissLinkPop();
       clearTouchSelect();
       pan = anchorPan(cam, p);
       pinch = null;
@@ -2041,6 +2052,7 @@ export function createMapView(
     host.addEventListener('pointerdown', (e) => {
       if (!isActive()) return;
       const target = e.target as Element | null;
+      if (!target?.closest?.('.map-link-hit, .map-link-pop')) dismissLinkPop();
       const onLabel = !!target?.closest?.('.map-label');
       const type = e.pointerType || 'mouse';
       const barrel = type === 'pen' && (e.buttons & 2) !== 0;

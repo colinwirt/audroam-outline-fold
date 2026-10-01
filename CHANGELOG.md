@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.20 — 2026-10-01
+
+### Map caption links
+- A pill with a markdown or https link shows a globe. The popup uses the link caption when there is one.
+- The pill text leaves the markdown link out.
+- The popup fades when you pan or tap away.
+- Demos index no longer links the empty shared viewer.
+
 ## 0.2.16 — 2026-09-29
 
 ### Map keyboard: single stable focus owner (regression fix, 0.2.12–0.2.15)
