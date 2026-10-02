@@ -1,5 +1,6 @@
 import { parseEncBody } from './sealed.js';
 import type {
+  NodeLayout,
   OutlineFrontmatter,
   OutlineNode,
   SealedPayload,
@@ -10,6 +11,11 @@ const PAYLOAD_FENCES = new Set(['payloads', 'sealed', 'enc']);
 
 export type PayloadMap = Record<string, SealedPayload>;
 
+/** Layout trailer keyed by node id or, when the line has no id, by 1-based position. */
+export type LayoutMap = Record<string, NodeLayout>;
+
+const KEY_LINE = /^([A-Za-z0-9][A-Za-z0-9_-]*):\s*$/;
+
 /**
  * Peel trailing `--- payloads ---` / `--- sealed ---` / `--- enc ---` … `---`
  * and trailing YAML `---` … `---` from the outline body (tail first).
@@ -19,14 +25,32 @@ export function peelTrailingSections(body: string): {
   outline: string;
   trailingFm: OutlineFrontmatter;
   payloads: PayloadMap;
+  layouts: LayoutMap;
 } {
   let rest = body.replace(/\s+$/, '');
   const trailingFm: OutlineFrontmatter = {};
   let payloads: PayloadMap = {};
+  let layouts: LayoutMap = {};
 
   let peeled = true;
   while (peeled) {
     peeled = false;
+
+    const lay = rest.match(/\n---\s*layout\s*---\r?\n([\s\S]*?)\r?\n---\s*$/i);
+    if (lay) {
+      layouts = { ...layouts, ...parseLayoutMap(lay[1]!) };
+      rest = rest.slice(0, lay.index).replace(/\s+$/, '');
+      peeled = true;
+      continue;
+    }
+
+    const layBol = rest.match(/^---\s*layout\s*---\r?\n([\s\S]*?)\r?\n---\s*$/i);
+    if (layBol) {
+      layouts = { ...layouts, ...parseLayoutMap(layBol[1]!) };
+      rest = '';
+      peeled = true;
+      continue;
+    }
 
     const pay = rest.match(
       /\n---\s*(payloads|sealed|enc)\s*---\r?\n([\s\S]*?)\r?\n---\s*$/i,
@@ -60,7 +84,7 @@ export function peelTrailingSections(body: string): {
     }
   }
 
-  return { outline: rest, trailingFm, payloads };
+  return { outline: rest, trailingFm, payloads, layouts };
 }
 
 /**
@@ -83,7 +107,7 @@ export function parsePayloadMap(block: string): PayloadMap {
 
   for (const raw of block.split(/\r?\n/)) {
     if (!raw.trim() || raw.trim().startsWith('#')) continue;
-    const top = raw.match(/^([A-Za-z][A-Za-z0-9_-]*):\s*$/);
+    const top = raw.match(KEY_LINE);
     if (top) {
       flush();
       current = top[1]!;
@@ -94,7 +118,7 @@ export function parsePayloadMap(block: string): PayloadMap {
       fields[field[1]!.toLowerCase()] = unquote(field[2]!.trim());
       continue;
     }
-    const compact = raw.match(/^([A-Za-z][A-Za-z0-9_-]*):\s*(.+)$/);
+    const compact = raw.match(/^([A-Za-z0-9][A-Za-z0-9_-]*):\s*(.+)$/);
     if (compact) {
       flush();
       const sealed = parseEncBody(compact[2]!.trim());
@@ -116,6 +140,41 @@ function fieldsToSealed(fields: Record<string, string>): SealedPayload | null {
   if (fields.uri) sealed.uri = fields.uri;
   if (fields.alg) sealed.alg = fields.alg;
   return sealed;
+}
+
+/** `id:` / `12:` then `w: <px>`. */
+export function parseLayoutMap(block: string): LayoutMap {
+  const out: LayoutMap = {};
+  let current: string | null = null;
+  let width: number | undefined;
+
+  const flush = () => {
+    if (!current || width == null) {
+      current = null;
+      width = undefined;
+      return;
+    }
+    out[current] = { w: width };
+    current = null;
+    width = undefined;
+  };
+
+  for (const raw of block.split(/\r?\n/)) {
+    if (!raw.trim() || raw.trim().startsWith('#')) continue;
+    const top = raw.match(KEY_LINE);
+    if (top) {
+      flush();
+      current = top[1]!;
+      continue;
+    }
+    const field = raw.match(/^\s+w\s*:\s*(\d+(?:\.\d+)?)\s*$/i);
+    if (field && current) {
+      const n = Number(field[1]);
+      if (Number.isFinite(n) && n > 0) width = n;
+    }
+  }
+  flush();
+  return out;
 }
 
 function unquote(s: string): string {
@@ -180,6 +239,65 @@ export function mergeFrontmatter(
   if (tail.expandedMarker !== undefined)
     out.expandedMarker = tail.expandedMarker;
   return out;
+}
+
+/**
+ * Apply a layout trailer. An id key wins. A numeric key with no such id
+ * addresses that 1-based position and does not write an id onto the node.
+ */
+export function attachLayouts(nodes: OutlineNode[], layouts: LayoutMap): void {
+  const ids = new Set<string>();
+  const walkIds = (list: OutlineNode[]) => {
+    for (const n of list) {
+      if (n.id) ids.add(n.id);
+      if (n.children?.length) walkIds(n.children);
+    }
+  };
+  walkIds(nodes);
+
+  let pos = 0;
+  const walk = (list: OutlineNode[]) => {
+    for (const n of list) {
+      pos += 1;
+      if (n.id && layouts[n.id]) {
+        n.layout = { ...layouts[n.id] };
+      } else if (!n.id) {
+        const key = String(pos);
+        if (layouts[key] && !ids.has(key)) n.layout = { ...layouts[key] };
+      }
+      if (n.children?.length) walk(n.children);
+    }
+  };
+  walk(nodes);
+}
+
+export function collectLayouts(nodes: OutlineNode[]): LayoutMap {
+  const out: LayoutMap = {};
+  const walk = (list: OutlineNode[]) => {
+    for (const n of list) {
+      if (n.id && typeof n.layout?.w === 'number' && n.layout.w > 0) {
+        out[n.id] = { w: n.layout.w };
+      }
+      if (n.children?.length) walk(n.children);
+    }
+  };
+  walk(nodes);
+  return out;
+}
+
+export function formatLayoutBlock(layouts: LayoutMap): string {
+  const keys = Object.keys(layouts).sort();
+  if (keys.length === 0) return '';
+  const lines: string[] = ['--- layout ---'];
+  for (const id of keys) {
+    const w = layouts[id]?.w;
+    if (typeof w !== 'number' || !(w > 0)) continue;
+    lines.push(`${id}:`);
+    lines.push(`  w: ${Math.round(w)}`);
+  }
+  if (lines.length === 1) return '';
+  lines.push('---');
+  return lines.join('\n');
 }
 
 /** Attach trailer payloads onto nodes by id (trailer overwrites inline enc). */

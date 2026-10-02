@@ -264,6 +264,8 @@ export function wrapLines(
 
 export interface MeasurePillOpts {
   wrapCh?: number;
+  /** Caption column width in px. When set, lines wrap to this instead of wrapCh. */
+  widthPx?: number;
   /** Product clip; null = expanded / unlimited up to soft safety. */
   maxLines?: number | null;
   /** When true, measure as expanded (maxLines null) regardless of opts.maxLines. */
@@ -362,6 +364,209 @@ export function lineWidth(runs: CaptionStyleRun[], fontPx: number): number {
   return complete ? measured : lineAdvance(runs, px);
 }
 
+const MIN_COL_W = 96;
+
+/** Break styled characters so each line's painted width stays within maxW. */
+function wrapCharsToWidth(chars: StyledChar[], maxW: number, fontPx: number): StyledChar[][] {
+  const lines: StyledChar[][] = [];
+  let cur: StyledChar[] = [];
+  const widthOf = (cs: StyledChar[]) => (cs.length ? lineWidth(charsToRuns(cs), fontPx) : 0);
+  const push = (cs: StyledChar[]) => {
+    while (cs.length && cs[cs.length - 1]!.c === ' ') cs = cs.slice(0, -1);
+    lines.push(cs);
+  };
+  for (const ch of chars) {
+    if (ch.c === '\n') {
+      push(cur);
+      cur = [];
+      continue;
+    }
+    const next = cur.concat(ch);
+    if (cur.length > 0 && widthOf(next) > maxW) {
+      let breakAt = -1;
+      for (let i = cur.length - 1; i > 0; i--) {
+        if (cur[i]!.c === ' ') {
+          breakAt = i;
+          break;
+        }
+      }
+      if (breakAt > 0) {
+        push(cur.slice(0, breakAt));
+        cur = cur.slice(breakAt + 1);
+        while (cur.length && cur[0]!.c === ' ') cur = cur.slice(1);
+        if (ch.c !== ' ') cur = cur.concat(ch);
+      } else {
+        push(cur);
+        cur = ch.c === ' ' ? [] : [ch];
+      }
+    } else {
+      cur = next;
+    }
+  }
+  if (cur.length || lines.length === 0) push(cur);
+  return lines;
+}
+
+function paragraphRuns(label: string): CaptionStyleRun[][] {
+  const runs = captionStyleRuns(String(label ?? ''));
+  const paragraphs: CaptionStyleRun[][] = [[]];
+  for (const r of runs) {
+    const parts = r.text.split('\n');
+    for (let i = 0; i < parts.length; i++) {
+      if (i > 0) paragraphs.push([]);
+      const piece = parts[i] ?? '';
+      if (piece.length) {
+        paragraphs[paragraphs.length - 1]!.push({
+          text: piece,
+          bold: r.bold,
+          italic: r.italic,
+          code: r.code,
+        });
+      }
+    }
+  }
+  return paragraphs;
+}
+
+function plainLine(runs: CaptionStyleRun[]): string {
+  return runs.map((r) => r.text).join('');
+}
+
+function wordCount(text: string): number {
+  const parts = text.trim().split(/\s+/).filter(Boolean);
+  return parts.length;
+}
+
+/**
+ * Auto width only. Pull a leftover last word onto the line above when that
+ * costs little width, and widen a 2–4 line block when its last line is much
+ * shorter than the lines above it. Explicit line breaks stay separate.
+ */
+function widenToAvoidOrphan(
+  paraRuns: CaptionStyleRun[],
+  lines: CaptionStyleRun[][],
+  fontPx: number,
+): CaptionStyleRun[][] {
+  if (lines.length < 2) return lines;
+  const widths = lines.map((line) => lineWidth(line, fontPx));
+  const col = Math.max(...widths);
+  const lastW = widths[widths.length - 1] ?? 0;
+  const earlier = widths.slice(0, -1);
+  const avg = earlier.reduce((sum, w) => sum + w, 0) / earlier.length;
+  const lastText = plainLine(lines[lines.length - 1] ?? []);
+  const orphan = wordCount(lastText) === 1;
+  const fewLines = lines.length >= 2 && lines.length <= 4;
+  const unbalanced = fewLines && lastW < avg * 0.5;
+  const chars = runsToChars(paraRuns);
+  const full = lineWidth(charsToRuns(chars), fontPx);
+  const nearFull = full > col && full - col <= Math.max(64, col * 0.22);
+  if (!orphan && !unbalanced && !nearFull) return lines;
+  if (nearFull || (orphan && lines.length === 2 && full - col <= lastW + 24)) {
+    return [charsToRuns(chars)];
+  }
+  const cap = Math.min(full, orphan && !fewLines ? col + lastW + 16 : col * 1.4);
+  const scoreOf = (ls: CaptionStyleRun[][], ws: number[]) => {
+    if (ls.length <= 1) return 0;
+    const tail = ws[ws.length - 1] ?? 0;
+    const head = ws.slice(0, -1);
+    const mean = head.reduce((sum, w) => sum + w, 0) / head.length;
+    const lone = wordCount(plainLine(ls[ls.length - 1] ?? [])) === 1 ? 1000 : 0;
+    const short = tail < mean * 0.5 ? mean - tail : 0;
+    return ls.length * 20 + lone + short;
+  };
+  let best = lines;
+  let bestScore = scoreOf(lines, widths);
+  for (let w = Math.ceil(col + 8); w <= cap + 0.5; w += 8) {
+    const next = wrapCharsToWidth(chars, w, fontPx).map((part) => charsToRuns(part));
+    const nw = next.map((line) => lineWidth(line, fontPx));
+    const score = scoreOf(next, nw);
+    if (score < bestScore) {
+      best = next;
+      bestScore = score;
+    }
+  }
+  return best;
+}
+
+function balanceAutoWrap(
+  label: string,
+  wrapCh: number,
+  maxLines: number | null,
+  fontPx: number,
+): WrapResult {
+  const base = wrapLines(label, wrapCh, maxLines);
+  const paras = paragraphRuns(label);
+  const rich: CaptionStyleRun[][] = [];
+  let changed = false;
+  for (const para of paras) {
+    const plain = para.map((r) => r.text).join('');
+    if (!plain) {
+      rich.push([{ text: '', bold: false, italic: false, code: false }]);
+      continue;
+    }
+    const wrappedPara = wrapLines(plain, wrapCh, null).richLines;
+    const next = widenToAvoidOrphan(para, wrappedPara, fontPx);
+    if (next.length !== wrappedPara.length || next.some((line, i) => line !== wrappedPara[i])) {
+      changed = true;
+    }
+    for (const line of next) rich.push(line);
+  }
+  if (!changed) return base;
+
+  const totalLines = rich.length;
+  let cap: number;
+  if (maxLines == null || !Number.isFinite(maxLines)) cap = SOFT_SAFETY_MAX_LINES;
+  else cap = Math.min(SOFT_SAFETY_MAX_LINES, Math.max(1, Math.floor(maxLines)));
+  let richLines = rich;
+  let truncated = !!base.softSafetyHit;
+  if (rich.length > cap) {
+    truncated = true;
+    richLines = rich.slice(0, cap);
+  }
+  return {
+    lines: richLines.map((rs) => plainLine(rs)),
+    richLines,
+    truncated,
+    fullText: base.fullText,
+    softSafetyHit: base.softSafetyHit,
+    totalLines,
+  };
+}
+
+function wrapLinesToWidth(
+  text: string,
+  widthPx: number,
+  maxLines: number | null,
+  fontPx: number,
+): WrapResult {
+  const loose = wrapLines(text, 100000, null);
+  const inner = Math.max(48, widthPx - PILL_PAD_X * 2);
+  const rawRich: CaptionStyleRun[][] = [];
+  for (const line of loose.richLines) {
+    const parts = wrapCharsToWidth(runsToChars(line), inner, fontPx);
+    for (const part of parts) rawRich.push(charsToRuns(part));
+  }
+  if (rawRich.length === 0) rawRich.push([{ text: '', bold: false, italic: false, code: false }]);
+  const totalLines = rawRich.length;
+  let cap: number;
+  if (maxLines == null || !Number.isFinite(maxLines)) cap = SOFT_SAFETY_MAX_LINES;
+  else cap = Math.min(SOFT_SAFETY_MAX_LINES, Math.max(1, Math.floor(maxLines)));
+  let truncated = false;
+  let richLines = rawRich;
+  if (rawRich.length > cap) {
+    truncated = true;
+    richLines = rawRich.slice(0, cap);
+  }
+  return {
+    lines: richLines.map((rs) => rs.map((r) => r.text).join('')),
+    richLines,
+    truncated,
+    fullText: loose.fullText,
+    softSafetyHit: loose.softSafetyHit,
+    totalLines,
+  };
+}
+
 export function measurePill(
   label: string,
   opts: MeasurePillOpts = {},
@@ -375,9 +580,17 @@ export function measurePill(
   const foldSlot = opts.reserveFold ? (opts.foldSlot ?? 34) : 0;
   const taskLead = opts.reserveTask ? (opts.taskLead ?? TASK_LEAD) : 0;
   const fontPx = clampFontPx(opts.fontSize);
-  const wrapped = wrapLines(label, wrapCh, effectiveMaxLines);
+  const widthPx =
+    typeof opts.widthPx === 'number' && opts.widthPx > 0
+      ? Math.max(MIN_COL_W, opts.widthPx)
+      : undefined;
+  const wrapped = widthPx
+    ? wrapLinesToWidth(label, widthPx, effectiveMaxLines, fontPx)
+    : balanceAutoWrap(label, wrapCh, effectiveMaxLines, fontPx);
   const widest = wrapped.richLines.reduce((max, line) => Math.max(max, lineWidth(line, fontPx)), 0);
-  const textW = Math.max(MIN_TEXT_W, Math.round(widest + PILL_PAD_X * 2));
+  const textW = widthPx
+    ? Math.round(widthPx)
+    : Math.max(MIN_TEXT_W, Math.round(widest + PILL_PAD_X * 2));
   const lineCount = Math.max(1, wrapped.lines.length);
   const box = lineBox(fontPx);
 

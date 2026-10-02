@@ -85,6 +85,7 @@ import {
   type CamState,
   type WorldRect,
 } from './mapCamera.js';
+import { assignPersistentId, indexOutline, nodeMapKey } from './nodeAddress.js';
 import { toggleTask, shouldFireAction } from './task.js';
 
 export interface MapPoint {
@@ -97,6 +98,8 @@ export interface MapPoint {
   bodyExpanded?: boolean;
   /** Label size in px. Overrides the layout file and outline frontmatter. */
   fontSize?: number;
+  /** Caption column width in px. Set by the right-edge handle. */
+  w?: number;
 }
 
 export interface MapViewBox {
@@ -144,6 +147,8 @@ export interface PillSizeOptions {
   maxLines?: number | null;
   bodyExpanded?: boolean;
   fontSize?: number;
+  /** Caption column width in px. Overrides wrapCh. */
+  widthPx?: number;
 }
 
 export interface PillSize {
@@ -332,6 +337,7 @@ export function mapNodeClassNames(opts: {
 export function pillSize(label: string, opts: PillSizeOptions = {}): PillSize {
   const measured = measurePill(label, {
     wrapCh: opts.wrapCh ?? DEFAULT_WRAP_CH,
+    widthPx: opts.widthPx,
     maxLines: opts.maxLines,
     bodyExpanded: opts.bodyExpanded,
     fontSize: opts.fontSize,
@@ -347,18 +353,23 @@ function nodePillOpts(
   n: OutlineNode,
   nodeLayout?: Record<string, MapPoint>,
   defaults?: { wrapCh?: number; maxLines?: number | null; fontSize?: number },
+  key?: string,
 ): PillSizeOptions {
-  const lay = n.id && nodeLayout ? nodeLayout[n.id] : undefined;
+  const lay =
+    (key && nodeLayout ? nodeLayout[key] : undefined) ||
+    (n.id && nodeLayout ? nodeLayout[n.id] : undefined);
   const maxLines =
     lay?.maxLines !== undefined
       ? lay.maxLines
       : defaults?.maxLines !== undefined
         ? defaults.maxLines
         : undefined;
+  const widthPx = lay?.w ?? n.layout?.w;
   return {
     reserveFold: hasKids(n),
     reserveTask: !!resolveTask(n),
     wrapCh: lay?.wrapCh ?? defaults?.wrapCh ?? DEFAULT_WRAP_CH,
+    widthPx: typeof widthPx === 'number' && widthPx > 0 ? widthPx : undefined,
     maxLines,
     bodyExpanded: !!lay?.bodyExpanded,
     fontSize: lay?.fontSize ?? defaults?.fontSize,
@@ -472,11 +483,12 @@ export function autoPackPositions(
   const defaults = { wrapCh: opts.wrapCh, maxLines: opts.maxLines, fontSize: opts.fontSize };
   const nodeLayout = opts.nodeLayout;
 
+  const order = indexOutline(doc.nodes || []);
   const visible: { n: OutlineNode; depth: number }[] = [];
   function walkVis(n: OutlineNode, depth: number): void {
-    if (!n?.id) return;
+    if (!n) return;
     visible.push({ n, depth });
-    if (hasKids(n) && !isNodeCollapsed(n.id)) {
+    if (hasKids(n) && !(n.id && isNodeCollapsed(n.id))) {
       for (const c of n.children!) walkVis(c, depth + 1);
     }
   }
@@ -485,35 +497,36 @@ export function autoPackPositions(
   const positions: Record<string, MapPoint> = {};
 
   function layoutSubtree(n: OutlineNode, left: number, top: number): number {
+    const key = nodeMapKey(n, order.get(n) || 0);
     const label = captionWithoutLinks(displayCaption(n.title));
-    const { w, h } = pillSize(label, nodePillOpts(n, nodeLayout, defaults));
+    const { w, h } = pillSize(label, nodePillOpts(n, nodeLayout, defaults, key));
     const x = left + w / 2;
     const kids =
-      hasKids(n) && !isNodeCollapsed(n.id!)
-        ? n.children!.filter((c) => c?.id)
+      hasKids(n) && !(n.id && isNodeCollapsed(n.id))
+        ? n.children || []
         : [];
 
     if (kids.length === 0) {
-      positions[n.id!] = { x, y: top + h / 2 };
+      positions[key] = { x, y: top + h / 2, w: n.layout?.w };
       return h;
     }
 
     const kidLeft = left + w + gapX;
     let y = top;
     for (let i = 0; i < kids.length; i++) {
-      const ch = layoutSubtree(kids[i], kidLeft, y);
+      const ch = layoutSubtree(kids[i]!, kidLeft, y);
       y += ch;
       if (i < kids.length - 1) y += gapY;
     }
     const stackH = y - top;
-    positions[n.id!] = { x, y: top + stackH / 2 };
+    positions[key] = { x, y: top + stackH / 2, w: n.layout?.w };
     return Math.max(stackH, h);
   }
 
   let top = margin;
-  const roots = (doc.nodes || []).filter((r) => r?.id);
+  const roots = doc.nodes || [];
   for (let i = 0; i < roots.length; i++) {
-    const h = layoutSubtree(roots[i], margin, top);
+    const h = layoutSubtree(roots[i]!, margin, top);
     top += h;
     if (i < roots.length - 1) top += gapY * 2;
   }
@@ -521,10 +534,10 @@ export function autoPackPositions(
   let maxX = margin;
   let maxY = margin;
   for (const { n } of visible) {
-    const pos = positions[n.id!];
+    const pos = positions[nodeMapKey(n, order.get(n) || 0)];
     if (!pos) continue;
     const label = captionWithoutLinks(displayCaption(n.title));
-    const { w, h } = pillSize(label, nodePillOpts(n, nodeLayout, defaults));
+    const { w, h } = pillSize(label, nodePillOpts(n, nodeLayout, defaults, nodeMapKey(n, order.get(n) || 0)));
     maxX = Math.max(maxX, pos.x + w / 2);
     maxY = Math.max(maxY, pos.y + h / 2);
   }
@@ -822,6 +835,8 @@ export function createMapView(
   const CAM_MIN = 0.35;
   const CAM_MAX = 3.5;
   const cam = { x: 0, y: 0, k: 1 };
+  /** Pill whose right edge is under the pointer, or being pulled. */
+  let widthHotKey: string | null = null;
   const ANIM_MS = 280;
   /** User pan/wheel wins until next follow trigger. */
   let userCamGesture = false;
@@ -859,23 +874,26 @@ export function createMapView(
     const rects: WorldRect[] = [];
     const byId = new Map<string, WorldRect>();
     const defaults = { wrapCh: DEFAULT_WRAP_CH, maxLines: DEFAULT_MAX_LINES };
+    const order = indexOutline(doc.nodes);
     function walk(n: OutlineNode): void {
-      if (!n.id || !layout.nodes?.[n.id]) return;
-      const pos = layout.nodes[n.id]!;
+      const key = nodeMapKey(n, order.get(n) || 0);
+      if (!layout.nodes?.[key]) return;
+      const pos = layout.nodes[key]!;
       const label = captionWithoutLinks(displayCaption(n.title));
       const foldable = hasKids(n);
       const size = pillSize(label, {
         reserveFold: foldable,
         reserveTask: !!resolveTask(n),
         wrapCh: pos.wrapCh ?? defaults.wrapCh,
+        widthPx: pos.w,
         maxLines: pos.maxLines,
         bodyExpanded: !!pos.bodyExpanded,
         fontSize: resolveFontPx(pos.fontSize, layout.fontSize, doc.frontmatter?.fontSize),
       });
       const r = pillWorldRect(pos.x, pos.y, size.w, size.h);
       rects.push(r);
-      byId.set(n.id, r);
-      if (foldable && !isCollapsed(doc, n.id)) {
+      byId.set(key, r);
+      if (foldable && !(n.id && isCollapsed(doc, n.id))) {
         for (const c of n.children || []) walk(c);
       }
     }
@@ -1322,6 +1340,7 @@ export function createMapView(
           maxLines: prev?.maxLines,
           bodyExpanded: prev?.bodyExpanded,
           fontSize: prev?.fontSize,
+          w: prev?.w ?? pos.w,
         };
       }
       layout.nodes = merged;
@@ -1495,6 +1514,7 @@ export function createMapView(
     const edges: { d: string }[] = [];
     type NodePaint = {
       n: OutlineNode;
+      key: string;
       pos: MapPoint;
       label: string;
       w: number;
@@ -1517,18 +1537,20 @@ export function createMapView(
       fontPx: number;
     };
     const nodes: NodePaint[] = [];
+    const order = indexOutline(doc.nodes);
 
     function walk(n: OutlineNode): void {
-      if (!n.id) return;
-      const pos = layout.nodes![n.id] || { x: 100, y: 100 };
+      const key = nodeMapKey(n, order.get(n) || 0);
+      const pos = layout.nodes![key] || { x: 100, y: 100 };
       const label = captionWithoutLinks(displayCaption(n.title));
       const foldable = hasKids(n);
-      const col = foldable && isCollapsed(doc, n.id);
+      const col = foldable && !!n.id && isCollapsed(doc, n.id);
       const taskParsed = resolveTask(n);
       const size = pillSize(label, {
         reserveFold: foldable,
         reserveTask: !!taskParsed,
         wrapCh: pos.wrapCh,
+        widthPx: pos.w ?? n.layout?.w,
         maxLines: pos.maxLines,
         bodyExpanded: !!pos.bodyExpanded,
         fontSize: resolveFontPx(pos.fontSize, layout.fontSize, doc.frontmatter?.fontSize),
@@ -1537,6 +1559,7 @@ export function createMapView(
       const thread = resolveThread(n);
       nodes.push({
         n,
+        key,
         pos,
         label,
         w: size.w,
@@ -1561,14 +1584,15 @@ export function createMapView(
 
       if (foldable && !col) {
         for (const c of n.children!) {
-          if (!c.id) continue;
-          const cpos = layout.nodes![c.id] || { x: pos.x + 200, y: pos.y };
+          const cKey = nodeMapKey(c, order.get(c) || 0);
+          const cpos = layout.nodes![cKey] || { x: pos.x + 200, y: pos.y };
           const clabel = captionWithoutLinks(displayCaption(c.title));
           const cTask = resolveTask(c);
           const cs = pillSize(clabel, {
             reserveFold: hasKids(c),
             reserveTask: !!cTask,
             wrapCh: cpos.wrapCh,
+            widthPx: cpos.w ?? c.layout?.w,
             maxLines: cpos.maxLines,
             bodyExpanded: !!cpos.bodyExpanded,
             fontSize: resolveFontPx(cpos.fontSize, layout.fontSize, doc.frontmatter?.fontSize),
@@ -1589,6 +1613,7 @@ export function createMapView(
       .map(
         ({
           n,
+          key,
           pos,
           label,
           w,
@@ -1616,7 +1641,8 @@ export function createMapView(
           const textX = textLeft + textW / 2;
           const affordance = showMore || showLess ? MORE_AFFORDANCE_H : 0;
           const textCentreY = pos.y - affordance / 2;
-          const focused = n.id === focusId;
+          const focused = key === focusId;
+          const widthHot = key === widthHotKey;
           const cls = mapNodeClassNames({
             foldable,
             collapsed: col,
@@ -1662,7 +1688,7 @@ export function createMapView(
             <text text-anchor="middle" y="3" fill="#C9A227" font-size="10">Thread</text>
           </g>`
             : '';
-          return `<g class="${cls}" id="${esc(mapNodeDomId(domPrefix, n.id!))}" data-id="${esc(n.id!)}"
+          return `<g class="${cls}" id="${esc(mapNodeDomId(domPrefix, key))}" data-id="${esc(key)}" data-text-w="${textW}"
       role="treeitem" aria-selected="${focused ? 'true' : 'false'}" aria-current="${focused ? 'true' : 'false'}" aria-label="${esc(label)}${task != null ? (task === 'done' ? ', task done' : ', task open') : ''}${foldable ? (col ? ', collapsed' : ', expanded') : ''}${showMore ? ', more text available' : ''}${showLess ? ', showing full body' : ''}"
       ${foldable ? `aria-expanded="${col ? 'false' : 'true'}"` : ''}>
       <title>${esc(tip)}</title>
@@ -1675,6 +1701,8 @@ export function createMapView(
       ${marker}
       ${taskHit}
       ${foldHit}
+      <line class="map-width-grip" x1="${x + w - 3}" y1="${y + 12}" x2="${x + w - 3}" y2="${y + h - 12}" stroke="#8ec8ff" stroke-width="2" stroke-linecap="round" pointer-events="none" opacity="${widthHot ? '1' : '0'}"/>
+      <rect class="map-width-hit" data-text-w="${textW}" x="${x + w - 14}" y="${y}" width="18" height="${h}" fill="transparent" cursor="ew-resize" pointer-events="${widthHot ? 'all' : 'none'}"/>
     </g>`;
         },
       )
@@ -1703,6 +1731,7 @@ export function createMapView(
         const id = g.getAttribute('data-id');
         if (!id) return;
         const t = e.target as Element | null;
+        if (t?.closest?.('.map-width-hit')) return;
         if (t?.closest?.('.map-fold-hit') || t?.closest?.('.map-fold-indicator')) {
           setFocusId(id);
           // Focus host/pill BEFORE paint so Map keys work (0.2.13).
@@ -1848,6 +1877,162 @@ export function createMapView(
     };
     const pointers = new Map<number, Tracked>();
     let mode: 'idle' | 'pending' | 'pan' | 'pinch' = 'idle';
+    let widthDrag: {
+      pointerId: number;
+      key: string;
+      startX: number;
+      startW: number;
+      moved: boolean;
+    } | null = null;
+
+    const MIN_COL = 120;
+    const MAX_COL = 1400;
+
+    function applyWidth(key: string, w: number): void {
+      const layout = getLayout();
+      if (!layout.nodes) layout.nodes = {};
+      const prev = layout.nodes[key] || { x: 100, y: 100 };
+      layout.nodes[key] = { ...prev, w: Math.max(MIN_COL, Math.min(MAX_COL, Math.round(w))) };
+    }
+
+    function findNodeByKey(key: string): OutlineNode | null {
+      const order = indexOutline(getDoc().nodes);
+      for (const [n, pos] of order) {
+        if (nodeMapKey(n, pos) === key) return n;
+      }
+      return null;
+    }
+
+    /** `w` null returns the pill to auto width and drops the layout entry. */
+    function persistColumn(key: string, w: number | null): void {
+      const doc = getDoc();
+      const node = findNodeByKey(key);
+      const layout = getLayout();
+      if (!node) return;
+      if (w == null) {
+        if (node.layout) {
+          delete node.layout.w;
+          if (node.layout.w == null) delete node.layout;
+        }
+        if (layout.nodes?.[key]) delete layout.nodes[key].w;
+      } else {
+        const id = assignPersistentId(doc, node);
+        const width = Math.max(MIN_COL, Math.min(MAX_COL, Math.round(w)));
+        node.layout = { ...(node.layout || {}), w: width };
+        if (!layout.nodes) layout.nodes = {};
+        const prev = layout.nodes[key] || layout.nodes[id] || { x: 100, y: 100 };
+        if (id !== key) delete layout.nodes[key];
+        layout.nodes[id] = { ...prev, w: width };
+        if (getFocusId() === key) setFocusId(id);
+      }
+      widthHotKey = null;
+      setDoc(doc);
+      onChange?.();
+    }
+
+    function commitWidth(): void {
+      if (!widthDrag) return;
+      const key = widthDrag.key;
+      const w = getLayout().nodes?.[key]?.w;
+      widthDrag = null;
+      if (typeof w !== 'number') return;
+      persistColumn(key, w);
+    }
+
+    function dismissWidthPop(): void {
+      host.querySelector('.map-width-pop')?.remove();
+    }
+
+    function showWidthPop(clientX: number, clientY: number, key: string, textW: number): void {
+      dismissWidthPop();
+      const pop = document.createElement('div');
+      pop.className = 'map-width-pop';
+      pop.setAttribute('role', 'menu');
+      pop.style.cssText = [
+        'position:absolute',
+        'z-index:6',
+        'display:flex',
+        'gap:6px',
+        'padding:6px',
+        'border-radius:10px',
+        'background:#13202b',
+        'border:1px solid #3d5a73',
+        'box-shadow:0 8px 24px rgba(0,0,0,.35)',
+      ].join(';');
+      const choices: { label: string; apply: () => void }[] = [
+        { label: 'Slim', apply: () => persistColumn(key, textW - 56) },
+        { label: 'Wider', apply: () => persistColumn(key, textW + 56) },
+        { label: 'Auto', apply: () => persistColumn(key, null) },
+      ];
+      for (const choice of choices) {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.textContent = choice.label;
+        btn.style.cssText = [
+          'min-height:36px',
+          'padding:0 12px',
+          'border-radius:8px',
+          'border:1px solid #3d5a73',
+          'background:#1b3044',
+          'color:#e7ecf1',
+          'font:14px/1 system-ui,sans-serif',
+          'cursor:pointer',
+        ].join(';');
+        btn.addEventListener('click', (ev) => {
+          ev.preventDefault();
+          ev.stopPropagation();
+          pop.remove();
+          choice.apply();
+        });
+        pop.appendChild(btn);
+      }
+      const hostStyle = getComputedStyle(host);
+      if (hostStyle.position === 'static') host.style.position = 'relative';
+      host.appendChild(pop);
+      const hr = host.getBoundingClientRect();
+      pop.style.left = `${Math.max(8, clientX - hr.left - 20)}px`;
+      pop.style.top = `${Math.max(8, clientY - hr.top + 12)}px`;
+    }
+
+    let edgeArm: {
+      pointerId: number;
+      key: string;
+      startX: number;
+      startY: number;
+      startW: number;
+    } | null = null;
+
+    function rightEdgeKey(
+      clientX: number,
+      clientY: number,
+      slop: number,
+    ): { key: string; textW: number } | null {
+      let best: { key: string; textW: number } | null = null;
+      let bestDx = slop + 1;
+      host.querySelectorAll<SVGGElement>('.map-node').forEach((g) => {
+        const pill = g.querySelector('.map-pill');
+        if (!pill) return;
+        const r = pill.getBoundingClientRect();
+        if (clientY < r.top || clientY > r.bottom) return;
+        const dx = Math.abs(clientX - r.right);
+        if (dx > slop || dx >= bestDx) return;
+        const key = g.getAttribute('data-id') || '';
+        if (!key) return;
+        bestDx = dx;
+        best = { key, textW: Number(g.getAttribute('data-text-w')) || MIN_COL };
+      });
+      return best;
+    }
+
+    function showWidthHot(key: string | null): void {
+      if (widthHotKey === key) return;
+      widthHotKey = key;
+      host.querySelectorAll<SVGGElement>('.map-node').forEach((g) => {
+        const on = !!key && g.getAttribute('data-id') === key;
+        g.querySelector('.map-width-grip')?.setAttribute('opacity', on ? '1' : '0');
+        g.querySelector('.map-width-hit')?.setAttribute('pointer-events', on ? 'all' : 'none');
+      });
+    }
     let pinch: PinchAnchor | null = null;
     let pan: PanAnchor | null = null;
     let raf = 0;
@@ -2097,6 +2282,8 @@ export function createMapView(
     host.addEventListener('pointerdown', (e) => {
       if (!isActive()) return;
       const target = e.target as Element | null;
+      if (target?.closest?.('.map-width-pop')) return;
+      dismissWidthPop();
       if (!target?.closest?.('.map-link-hit, .map-link-pop')) dismissLinkPop();
       const onLabel = !!target?.closest?.('.map-label');
       const type = e.pointerType || 'mouse';
@@ -2104,6 +2291,39 @@ export function createMapView(
       if (e.button > 1) return;
       const coarse = window.matchMedia?.('(pointer: coarse)')?.matches ?? false;
       const finger = type === 'touch' || (coarse && type === 'mouse' && e.button === 0);
+      const onControl = !!target?.closest?.(
+        '.map-fold-hit, .map-fold-indicator, .map-task-hit, .map-task-glyph, .map-body-more-hit, .map-thread-hit, .map-link-hit',
+      );
+      const edge = onControl ? null : rightEdgeKey(e.clientX, e.clientY, finger ? 28 : 18);
+      if (!finger && edge && e.button === 0) {
+        setFocusId(edge.key);
+        focusMapForKeys();
+        showWidthHot(edge.key);
+        widthDrag = {
+          pointerId: e.pointerId,
+          key: edge.key,
+          startX: e.clientX,
+          startW: edge.textW,
+          moved: false,
+        };
+        onChange?.();
+        e.preventDefault();
+        try {
+          host.setPointerCapture(e.pointerId);
+        } catch {
+          /* capture is optional */
+        }
+        return;
+      }
+      if (finger && edge) {
+        edgeArm = {
+          pointerId: e.pointerId,
+          key: edge.key,
+          startX: e.clientX,
+          startY: e.clientY,
+          startW: edge.textW,
+        };
+      }
       if (type === 'mouse' && performance.now() - lastFingerDown < 700) return;
       if (!finger && (type === 'mouse' || type === 'pen') && onLabel && !barrel && e.button !== 1) return;
       if (finger) {
@@ -2134,7 +2354,7 @@ export function createMapView(
       const role: Tracked['role'] = pointers.size >= 2 ? 'spare' : 'driver';
       const nodeEl = (target as Element | null)?.closest?.('.map-node');
       const control = (target as Element | null)?.closest?.(
-        '.map-fold-hit, .map-fold-indicator, .map-task-hit, .map-task-glyph, .map-body-more-hit, .map-thread-hit, .map-link-hit',
+        '.map-fold-hit, .map-fold-indicator, .map-task-hit, .map-task-glyph, .map-body-more-hit, .map-thread-hit, .map-link-hit, .map-width-hit',
       );
       const selectId =
         finger && nodeEl && !control ? nodeEl.getAttribute('data-id') || '' : '';
@@ -2197,6 +2417,47 @@ export function createMapView(
     host.addEventListener(
       'pointermove',
       (e) => {
+        if (widthDrag && e.pointerId === widthDrag.pointerId) {
+          e.preventDefault();
+          widthDrag.moved = true;
+          const dx = (e.clientX - widthDrag.startX) / (cam.k || 1);
+          showWidthHot(widthDrag.key);
+          applyWidth(widthDrag.key, widthDrag.startW + dx);
+          paint();
+          return;
+        }
+        if (edgeArm && e.pointerId === edgeArm.pointerId) {
+          const dx = e.clientX - edgeArm.startX;
+          const dy = e.clientY - edgeArm.startY;
+          if (Math.hypot(dx, dy) > 10 && Math.abs(dx) > Math.abs(dy) * 1.2) {
+            const arm = edgeArm;
+            edgeArm = null;
+            pointers.delete(e.pointerId);
+            mode = 'idle';
+            pan = null;
+            clearLongPress();
+            clearTouchSelect();
+            showWidthHot(arm.key);
+            widthDrag = {
+              pointerId: e.pointerId,
+              key: arm.key,
+              startX: arm.startX,
+              startW: arm.startW,
+              moved: true,
+            };
+            applyWidth(arm.key, arm.startW + dx / (cam.k || 1));
+            paint();
+            return;
+          }
+        }
+        if (
+          !widthDrag &&
+          !edgeArm &&
+          (e.pointerType === 'mouse' || e.pointerType === '') &&
+          e.buttons === 0
+        ) {
+          showWidthHot(rightEdgeKey(e.clientX, e.clientY, 18)?.key ?? null);
+        }
         const p = pointers.get(e.pointerId);
         if (!p) return;
         const pt = localPt(e);
@@ -2216,6 +2477,28 @@ export function createMapView(
     );
 
     const endPointer = (e: PointerEvent): void => {
+      if (widthDrag && e.pointerId === widthDrag.pointerId) {
+        const drag = widthDrag;
+        widthDrag = null;
+        if (!drag.moved) {
+          swallowClick = true;
+          showWidthPop(e.clientX, e.clientY, drag.key, drag.startW);
+          return;
+        }
+        widthDrag = drag;
+        commitWidth();
+        paint();
+        return;
+      }
+      if (edgeArm?.pointerId === e.pointerId) {
+        const arm = edgeArm;
+        edgeArm = null;
+        const moved = Math.hypot(e.clientX - arm.startX, e.clientY - arm.startY);
+        if (moved < 10) {
+          swallowClick = true;
+          showWidthPop(e.clientX, e.clientY, arm.key, arm.startW);
+        }
+      }
       const had = pointers.get(e.pointerId);
       pointers.delete(e.pointerId);
       if (!had || had.role === 'spare') {
@@ -2297,6 +2580,9 @@ export function createMapView(
       }
     };
     host.addEventListener('pointerup', endPointer, { signal });
+    host.addEventListener('pointerleave', () => {
+      if (!widthDrag) showWidthHot(null);
+    }, { signal });
     host.addEventListener('pointercancel', (e) => {
       endPointer(e);
       if (pointers.size === 0) resetPointers(swallowClick);

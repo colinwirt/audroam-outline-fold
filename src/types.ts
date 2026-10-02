@@ -61,6 +61,18 @@ export interface OutlineNode {
   action?: string;
   /** Thread / deep-link ref from `<thread:…>` — host navigates on chip click. */
   thread?: string;
+  /**
+   * Layout stored in the outline text (`--- layout ---`), keyed by this node's id.
+   * `w` is the caption column width in px. Absent until a custom width (or other
+   * payload) needs a persistent id on the outline line.
+   */
+  layout?: NodeLayout;
+}
+
+/** Per-node layout authored in the outline text, not the map sidecar. */
+export interface NodeLayout {
+  /** Caption column width in px. The map wraps the pill to this width. */
+  w?: number;
 }
 
 export interface OutlineFrontmatter {

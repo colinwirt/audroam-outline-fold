@@ -3,6 +3,7 @@ export type {
   FoldState,
   NodeFlag,
   NodeKind,
+  NodeLayout,
   OutlineFoldDoc,
   OutlineFrontmatter,
   OutlineNode,
@@ -50,9 +51,21 @@ export {
   parsePayloadMap,
   formatPayloadsBlock,
   collectPayloads,
+  attachLayouts,
   attachPayloads,
+  collectLayouts,
+  formatLayoutBlock,
+  parseLayoutMap,
   mergeFrontmatter,
+  type LayoutMap,
 } from './payloads.js';
+
+export {
+  assignPersistentId,
+  indexOutline,
+  linkPayloadNodes,
+  nodeMapKey,
+} from './nodeAddress.js';
 
 export type {
   ValidationSeverity,

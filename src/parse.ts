@@ -1,4 +1,5 @@
 import {
+  attachLayouts,
   attachPayloads,
   mergeFrontmatter,
   peelTrailingSections,
@@ -17,7 +18,7 @@ import type {
 
 const DEFAULT_COLLAPSED = '(+)';
 
-const ID_PREFIXED = /^<id:([A-Za-z][A-Za-z0-9_-]*)>\s*/;
+const ID_PREFIXED = /^<id:([A-Za-z0-9][A-Za-z0-9_-]*)>\s*/;
 const KIND_SPAN =
   /^<(?:kind:)?(doc|ticket|globe|db|feature|form|bug|risk|lock|encrypted|system-link|pending-approve)>\s*/i;
 const FLAG_SPAN =
@@ -25,7 +26,7 @@ const FLAG_SPAN =
 /** `<enc:kid=…;alg=…;ct=…>` — body may not contain `>`. */
 const ENC_SPAN = /^<enc:([^>]+)>\s*/i;
 
-const ID_TRAILING = /\s*<id:([A-Za-z][A-Za-z0-9_-]*)>\s*$/;
+const ID_TRAILING = /\s*<id:([A-Za-z0-9][A-Za-z0-9_-]*)>\s*$/;
 const KIND_TRAILING =
   /\s*<(?:kind:)?(doc|ticket|globe|db|feature|form|bug|risk|lock|encrypted|system-link|pending-approve)>\s*$/i;
 const FLAG_TRAILING =
@@ -462,6 +463,8 @@ export function parse(text: string): OutlineFoldDoc {
 
   // Trailer payloads attach by id (overwrite any inline <enc:>).
   attachPayloads(roots, peeled.payloads);
+  // Layout keys are ids, or a 1-based position when the line has no id.
+  attachLayouts(roots, peeled.layouts);
 
   return {
     frontmatter,

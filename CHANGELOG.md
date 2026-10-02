@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+### Map pill width
+- Each pill has a handle on its right edge. Dragging it sets the caption column width and wraps the text to that width.
+- The width is stored in the outline text as a `--- layout ---` block (`id:` / `w:`), not in a sidecar file.
+- An id is written on the outline line only when a layout width or sealed payload needs a stable key. Until then a node is addressed by its 1-based position, and that integer is not added to the caption.
+- Auto ids are plain integers (`<id:3>`). Existing word ids still parse.
+- Auto width widens a little when the last line is one leftover word, or much shorter than the two, three, or four lines above it. A line break stays its own line.
+- A tap on the right edge opens Slim, Wider, and Auto. Wider adds a small step. Auto clears the stored width. A drag still sets the width directly.
+
 ## 0.2.20 — 2026-10-01
 
 ### Map caption links

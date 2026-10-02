@@ -555,6 +555,7 @@ kbd {
   stroke: var(--accent);
   stroke-width: 2.5;
 }
+.preview-pane .map-width-hit { cursor: ew-resize; }
 .preview-pane .map-label {
   fill: var(--text);
   font-family: var(--font);

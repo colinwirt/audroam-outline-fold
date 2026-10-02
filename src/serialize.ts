@@ -1,4 +1,5 @@
-import { collectPayloads, formatPayloadsBlock } from './payloads.js';
+import { linkPayloadNodes } from './nodeAddress.js';
+import { collectLayouts, collectPayloads, formatLayoutBlock, formatPayloadsBlock } from './payloads.js';
 import type { OutlineFoldDoc, OutlineNode, TaskState } from './types.js';
 
 const DEFAULT_COLLAPSED = '(+)';
@@ -59,6 +60,7 @@ function serializeNode(
 }
 
 export function serialize(doc: OutlineFoldDoc): string {
+  linkPayloadNodes(doc);
   const lines: string[] = ['---'];
   const mode = doc.fold.mode;
   const ids = doc.fold.ids.join(', ');
@@ -85,6 +87,10 @@ export function serialize(doc: OutlineFoldDoc): string {
   const block = formatPayloadsBlock(payloads);
   if (block) {
     lines.push('', block);
+  }
+  const layoutBlock = formatLayoutBlock(collectLayouts(doc.nodes));
+  if (layoutBlock) {
+    lines.push('', layoutBlock);
   }
   lines.push('');
   return lines.join('\n');
