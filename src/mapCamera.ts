@@ -312,9 +312,11 @@ export function camToFrameRects(
 }
 
 /**
- * Gentle ensure-visible: minimum pan (and modest zoom-out if needed) so `rect`
- * sits inside the viewport with padding. Does not centre unless required.
- * No-op when visible fraction ≥ keep threshold (default 0.6).
+ * Gentle ensure-visible: minimum pan (and zoom-out if needed) so `rect`
+ * sits inside the viewport with padding. A pill taller than the pan floor
+ * (0.35) may zoom further so its bottom controls stay on screen.
+ * Does not centre unless required.
+ * No-op when the pill fits and visible fraction ≥ keep threshold (default 0.6).
  */
 export function camToEnsureVisible(
   cam: CamState,
@@ -342,13 +344,14 @@ export function camToEnsureVisible(
     return { ...cam };
   }
 
-  let k = Math.max(minK, Math.min(maxK, cam.k || 1));
-  // Modest zoom-out if focus larger than padded viewport
+  let k = Math.min(maxK, cam.k || 1);
+  // Zoom out if the focus is larger than the padded viewport. The pan floor
+  // (minK) must not pin a tall pill so its bottom control stays clipped.
   const needW = focus.w + (2 * pad) / Math.max(k, 0.01);
   const needH = focus.h + (2 * pad) / Math.max(k, 0.01);
   const fit = Math.min(viewport.w / Math.max(1, needW), viewport.h / Math.max(1, needH));
   if (Number.isFinite(fit) && fit > 0 && fit < k) {
-    k = Math.max(minK, fit * 0.95);
+    k = Math.max(0.12, fit * 0.95);
   }
 
   let x = cam.x;
@@ -366,14 +369,19 @@ export function camToEnsureVisible(
   let dy = 0;
   if (s.left < pad) dx = pad - s.left;
   else if (s.right > viewport.w - pad) dx = viewport.w - pad - s.right;
-  if (s.top < pad) dy = pad - s.top;
-  else if (s.bottom > viewport.h - pad) dy = viewport.h - pad - s.bottom;
+  const topOut = s.top < pad;
+  const botOut = s.bottom > viewport.h - pad;
+  // A pill taller than the viewport cannot show both edges. Keep the bottom
+  // inside: that is where the body more/less control is drawn.
+  if (topOut && botOut) dy = viewport.h - pad - s.bottom;
+  else if (topOut) dy = pad - s.top;
+  else if (botOut) dy = viewport.h - pad - s.bottom;
 
   return clampCamToContent(
     { x: x + dx, y: y + dy, k },
     viewport,
     focus,
-    { paddingPx: pad, minK, maxK },
+    { paddingPx: pad, minK: Math.min(minK, k), maxK },
   );
 }
 

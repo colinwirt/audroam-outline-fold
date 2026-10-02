@@ -231,12 +231,21 @@ test.describe('react-live Map keyboard focus (0.2.16 gate)', () => {
     await expect(more).toHaveAttribute('data-body-action', 'more');
     // Playwright's locator.click treats this transformed SVG <g> as outside
     // the viewport. Hit the inner rect's screen box instead.
+    const hostBox = await host.boundingBox();
     const moreBox = await more.locator('rect').boundingBox();
+    expect(hostBox, 'map host has a box').not.toBeNull();
     expect(moreBox, 'more control has a box').not.toBeNull();
-    await page.mouse.click(
-      moreBox!.x + moreBox!.width / 2,
-      moreBox!.y + moreBox!.height / 2,
-    );
+    const x = moreBox!.x + moreBox!.width / 2;
+    const yTop = Math.max(moreBox!.y, hostBox!.y + 2);
+    const yBot = Math.min(moreBox!.y + moreBox!.height, hostBox!.y + hostBox!.height - 2);
+    expect(yBot, 'more control is inside the map').toBeGreaterThan(yTop);
+    const y = (yTop + yBot) / 2;
+    const hit = await page.evaluate(({ x, y }) => {
+      const el = document.elementFromPoint(x, y);
+      return el ? `${el.tagName}.${el.getAttribute('class') || ''}` : 'none';
+    }, { x, y });
+    expect(hit, `element at more control (${x}, ${y})`).toContain('map-body-more');
+    await page.mouse.click(x, y);
     await settle(page);
     await expect(
       host.locator('.map-node[data-id="staff-handbook"] .map-body-more-hit'),

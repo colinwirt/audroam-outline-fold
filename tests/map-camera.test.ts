@@ -6,6 +6,7 @@ import {
   followActionForFocus,
   followActionForExpand,
   visibleFractionOfRect,
+  worldRectToScreen,
   isRectComfortablyVisible,
   isRectIntersectingViewport,
   isRectFullyInvisible,
@@ -92,6 +93,14 @@ describe('follow proportion (0.2.14)', () => {
     const next = camToEnsureVisible(cam, vp, focus, { paddingPx: 40 });
     expect(next.k).toBeLessThan(cam.k);
     expect(visibleFractionOfRect(next, vp, focus)).toBeGreaterThan(0.9);
+  });
+
+  it('keeps the bottom of an oversized pill inside the viewport', () => {
+    const focus = pillWorldRect(200, 800, 120, 2200);
+    const cam = { x: 0, y: 0, k: 0.35 };
+    const next = camToEnsureVisible(cam, vp, focus, { paddingPx: 40, minK: 0.35 });
+    const s = worldRectToScreen(focus, next);
+    expect(s.bottom).toBeLessThanOrEqual(vp.h - 40 + 0.5);
   });
 
   it('no-ops when focus visible fraction ≥ keep (~0.6)', () => {
