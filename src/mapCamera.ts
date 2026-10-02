@@ -162,7 +162,14 @@ export function followActionForFocus(
     focus.w * cam.k <= viewport.w - pad * 2 &&
     focus.h * cam.k <= viewport.h - pad * 2;
   if (!fits) return 'ensure';
-  if (frac >= keep) return 'noop';
+  const screen = worldRectToScreen(focus, cam);
+  const inside =
+    screen.top >= pad &&
+    screen.left >= pad &&
+    screen.bottom <= viewport.h - pad &&
+    screen.right <= viewport.w - pad;
+  if (inside) return 'noop';
+  if (frac >= keep) return 'ensure';
   if (recentre && frac <= recentreAt) return 'recentre';
   return 'ensure';
 }
@@ -316,7 +323,7 @@ export function camToFrameRects(
  * sits inside the viewport with padding. A pill taller than the pan floor
  * (0.35) may zoom further so its bottom controls stay on screen.
  * Does not centre unless required.
- * No-op when the pill fits and visible fraction ≥ keep threshold (default 0.6).
+ * No-op when the pill already sits inside the padded viewport.
  */
 export function camToEnsureVisible(
   cam: CamState,
@@ -332,15 +339,21 @@ export function camToEnsureVisible(
     force?: boolean;
   } = {},
 ): CamState {
-  const keep = opts.keepFrac ?? DEFAULT_KEEP_VISIBLE_FRAC;
   const pad = opts.paddingPx ?? opts.insetPx ?? DEFAULT_CAM_PADDING_PX;
   const minK = opts.minK ?? 0.35;
   const maxK = opts.maxK ?? 3.5;
   const k0 = cam.k || 1;
+  const screenNow = worldRectToScreen(focus, cam);
   const fits =
     focus.w * k0 <= viewport.w - pad * 2 &&
     focus.h * k0 <= viewport.h - pad * 2;
-  if (!opts.force && fits && visibleFractionOfRect(cam, viewport, focus) >= keep) {
+  const inside =
+    fits &&
+    screenNow.top >= pad &&
+    screenNow.left >= pad &&
+    screenNow.bottom <= viewport.h - pad &&
+    screenNow.right <= viewport.w - pad;
+  if (!opts.force && inside) {
     return { ...cam };
   }
 
