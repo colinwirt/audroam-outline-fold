@@ -677,9 +677,29 @@ export function mapNodeKeepsTextSelection(
 }
 
 /**
+ * What a pointer-down does to the browser Selection before a pan.
+ * Label presses stay alone so drag-select and double-click word select work.
+ * A double-click on empty canvas, or a drag that starts while text outside
+ * the map is selected, must preventDefault or the browser extends that
+ * selection and the pan never starts.
+ */
+export function mapBackgroundPanSelection(opts: {
+  onLabel: boolean;
+  onNode: boolean;
+  clickDetail: number;
+  selectionOutside: boolean;
+}): 'ignore' | 'clear' | 'prevent-and-clear' {
+  if (opts.onLabel) return 'ignore';
+  if (!opts.onNode && (opts.clickDetail >= 2 || opts.selectionOutside)) {
+    return 'prevent-and-clear';
+  }
+  return 'clear';
+}
+
+/**
  * Clear the browser Selection when a map pan/pinch gesture starts so
  * background drag does not paint a huge text range. Label drag-select
- * never hits this path (`pointerdown` on `.map-node` returns early).
+ * never hits this path (`pointerdown` on `.map-label` returns early).
  */
 export function clearSelectionForMapPan(
   sel: { removeAllRanges: () => void } | null | undefined,
@@ -2091,6 +2111,7 @@ export function createMapView(
     let gestureActive = false;
     let gestureK0 = 1;
     let wheelSettle = 0;
+    let docUserSelect = '';
 
     function localPt(e: PointerEvent): Pt {
       const rect = host.getBoundingClientRect();
@@ -2105,6 +2126,10 @@ export function createMapView(
       host.classList.add('panning');
       host.style.userSelect = 'none';
       host.style.setProperty('-webkit-user-select', 'none');
+      if (typeof document !== 'undefined') {
+        docUserSelect = document.documentElement.style.userSelect;
+        document.documentElement.style.userSelect = 'none';
+      }
       clearSelectionForMapPan(
         typeof window !== 'undefined' && window.getSelection
           ? window.getSelection()
@@ -2116,6 +2141,9 @@ export function createMapView(
       host.classList.remove('panning');
       host.style.userSelect = '';
       host.style.removeProperty('-webkit-user-select');
+      if (typeof document !== 'undefined') {
+        document.documentElement.style.userSelect = docUserSelect;
+      }
     }
 
     function applyGestureCam(next: GestureCam): void {
@@ -2365,6 +2393,19 @@ export function createMapView(
       }
       if (type === 'mouse' && performance.now() - lastFingerDown < 700) return;
       if (!finger && (type === 'mouse' || type === 'pen') && onLabel && !barrel && e.button !== 1) return;
+      const sel =
+        typeof window !== 'undefined' && window.getSelection ? window.getSelection() : null;
+      const anchor = sel?.anchorNode ?? null;
+      const selectionOutside =
+        !!sel && sel.rangeCount > 0 && !(anchor && host.contains(anchor));
+      const selAction = mapBackgroundPanSelection({
+        onLabel,
+        onNode: !!target?.closest?.('.map-node'),
+        clickDetail: e.detail || 0,
+        selectionOutside,
+      });
+      if (selAction === 'prevent-and-clear') e.preventDefault();
+      if (selAction !== 'ignore') clearSelectionForMapPan(sel);
       if (finger) {
         lastFingerDown = performance.now();
         e.preventDefault();

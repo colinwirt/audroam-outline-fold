@@ -84,6 +84,7 @@ export {
   FOLD_SLOT,
   resolveMapFocus,
   mapNodeKeepsTextSelection,
+  mapBackgroundPanSelection,
   clearSelectionForMapPan,
   mapPaintShouldRestoreFocus,
   mapKeyboardShouldHandle,

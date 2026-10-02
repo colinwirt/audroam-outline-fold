@@ -24,6 +24,7 @@ import {
   autoPackPositions,
   toggleFold,
   mapNodeKeepsTextSelection,
+  mapBackgroundPanSelection,
   clearSelectionForMapPan,
   mapPaintShouldRestoreFocus,
   mapKeyboardShouldHandle,
@@ -258,6 +259,52 @@ describe('mapNodeKeepsTextSelection (label copy)', () => {
         focusNode: outside,
       }),
     ).toBe(false);
+  });
+});
+
+describe('mapBackgroundPanSelection', () => {
+  it('leaves a label press alone so drag-select still works', () => {
+    expect(
+      mapBackgroundPanSelection({
+        onLabel: true,
+        onNode: true,
+        clickDetail: 2,
+        selectionOutside: true,
+      }),
+    ).toBe('ignore');
+  });
+
+  it('prevents a double-click on empty canvas from selecting text outside the map', () => {
+    expect(
+      mapBackgroundPanSelection({
+        onLabel: false,
+        onNode: false,
+        clickDetail: 2,
+        selectionOutside: false,
+      }),
+    ).toBe('prevent-and-clear');
+  });
+
+  it('prevents a canvas pan from extending a selection that already sits outside the map', () => {
+    expect(
+      mapBackgroundPanSelection({
+        onLabel: false,
+        onNode: false,
+        clickDetail: 1,
+        selectionOutside: true,
+      }),
+    ).toBe('prevent-and-clear');
+  });
+
+  it('clears selection on a node click without swallowing the click', () => {
+    expect(
+      mapBackgroundPanSelection({
+        onLabel: false,
+        onNode: true,
+        clickDetail: 1,
+        selectionOutside: true,
+      }),
+    ).toBe('clear');
   });
 });
 
