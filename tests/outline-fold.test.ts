@@ -497,23 +497,23 @@ fold+:
 
 describe('<t: pnid> note links', () => {
   it('keeps several note links off the caption and writes them back before the id', () => {
-    const text = `- ELS visit <t: 49033> <t:34> <id:aud-ov-1>\n  - Tired eyes <id:aud-ov-2> <t: 12>\n`;
+    const text = `- Parent row <t: 101> <t:102> <id:aud-ov-1>\n  - Child row <id:aud-ov-2> <t: 202>\n`;
     const doc = parse(text);
-    expect(doc.nodes[0].title).toBe('ELS visit');
-    expect(doc.nodes[0].noteLinks).toEqual(['49033', '34']);
+    expect(doc.nodes[0].title).toBe('Parent row');
+    expect(doc.nodes[0].noteLinks).toEqual(['101', '102']);
     expect(doc.nodes[0].id).toBe('aud-ov-1');
-    expect(doc.nodes[0].children?.[0].title).toBe('Tired eyes');
-    expect(doc.nodes[0].children?.[0].noteLinks).toEqual(['12']);
+    expect(doc.nodes[0].children?.[0].title).toBe('Child row');
+    expect(doc.nodes[0].children?.[0].noteLinks).toEqual(['202']);
     const out = serialize(doc);
-    expect(out).toContain('- ELS visit <t: 49033> <t: 34> <id:aud-ov-1>');
-    expect(out).toContain('- Tired eyes <t: 12> <id:aud-ov-2>');
+    expect(out).toContain('- Parent row <t: 101> <t: 102> <id:aud-ov-1>');
+    expect(out).toContain('- Child row <t: 202> <id:aud-ov-2>');
     const html = toHtml(doc);
-    expect(html).toContain('data-note-link="49033"');
-    expect(html).toContain('>t:34<');
+    expect(html).toContain('data-note-link="101"');
+    expect(html).toContain('>t:102<');
     expect(html).not.toContain('&lt;t:');
     const again = parse(out);
-    expect(again.nodes[0].noteLinks).toEqual(['49033', '34']);
-    expect(again.nodes[0].title).toBe('ELS visit');
+    expect(again.nodes[0].noteLinks).toEqual(['101', '102']);
+    expect(again.nodes[0].title).toBe('Parent row');
   });
 
   it('still round-trips <thread:…> separately from <t:>', () => {

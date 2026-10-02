@@ -62,7 +62,7 @@ export interface OutlineNode {
   /** Thread / deep-link ref from `<thread:…>` — host navigates on chip click. */
   thread?: string;
   /**
-   * Numeric note links from `<t: 49033>` (one or more).
+   * Numeric note links from `<t: 101>` (one or more).
    * Same tag the Audroam result-row outline uses. Distinct from `thread`.
    */
   noteLinks?: string[];

@@ -29,7 +29,7 @@ const ACTION_TAG = /<action:([^>]+)>/i;
 /** `<thread:pnid:…>` or `<thread:/path>` etc. */
 const THREAD_TAG = /<thread:([^>]+)>/i;
 
-/** Result-row note link `<t: 49033>`. */
+/** Result-row note link `<t: 101>`. */
 const NOTE_LINK_TAG = /<t:\s*(\d+)\s*>/gi;
 
 export function parseLeadingTask(title: string): ParsedTask | null {

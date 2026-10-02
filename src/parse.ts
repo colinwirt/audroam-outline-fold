@@ -38,7 +38,7 @@ const ACTION_TRAILING = /\s*<action:([^>]+)>\s*$/i;
 /** `<thread:pnid:…>` or `<thread:/path>` */
 const THREAD_SPAN = /^<thread:([^>]+)>\s*/i;
 const THREAD_TRAILING = /\s*<thread:([^>]+)>\s*$/i;
-/** Audroam result-row note link: `<t: 49033>` or `<t:49033>`. Digits only. */
+/** Audroam result-row note link: `<t: 101>` or `<t:101>`. Digits only. */
 const NOTE_LINK_SPAN = /^<t:\s*(\d+)\s*>\s*/i;
 const NOTE_LINK_TRAILING = /\s*<t:\s*(\d+)\s*>\s*$/i;
 const NOTE_LINK_ANY = /<t:\s*(\d+)\s*>/gi;
