@@ -679,9 +679,10 @@ export function mapNodeKeepsTextSelection(
 /**
  * What a pointer-down does to the browser Selection before a pan.
  * Label presses stay alone so drag-select and double-click word select work.
- * A double-click on empty canvas, or a drag that starts while text outside
- * the map is selected, must preventDefault or the browser extends that
- * selection and the pan never starts.
+ * Any other press on empty canvas must preventDefault. Otherwise the browser
+ * starts a drag-select and extends it on every pointermove, which repaints
+ * the whole map and the pan never stays smooth. A node click only clears,
+ * so the click still reaches the pill.
  */
 export function mapBackgroundPanSelection(opts: {
   onLabel: boolean;
@@ -690,9 +691,7 @@ export function mapBackgroundPanSelection(opts: {
   selectionOutside: boolean;
 }): 'ignore' | 'clear' | 'prevent-and-clear' {
   if (opts.onLabel) return 'ignore';
-  if (!opts.onNode && (opts.clickDetail >= 2 || opts.selectionOutside)) {
-    return 'prevent-and-clear';
-  }
+  if (!opts.onNode) return 'prevent-and-clear';
   return 'clear';
 }
 
@@ -987,8 +986,17 @@ export function createMapView(
     motionRaf = requestAnimationFrame(step);
   }
 
+  /** Undefined means dirty. Null means the outline has no visible pills. */
+  let contentUnionCache: ReturnType<typeof unionWorldRects> | undefined;
+
+  function invalidateContentUnion(): void {
+    contentUnionCache = undefined;
+  }
+
   function contentUnion() {
-    return unionWorldRects(collectVisiblePillRects().rects);
+    if (contentUnionCache !== undefined) return contentUnionCache;
+    contentUnionCache = unionWorldRects(collectVisiblePillRects().rects);
+    return contentUnionCache;
   }
 
   function hardCam(raw: { x: number; y: number; k: number }) {
@@ -1527,6 +1535,7 @@ export function createMapView(
   }
 
   function paint(): void {
+    invalidateContentUnion();
     // Boolean snapshot BEFORE the DOM rebuild (an element ref would be detached
     // afterwards). Never steal focus from the editor.
     const hadMapFocus =
@@ -2111,7 +2120,7 @@ export function createMapView(
     let gestureActive = false;
     let gestureK0 = 1;
     let wheelSettle = 0;
-    let docUserSelect = '';
+    let selectionGuardOn = false;
 
     function localPt(e: PointerEvent): Pt {
       const rect = host.getBoundingClientRect();
@@ -2122,28 +2131,34 @@ export function createMapView(
       return [...pointers.values()].filter((p) => p.role === 'driver');
     }
 
-    function beginPanGuard(): void {
-      host.classList.add('panning');
+    function armSelectionGuard(): void {
+      if (selectionGuardOn) return;
+      selectionGuardOn = true;
       host.style.userSelect = 'none';
       host.style.setProperty('-webkit-user-select', 'none');
-      if (typeof document !== 'undefined') {
-        docUserSelect = document.documentElement.style.userSelect;
-        document.documentElement.style.userSelect = 'none';
-      }
-      clearSelectionForMapPan(
+    }
+
+    function clearLiveSelection(): void {
+      const sel =
         typeof window !== 'undefined' && window.getSelection
           ? window.getSelection()
-          : null,
-      );
+          : null;
+      if (!sel || sel.rangeCount === 0 || sel.isCollapsed) return;
+      clearSelectionForMapPan(sel);
+    }
+
+    function beginPanGuard(): void {
+      host.classList.add('panning');
+      armSelectionGuard();
+      clearLiveSelection();
     }
 
     function endPanGuard(): void {
       host.classList.remove('panning');
+      if (!selectionGuardOn) return;
+      selectionGuardOn = false;
       host.style.userSelect = '';
       host.style.removeProperty('-webkit-user-select');
-      if (typeof document !== 'undefined') {
-        document.documentElement.style.userSelect = docUserSelect;
-      }
     }
 
     function applyGestureCam(next: GestureCam): void {
@@ -2397,7 +2412,7 @@ export function createMapView(
         typeof window !== 'undefined' && window.getSelection ? window.getSelection() : null;
       const anchor = sel?.anchorNode ?? null;
       const selectionOutside =
-        !!sel && sel.rangeCount > 0 && !(anchor && host.contains(anchor));
+        !!sel && sel.rangeCount > 0 && !sel.isCollapsed && !(anchor && host.contains(anchor));
       const selAction = mapBackgroundPanSelection({
         onLabel,
         onNode: !!target?.closest?.('.map-node'),
@@ -2405,7 +2420,12 @@ export function createMapView(
         selectionOutside,
       });
       if (selAction === 'prevent-and-clear') e.preventDefault();
-      if (selAction !== 'ignore') clearSelectionForMapPan(sel);
+      if (selAction !== 'ignore') {
+        // Before the browser's drag-select starts. Doing this only after the
+        // pan passes slop lets the highlight grow on every move.
+        armSelectionGuard();
+        if (sel && sel.rangeCount > 0 && !sel.isCollapsed) clearSelectionForMapPan(sel);
+      }
       if (finger) {
         lastFingerDown = performance.now();
         e.preventDefault();
@@ -2533,6 +2553,8 @@ export function createMapView(
         if (
           !widthDrag &&
           !edgeArm &&
+          pointers.size === 0 &&
+          mode === 'idle' &&
           (e.pointerType === 'mouse' || e.pointerType === '') &&
           e.buttons === 0
         ) {

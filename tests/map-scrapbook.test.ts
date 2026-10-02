@@ -285,6 +285,17 @@ describe('mapBackgroundPanSelection', () => {
     ).toBe('prevent-and-clear');
   });
 
+  it('prevents a normal canvas pan from drag-selecting map text', () => {
+    expect(
+      mapBackgroundPanSelection({
+        onLabel: false,
+        onNode: false,
+        clickDetail: 1,
+        selectionOutside: false,
+      }),
+    ).toBe('prevent-and-clear');
+  });
+
   it('prevents a canvas pan from extending a selection that already sits outside the map', () => {
     expect(
       mapBackgroundPanSelection({
