@@ -47,10 +47,11 @@ const btnZoomOut = document.getElementById('btnZoomOut');
 const btnResetView = document.getElementById('btnResetView');
 const buildMeta = document.getElementById('buildMeta');
 
-if (buildMeta) {
+function renderBuildMeta(version) {
+  if (!buildMeta) return;
   buildMeta.innerHTML =
     '<span><strong>Package</strong> <code>@audroam/outline-fold@' +
-    packageVersion +
+    version +
     '</code></span>' +
     '<span><strong>Viewer</strong> <code>' +
     viewerBuild +
@@ -58,6 +59,22 @@ if (buildMeta) {
     '<span><strong>Git</strong> <code>' +
     gitShort +
     '</code></span>';
+}
+
+renderBuildMeta(packageVersion);
+
+// Checked-in build-info is only a local fallback. Pages overwrites it with
+// the real version. A dev open reads package.json so the stamp cannot sit
+// on an old number such as 0.2.4.
+if (viewerBuild === 'dev') {
+  fetch(new URL('../../package.json', import.meta.url))
+    .then((res) => (res.ok ? res.json() : null))
+    .then((pkg) => {
+      if (pkg && typeof pkg.version === 'string' && pkg.version) {
+        renderBuildMeta(pkg.version);
+      }
+    })
+    .catch(() => {});
 }
 
 /** @type {import('../../dist/index.js').OutlineFoldDoc} */

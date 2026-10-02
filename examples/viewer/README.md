@@ -25,7 +25,7 @@ When JS loads, the chrome strip under the gold rule shows three build stamps:
 | **Viewer** | site-build id for `examples/_shared` + `examples/viewer` (written by `scripts/build-site.mjs`) |
 | **Git** | short SHA of the commit that built the site |
 
-`examples/viewer/build-info.js` is a local fallback; Pages overwrites it in `site/` at build time so the strip matches the deployed commit.
+`examples/viewer/build-info.js` is a local fallback (`Package` starts as `local`). A dev open then reads `package.json`. Pages overwrites that file in `site/` at build time so the strip matches the deployed commit.
 
 ### Force-fresh (bypass cache)
 
