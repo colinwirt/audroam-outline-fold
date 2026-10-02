@@ -3,7 +3,8 @@
  * World space = layout/auto-pack coords; screen = world * k + cam.
  *
  * Follow uses visible fraction of focus (not binary fully-off):
- *   ≥ keep (~0.6) → no-op
+ *   ≥ keep (~0.6) and the pill fits the viewport → no-op
+ *   pill taller or wider than the viewport → ensure (zoom out so the whole pill, including more/less, is on screen)
  *   below keep → ensure-visible (gentle)
  *   recentre when cameraRecentre on AND (expand kids hint OR fraction ≲ 0.25)
  */
@@ -156,6 +157,11 @@ export function followActionForFocus(
   const recentreAt = opts.recentreFrac ?? DEFAULT_RECENTRE_FRAC;
   const recentre = opts.recentre !== false;
   const frac = visibleFractionOfRect(cam, viewport, focus);
+  const pad = DEFAULT_CAM_PADDING_PX;
+  const fits =
+    focus.w * cam.k <= viewport.w - pad * 2 &&
+    focus.h * cam.k <= viewport.h - pad * 2;
+  if (!fits) return 'ensure';
   if (frac >= keep) return 'noop';
   if (recentre && frac <= recentreAt) return 'recentre';
   return 'ensure';
@@ -328,7 +334,11 @@ export function camToEnsureVisible(
   const pad = opts.paddingPx ?? opts.insetPx ?? DEFAULT_CAM_PADDING_PX;
   const minK = opts.minK ?? 0.35;
   const maxK = opts.maxK ?? 3.5;
-  if (!opts.force && visibleFractionOfRect(cam, viewport, focus) >= keep) {
+  const k0 = cam.k || 1;
+  const fits =
+    focus.w * k0 <= viewport.w - pad * 2 &&
+    focus.h * k0 <= viewport.h - pad * 2;
+  if (!opts.force && fits && visibleFractionOfRect(cam, viewport, focus) >= keep) {
     return { ...cam };
   }
 

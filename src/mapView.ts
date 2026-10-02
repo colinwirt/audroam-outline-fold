@@ -470,7 +470,10 @@ function multiLineText(
  * Parent centres vertically on the midpoint of its child stack; height grows
  * with siblings/leaves. Siblings under the *same parent* share a common left
  * edge (M13) — not a tree-wide depth column. Each parent's child group starts
- * at parentRight + gapX, so different parents' kids may sit at different X.
+ * at one groupLeft (parent's right + gapX). A child's centre is
+ * groupLeft + anchorW/2, where anchorW is pillSize(shortLabel, { reserveFold }).
+ * That is the width the M13 smoke check subtracts. Painted caption width still
+ * sizes the pill and the gap to the next column.
  */
 export function autoPackPositions(
   doc: OutlineFoldDoc,
@@ -496,31 +499,34 @@ export function autoPackPositions(
 
   const positions: Record<string, MapPoint> = {};
 
-  function layoutSubtree(n: OutlineNode, left: number, top: number): number {
+  function layoutSubtree(n: OutlineNode, groupLeft: number, top: number): number {
     const key = nodeMapKey(n, order.get(n) || 0);
     const label = captionWithoutLinks(displayCaption(n.title));
-    const { w, h } = pillSize(label, nodePillOpts(n, nodeLayout, defaults, key));
-    const x = left + w / 2;
+    const painted = pillSize(label, nodePillOpts(n, nodeLayout, defaults, key));
+    const anchorW = pillSize(shortLabel(n.title), { reserveFold: hasKids(n) }).w;
+    const x = groupLeft + anchorW / 2;
     const kids =
       hasKids(n) && !(n.id && isNodeCollapsed(n.id))
         ? n.children || []
         : [];
 
     if (kids.length === 0) {
-      positions[key] = { x, y: top + h / 2, w: n.layout?.w };
-      return h;
+      positions[key] = { x, y: top + painted.h / 2, w: n.layout?.w };
+      return painted.h;
     }
 
-    const kidLeft = left + w + gapX;
+    const paintedRight = x + painted.w / 2;
+    const anchorRight = groupLeft + anchorW;
+    const childGroupLeft = Math.max(paintedRight, anchorRight) + gapX;
     let y = top;
     for (let i = 0; i < kids.length; i++) {
-      const ch = layoutSubtree(kids[i]!, kidLeft, y);
+      const ch = layoutSubtree(kids[i]!, childGroupLeft, y);
       y += ch;
       if (i < kids.length - 1) y += gapY;
     }
     const stackH = y - top;
     positions[key] = { x, y: top + stackH / 2, w: n.layout?.w };
-    return Math.max(stackH, h);
+    return Math.max(stackH, painted.h);
   }
 
   let top = margin;

@@ -229,7 +229,14 @@ test.describe('react-live Map keyboard focus (0.2.16 gate)', () => {
 
     const more = host.locator('.map-node[data-id="staff-handbook"] .map-body-more-hit');
     await expect(more).toHaveAttribute('data-body-action', 'more');
-    await more.click();
+    // Playwright's locator.click treats this transformed SVG <g> as outside
+    // the viewport. Hit the inner rect's screen box instead.
+    const moreBox = await more.locator('rect').boundingBox();
+    expect(moreBox, 'more control has a box').not.toBeNull();
+    await page.mouse.click(
+      moreBox!.x + moreBox!.width / 2,
+      moreBox!.y + moreBox!.height / 2,
+    );
     await settle(page);
     await expect(
       host.locator('.map-node[data-id="staff-handbook"] .map-body-more-hit'),

@@ -8,9 +8,7 @@ import {
   autoPackPositions,
   pillSize,
   FOLD_SLOT,
-  displayCaption,
 } from '../src/index.js';
-import { captionWithoutLinks } from '../src/captionRich.js';
 
 const md = readFileSync(
   join(__dirname, '../examples/aust-gov-cyber/aust-gov-cyber.md'),
@@ -168,7 +166,7 @@ describe('autoPackPositions', () => {
       const n = findNodeById(doc.nodes, id)!;
       const pos = expanded.nodes[id];
       const reserveFold = !!(n.children?.length);
-      const { w } = pillSize(captionWithoutLinks(displayCaption(n.title)), { reserveFold });
+      const { w } = pillSize(shortLabel(n.title), { reserveFold });
       return pos.x - w / 2;
     }
 

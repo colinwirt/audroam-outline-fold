@@ -82,6 +82,18 @@ describe('visibleFractionOfRect', () => {
 describe('follow proportion (0.2.14)', () => {
   const vp = { w: 400, h: 300 };
 
+  it('ensures when the pill is taller than the viewport even if most of it shows', () => {
+    const focus = pillWorldRect(140, 240, 200, 480);
+    const cam = { x: 0, y: 0, k: 1 };
+    expect(visibleFractionOfRect(cam, vp, focus)).toBeGreaterThanOrEqual(
+      DEFAULT_KEEP_VISIBLE_FRAC,
+    );
+    expect(followActionForFocus(cam, vp, focus)).toBe('ensure');
+    const next = camToEnsureVisible(cam, vp, focus, { paddingPx: 40 });
+    expect(next.k).toBeLessThan(cam.k);
+    expect(visibleFractionOfRect(next, vp, focus)).toBeGreaterThan(0.9);
+  });
+
   it('no-ops when focus visible fraction ≥ keep (~0.6)', () => {
     const focus = pillWorldRect(200, 150, 80, 40);
     const cam = { x: 0, y: 0, k: 1 };
