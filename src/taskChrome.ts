@@ -29,6 +29,9 @@ const ACTION_TAG = /<action:([^>]+)>/i;
 /** `<thread:pnid:…>` or `<thread:/path>` etc. */
 const THREAD_TAG = /<thread:([^>]+)>/i;
 
+/** Result-row note link `<t: 49033>`. */
+const NOTE_LINK_TAG = /<t:\s*(\d+)\s*>/gi;
+
 export function parseLeadingTask(title: string): ParsedTask | null {
   const m = String(title).match(LEADING_TASK);
   if (!m) return null;
@@ -45,7 +48,7 @@ export function parseLeadingTask(title: string): ParsedTask | null {
 export function displayCaption(title: string): string {
   const task = parseLeadingTask(title);
   let s = task ? task.label : String(title);
-  s = s.replace(ACTION_TAG, '').replace(THREAD_TAG, '');
+  s = s.replace(ACTION_TAG, '').replace(THREAD_TAG, '').replace(NOTE_LINK_TAG, '');
   // Per-line trim of horizontal ws; keep \n intact for normalizeCaptionBreaks.
   s = s
     .split(/\n/)
@@ -92,4 +95,17 @@ export function resolveAction(node: OutlineNode): string | null {
 export function resolveThread(node: OutlineNode): string | null {
   if (node.thread) return node.thread;
   return parseThreadTag(node.title);
+}
+
+/** Numeric `<t: N>` links. Structured field wins; otherwise scan the title. */
+export function resolveNoteLinks(node: OutlineNode): string[] {
+  if (node.noteLinks && node.noteLinks.length) return [...node.noteLinks];
+  const ids: string[] = [];
+  const re = new RegExp(NOTE_LINK_TAG.source, 'gi');
+  let m: RegExpExecArray | null;
+  const title = String(node.title);
+  while ((m = re.exec(title)) !== null) {
+    if (!ids.includes(m[1])) ids.push(m[1]);
+  }
+  return ids;
 }

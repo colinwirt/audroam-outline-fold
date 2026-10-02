@@ -82,6 +82,13 @@ function renderNode(
       ? `<button type="button" class="${p}-thread" data-thread="${esc(node.thread)}" data-thread-node="${esc(node.id)}" data-testid="of-thread-${esc(node.id)}" tabindex="-1">Thread</button>`
       : '';
 
+  const noteChips = (node.noteLinks || [])
+    .map(
+      (pnid) =>
+        `<button type="button" class="${p}-note-link" data-note-link="${esc(pnid)}" data-note-node="${esc(node.id ?? '')}" data-testid="of-note-link-${esc(pnid)}" tabindex="-1">t:${esc(pnid)}</button>`,
+    )
+    .join('');
+
   const body = locked
     ? `<div class="${p}-locked-chrome" aria-hidden="true">•••• locked ••••</div>`
     : '';
@@ -96,7 +103,7 @@ function renderNode(
     : '';
 
   return `<li role="treeitem" class="${p}-node${collapsed ? ` ${p}-collapsed` : ''}${locked ? ` ${p}-locked` : ''}${node.task ? ` ${p}-has-task` : ''}" tabindex="-1" aria-level="${ariaLevel}"${ariaExpanded} ${dataAttrs}>
-  <div class="${p}-row">${foldBtn}${taskChrome}${icon}<span class="${p}-title">${captionToHtml(node.title)}</span>${threadChip}${unlockBtn}</div>
+  <div class="${p}-row">${foldBtn}${taskChrome}${icon}<span class="${p}-title">${captionToHtml(node.title)}</span>${threadChip}${noteChips}${unlockBtn}</div>
   ${body}${kids}
 </li>`;
 }

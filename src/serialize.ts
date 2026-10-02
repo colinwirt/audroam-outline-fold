@@ -19,13 +19,18 @@ function taskMarker(task: TaskState): string {
 
 /**
  * Caption-first trailing tags (v0.2 lean):
- * `[ ]? title <action:…>? <thread:…>? <kind:…>? <flag>* <id:…>? (+)?`
+ * `[ ]? title <action:…>? <thread:…>? <t: N>* <kind:…>? <flag>* <id:…>? (+)?`
  * Sealed material lives in the trailing `--- payloads ---` block, not on the line.
  */
 function formatTrailingSpans(node: OutlineNode): string {
   const parts: string[] = [];
   if (node.action) parts.push(`<action:${node.action}>`);
   if (node.thread) parts.push(`<thread:${node.thread}>`);
+  if (node.noteLinks) {
+    for (const id of node.noteLinks) {
+      if (/^\d+$/.test(id)) parts.push(`<t: ${id}>`);
+    }
+  }
   if (node.kind) parts.push(`<kind:${node.kind}>`);
   if (node.flags) {
     for (const f of node.flags) {

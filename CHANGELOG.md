@@ -9,6 +9,8 @@
 - Auto ids are plain integers (`<id:3>`). Existing word ids still parse.
 - Auto width widens a little when the last line is one leftover word, or much shorter than the two, three, or four lines above it. A line break stays its own line.
 - A tap on the right edge opens Slim, Wider, and Auto. Wider adds a small step. Auto clears the stored width. A drag still sets the width directly.
+- Sibling pills share the left edge of the painted caption. The stored x is still the pill centre.
+- Opening a map, and Reset view, pin that outline to the left of the panel. Fit still frames the whole diagram.
 
 ## 0.2.20 — 2026-10-01
 

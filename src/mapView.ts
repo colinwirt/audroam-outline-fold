@@ -59,6 +59,7 @@ import {
   resolveTask,
   resolveAction,
   resolveThread,
+  resolveNoteLinks,
   toggleTaskMarker,
   type TaskState,
   type TaskToggleEvent,
@@ -186,6 +187,8 @@ export interface MapViewOptions {
   onAction?: (ev: { id: string; action: string; node: OutlineNode }) => void;
   /** Optional: thread chip navigate (`<thread:…>`). */
   onThread?: (ev: { id: string; thread: string; node: OutlineNode }) => void;
+  /** Optional: `<t: N>` note-link chip. Host opens the note. */
+  onNoteLink?: (ev: { id: string; pnid: string; node: OutlineNode }) => void;
   /**
    * When true (default), expand/focus may recentre the group.
    * When false, only gentle ensure-visible runs (edit ensure still on).
@@ -470,10 +473,9 @@ function multiLineText(
  * Parent centres vertically on the midpoint of its child stack; height grows
  * with siblings/leaves. Siblings under the *same parent* share a common left
  * edge (M13) — not a tree-wide depth column. Each parent's child group starts
- * at one groupLeft (parent's right + gapX). A child's centre is
- * groupLeft + anchorW/2, where anchorW is pillSize(shortLabel, { reserveFold }).
- * That is the width the M13 smoke check subtracts. Painted caption width still
- * sizes the pill and the gap to the next column.
+ * at one groupLeft (parent's painted right + gapX). Stored x is the painted
+ * pill centre, so the left edge is groupLeft. The painted caption is
+ * captionWithoutLinks(displayCaption(title)), including fold and task chrome.
  */
 export function autoPackPositions(
   doc: OutlineFoldDoc,
@@ -503,8 +505,7 @@ export function autoPackPositions(
     const key = nodeMapKey(n, order.get(n) || 0);
     const label = captionWithoutLinks(displayCaption(n.title));
     const painted = pillSize(label, nodePillOpts(n, nodeLayout, defaults, key));
-    const anchorW = pillSize(shortLabel(n.title), { reserveFold: hasKids(n) }).w;
-    const x = groupLeft + anchorW / 2;
+    const x = groupLeft + painted.w / 2;
     const kids =
       hasKids(n) && !(n.id && isNodeCollapsed(n.id))
         ? n.children || []
@@ -515,9 +516,7 @@ export function autoPackPositions(
       return painted.h;
     }
 
-    const paintedRight = x + painted.w / 2;
-    const anchorRight = groupLeft + anchorW;
-    const childGroupLeft = Math.max(paintedRight, anchorRight) + gapX;
+    const childGroupLeft = groupLeft + painted.w + gapX;
     let y = top;
     for (let i = 0; i < kids.length; i++) {
       const ch = layoutSubtree(kids[i]!, childGroupLeft, y);
@@ -805,6 +804,7 @@ export function createMapView(
     onTaskToggle,
     onAction,
     onThread,
+    onNoteLink,
     cameraRecentre: cameraRecentreOpt = true,
     isEditing = () => false,
     getEditRegion,
@@ -1287,8 +1287,12 @@ export function createMapView(
     const h = Math.max(1, rect.height);
     const k = Math.min(w / vb.w, h / vb.h) * 0.92;
     cam.k = Math.max(CAM_MIN, Math.min(CAM_MAX, k || 1));
-    cam.x = (w - vb.w * cam.k) / 2;
-    cam.y = (h - vb.h * cam.k) / 2;
+    // Keep the outline's left edge on the left of the map. A centred viewBox
+    // hides the root once the tree is wider than the panel.
+    const pad = 16;
+    cam.x = pad;
+    const slackY = h - vb.h * cam.k;
+    cam.y = slackY >= pad * 2 ? slackY / 2 : pad;
     applyCam();
   }
 
@@ -1537,6 +1541,7 @@ export function createMapView(
       cue: boolean;
       task: TaskState | null;
       thread: string | null;
+      noteLinks: string[];
       showMore: boolean;
       showLess: boolean;
       bodyExpanded: boolean;
@@ -1563,6 +1568,7 @@ export function createMapView(
       });
       const cue = isCue(n);
       const thread = resolveThread(n);
+      const noteLinks = resolveNoteLinks(n);
       nodes.push({
         n,
         key,
@@ -1582,6 +1588,7 @@ export function createMapView(
         cue,
         task: taskParsed ?? null,
         thread,
+        noteLinks,
         showMore: size.showMore,
         showLess: size.showLess,
         bodyExpanded: size.bodyExpanded,
@@ -1636,6 +1643,7 @@ export function createMapView(
           cue,
           task,
           thread,
+          noteLinks,
           showMore,
           showLess,
           bodyExpanded,
@@ -1694,6 +1702,18 @@ export function createMapView(
             <text text-anchor="middle" y="3" fill="#C9A227" font-size="10">Thread</text>
           </g>`
             : '';
+          const noteChipY = y + h - (affordance ? affordance + 4 : 6);
+          const noteOrigin = thread ? textX + 78 : textX;
+          const noteChips = noteLinks
+            .map((pnid, i) => {
+              const chip = `t:${pnid}`;
+              const chipW = Math.max(44, 10 + chip.length * 6.5);
+              return `<g class="map-note-link-hit" data-note-link="${esc(pnid)}" transform="translate(${noteOrigin + i * (chipW + 6)} ${noteChipY})" cursor="pointer">
+            <rect x="${-chipW / 2}" y="-10" width="${chipW}" height="18" rx="9" fill="rgba(56,189,248,0.12)" stroke="#38bdf8" stroke-width="1"/>
+            <text text-anchor="middle" y="3" fill="#38bdf8" font-size="10">${esc(chip)}</text>
+          </g>`;
+            })
+            .join('');
           return `<g class="${cls}" id="${esc(mapNodeDomId(domPrefix, key))}" data-id="${esc(key)}" data-text-w="${textW}"
       role="treeitem" aria-selected="${focused ? 'true' : 'false'}" aria-current="${focused ? 'true' : 'false'}" aria-label="${esc(label)}${task != null ? (task === 'done' ? ', task done' : ', task open') : ''}${foldable ? (col ? ', collapsed' : ', expanded') : ''}${showMore ? ', more text available' : ''}${showLess ? ', showing full body' : ''}"
       ${foldable ? `aria-expanded="${col ? 'false' : 'true'}"` : ''}>
@@ -1704,6 +1724,7 @@ export function createMapView(
       ${multiLineText(lines, textX, textCentreY, textW, richLines, fontPx)}
       ${moreChrome}
       ${threadChip}
+      ${noteChips}
       ${marker}
       ${taskHit}
       ${foldHit}
@@ -1785,6 +1806,18 @@ export function createMapView(
         if (t?.closest?.('.map-link-hit')) {
           const n = findNode(getDoc().nodes, id);
           showLinkPop(t.closest('.map-link-hit') as Element, n?.title || '');
+          return;
+        }
+        if (t?.closest?.('.map-note-link-hit')) {
+          setFocusId(id);
+          focusMapForKeys();
+          userCamGesture = false;
+          pendingFollow = { kind: 'focus' };
+          const hit = t.closest('.map-note-link-hit') as Element;
+          const pnid = hit.getAttribute('data-note-link') || '';
+          const n = findNode(getDoc().nodes, id);
+          if (n && pnid) onNoteLink?.({ id, pnid, node: n });
+          onChange?.();
           return;
         }
         if (t?.closest?.('.map-thread-hit')) {
@@ -2298,7 +2331,7 @@ export function createMapView(
       const coarse = window.matchMedia?.('(pointer: coarse)')?.matches ?? false;
       const finger = type === 'touch' || (coarse && type === 'mouse' && e.button === 0);
       const onControl = !!target?.closest?.(
-        '.map-fold-hit, .map-fold-indicator, .map-task-hit, .map-task-glyph, .map-body-more-hit, .map-thread-hit, .map-link-hit',
+        '.map-fold-hit, .map-fold-indicator, .map-task-hit, .map-task-glyph, .map-body-more-hit, .map-thread-hit, .map-note-link-hit, .map-link-hit',
       );
       const edge = onControl ? null : rightEdgeKey(e.clientX, e.clientY, finger ? 28 : 18);
       if (!finger && edge && e.button === 0) {
@@ -2360,7 +2393,7 @@ export function createMapView(
       const role: Tracked['role'] = pointers.size >= 2 ? 'spare' : 'driver';
       const nodeEl = (target as Element | null)?.closest?.('.map-node');
       const control = (target as Element | null)?.closest?.(
-        '.map-fold-hit, .map-fold-indicator, .map-task-hit, .map-task-glyph, .map-body-more-hit, .map-thread-hit, .map-link-hit, .map-width-hit',
+        '.map-fold-hit, .map-fold-indicator, .map-task-hit, .map-task-glyph, .map-body-more-hit, .map-thread-hit, .map-note-link-hit, .map-link-hit, .map-width-hit',
       );
       const selectId =
         finger && nodeEl && !control ? nodeEl.getAttribute('data-id') || '' : '';

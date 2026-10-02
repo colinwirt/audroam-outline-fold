@@ -38,6 +38,10 @@ const ACTION_TRAILING = /\s*<action:([^>]+)>\s*$/i;
 /** `<thread:pnid:…>` or `<thread:/path>` */
 const THREAD_SPAN = /^<thread:([^>]+)>\s*/i;
 const THREAD_TRAILING = /\s*<thread:([^>]+)>\s*$/i;
+/** Audroam result-row note link: `<t: 49033>` or `<t:49033>`. Digits only. */
+const NOTE_LINK_SPAN = /^<t:\s*(\d+)\s*>\s*/i;
+const NOTE_LINK_TRAILING = /\s*<t:\s*(\d+)\s*>\s*$/i;
+const NOTE_LINK_ANY = /<t:\s*(\d+)\s*>/gi;
 /** Leading task checkbox marker — space required inside brackets for open. */
 const TASK_LEADING = /^\[([ xX\-])\]\s+/;
 
@@ -189,6 +193,7 @@ function parseTitleAndMeta(
   task?: TaskState;
   action?: string;
   thread?: string;
+  noteLinks?: string[];
 } {
   let rest = content.trim();
   let id: string | undefined;
@@ -199,6 +204,13 @@ function parseTitleAndMeta(
   let task: TaskState | undefined;
   let action: string | undefined;
   let thread: string | undefined;
+  const leadingNotes: string[] = [];
+  const trailingNotes: string[] = [];
+  const midNotes: string[] = [];
+  const remember = (into: string[], rawId: string) => {
+    const id = rawId.trim();
+    if (id && !into.includes(id)) into.push(id);
+  };
 
   // Leading task marker only (mid-caption `[ ]` is plain text).
   {
@@ -247,6 +259,14 @@ function parseTitleAndMeta(
     m = rest.match(THREAD_SPAN);
     if (m) {
       thread = m[1].trim();
+      rest = rest.slice(m[0].length);
+      progressed = true;
+      continue;
+    }
+
+    m = rest.match(NOTE_LINK_SPAN);
+    if (m) {
+      remember(leadingNotes, m[1]);
       rest = rest.slice(m[0].length);
       progressed = true;
       continue;
@@ -325,6 +345,14 @@ function parseTitleAndMeta(
       continue;
     }
 
+    m = rest.match(NOTE_LINK_TRAILING);
+    if (m) {
+      remember(trailingNotes, m[1]);
+      rest = rest.slice(0, rest.length - m[0].length).trimEnd();
+      progressed = true;
+      continue;
+    }
+
     m = rest.match(KIND_TRAILING);
     if (m) {
       kind = m[1].toLowerCase() as NodeKind;
@@ -350,6 +378,19 @@ function parseTitleAndMeta(
     }
   }
 
+  // Mid-caption `<t: N>` (result-row allows the tag anywhere).
+  rest = rest
+    .replace(NOTE_LINK_ANY, (_all, id: string) => {
+      remember(midNotes, id);
+      return ' ';
+    })
+    .replace(/[ \t]{2,}/g, ' ')
+    .trim();
+  const noteLinks: string[] = [];
+  for (const id of [...leadingNotes, ...midNotes, ...trailingNotes.reverse()]) {
+    if (!noteLinks.includes(id)) noteLinks.push(id);
+  }
+
   // `<enc:>` without private/encrypted implies encrypted chrome.
   if (
     sealed &&
@@ -370,6 +411,7 @@ function parseTitleAndMeta(
     task,
     action,
     thread,
+    noteLinks: noteLinks.length ? noteLinks : undefined,
   };
 }
 
@@ -428,6 +470,7 @@ export function parse(text: string): OutlineFoldDoc {
     if (meta.task) node.task = meta.task;
     if (meta.action) node.action = meta.action;
     if (meta.thread) node.thread = meta.thread;
+    if (meta.noteLinks) node.noteLinks = meta.noteLinks;
     if (meta.inlineCollapsed && meta.id) {
       inlineCollapsedIds.push(meta.id);
     }

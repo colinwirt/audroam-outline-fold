@@ -494,3 +494,33 @@ fold+:
     expect(() => setExpandLevel(doc, 'x')).toThrow(/0–9/);
   });
 });
+
+describe('<t: pnid> note links', () => {
+  it('keeps several note links off the caption and writes them back before the id', () => {
+    const text = `- ELS visit <t: 49033> <t:34> <id:aud-ov-1>\n  - Tired eyes <id:aud-ov-2> <t: 12>\n`;
+    const doc = parse(text);
+    expect(doc.nodes[0].title).toBe('ELS visit');
+    expect(doc.nodes[0].noteLinks).toEqual(['49033', '34']);
+    expect(doc.nodes[0].id).toBe('aud-ov-1');
+    expect(doc.nodes[0].children?.[0].title).toBe('Tired eyes');
+    expect(doc.nodes[0].children?.[0].noteLinks).toEqual(['12']);
+    const out = serialize(doc);
+    expect(out).toContain('- ELS visit <t: 49033> <t: 34> <id:aud-ov-1>');
+    expect(out).toContain('- Tired eyes <t: 12> <id:aud-ov-2>');
+    const html = toHtml(doc);
+    expect(html).toContain('data-note-link="49033"');
+    expect(html).toContain('>t:34<');
+    expect(html).not.toContain('&lt;t:');
+    const again = parse(out);
+    expect(again.nodes[0].noteLinks).toEqual(['49033', '34']);
+    expect(again.nodes[0].title).toBe('ELS visit');
+  });
+
+  it('still round-trips <thread:…> separately from <t:>', () => {
+    const doc = parse('- Work <thread:pnid:9> <t: 9> <id:w>\n');
+    expect(doc.nodes[0].thread).toBe('pnid:9');
+    expect(doc.nodes[0].noteLinks).toEqual(['9']);
+    expect(doc.nodes[0].title).toBe('Work');
+    expect(serialize(doc)).toContain('<thread:pnid:9> <t: 9> <id:w>');
+  });
+});

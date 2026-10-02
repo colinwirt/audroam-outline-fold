@@ -162,6 +162,7 @@ export {
   resolveTask,
   resolveAction,
   resolveThread,
+  resolveNoteLinks,
   type ParsedTask,
 } from './taskChrome.js';
 

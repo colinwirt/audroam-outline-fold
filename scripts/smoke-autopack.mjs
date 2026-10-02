@@ -13,7 +13,9 @@ import {
   pillSize,
   FOLD_SLOT,
   displayCaption,
+  resolveTask,
 } from '../dist/index.js';
+import { captionWithoutLinks } from '../dist/captionRich.js';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const md = readFileSync(
@@ -188,8 +190,11 @@ function leftEdge(packed, d, id) {
   const n = findNodeById(d.nodes, id);
   const pos = packed.nodes[id];
   assert(n && pos, `missing node/pos ${id}`);
-  const reserveFold = !!(n.children?.length);
-  const { w } = pillSize(shortLabel(n.title), { reserveFold });
+  const label = captionWithoutLinks(displayCaption(n.title));
+  const { w } = pillSize(label, {
+    reserveFold: !!(n.children && n.children.length),
+    reserveTask: !!resolveTask(n),
+  });
   return pos.x - w / 2;
 }
 function assertSiblingLeftAlign(packed, d, parentId) {

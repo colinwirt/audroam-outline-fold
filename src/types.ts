@@ -62,6 +62,11 @@ export interface OutlineNode {
   /** Thread / deep-link ref from `<thread:…>` — host navigates on chip click. */
   thread?: string;
   /**
+   * Numeric note links from `<t: 49033>` (one or more).
+   * Same tag the Audroam result-row outline uses. Distinct from `thread`.
+   */
+  noteLinks?: string[];
+  /**
    * Layout stored in the outline text (`--- layout ---`), keyed by this node's id.
    * `w` is the caption column width in px. Absent until a custom width (or other
    * payload) needs a persistent id on the outline line.

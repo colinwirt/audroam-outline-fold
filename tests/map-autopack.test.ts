@@ -8,7 +8,10 @@ import {
   autoPackPositions,
   pillSize,
   FOLD_SLOT,
+  displayCaption,
+  resolveTask,
 } from '../src/index.js';
+import { captionWithoutLinks } from '../src/captionRich.js';
 
 const md = readFileSync(
   join(__dirname, '../examples/aust-gov-cyber/aust-gov-cyber.md'),
@@ -165,8 +168,11 @@ describe('autoPackPositions', () => {
     function leftEdge(id: string): number {
       const n = findNodeById(doc.nodes, id)!;
       const pos = expanded.nodes[id];
-      const reserveFold = !!(n.children?.length);
-      const { w } = pillSize(shortLabel(n.title), { reserveFold });
+      const label = captionWithoutLinks(displayCaption(n.title));
+      const { w } = pillSize(label, {
+        reserveFold: !!(n.children?.length),
+        reserveTask: !!resolveTask(n),
+      });
       return pos.x - w / 2;
     }
 

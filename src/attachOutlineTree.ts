@@ -50,6 +50,8 @@ export interface AttachOutlineTreeOptions {
   onAction?: (action: string, ev: TaskToggleEvent) => void;
   /** Thread chip click — host navigates. */
   onThreadClick?: (thread: string, node: OutlineNode) => void;
+  /** `<t: N>` note-link chip click — host opens the note. */
+  onNoteLinkClick?: (pnid: string, node: OutlineNode | null) => void;
   /** When false, task clicks are ignored. Default true. */
   allowTaskToggle?: boolean;
 }
@@ -295,6 +297,17 @@ export function attachOutlineTree(
       const thread = threadBtn.getAttribute('data-thread') || '';
       const node = findNodeById(opts.getDoc().nodes, id);
       if (thread && node) opts.onThreadClick?.(thread, node);
+      return;
+    }
+
+    const noteBtn = target.closest<HTMLElement>('[data-note-link]');
+    if (noteBtn && rootEl.contains(noteBtn)) {
+      e.preventDefault();
+      e.stopPropagation();
+      const pnid = noteBtn.getAttribute('data-note-link') || '';
+      const id = noteBtn.getAttribute('data-note-node') || '';
+      const node = id ? findNodeById(opts.getDoc().nodes, id) : null;
+      if (pnid) opts.onNoteLinkClick?.(pnid, node);
       return;
     }
 
