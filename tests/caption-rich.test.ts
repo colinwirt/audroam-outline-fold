@@ -73,6 +73,13 @@ describe('captionToHtml', () => {
     );
   });
 
+  it('keeps parentheses inside a bare URL', () => {
+    const url = 'https://en.wikipedia.org/wiki/Foo_(bar)';
+    const html = captionToHtml(`Go ${url}.`);
+    expect(html).toContain(`href="${url}"`);
+    expect(html).not.toContain('href="https://en.wikipedia.org/wiki/Foo_"');
+  });
+
   it('renders bare https URLs as links', () => {
     const html = captionToHtml('Go https://example.com/path now');
     expect(html).toContain(

@@ -16,30 +16,32 @@ export interface RunMeasure {
 export type RunMeasurer = (run: RunMeasure, fontPx: number) => number | null;
 
 let measurer: RunMeasurer | null = null;
-let svg: SVGSVGElement | null = null;
-let textEl: SVGTextElement | null = null;
+let canvas: HTMLCanvasElement | null = null;
+let canvasCtx: CanvasRenderingContext2D | null = null;
+const widthCache = new Map<string, number>();
 
+/**
+ * Canvas measureText matches the painted font and does not flush layout.
+ * getBBox on every prefix of a large map is what made fold take seconds.
+ */
 function domMeasurer(run: RunMeasure, fontPx: number): number | null {
   if (typeof document === 'undefined') return null;
-  const parent = document.body;
-  if (!parent) return null;
-  if (!svg || !textEl) {
-    svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    svg.setAttribute('aria-hidden', 'true');
-    svg.style.position = 'absolute';
-    svg.style.left = '-9999px';
-    svg.style.top = '0';
-    textEl = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-    svg.appendChild(textEl);
-    parent.appendChild(svg);
+  const family = run.code ? CODE_FONT_FAMILY : LABEL_FONT_FAMILY;
+  const key = `${fontPx}|${run.bold ? 1 : 0}|${run.italic ? 1 : 0}|${run.code ? 1 : 0}|${run.text}`;
+  const hit = widthCache.get(key);
+  if (hit !== undefined) return hit;
+  if (!canvas) {
+    canvas = document.createElement('canvas');
+    canvasCtx = canvas.getContext('2d');
   }
-  textEl.textContent = run.text.length ? run.text : ' ';
-  textEl.setAttribute('font-size', String(fontPx));
-  textEl.setAttribute('font-family', run.code ? CODE_FONT_FAMILY : LABEL_FONT_FAMILY);
-  textEl.setAttribute('font-weight', run.bold ? '700' : '400');
-  textEl.setAttribute('font-style', run.italic ? 'italic' : 'normal');
-  const width = textEl.getBBox().width;
-  return width > 0 ? width : null;
+  if (!canvasCtx) return null;
+  const style = run.italic ? 'italic' : 'normal';
+  const weight = run.bold ? '700' : '400';
+  canvasCtx.font = `${style} ${weight} ${fontPx}px ${family}`;
+  const width = canvasCtx.measureText(run.text.length ? run.text : ' ').width;
+  const stored = width > 0 ? width : 0;
+  widthCache.set(key, stored);
+  return stored > 0 ? stored : null;
 }
 
 /** Tests inject a measurer. Pass null to use the document again. */

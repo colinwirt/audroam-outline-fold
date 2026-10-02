@@ -14,6 +14,7 @@
 import {
   captionStyleRuns,
   captionVisibleText,
+  readBareUrl,
   type CaptionStyleRun,
 } from './captionRich.js';
 import { measureRunWidth } from './svgTextMeasure.js';
@@ -86,11 +87,34 @@ function charsToRuns(chars: StyledChar[]): CaptionStyleRun[] {
   return runs;
 }
 
+function charsText(chars: StyledChar[], start = 0): string {
+  let s = '';
+  for (let i = start; i < chars.length; i++) s += chars[i]!.c;
+  return s;
+}
+
+/** If `breakAt` lands inside an http(s) URL, move it to the URL boundary. */
+function avoidUrlSplit(chars: StyledChar[], breakAt: number): number {
+  const head = charsText(chars.slice(0, breakAt));
+  const at = head.search(/https?:\/\//i);
+  if (at < 0) return breakAt;
+  const url = readBareUrl(charsText(chars, at));
+  if (!url || at + url.length <= breakAt) return breakAt;
+  return at > 0 ? at : url.length;
+}
+
 function softWrapChars(chars: StyledChar[], ch: number): StyledChar[][] {
   if (chars.length === 0) return [[]];
   const lines: StyledChar[][] = [];
   let remaining = chars;
   while (remaining.length > ch) {
+    const leadingUrl = readBareUrl(charsText(remaining));
+    if (leadingUrl.length > ch) {
+      lines.push(remaining.slice(0, leadingUrl.length));
+      remaining = remaining.slice(leadingUrl.length);
+      while (remaining.length && remaining[0]!.c === ' ') remaining = remaining.slice(1);
+      continue;
+    }
     let breakAt = -1;
     for (let i = Math.min(ch, remaining.length - 1); i >= 0; i--) {
       if (remaining[i]!.c === ' ') {
@@ -99,6 +123,7 @@ function softWrapChars(chars: StyledChar[], ch: number): StyledChar[][] {
       }
     }
     if (breakAt <= 0) breakAt = ch;
+    breakAt = avoidUrlSplit(remaining, breakAt);
     let piece = remaining.slice(0, breakAt);
     while (piece.length && piece[piece.length - 1]!.c === ' ') piece = piece.slice(0, -1);
     lines.push(piece);
@@ -204,9 +229,22 @@ export function wrapLines(
     richLines = rawRich.slice(0, cap);
     const lastRuns = richLines[cap - 1] ?? [{ text: '', bold: false, italic: false, code: false }];
     const lastPlain = lastRuns.map((r) => r.text).join('');
-    if (lastPlain.length >= ch) {
+    const lastHasOpenUrl = readBareUrl(lastPlain) !== '' || /https?:\/\//i.test(lastPlain);
+    if (lastHasOpenUrl && readBareUrl(lastPlain).length === lastPlain.length) {
+      // A line that is only a URL stays whole. Cutting it breaks the link.
+    } else if (lastPlain.length >= ch) {
       // Truncate last line runs to ch-1 + ellipsis
-      let left = Math.max(1, ch - 1);
+      let left = avoidUrlSplit(
+        lastRuns.flatMap((r) =>
+          [...r.text].map((c) => ({
+            c,
+            bold: r.bold,
+            italic: r.italic,
+            code: !!r.code,
+          })),
+        ),
+        Math.max(1, ch - 1),
+      );
       const cut: CaptionStyleRun[] = [];
       for (const r of lastRuns) {
         if (left <= 0) break;
@@ -366,27 +404,59 @@ export function lineWidth(runs: CaptionStyleRun[], fontPx: number): number {
 
 const MIN_COL_W = 96;
 
+function charWidth(ch: StyledChar, fontPx: number): number {
+  const width = measureRunWidth(
+    { text: ch.c, code: ch.code, bold: ch.bold, italic: ch.italic },
+    fontPx,
+  );
+  if (width != null) return width;
+  const scale = clampFontPx(fontPx) / BASE_FONT_PX;
+  return (ch.code ? CODE_CHAR_W : CHAR_W) * scale;
+}
+
 /** Break styled characters so each line's painted width stays within maxW. */
 function wrapCharsToWidth(chars: StyledChar[], maxW: number, fontPx: number): StyledChar[][] {
   const lines: StyledChar[][] = [];
   let cur: StyledChar[] = [];
-  const widthOf = (cs: StyledChar[]) => (cs.length ? lineWidth(charsToRuns(cs), fontPx) : 0);
+  let curW = 0;
   const push = (cs: StyledChar[]) => {
     while (cs.length && cs[cs.length - 1]!.c === ' ') cs = cs.slice(0, -1);
     lines.push(cs);
   };
-  for (const ch of chars) {
+  const takeUrl = (at: number): number => {
+    if (chars[at]!.c !== 'h' && chars[at]!.c !== 'H') return 0;
+    return readBareUrl(charsText(chars, at)).length;
+  };
+  for (let i = 0; i < chars.length; i++) {
+    const ch = chars[i]!;
     if (ch.c === '\n') {
       push(cur);
       cur = [];
+      curW = 0;
       continue;
     }
-    const next = cur.concat(ch);
-    if (cur.length > 0 && widthOf(next) > maxW) {
+    const urlLen = takeUrl(i);
+    if (urlLen > 1) {
+      let urlW = 0;
+      const urlChars = chars.slice(i, i + urlLen);
+      for (const part of urlChars) urlW += charWidth(part, fontPx);
+      if (cur.length > 0 && curW + urlW > maxW) {
+        push(cur);
+        cur = urlChars;
+        curW = urlW;
+      } else {
+        cur = cur.concat(urlChars);
+        curW += urlW;
+      }
+      i += urlLen - 1;
+      continue;
+    }
+    const nextW = curW + charWidth(ch, fontPx);
+    if (cur.length > 0 && nextW > maxW) {
       let breakAt = -1;
-      for (let i = cur.length - 1; i > 0; i--) {
-        if (cur[i]!.c === ' ') {
-          breakAt = i;
+      for (let j = cur.length - 1; j > 0; j--) {
+        if (cur[j]!.c === ' ') {
+          breakAt = j;
           break;
         }
       }
@@ -399,8 +469,11 @@ function wrapCharsToWidth(chars: StyledChar[], maxW: number, fontPx: number): St
         push(cur);
         cur = ch.c === ' ' ? [] : [ch];
       }
+      curW = 0;
+      for (const part of cur) curW += charWidth(part, fontPx);
     } else {
-      cur = next;
+      cur = cur.concat(ch);
+      curW = nextW;
     }
   }
   if (cur.length || lines.length === 0) push(cur);
@@ -567,11 +640,28 @@ function wrapLinesToWidth(
   };
 }
 
+const pillCache = new Map<string, MeasuredPill>();
+
 export function measurePill(
   label: string,
   opts: MeasurePillOpts = {},
 ): MeasuredPill {
   const wrapCh = opts.wrapCh ?? DEFAULT_WRAP_CH;
+  const cacheKey = [
+    label,
+    wrapCh,
+    opts.widthPx ?? '',
+    opts.maxLines === null ? 'null' : (opts.maxLines ?? ''),
+    opts.bodyExpanded ? 1 : 0,
+    opts.reserveFold ? 1 : 0,
+    opts.reserveTask ? 1 : 0,
+    opts.foldSlot ?? '',
+    opts.taskLead ?? '',
+    opts.reserveMoreAffordance === false ? 0 : 1,
+    opts.fontSize ?? '',
+  ].join('\u0001');
+  const cached = pillCache.get(cacheKey);
+  if (cached) return cached;
   const bodyExpanded = !!opts.bodyExpanded;
   const effectiveMaxLines = resolveEffectiveMaxLines({
     maxLines: opts.maxLines,
@@ -616,7 +706,7 @@ export function measurePill(
     Math.max(44, PILL_PAD_Y * 2 + lineCount * box) +
     (needsAffordance ? MORE_AFFORDANCE_H : 0);
 
-  return {
+  const measured: MeasuredPill = {
     w: textW + foldSlot + taskLead,
     h,
     textW,
@@ -634,4 +724,6 @@ export function measurePill(
     effectiveMaxLines,
     fontPx,
   };
+  pillCache.set(cacheKey, measured);
+  return measured;
 }

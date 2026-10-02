@@ -39,6 +39,12 @@ describe('scrapbook wrap (~30 + more/less)', () => {
     expect(SOFT_SAFETY_MAX_CHARS).toBe(50_000);
   });
 
+  it('does not cut an http URL at the column width', () => {
+    const url = 'https://example.com/some/very/long/path/that/exceeds/thirty/two/chars';
+    const { lines } = wrapLines(`See ${url} please`, 32, 10);
+    expect(lines.some((line) => line.includes(url))).toBe(true);
+  });
+
   it('preserves newlines; clips at ~30 by default', () => {
     const text = Array.from({ length: 40 }, (_, i) => `line ${i}`).join('\n');
     const { lines, truncated } = wrapLines(text, 32, DEFAULT_MAX_LINES);

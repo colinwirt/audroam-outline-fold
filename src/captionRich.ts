@@ -207,39 +207,101 @@ type Token =
   | { kind: 'link'; label: string; url: string };
 
 /**
- * Tokenize caption: images, markdown links, bare https:// — leftover is text.
+ * Bare http(s) URL at the start of `s`. Balanced parentheses stay in the URL
+ * so `https://host/Foo_(bar)` is not cut at the first `(`. Trailing `.,;:!?`
+ * stays outside the URL.
+ */
+export function readBareUrl(s: string): string {
+  const m = /^https?:\/\//i.exec(s);
+  if (!m) return '';
+  let i = m[0].length;
+  let depth = 0;
+  while (i < s.length) {
+    const c = s[i]!;
+    if (c === '(') depth++;
+    else if (c === ')') {
+      if (depth === 0) break;
+      depth--;
+    } else if (/[\s<>\[\]]/.test(c)) break;
+    i++;
+  }
+  while (i > m[0].length && /[.,;:!?]/.test(s[i - 1]!)) i--;
+  return i > m[0].length ? s.slice(0, i) : '';
+}
+
+/** Target inside `(...)`, allowing nested parentheses and no spaces. */
+function readDelimitedTarget(
+  s: string,
+  start: number,
+): { url: string; end: number } | null {
+  let i = start;
+  let depth = 0;
+  while (i < s.length) {
+    const c = s[i]!;
+    if (c === '(') depth++;
+    else if (c === ')') {
+      if (depth === 0) return { url: s.slice(start, i), end: i };
+      depth--;
+    } else if (/\s/.test(c)) return null;
+    i++;
+  }
+  return null;
+}
+
+/**
+ * Tokenize caption: images, markdown links, bare http(s) URLs — leftover is text.
  * Does not interpret HTML tags (handled later on text tokens).
  */
 function tokenize(title: string): Token[] {
   const s = String(title);
   const tokens: Token[] = [];
-  // Image OR link OR bare https (images checked first via !)
-  const re =
-    /!\[([^\]]*)\]\(([^)\s]+)\)|\[([^\]]+)\]\(([^)\s]+)\)|(https:\/\/[^\s<>\[\]()]+)/g;
-  let last = 0;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(s)) !== null) {
-    if (m.index > last) {
-      tokens.push({ kind: 'text', value: s.slice(last, m.index) });
-    }
-    if (m[1] !== undefined && m[2] !== undefined) {
-      tokens.push({ kind: 'img', alt: m[1], url: m[2] });
-    } else if (m[3] !== undefined && m[4] !== undefined) {
-      tokens.push({ kind: 'link', label: m[3], url: m[4] });
-    } else if (m[5] !== undefined) {
-      // Bare URL — strip common trailing punctuation from match display
-      let url = m[5];
-      let trail = '';
-      while (/[.,;:!?)]$/.test(url)) {
-        trail = url.slice(-1) + trail;
-        url = url.slice(0, -1);
+  let i = 0;
+  let textStart = 0;
+  const pushText = (end: number) => {
+    if (end > textStart) tokens.push({ kind: 'text', value: s.slice(textStart, end) });
+  };
+  while (i < s.length) {
+    if (s.startsWith('![', i)) {
+      const altEnd = s.indexOf('](', i + 2);
+      if (altEnd > i) {
+        const target = readDelimitedTarget(s, altEnd + 2);
+        if (target) {
+          pushText(i);
+          tokens.push({ kind: 'img', alt: s.slice(i + 2, altEnd), url: target.url });
+          i = target.end + 1;
+          textStart = i;
+          continue;
+        }
       }
-      tokens.push({ kind: 'link', label: url, url });
-      if (trail) tokens.push({ kind: 'text', value: trail });
     }
-    last = m.index + m[0].length;
+    if (s[i] === '[') {
+      const labelEnd = s.indexOf('](', i + 1);
+      if (labelEnd > i && !s.startsWith('![', i)) {
+        const target = readDelimitedTarget(s, labelEnd + 2);
+        if (target) {
+          pushText(i);
+          tokens.push({
+            kind: 'link',
+            label: s.slice(i + 1, labelEnd),
+            url: target.url,
+          });
+          i = target.end + 1;
+          textStart = i;
+          continue;
+        }
+      }
+    }
+    const url = s[i] === 'h' || s[i] === 'H' ? readBareUrl(s.slice(i)) : '';
+    if (url) {
+      pushText(i);
+      tokens.push({ kind: 'link', label: url, url });
+      i += url.length;
+      textStart = i;
+      continue;
+    }
+    i++;
   }
-  if (last < s.length) tokens.push({ kind: 'text', value: s.slice(last) });
+  pushText(s.length);
   return tokens;
 }
 

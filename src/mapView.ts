@@ -47,6 +47,7 @@ import {
   SOFT_SAFETY_MAX_CHARS,
   TASK_LEAD,
   LINE_H,
+  PILL_PAD_X,
   PILL_PAD_Y,
   MORE_AFFORDANCE_H,
   DEFAULT_FONT_PX,
@@ -465,7 +466,7 @@ function multiLineText(
       return `<tspan x="${textX}" dy="${dy}">${show}</tspan>`;
     })
     .join('');
-  return `<text class="map-label" x="${textX}" y="${top}" text-anchor="middle" font-size="${fontPx}" font-weight="400" font-family="${LABEL_FONT_FAMILY}">${tspans}</text>`;
+  return `<text class="map-label" x="${textX}" y="${top}" text-anchor="start" font-size="${fontPx}" font-weight="400" font-family="${LABEL_FONT_FAMILY}">${tspans}</text>`;
 }
 
 /**
@@ -500,11 +501,13 @@ export function autoPackPositions(
   for (const root of doc.nodes || []) walkVis(root, 0);
 
   const positions: Record<string, MapPoint> = {};
+  const paintedSize = new Map<string, { w: number; h: number }>();
 
   function layoutSubtree(n: OutlineNode, groupLeft: number, top: number): number {
     const key = nodeMapKey(n, order.get(n) || 0);
     const label = captionWithoutLinks(displayCaption(n.title));
     const painted = pillSize(label, nodePillOpts(n, nodeLayout, defaults, key));
+    paintedSize.set(key, { w: painted.w, h: painted.h });
     const x = groupLeft + painted.w / 2;
     const kids =
       hasKids(n) && !(n.id && isNodeCollapsed(n.id))
@@ -541,10 +544,10 @@ export function autoPackPositions(
   for (const { n } of visible) {
     const pos = positions[nodeMapKey(n, order.get(n) || 0)];
     if (!pos) continue;
-    const label = captionWithoutLinks(displayCaption(n.title));
-    const { w, h } = pillSize(label, nodePillOpts(n, nodeLayout, defaults, nodeMapKey(n, order.get(n) || 0)));
-    maxX = Math.max(maxX, pos.x + w / 2);
-    maxY = Math.max(maxY, pos.y + h / 2);
+    const size = paintedSize.get(nodeMapKey(n, order.get(n) || 0));
+    if (!size) continue;
+    maxX = Math.max(maxX, pos.x + size.w / 2);
+    maxY = Math.max(maxY, pos.y + size.h / 2);
   }
 
   return {
@@ -1214,7 +1217,7 @@ export function createMapView(
    * (never from paint alone), so it cannot steal focus from an editor.
    */
   function dismissLinkPop(): void {
-    const pop = host.querySelector('.map-link-pop') as HTMLElement | null;
+    const pop = document.querySelector('.map-link-pop') as HTMLElement | null;
     if (!pop || pop.dataset.closing === '1') return;
     pop.dataset.closing = '1';
     pop.style.transition = 'opacity 180ms ease';
@@ -1223,7 +1226,7 @@ export function createMapView(
   }
 
   function showLinkPop(anchor: Element, title: string): void {
-    host.querySelector('.map-link-pop')?.remove();
+    document.querySelector('.map-link-pop')?.remove();
     const links = captionLinks(title);
     if (!links.length) return;
     const pop = document.createElement('div');
@@ -1233,7 +1236,7 @@ export function createMapView(
       'position:absolute',
       'z-index:5',
       'min-width:8rem',
-      'max-width:18rem',
+      'max-width:calc(100vw - 16px)',
       'padding:8px 10px',
       'border-radius:10px',
       'background:#13202b',
@@ -1248,7 +1251,9 @@ export function createMapView(
       const a = document.createElement('a');
       a.href = link.href;
       a.textContent = link.label;
-      a.style.cssText = 'color:#8ec8ff;font:13px/1.35 system-ui,sans-serif;word-break:break-all';
+      a.style.cssText =
+        'color:#8ec8ff;font:13px/1.35 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;white-space:nowrap';
+      a.title = link.href;
       if (link.hopId) {
         a.addEventListener('click', (ev) => {
           ev.preventDefault();
@@ -1268,13 +1273,11 @@ export function createMapView(
       }
       pop.appendChild(a);
     }
-    const hostStyle = getComputedStyle(host);
-    if (hostStyle.position === 'static') host.style.position = 'relative';
-    host.appendChild(pop);
+    document.body.appendChild(pop);
     const r = anchor.getBoundingClientRect();
-    const hr = host.getBoundingClientRect();
-    pop.style.left = `${Math.max(8, r.left - hr.left)}px`;
-    pop.style.top = `${r.bottom - hr.top + 6}px`;
+    pop.style.position = 'fixed';
+    pop.style.left = `${Math.max(8, Math.min(r.left, window.innerWidth - 24))}px`;
+    pop.style.top = `${Math.max(8, r.bottom + 6)}px`;
   }
 
   function focusMapForKeys(): void {
@@ -1438,7 +1441,7 @@ export function createMapView(
     if (!prev || prefersReducedMotion()) return;
     const layout = getLayout();
     const nodes = host.querySelectorAll<SVGGElement>('.map-node');
-    if (!nodes.length) return;
+    if (!nodes.length || nodes.length > 80) return;
 
     const movers: SVGGElement[] = [];
     nodes.forEach((g) => {
@@ -1639,8 +1642,10 @@ export function createMapView(
             bodyExpanded: !!cpos.bodyExpanded,
             fontSize: resolveFontPx(cpos.fontSize, layout.fontSize, doc.frontmatter?.fontSize),
           });
+          const parentW =
+            size.foldSlot > 0 ? size.w - size.foldSlot + 18 : size.w;
           edges.push({
-            d: connectorPath(pos.x, pos.y, size.w, cpos.x, cpos.y, cs.w),
+            d: connectorPath(pos.x, pos.y, parentW, cpos.x, cpos.y, cs.w),
           });
           walk(c);
         }
@@ -1682,6 +1687,8 @@ export function createMapView(
           const y = pos.y - h / 2;
           const textLeft = x + taskLead;
           const textX = textLeft + textW / 2;
+          const boxW = Math.max(1, w - foldSlot);
+          const boxRight = x + boxW;
           const affordance = showMore || showLess ? MORE_AFFORDANCE_H : 0;
           const textCentreY = pos.y - affordance / 2;
           const focused = key === focusId;
@@ -1694,16 +1701,21 @@ export function createMapView(
             bodyExpanded,
             focused,
           });
+          const foldCx = boxRight + foldSlot / 2;
           const foldHit = foldable
-            ? `<rect class="map-fold-hit" x="${x + taskLead + textW}" y="${y}" width="${foldSlot}" height="${h}" fill="transparent" cursor="pointer"/>`
+            ? `<rect class="map-fold-hit" x="${foldCx - 16}" y="${pos.y - 16}" width="32" height="32" fill="transparent" cursor="pointer"/>`
             : '';
-          const marker =
-            foldable && col
-              ? `<g class="map-fold-indicator" transform="translate(${x + taskLead + textW + foldSlot / 2} ${pos.y})" aria-hidden="true">
+          const marker = foldable
+            ? col
+              ? `<g class="map-fold-indicator" transform="translate(${foldCx} ${pos.y})" aria-hidden="true">
           <circle r="9"/>
           <path d="M -4 0 H 4 M 0 -4 V 4"/>
         </g>`
-              : '';
+              : `<g class="map-fold-indicator is-expanded" transform="translate(${foldCx} ${pos.y})" aria-hidden="true">
+          <circle r="9" fill="none"/>
+          <path d="M -4 0 H 4"/>
+        </g>`
+            : '';
           const taskHit =
             task != null
               ? `<rect class="map-task-hit" x="${x}" y="${Math.min(y, pos.y - 22)}" width="${Math.max(taskLead, 44)}" height="${Math.max(h, 44)}" fill="transparent" cursor="pointer" role="checkbox" aria-checked="${task === 'done' ? 'true' : 'false'}"/>`
@@ -1723,7 +1735,7 @@ export function createMapView(
           const links = captionLinks(n.title || '');
           const globe =
             links.length > 0
-              ? globeGlyphSvg(x + w - 16, y + 16)
+              ? globeGlyphSvg(boxRight - 16, y + 16)
               : '';
           const threadChip = thread
             ? `<g class="map-thread-hit" data-thread="${esc(thread)}" transform="translate(${textX} ${y + h - (affordance ? affordance + 4 : 6)})" cursor="pointer">
@@ -1747,18 +1759,20 @@ export function createMapView(
       role="treeitem" aria-selected="${focused ? 'true' : 'false'}" aria-current="${focused ? 'true' : 'false'}" aria-label="${esc(label)}${task != null ? (task === 'done' ? ', task done' : ', task open') : ''}${foldable ? (col ? ', collapsed' : ', expanded') : ''}${showMore ? ', more text available' : ''}${showLess ? ', showing full body' : ''}"
       ${foldable ? `aria-expanded="${col ? 'false' : 'true'}"` : ''}>
       <title>${esc(tip)}</title>
-      <rect class="map-pill" x="${x}" y="${y}" width="${w}" height="${h}" rx="18" ry="18"/>
+      <rect class="map-pill" x="${x}" y="${y}" width="${boxW}" height="${h}" rx="18" ry="18"/>
       ${taskChrome}
       ${globe}
-      ${multiLineText(lines, textX, textCentreY, textW, richLines, fontPx)}
+      ${multiLineText(lines, textLeft + PILL_PAD_X, textCentreY, textW, richLines, fontPx)}
       ${moreChrome}
       ${threadChip}
       ${noteChips}
       ${marker}
       ${taskHit}
       ${foldHit}
-      <line class="map-width-grip" x1="${x + w - 3}" y1="${y + 12}" x2="${x + w - 3}" y2="${y + h - 12}" stroke="#8ec8ff" stroke-width="2" stroke-linecap="round" pointer-events="none" opacity="${widthHot ? '1' : '0'}"/>
-      <rect class="map-width-hit" data-text-w="${textW}" x="${x + w - 14}" y="${y}" width="18" height="${h}" fill="transparent" cursor="ew-resize" pointer-events="${widthHot ? 'all' : 'none'}"/>
+      <g class="map-width-grip" stroke="#8ec8ff" stroke-width="1.75" stroke-linecap="round" fill="none" pointer-events="none" opacity="${widthHot ? '1' : '0'}">
+        <path d="M ${boxRight - 10} ${y + h + 5} H ${boxRight + 5} V ${y + h - 10}"/>
+      </g>
+      <rect class="map-width-hit" data-text-w="${textW}" x="${boxRight - 6}" y="${y + h - 6}" width="18" height="18" fill="transparent" cursor="ew-resize" pointer-events="${widthHot ? 'all' : 'none'}"/>
     </g>`;
         },
       )
@@ -2081,9 +2095,10 @@ export function createMapView(
         const pill = g.querySelector('.map-pill');
         if (!pill) return;
         const r = pill.getBoundingClientRect();
-        if (clientY < r.top || clientY > r.bottom) return;
-        const dx = Math.abs(clientX - r.right);
-        if (dx > slop || dx >= bestDx) return;
+        if (clientY < r.bottom - 14 || clientY > r.bottom + slop) return;
+        if (clientX < r.right - 12 || clientX > r.right + slop) return;
+        const dx = Math.abs(clientX - r.right) + Math.abs(clientY - r.bottom);
+        if (dx >= bestDx) return;
         const key = g.getAttribute('data-id') || '';
         if (!key) return;
         bestDx = dx;

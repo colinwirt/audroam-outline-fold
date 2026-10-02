@@ -581,6 +581,9 @@ kbd {
   stroke-width: 1.75;
   stroke-linecap: round;
 }
+.preview-pane .map-fold-indicator.is-expanded circle {
+  fill: none;
+}
 .preview-pane .map-edge {
   fill: none;
   stroke: var(--connector);
