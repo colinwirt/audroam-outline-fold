@@ -2,13 +2,23 @@
 
 ## Unreleased
 
+## 0.2.21 — 2026-10-02
+
+### Map
+- Captions are left-aligned inside the pill.
+- The fold handle sits outside the right border. Expanded nodes use an open circle with a minus. Collapsed nodes keep the filled plus.
+- The resize mark sits outside the bottom-right corner. On a mouse it shows while the pointer is in that corner. On touch it arms from that corner and appears once the drag is sideways.
+- An http(s) URL stays whole, including parentheses, so the link is not cut at the column width.
+- Folding reuses caption measurements instead of measuring every character with a layout flush.
+- A canvas pan cancels the browser drag-select at pointer-down so the highlight does not grow across the map.
+
 ### Map pill width
 - Each pill has a handle on its right edge. Dragging it sets the caption column width and wraps the text to that width.
 - The width is stored in the outline text as a `--- layout ---` block (`id:` / `w:`), not in a sidecar file.
 - An id is written on the outline line only when a layout width or sealed payload needs a stable key. Until then a node is addressed by its 1-based position, and that integer is not added to the caption.
 - Auto ids are plain integers (`<id:3>`). Existing word ids still parse.
 - Auto width widens a little when the last line is one leftover word, or much shorter than the two, three, or four lines above it. A line break stays its own line.
-- A tap on the right edge opens Slim, Wider, and Auto. Wider adds a small step. Auto clears the stored width. A drag still sets the width directly.
+- A tap on the bottom-right corner opens Slim, Wider, and Auto. Wider adds a small step. Auto clears the stored width. A drag still sets the width directly.
 - Sibling pills share the left edge of the painted caption. The stored x is still the pill centre.
 - Opening a map, and Reset view, pin that outline to the left of the panel. Fit still frames the whole diagram.
 
