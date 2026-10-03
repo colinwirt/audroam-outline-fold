@@ -32,22 +32,45 @@ export function collectNodeIds(nodes: OutlineNode[]): Set<string> {
   return ids;
 }
 
+/** `prefix` is written in front of the number. The default is no prefix. */
+export type AutoIdOptions = { prefix?: string };
+
+/**
+ * Next id in `prefix` + decimal series. Existing `prefix`+number values count,
+ * so a doc that already has 2 and 7 gets 8, not 1. The id is added to `used`.
+ */
+export function nextAutoId(used: Set<string>, prefix = ''): string {
+  const escaped = prefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const re = new RegExp(`^${escaped}(\\d+)$`);
+  let max = 0;
+  for (const id of used) {
+    const m = re.exec(id);
+    if (!m) continue;
+    const n = Number(m[1]);
+    if (Number.isFinite(n) && n > max) max = n;
+  }
+  let n = max + 1;
+  let id = prefix + String(n);
+  while (used.has(id)) {
+    n += 1;
+    id = prefix + String(n);
+  }
+  used.add(id);
+  return id;
+}
+
 /**
  * Integer id for a node that now needs a persistent payload link.
- * Prefers the node's position when that integer is free.
+ * Continues after ids already in the document. Does not reuse a free position.
  */
-export function assignPersistentId(doc: OutlineFoldDoc, node: OutlineNode): string {
+export function assignPersistentId(
+  doc: OutlineFoldDoc,
+  node: OutlineNode,
+  opts?: AutoIdOptions,
+): string {
   if (node.id) return node.id;
-  const index = indexOutline(doc.nodes);
   const used = collectNodeIds(doc.nodes);
-  const pos = index.get(node);
-  if (pos && !used.has(String(pos))) {
-    node.id = String(pos);
-    return node.id;
-  }
-  let n = 1;
-  while (used.has(String(n))) n += 1;
-  node.id = String(n);
+  node.id = nextAutoId(used, opts?.prefix ?? '');
   return node.id;
 }
 
@@ -59,10 +82,10 @@ function needsPersistentId(node: OutlineNode): boolean {
 }
 
 /** Give an integer id to nodes whose layout or payload must survive in the text. */
-export function linkPayloadNodes(doc: OutlineFoldDoc): void {
+export function linkPayloadNodes(doc: OutlineFoldDoc, opts?: AutoIdOptions): void {
   const walk = (list: OutlineNode[]) => {
     for (const n of list) {
-      if (needsPersistentId(n)) assignPersistentId(doc, n);
+      if (needsPersistentId(n)) assignPersistentId(doc, n, opts);
       if (n.children?.length) walk(n.children);
     }
   };

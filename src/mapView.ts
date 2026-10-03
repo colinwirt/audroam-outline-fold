@@ -1693,6 +1693,7 @@ export function createMapView(
           const textCentreY = pos.y - affordance / 2;
           const focused = key === focusId;
           const widthHot = key === widthHotKey;
+          const widthShown = widthHot || focused;
           const cls = mapNodeClassNames({
             foldable,
             collapsed: col,
@@ -1769,10 +1770,10 @@ export function createMapView(
       ${marker}
       ${taskHit}
       ${foldHit}
-      <g class="map-width-grip" stroke="#8ec8ff" stroke-width="1.75" stroke-linecap="round" fill="none" pointer-events="none" opacity="${widthHot ? '1' : '0'}">
+      <g class="map-width-grip" stroke="#8ec8ff" stroke-width="1.75" stroke-linecap="round" fill="none" pointer-events="none" opacity="${widthShown ? '1' : '0'}">
         <path d="M ${boxRight - 10} ${y + h + 5} H ${boxRight + 5} V ${y + h - 10}"/>
       </g>
-      <rect class="map-width-hit" data-text-w="${textW}" x="${boxRight - 6}" y="${y + h - 6}" width="18" height="18" fill="transparent" cursor="ew-resize" pointer-events="${widthHot ? 'all' : 'none'}"/>
+      <rect class="map-width-hit" data-text-w="${textW}" x="${boxRight - 6}" y="${y + h - 6}" width="18" height="18" fill="transparent" cursor="ew-resize" pointer-events="${widthShown ? 'all' : 'none'}"/>
     </g>`;
         },
       )
@@ -2123,8 +2124,8 @@ export function createMapView(
     let releasing = false;
     let longPressTimer = 0;
     let touchSelectTimer = 0;
+    let labelTextHold = false;
     let lastFingerDown = 0;
-    const SELECT_PAUSE_MS = 400;
     let samples: { t: number; x: number; y: number }[] = [];
     let lastTap = { t: 0, x: 0, y: 0 };
     let firstDownAt = 0;
@@ -2412,7 +2413,9 @@ export function createMapView(
         }
         return;
       }
-      if (finger && edge) {
+      if (finger && edge && edge.key === getFocusId()) {
+        // Touch resize only after the pill is already selected. A first
+        // touch selects; a pan must not drag the corner into a resize.
         edgeArm = {
           pointerId: e.pointerId,
           key: edge.key,
@@ -2420,6 +2423,13 @@ export function createMapView(
           startY: e.clientY,
           startW: edge.textW,
         };
+        e.preventDefault();
+        try {
+          host.setPointerCapture(e.pointerId);
+        } catch {
+          /* capture is optional */
+        }
+        return;
       }
       if (type === 'mouse' && performance.now() - lastFingerDown < 700) return;
       if (!finger && (type === 'mouse' || type === 'pen') && onLabel && !barrel && e.button !== 1) return;
@@ -2494,20 +2504,6 @@ export function createMapView(
         clearLongPress();
       } else {
         mode = 'pending';
-        if (selectId) {
-          clearTouchSelect();
-          touchSelectTimer = window.setTimeout(() => {
-            const p = pointers.get(e.pointerId);
-            if (!p || mode !== 'pending' || !p.selectId) return;
-            if (Math.hypot(p.x - p.sx, p.y - p.sy) > slopPx('touch')) return;
-            setFocusId(p.selectId);
-            focusMapForKeys();
-            userCamGesture = false;
-            pendingFollow = { kind: 'focus' };
-            onChange?.();
-            swallowClick = true;
-          }, SELECT_PAUSE_MS);
-        }
         if (finger && onLabel) {
           const label = target!.closest('.map-label') as Element;
           clearLongPress();
@@ -2515,6 +2511,7 @@ export function createMapView(
             const p = pointers.get(e.pointerId);
             if (!p || mode !== 'pending') return;
             if (Math.hypot(p.x - p.sx, p.y - p.sy) > slopPx(p.type)) return;
+            labelTextHold = true;
             window.setTimeout(() => {
               const sel = window.getSelection?.();
               if (sel && sel.toString()) return;
@@ -2685,7 +2682,21 @@ export function createMapView(
           springBack();
           lastTap = { t: 0, x: 0, y: 0 };
         } else if (!wasPan && !wasPinch) {
-          if (had.type === 'touch' && had.selectId) swallowClick = true;
+          if (
+            had.selectId &&
+            !labelTextHold &&
+            moved <= slopPx(had.type)
+          ) {
+            setFocusId(had.selectId);
+            focusMapForKeys();
+            userCamGesture = false;
+            pendingFollow = { kind: 'focus' };
+            onChange?.();
+            swallowClick = true;
+          } else if (had.selectId) {
+            swallowClick = true;
+          }
+          labelTextHold = false;
           clearTouchSelect();
           lastTap = { t: now, x: had.x, y: had.y };
           settleCam();

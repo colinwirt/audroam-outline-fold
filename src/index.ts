@@ -64,7 +64,9 @@ export {
   assignPersistentId,
   indexOutline,
   linkPayloadNodes,
+  nextAutoId,
   nodeMapKey,
+  type AutoIdOptions,
 } from './nodeAddress.js';
 
 export type {
