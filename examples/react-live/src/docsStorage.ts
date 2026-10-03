@@ -31,7 +31,7 @@ export function newId(): string {
 export function titleFromBody(body: string, fallback = 'Untitled'): string {
   for (const raw of body.split(/\r?\n/)) {
     const line = raw.trim();
-    if (!line || line === '---') continue;
+    if (!line || line === '---' || /^---\s+\S/.test(line)) continue;
     if (line.startsWith('fold-') || line.startsWith('fold+')) continue;
     if (/^[a-zA-Z][\w]*:/.test(line) && !line.startsWith('-')) continue; // frontmatter keys
     let t = line.replace(/^[-*+]\s+/, '').replace(/\s*<[^>]+>\s*/g, ' ').trim();

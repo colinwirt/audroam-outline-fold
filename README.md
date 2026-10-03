@@ -89,7 +89,9 @@ ins-remote:
 | Inline `<enc:…>` | Still parsed (compat); **serialize writes trailer only** |
 | Exactly one of `ct` \| `uri` | Inline ciphertext **or** remote blob URI |
 | Trailing YAML `---` | Same fold-/marker keys as leading frontmatter |
-| Head + tail frontmatter | **Merged; tail wins** on conflicts |
+| `--- layout ---` | Per-node `w:` widths, and the same document keys (`fold-` / `fold+`, markers, `fontSize`) |
+| Head + tail frontmatter | **Merged; tail wins** on conflicts. Keys in `--- layout ---` win over both |
+| Serialize | Writes those document keys in `--- layout ---`, not a leading `---` fence |
 
 **Key identity:** Every sealed node is expected to carry its own `kid`. The default is one key per node; sharing a `kid` across nodes is supported when the user deliberately judges their sensitivity the same. The trailer stays keyed by node id, with each entry carrying its own `kid`.
 

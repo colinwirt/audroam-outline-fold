@@ -66,36 +66,26 @@ function serializeNode(
 
 export function serialize(doc: OutlineFoldDoc): string {
   linkPayloadNodes(doc);
-  const lines: string[] = ['---'];
-  const mode = doc.fold.mode;
-  const ids = doc.fold.ids.join(', ');
-  if (mode === '-') {
-    lines.push(`fold-: ${ids}`);
-  } else {
-    lines.push(`fold+: ${ids}`);
-  }
-  const cm = doc.frontmatter?.collapsedMarker ?? DEFAULT_COLLAPSED;
-  if (cm !== DEFAULT_COLLAPSED) {
-    lines.push(`collapsedMarker: "${cm}"`);
-  } else {
-    lines.push(`collapsedMarker: "(+)"`);
-  }
-  if (doc.frontmatter?.expandedMarker) {
-    lines.push(`expandedMarker: "${doc.frontmatter.expandedMarker}"`);
-  }
-  if (typeof doc.frontmatter?.fontSize === 'number') {
-    lines.push(`fontSize: ${doc.frontmatter.fontSize}`);
-  }
-  lines.push('---', '');
+  const lines: string[] = [];
   for (const n of doc.nodes) serializeNode(n, doc, lines);
   const payloads = collectPayloads(doc.nodes);
   const block = formatPayloadsBlock(payloads);
   if (block) {
-    lines.push('', block);
+    if (lines.length) lines.push('');
+    lines.push(block);
   }
-  const layoutBlock = formatLayoutBlock(collectLayouts(doc.nodes));
+  // Document keys live in the layout trailer so a pilot_note summary is the
+  // first outline line, not a leading `---` fence.
+  const layoutBlock = formatLayoutBlock(collectLayouts(doc.nodes), {
+    foldMode: doc.fold.mode,
+    foldIds: doc.fold.ids,
+    collapsedMarker: doc.frontmatter?.collapsedMarker ?? DEFAULT_COLLAPSED,
+    expandedMarker: doc.frontmatter?.expandedMarker,
+    fontSize: doc.frontmatter?.fontSize,
+  });
   if (layoutBlock) {
-    lines.push('', layoutBlock);
+    if (lines.length) lines.push('');
+    lines.push(layoutBlock);
   }
   lines.push('');
   return lines.join('\n');

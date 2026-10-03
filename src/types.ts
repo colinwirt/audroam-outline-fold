@@ -70,6 +70,7 @@ export interface OutlineNode {
    * Layout stored in the outline text (`--- layout ---`), keyed by this node's id.
    * `w` is the caption column width in px. Absent until a custom width (or other
    * payload) needs a persistent id on the outline line.
+   * The same block may also carry document keys (fold, markers, fontSize).
    */
   layout?: NodeLayout;
 }

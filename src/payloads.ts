@@ -17,9 +17,11 @@ export type LayoutMap = Record<string, NodeLayout>;
 const KEY_LINE = /^([A-Za-z0-9][A-Za-z0-9_-]*):\s*$/;
 
 /**
- * Peel trailing `--- payloads ---` / `--- sealed ---` / `--- enc ---` … `---`
- * and trailing YAML `---` … `---` from the outline body (tail first).
- * Leading frontmatter is handled separately.
+ * Peel trailing `--- payloads ---` / `--- sealed ---` / `--- enc ---` … `---`,
+ * trailing `--- layout ---` … `---`, and trailing YAML `---` … `---` from the
+ * outline body (tail first). Leading frontmatter is handled separately.
+ * Document keys inside the layout block (`fold-`, `fold+`, markers, `fontSize`)
+ * win over an earlier trailing YAML block.
  */
 export function peelTrailingSections(body: string): {
   outline: string;
@@ -31,6 +33,14 @@ export function peelTrailingSections(body: string): {
   const trailingFm: OutlineFrontmatter = {};
   let payloads: PayloadMap = {};
   let layouts: LayoutMap = {};
+  let layoutFm: OutlineFrontmatter | undefined;
+
+  const takeLayout = (inner: string) => {
+    const parsed = parseLayoutBlock(inner);
+    layouts = { ...layouts, ...parsed.layouts };
+    // The loop peels the tail-most block first. That block wins.
+    if (!layoutFm) layoutFm = parsed.frontmatter;
+  };
 
   let peeled = true;
   while (peeled) {
@@ -38,7 +48,7 @@ export function peelTrailingSections(body: string): {
 
     const lay = rest.match(/\n---\s*layout\s*---\r?\n([\s\S]*?)\r?\n---\s*$/i);
     if (lay) {
-      layouts = { ...layouts, ...parseLayoutMap(lay[1]!) };
+      takeLayout(lay[1]!);
       rest = rest.slice(0, lay.index).replace(/\s+$/, '');
       peeled = true;
       continue;
@@ -46,7 +56,7 @@ export function peelTrailingSections(body: string): {
 
     const layBol = rest.match(/^---\s*layout\s*---\r?\n([\s\S]*?)\r?\n---\s*$/i);
     if (layBol) {
-      layouts = { ...layouts, ...parseLayoutMap(layBol[1]!) };
+      takeLayout(layBol[1]!);
       rest = '';
       peeled = true;
       continue;
@@ -84,7 +94,12 @@ export function peelTrailingSections(body: string): {
     }
   }
 
-  return { outline: rest, trailingFm, payloads, layouts };
+  return {
+    outline: rest,
+    trailingFm: mergeFrontmatter(trailingFm, layoutFm ?? {}),
+    payloads,
+    layouts,
+  };
 }
 
 /**
@@ -142,9 +157,17 @@ function fieldsToSealed(fields: Record<string, string>): SealedPayload | null {
   return sealed;
 }
 
-/** `id:` / `12:` then `w: <px>`. */
-export function parseLayoutMap(block: string): LayoutMap {
+/**
+ * `--- layout ---` body.
+ * Column-0 frontmatter keys (`fold-`, `fold+`, markers, `fontSize`) are the
+ * document. `id:` / `12:` then `w:` are per-node widths.
+ */
+export function parseLayoutBlock(block: string): {
+  layouts: LayoutMap;
+  frontmatter: OutlineFrontmatter;
+} {
   const out: LayoutMap = {};
+  const fm: OutlineFrontmatter = {};
   let current: string | null = null;
   let width: number | undefined;
 
@@ -161,20 +184,32 @@ export function parseLayoutMap(block: string): LayoutMap {
 
   for (const raw of block.split(/\r?\n/)) {
     if (!raw.trim() || raw.trim().startsWith('#')) continue;
-    const top = raw.match(KEY_LINE);
+    if (/^\s/.test(raw)) {
+      const field = raw.match(/^\s+w\s*:\s*(\d+(?:\.\d+)?)\s*$/i);
+      if (field && current) {
+        const n = Number(field[1]);
+        if (Number.isFinite(n) && n > 0) width = n;
+      }
+      continue;
+    }
+    const line = raw.trim();
+    if (readFmLine(fm, line, true)) {
+      flush();
+      continue;
+    }
+    const top = line.match(KEY_LINE);
     if (top) {
       flush();
       current = top[1]!;
-      continue;
-    }
-    const field = raw.match(/^\s+w\s*:\s*(\d+(?:\.\d+)?)\s*$/i);
-    if (field && current) {
-      const n = Number(field[1]);
-      if (Number.isFinite(n) && n > 0) width = n;
     }
   }
   flush();
-  return out;
+  return { layouts: out, frontmatter: fm };
+}
+
+/** `id:` / `12:` then `w: <px>`. Document keys in the same block are ignored here. */
+export function parseLayoutMap(block: string): LayoutMap {
+  return parseLayoutBlock(block).layouts;
 }
 
 function unquote(s: string): string {
@@ -187,34 +222,58 @@ function unquote(s: string): string {
   return s;
 }
 
+/**
+ * One frontmatter key. Strict layout blocks reject fold- and fold+ together.
+ * Returns true when the line was a document key.
+ */
+function readFmLine(
+  fm: OutlineFrontmatter,
+  line: string,
+  strict: boolean,
+): boolean {
+  const foldMinus = line.match(/^fold-\s*:\s*(.*)$/i);
+  if (foldMinus) {
+    if (strict && fm.foldMode === '+') {
+      throw new Error('Document cannot have both fold- and fold+');
+    }
+    fm.foldMode = '-';
+    fm.foldIds = splitIds(foldMinus[1]!);
+    return true;
+  }
+  const foldPlus = line.match(/^fold\+\s*:\s*(.*)$/i);
+  if (foldPlus) {
+    if (strict && fm.foldMode === '-') {
+      throw new Error('Document cannot have both fold- and fold+');
+    }
+    fm.foldMode = '+';
+    fm.foldIds = splitIds(foldPlus[1]!);
+    return true;
+  }
+  const cm = line.match(/^collapsedMarker\s*:\s*(.+)$/i);
+  if (cm) {
+    fm.collapsedMarker = unquote(cm[1]!.trim());
+    return true;
+  }
+  const em = line.match(/^expandedMarker\s*:\s*(.+)$/i);
+  if (em) {
+    fm.expandedMarker = unquote(em[1]!.trim());
+    return true;
+  }
+  const fontSize = line.match(/^fontSize\s*:\s*(\d+(?:\.\d+)?)\s*$/i);
+  if (fontSize) {
+    fm.fontSize = Number(fontSize[1]);
+    return true;
+  }
+  return false;
+}
+
 /** Parse fold-/markers YAML block (same keys as leading frontmatter). */
 export function parseFmBlock(block: string): OutlineFrontmatter {
   const fm: OutlineFrontmatter = {};
   for (const rawLine of block.split(/\r?\n/)) {
     const line = rawLine.trim();
     if (!line || line.startsWith('#')) continue;
-    const foldMinus = line.match(/^fold-\s*:\s*(.*)$/i);
-    if (foldMinus) {
-      fm.foldMode = '-';
-      fm.foldIds = splitIds(foldMinus[1]!);
-      continue;
-    }
-    const foldPlus = line.match(/^fold\+\s*:\s*(.*)$/i);
-    if (foldPlus) {
-      fm.foldMode = '+';
-      fm.foldIds = splitIds(foldPlus[1]!);
-      continue;
-    }
-    const cm = line.match(/^collapsedMarker\s*:\s*(.+)$/i);
-    if (cm) {
-      fm.collapsedMarker = unquote(cm[1]!.trim());
-      continue;
-    }
-    const em = line.match(/^expandedMarker\s*:\s*(.+)$/i);
-    if (em) {
-      fm.expandedMarker = unquote(em[1]!.trim());
-      continue;
-    }
+    readFmLine(fm, line, false);
   }
   return fm;
 }
@@ -238,6 +297,7 @@ export function mergeFrontmatter(
     out.collapsedMarker = tail.collapsedMarker;
   if (tail.expandedMarker !== undefined)
     out.expandedMarker = tail.expandedMarker;
+  if (tail.fontSize !== undefined) out.fontSize = tail.fontSize;
   return out;
 }
 
@@ -285,10 +345,33 @@ export function collectLayouts(nodes: OutlineNode[]): LayoutMap {
   return out;
 }
 
-export function formatLayoutBlock(layouts: LayoutMap): string {
-  const keys = Object.keys(layouts).sort();
-  if (keys.length === 0) return '';
+export function formatLayoutBlock(
+  layouts: LayoutMap,
+  frontmatter?: OutlineFrontmatter,
+): string {
   const lines: string[] = ['--- layout ---'];
+  if (frontmatter) {
+    if (
+      frontmatter.foldMode ||
+      (frontmatter.foldIds && frontmatter.foldIds.length > 0)
+    ) {
+      const mode = frontmatter.foldMode === '+' ? '+' : '-';
+      lines.push(`fold${mode}: ${(frontmatter.foldIds ?? []).join(', ')}`);
+    }
+    if (frontmatter.collapsedMarker) {
+      lines.push(`collapsedMarker: "${frontmatter.collapsedMarker}"`);
+    }
+    if (frontmatter.expandedMarker) {
+      lines.push(`expandedMarker: "${frontmatter.expandedMarker}"`);
+    }
+    if (
+      typeof frontmatter.fontSize === 'number' &&
+      Number.isFinite(frontmatter.fontSize)
+    ) {
+      lines.push(`fontSize: ${frontmatter.fontSize}`);
+    }
+  }
+  const keys = Object.keys(layouts).sort();
   for (const id of keys) {
     const w = layouts[id]?.w;
     if (typeof w !== 'number' || !(w > 0)) continue;

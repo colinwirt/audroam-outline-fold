@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 0.2.22 — 2026-10-03
+
+### Outline text
+- `fold-`, `fold+`, `collapsedMarker`, `expandedMarker`, and `fontSize` may live in the trailing `--- layout ---` block, beside per-node `w:` widths.
+- `serialize` writes those keys there. The outline text starts with the first bullet, so a note summary is that line. A leading `---` block still parses, and layout keys win when both are present.
+
 ## 0.2.21 — 2026-10-02
 
 ### Map

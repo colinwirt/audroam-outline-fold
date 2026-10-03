@@ -26,6 +26,50 @@ describe('layout width in the outline text', () => {
     expect(doc.nodes[0]?.children?.[0]?.title).toBe('Beta');
   });
 
+  it('reads document keys from the layout block and writes them back there', () => {
+    const doc = parse(`- Parent row <id:p1> (+)
+  - Child row <id:c1>
+
+--- layout ---
+fold-: p1
+collapsedMarker: "(+)"
+fontSize: 18
+c1:
+  w: 280
+---
+`);
+    expect(doc.fold.ids).toEqual(['p1']);
+    expect(doc.frontmatter?.fontSize).toBe(18);
+    expect(doc.nodes[0]?.children?.[0]?.layout?.w).toBe(280);
+    expect(doc.nodes[0]?.title).toBe('Parent row');
+    const text = serialize(doc);
+    expect(text.startsWith('- Parent row <id:p1> (+)\n')).toBe(true);
+    expect(text).not.toMatch(/^---\n/);
+    expect(text).toContain('--- layout ---\nfold-: p1\ncollapsedMarker: "(+)"\nfontSize: 18\nc1:\n  w: 280\n---');
+    const again = parse(text);
+    expect(again.fold.ids).toEqual(['p1']);
+    expect(again.frontmatter?.fontSize).toBe(18);
+    expect(again.nodes[0]?.children?.[0]?.layout?.w).toBe(280);
+  });
+
+  it('lets layout document keys win over a leading frontmatter block', () => {
+    const doc = parse(`---
+fold-: a
+fontSize: 16
+---
+- Alpha <id:a>
+- Beta <id:b>
+
+--- layout ---
+fold-: b
+fontSize: 20
+---
+`);
+    expect(doc.fold.ids).toEqual(['b']);
+    expect(doc.frontmatter?.fontSize).toBe(20);
+    expect(doc.nodes[0]?.title).toBe('Alpha');
+  });
+
   it('writes the integer id only once a width needs a persistent key', () => {
     const doc = parse('- Alpha\n  - Beta\n');
     doc.nodes[0]!.children![0]!.layout = { w: 280 };

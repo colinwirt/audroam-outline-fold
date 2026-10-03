@@ -55,6 +55,7 @@ export {
   attachPayloads,
   collectLayouts,
   formatLayoutBlock,
+  parseLayoutBlock,
   parseLayoutMap,
   mergeFrontmatter,
   type LayoutMap,
