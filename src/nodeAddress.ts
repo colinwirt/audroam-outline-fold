@@ -61,7 +61,9 @@ export function nextAutoId(used: Set<string>, prefix = ''): string {
 
 /**
  * Integer id for a node that now needs a persistent payload link.
- * Continues after ids already in the document. Does not reuse a free position.
+ * With no prefix, a free 1-based position stays the id so a layout key such
+ * as `2:` does not move. If that number is already taken, the next id is
+ * one past the highest existing number, not a restart at 1.
  */
 export function assignPersistentId(
   doc: OutlineFoldDoc,
@@ -69,8 +71,16 @@ export function assignPersistentId(
   opts?: AutoIdOptions,
 ): string {
   if (node.id) return node.id;
+  const prefix = opts?.prefix ?? '';
   const used = collectNodeIds(doc.nodes);
-  node.id = nextAutoId(used, opts?.prefix ?? '');
+  if (!prefix) {
+    const pos = indexOutline(doc.nodes).get(node);
+    if (pos && !used.has(String(pos))) {
+      node.id = String(pos);
+      return node.id;
+    }
+  }
+  node.id = nextAutoId(used, prefix);
   return node.id;
 }
 

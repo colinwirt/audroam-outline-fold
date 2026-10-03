@@ -17,12 +17,19 @@ describe('nextAutoId', () => {
 });
 
 describe('assignPersistentId', () => {
-  it('does not reuse a low position when a higher auto id exists', () => {
+  it('keeps a free position so a layout key does not move', () => {
     const doc: OutlineFoldDoc = {
       nodes: [{ title: 'kept', id: '4' }, { title: 'blank' }],
       fold: { mode: '-', ids: [] },
     };
-    expect(assignPersistentId(doc, doc.nodes[1]!)).toBe('5');
-    expect(doc.nodes[1]!.id).toBe('5');
+    expect(assignPersistentId(doc, doc.nodes[1]!)).toBe('2');
+  });
+
+  it('continues after the highest id when the position number is taken', () => {
+    const doc: OutlineFoldDoc = {
+      nodes: [{ title: 'kept', id: '2' }, { title: 'blank' }],
+      fold: { mode: '-', ids: [] },
+    };
+    expect(assignPersistentId(doc, doc.nodes[1]!)).toBe('3');
   });
 });
