@@ -584,11 +584,15 @@ kbd {
 .preview-pane .map-fold-indicator.is-expanded circle {
   fill: none;
 }
-.preview-pane .map-edge {
+.preview-pane .map-edge,
+.preview-pane .map-fold-stem {
   fill: none;
   stroke: var(--connector);
   stroke-width: 1.5;
   opacity: 0.85;
+}
+.preview-pane .map-fold-stem {
+  pointer-events: none;
 }
 .preview-pane .of-node[data-collapsed="true"] > .of-children {
   display: none;

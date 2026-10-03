@@ -429,7 +429,7 @@ function taskGlyphSvg(state: TaskState, x: number, y: number): string {
 
 function globeGlyphSvg(x: number, y: number): string {
   return `<g class="map-link-hit" transform="translate(${x} ${y})" cursor="pointer">
-    <rect x="-16" y="-16" width="32" height="32" rx="10" fill="transparent"/>
+    <rect x="-12" y="-12" width="24" height="24" rx="8" fill="transparent"/>
     <circle r="8" fill="none" stroke="#8ec8ff" stroke-width="1.4"/>
     <ellipse rx="3.2" ry="8" fill="none" stroke="#8ec8ff" stroke-width="1.2"/>
     <path d="M -8 0 H 8 M -6.5 -4 H 6.5 M -6.5 4 H 6.5" fill="none" stroke="#8ec8ff" stroke-width="1"/>
@@ -1717,6 +1717,12 @@ export function createMapView(
           <path d="M -4 0 H 4"/>
         </g>`
             : '';
+          // Neck from the pill border through the fold circle. Collapsed, it
+          // tucks under the filled plus. Expanded, it meets the child edge
+          // at the circle's right side (connectorPath starts at foldCx + 9).
+          const stem = foldable
+            ? `<path class="map-fold-stem" d="M ${boxRight} ${pos.y} H ${col ? foldCx : foldCx + 9}" pointer-events="none"/>`
+            : '';
           const taskHit =
             task != null
               ? `<rect class="map-task-hit" x="${x}" y="${Math.min(y, pos.y - 22)}" width="${Math.max(taskLead, 44)}" height="${Math.max(h, 44)}" fill="transparent" cursor="pointer" role="checkbox" aria-checked="${task === 'done' ? 'true' : 'false'}"/>`
@@ -1734,9 +1740,12 @@ export function createMapView(
           </g>`
             : '';
           const links = captionLinks(n.title || '');
+          // On the rounded top-right corner (pill rx 18), biased above the
+          // stroke so a 44px pill still clears the mid-edge fold circle.
+          // Overlaps the corner outline, same idea as the resize mark.
           const globe =
             links.length > 0
-              ? globeGlyphSvg(boxRight - 16, y + 16)
+              ? globeGlyphSvg(boxRight - 5, y - 3)
               : '';
           const threadChip = thread
             ? `<g class="map-thread-hit" data-thread="${esc(thread)}" transform="translate(${textX} ${y + h - (affordance ? affordance + 4 : 6)})" cursor="pointer">
@@ -1767,6 +1776,7 @@ export function createMapView(
       ${moreChrome}
       ${threadChip}
       ${noteChips}
+      ${stem}
       ${marker}
       ${taskHit}
       ${foldHit}

@@ -195,6 +195,10 @@ kbd {
 .map-edge {
   fill: none; stroke: var(--connector); stroke-width: 1.4; opacity: .85;
 }
+.map-fold-stem {
+  fill: none; stroke: var(--connector); stroke-width: 1.4; opacity: .85;
+  pointer-events: none;
+}
 .note {
   margin-top: 14px; color: var(--muted); font-size: 12px; max-width: 78ch;
 }

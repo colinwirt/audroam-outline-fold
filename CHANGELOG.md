@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 0.2.23 — 2026-10-03
+
+### Map
+- The link globe sits on the pill’s top-right corner, clear of the fold handle.
+- A connector runs from the pill edge through the fold handle. Expanded, it joins the child edge.
+
 ## 0.2.22 — 2026-10-03
 
 ### Outline text
