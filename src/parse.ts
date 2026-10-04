@@ -302,6 +302,37 @@ function parseTitleAndMeta(
     }
   }
 
+  // A character typed after the closing tag or fold marker (`<id:n>3`,
+  // `(+)3`) must not hide the token. Peel that plain suffix, parse the
+  // tokens, then put the suffix back on the caption.
+  let typedSuffix = '';
+  {
+    const markers = [collapsedMarker, expandedMarker].filter(
+      (m): m is string => !!m,
+    );
+    const endsWithMarker = markers.some((m) => rest.endsWith(m));
+    if (!endsWithMarker && !rest.endsWith('>')) {
+      let i = rest.length;
+      while (i > 0) {
+        const marker = markers.find(
+          (m) => i >= m.length && rest.slice(i - m.length, i) === m,
+        );
+        if (marker || rest[i - 1] === '>' || rest[i - 1] === '\n') break;
+        i--;
+      }
+      if (i > 0 && i < rest.length) {
+        const core = rest.slice(0, i).trimEnd();
+        const suffix = rest.slice(i).trim();
+        const tokenEnd =
+          /<[^>\n]+>$/.test(core) || markers.some((m) => core.endsWith(m));
+        if (suffix && tokenEnd) {
+          rest = core;
+          typedSuffix = suffix;
+        }
+      }
+    }
+  }
+
   let inlineCollapsed = false;
   if (collapsedMarker && rest.endsWith(collapsedMarker)) {
     inlineCollapsed = true;
@@ -391,6 +422,7 @@ function parseTitleAndMeta(
     })
     .replace(/[ \t]{2,}/g, ' ')
     .trim();
+  if (typedSuffix) rest = `${rest} ${typedSuffix}`.trim();
   const noteLinks: string[] = [];
   for (const id of [...leadingNotes, ...midNotes, ...trailingNotes.reverse()]) {
     if (!noteLinks.includes(id)) noteLinks.push(id);

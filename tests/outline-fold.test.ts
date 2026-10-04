@@ -92,6 +92,22 @@ describe('parse sample line', () => {
     expect(doc.nodes[0].id).toBe('new');
     expect(doc.nodes[0].title).toBe('Title text');
   });
+
+  it('keeps a trailing id when a character is typed after the tag', () => {
+    const doc = parse('- Remodel the courtyard <id:courtyard>3\n');
+    expect(doc.nodes[0].id).toBe('courtyard');
+    expect(doc.nodes[0].title).toBe('Remodel the courtyard 3');
+    expect(doc.fold.ids).not.toContain('courtyard');
+  });
+
+  it('keeps the id and inline (+) when a character is typed after the marker', () => {
+    const doc = parse('- Order notes <private> <id:sup-private> (+)3\n');
+    expect(doc.nodes[0].id).toBe('sup-private');
+    expect(doc.nodes[0].title).toBe('Order notes 3');
+    expect(doc.nodes[0].flags).toContain('private');
+    expect(doc.fold.ids).toContain('sup-private');
+    expect(isCollapsed(doc, 'sup-private')).toBe(true);
+  });
 });
 
 describe('fold- / fold+', () => {
