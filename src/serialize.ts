@@ -82,6 +82,7 @@ export function serialize(doc: OutlineFoldDoc): string {
     collapsedMarker: doc.frontmatter?.collapsedMarker ?? DEFAULT_COLLAPSED,
     expandedMarker: doc.frontmatter?.expandedMarker,
     fontSize: doc.frontmatter?.fontSize,
+    noteUri: doc.frontmatter?.noteUri,
   });
   if (layoutBlock) {
     if (lines.length) lines.push('');

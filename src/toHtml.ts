@@ -1,6 +1,7 @@
 import { isCollapsed } from './fold.js';
 import { captionToHtml } from './captionRich.js';
 import { iconForNode, iconForTask } from './icons.js';
+import { noteLinkHref } from './taskChrome.js';
 import { hasSealed } from './sealed.js';
 import type { OutlineFoldDoc, OutlineNode, ToHtmlOptions } from './types.js';
 
@@ -89,11 +90,16 @@ function renderNode(
       ? `<button type="button" class="${p}-thread" data-thread="${esc(node.thread)}" data-thread-node="${esc(node.id)}" data-testid="of-thread-${esc(node.id)}" tabindex="-1">Thread</button>`
       : '';
 
+  const notePattern = doc.frontmatter?.noteUri || opts.noteUri;
   const noteChips = (node.noteLinks || [])
-    .map(
-      (pnid) =>
-        `<button type="button" class="${p}-note-link" data-note-link="${esc(pnid)}" data-note-node="${esc(node.id ?? '')}" data-testid="of-note-link-${esc(pnid)}" tabindex="-1">#${esc(pnid)}</button>`,
-    )
+    .map((pnid) => {
+      const href = noteLinkHref(notePattern, pnid);
+      const attrs = `class="${p}-note-link" data-note-link="${esc(pnid)}" data-note-node="${esc(node.id ?? '')}" data-testid="of-note-link-${esc(pnid)}"`;
+      if (!href) {
+        return `<button type="button" ${attrs} tabindex="-1">#${esc(pnid)}</button>`;
+      }
+      return `<a ${attrs} href="${esc(href)}" target="_blank" rel="noopener noreferrer">#${esc(pnid)}</a>`;
+    })
     .join('');
 
   const body = locked
@@ -128,6 +134,7 @@ export function toHtml(doc: OutlineFoldDoc, options: ToHtmlOptions = {}): string
     callbacks: options.callbacks,
     ariaLabel: options.ariaLabel,
     interactiveTasks: options.interactiveTasks,
+    noteUri: options.noteUri,
   };
   const p = opts.classPrefix;
   const label = esc(opts.ariaLabel ?? 'Outline');

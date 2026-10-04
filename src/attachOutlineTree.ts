@@ -302,7 +302,8 @@ export function attachOutlineTree(
 
     const noteBtn = target.closest<HTMLElement>('[data-note-link]');
     if (noteBtn && rootEl.contains(noteBtn)) {
-      e.preventDefault();
+      const isLink = noteBtn.tagName === 'A' && noteBtn.hasAttribute('href');
+      if (!isLink) e.preventDefault();
       e.stopPropagation();
       const pnid = noteBtn.getAttribute('data-note-link') || '';
       const id = noteBtn.getAttribute('data-note-node') || '';

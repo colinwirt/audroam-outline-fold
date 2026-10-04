@@ -67,6 +67,7 @@ import {
   resolveAction,
   resolveThread,
   resolveNoteLinks,
+  noteLinkHref,
   toggleTaskMarker,
   type TaskState,
   type TaskToggleEvent,
@@ -198,6 +199,11 @@ export interface MapViewOptions {
   onThread?: (ev: { id: string; thread: string; node: OutlineNode }) => void;
   /** Optional: `<t: N>` note-link chip. Host opens the note. */
   onNoteLink?: (ev: { id: string; pnid: string; node: OutlineNode }) => void;
+  /**
+   * Fallback when the layout block omits `noteUri`.
+   * `{id}` is the note id. http(s) or a root-relative path.
+   */
+  noteUri?: string;
   /**
    * When true (default), expand/focus may recentre the group.
    * When false, only gentle ensure-visible runs (edit ensure still on).
@@ -838,6 +844,7 @@ export function createMapView(
     onAction,
     onThread,
     onNoteLink,
+    noteUri: noteUriFallback,
     cameraRecentre: cameraRecentreOpt = true,
     isEditing = () => false,
     getEditRegion,
@@ -1773,15 +1780,20 @@ export function createMapView(
             0,
           );
           let chipCursor = captionX + widest + 6;
+          const notePattern = doc.frontmatter?.noteUri || noteUriFallback;
           const noteChips = noteChipPieces(noteLinks)
             .map((piece) => {
+              const href = noteLinkHref(notePattern, piece.id);
               const chip = `<g class="map-note-link-hit" data-note-link="${esc(piece.id)}" transform="translate(${chipCursor} ${textCentreY})" cursor="pointer">
-            <title>Note ${esc(piece.id)}</title>
+            <title>${href ? esc(href) : `Note ${esc(piece.id)}`}</title>
             <rect x="0" y="-11" width="${piece.w}" height="20" fill="transparent"/>
             <text class="map-note-link" text-anchor="start" y="4">${esc(piece.label)}</text>
           </g>`;
               chipCursor += piece.w + 8;
-              return chip;
+              const wrapped = href
+                ? `<a href="${esc(href)}" target="_blank" rel="noopener noreferrer">${chip}</a>`
+                : chip;
+              return wrapped;
             })
             .join('');
           return `<g class="${cls}" id="${esc(mapNodeDomId(domPrefix, key))}" data-id="${esc(key)}" data-text-w="${textW}"
@@ -1889,6 +1901,14 @@ export function createMapView(
           const hit = t.closest('.map-note-link-hit') as Element;
           const pnid = hit.getAttribute('data-note-link') || '';
           const n = findNode(getDoc().nodes, id);
+          const href = noteLinkHref(
+            getDoc().frontmatter?.noteUri || noteUriFallback,
+            pnid,
+          );
+          if (href) {
+            e.preventDefault();
+            window.open(href, '_blank', 'noopener,noreferrer');
+          }
           if (n && pnid) onNoteLink?.({ id, pnid, node: n });
           onChange?.();
           return;

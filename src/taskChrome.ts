@@ -133,6 +133,26 @@ export function resolveThread(node: OutlineNode): string | null {
   return parseThreadTag(node.title);
 }
 
+/**
+ * Turn a layout `noteUri` into an http(s) or root-relative link.
+ * `{id}` and `{pnid}` both take the note id. Anything else is ignored.
+ */
+export function noteLinkHref(pattern: string | undefined, id: string): string | null {
+  if (!pattern || !id) return null;
+  if (!/\{(?:id|pnid)\}/.test(pattern)) return null;
+  const href = pattern.replace(/\{(?:id|pnid)\}/g, encodeURIComponent(id));
+  if (href.startsWith('/') && !href.startsWith('//') && !href.startsWith('/\\')) {
+    return href;
+  }
+  try {
+    const url = new URL(href);
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') return null;
+    return url.href;
+  } catch {
+    return null;
+  }
+}
+
 /** Numeric `<t: N>` links. Structured field wins; otherwise scan the title. */
 export function resolveNoteLinks(node: OutlineNode): string[] {
   if (node.noteLinks && node.noteLinks.length) return [...node.noteLinks];

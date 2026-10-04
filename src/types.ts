@@ -88,6 +88,11 @@ export interface OutlineFrontmatter {
   expandedMarker?: string;
   /** Map label size in px. Overridden by the layout file and by a node fontSize. */
   fontSize?: number;
+  /**
+   * `<t:N>` open pattern from the layout block.
+   * `{id}` is the note id. `https://b.audroam.com/view/pnid/{id}` or `/view/pnid/{id}`.
+   */
+  noteUri?: string;
 }
 
 export interface FoldState {
@@ -128,4 +133,9 @@ export interface ToHtmlOptions {
    * must wire click → onTaskToggle / setDoc. Default true when task present.
    */
   interactiveTasks?: boolean;
+  /**
+   * Used when the document layout omits `noteUri`.
+   * `{id}` is replaced with the `<t:N>` id. http(s) or a root-relative path.
+   */
+  noteUri?: string;
 }

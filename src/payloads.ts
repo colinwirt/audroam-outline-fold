@@ -264,6 +264,12 @@ function readFmLine(
     fm.fontSize = Number(fontSize[1]);
     return true;
   }
+  const noteUri = line.match(/^noteUri\s*:\s*(.+)$/i);
+  if (noteUri) {
+    const value = unquote(noteUri[1]!.trim());
+    if (value) fm.noteUri = value;
+    return true;
+  }
   return false;
 }
 
@@ -298,6 +304,7 @@ export function mergeFrontmatter(
   if (tail.expandedMarker !== undefined)
     out.expandedMarker = tail.expandedMarker;
   if (tail.fontSize !== undefined) out.fontSize = tail.fontSize;
+  if (tail.noteUri !== undefined) out.noteUri = tail.noteUri;
   return out;
 }
 
@@ -369,6 +376,11 @@ export function formatLayoutBlock(
       Number.isFinite(frontmatter.fontSize)
     ) {
       lines.push(`fontSize: ${frontmatter.fontSize}`);
+    }
+    if (frontmatter.noteUri) {
+      const uri = frontmatter.noteUri;
+      const bare = /^(https?:\/\/\S+|\/\S+)$/.test(uri);
+      lines.push(bare ? `noteUri: ${uri}` : `noteUri: "${uri.replace(/"/g, '\\"')}"`);
     }
   }
   const keys = Object.keys(layouts).sort();

@@ -115,6 +115,16 @@ function parseFrontmatter(text: string): {
       fm.fontSize = Number(fontSize[1]);
       continue;
     }
+    const noteUri = line.match(/^noteUri\s*:\s*(.+)$/i);
+    if (noteUri) {
+      const raw = noteUri[1].trim();
+      const value =
+        (raw.startsWith('"') && raw.endsWith('"')) ||
+        (raw.startsWith("'") && raw.endsWith("'"))
+          ? raw.slice(1, -1)
+          : raw;
+      if (value) fm.noteUri = value;
+    }
   }
 
   return { fm, body };

@@ -89,7 +89,7 @@ ins-remote:
 | Inline `<enc:…>` | Still parsed (compat); **serialize writes trailer only** |
 | Exactly one of `ct` \| `uri` | Inline ciphertext **or** remote blob URI |
 | Trailing YAML `---` | Same fold-/marker keys as leading frontmatter |
-| `--- layout ---` | Per-node `w:` widths, and the same document keys (`fold-` / `fold+`, markers, `fontSize`) |
+| `--- layout ---` | Per-node `w:` widths, and the same document keys (`fold-` / `fold+`, markers, `fontSize`, `noteUri`) |
 | Head + tail frontmatter | **Merged; tail wins** on conflicts. Keys in `--- layout ---` win over both |
 | Serialize | Writes those document keys in `--- layout ---`, not a leading `---` fence |
 

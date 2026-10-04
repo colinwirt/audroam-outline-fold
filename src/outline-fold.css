@@ -140,6 +140,7 @@
   line-height: 1;
   padding: 0 0.1rem;
   cursor: pointer;
+  text-decoration: none;
 }
 .of-note-link:hover {
   text-decoration: underline;

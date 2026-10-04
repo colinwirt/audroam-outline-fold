@@ -6,6 +6,7 @@ import {
   toggleFold,
   setExpandLevel,
   toHtml,
+  noteLinkHref,
   ICONS,
 } from '../src/index.js';
 
@@ -556,5 +557,32 @@ describe('<t: pnid> note links', () => {
     expect(doc.nodes[0].noteLinks).toEqual(['9']);
     expect(doc.nodes[0].title).toBe('Work');
     expect(serialize(doc)).toContain('<thread:pnid:9> <t: 9> <id:w>');
+  });
+
+  it('opens a layout noteUri in a new tab', () => {
+    const pattern = 'https://b.audroam.com/view/pnid/{id}';
+    const doc = parse(`- Test in viewer <t:41742> <id:root>
+
+--- layout ---
+noteUri: ${pattern}
+---
+`);
+    expect(doc.frontmatter?.noteUri).toBe(pattern);
+    expect(noteLinkHref(pattern, '41742')).toBe(
+      'https://b.audroam.com/view/pnid/41742',
+    );
+    expect(noteLinkHref('javascript:alert({id})', '1')).toBeNull();
+    expect(noteLinkHref('/view/pnid/{id}', '41742')).toBe('/view/pnid/41742');
+    const html = toHtml(doc);
+    expect(html).toContain(
+      'href="https://b.audroam.com/view/pnid/41742" target="_blank" rel="noopener noreferrer"',
+    );
+    const fallback = toHtml(parse('- Row <t:9> <id:r>\n'), {
+      noteUri: '/view/pnid/{id}',
+    });
+    expect(fallback).toContain('href="/view/pnid/9"');
+    const out = serialize(doc);
+    expect(out).toContain(`noteUri: ${pattern}`);
+    expect(parse(out).frontmatter?.noteUri).toBe(pattern);
   });
 });

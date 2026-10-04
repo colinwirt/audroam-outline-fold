@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.29 — 2026-10-04
+
+### Notes
+- The layout block accepts `noteUri`. `{id}` is the `<t:N>` id, and the chip opens that http(s) or root-relative link in a new tab.
+
 ## 0.2.28 — 2026-10-04
 
 ### Map
