@@ -723,69 +723,86 @@ export default function App() {
   return (
     <div className="app">
       <header className="header">
-        <h1>@audroam/outline-fold — React live parser</h1>
-        <p className="meta">
-          Edit outline source on the left · live <code>validateDocument</code> +{' '}
-          Outline <code>toHtml</code> / Map <code>createMapView</code> on the right
-          (package <code>@{__OUTLINE_FOLD_VERSION__}</code>). Invalid docs still render what
-          parse can build; issues appear under the editor. Download/share is gated when{' '}
-          <code>!ok</code>. Outline: click <kbd>(+)</kbd> to <code>toggleFold</code>. Map:
-          auto-pack + pan/zoom; fold via circle-+ or <kbd>.</kbd> / Space / Enter (no
-          fold-on-Left); digits when selected. Shared fold syncs via <code>serialize</code>.
-          Drafts stay in this browser’s <code>localStorage</code> (outline text only — no
-          secrets). Unlock/Decrypt uses demo key sources. OSS example only — not production
-          MFA.
-        </p>
-        <p className="pkg-stamp" aria-label="Package version" data-testid="pkg-stamp">
-          Package <code>@audroam/outline-fold@{__OUTLINE_FOLD_VERSION__}</code>
-          {' · '}
-          <span className="pkg-git">
-            git <code data-testid="pkg-git">{__OUTLINE_FOLD_GIT__}</code>
-          </span>
-        </p>
+        <div className="title-row">
+          <h1>React live parser</h1>
+          <p className="pkg-stamp" aria-label="Package version" data-testid="pkg-stamp">
+            <code>@audroam/outline-fold@{__OUTLINE_FOLD_VERSION__}</code>
+            {' · '}
+            <span className="pkg-git">
+              git <code data-testid="pkg-git">{__OUTLINE_FOLD_GIT__}</code>
+            </span>
+          </p>
+        </div>
       </header>
 
       <div className="doc-bar" role="toolbar" aria-label="Documents">
-        <label className="doc-select-wrap">
-          <span className="sr-only">Document</span>
-          <select
-            className="doc-select"
-            value={library.activeId}
-            onChange={(e) => switchDoc(e.target.value)}
-            aria-label="Select document"
+        <div className="doc-group">
+          <label className="doc-select-wrap">
+            <span className="sr-only">Document</span>
+            <select
+              className="doc-select"
+              value={library.activeId}
+              onChange={(e) => switchDoc(e.target.value)}
+              aria-label="Select document"
+            >
+              {sortedDocs.map((d) => (
+                <option key={d.id} value={d.id}>
+                  {d.title || 'Untitled'}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button type="button" className="doc-btn" onClick={onNewDoc}>
+            New
+          </button>
+          <button type="button" className="doc-btn" onClick={onRename}>
+            Rename
+          </button>
+          <button type="button" className="doc-btn" onClick={onDuplicate}>
+            Duplicate
+          </button>
+          <button type="button" className="doc-btn" onClick={onDelete}>
+            Delete
+          </button>
+          <button
+            type="button"
+            className="doc-btn doc-btn-accent"
+            onClick={onLoadCafe}
+            title="Load cafe sample"
+            aria-label="Load cafe sample"
           >
-            {sortedDocs.map((d) => (
-              <option key={d.id} value={d.id}>
-                {d.title || 'Untitled'}
-              </option>
-            ))}
-          </select>
-        </label>
-        <button type="button" className="doc-btn" onClick={onNewDoc}>
-          New
-        </button>
-        <button type="button" className="doc-btn" onClick={onRename}>
-          Rename
-        </button>
-        <button type="button" className="doc-btn" onClick={onDuplicate}>
-          Duplicate
-        </button>
-        <button type="button" className="doc-btn" onClick={onDelete}>
-          Delete
-        </button>
-        <button type="button" className="doc-btn doc-btn-accent" onClick={onLoadCafe}>
-          Load cafe sample
-        </button>
-        <span className="doc-bar-sep" aria-hidden="true" />
-        <button type="button" className="doc-btn" onClick={onDownloadDoc} title="Download active doc as .md">
-          Download .md
-        </button>
-        <button type="button" className="doc-btn" onClick={onDownloadLibrary} title="Download full library as .json">
-          Download library
-        </button>
-        <button type="button" className="doc-btn" onClick={onImportClick} title="Import library JSON (merge or replace)">
-          Import library
-        </button>
+            Cafe
+          </button>
+        </div>
+        <div className="doc-group doc-group-file">
+          <button
+            type="button"
+            className="doc-btn"
+            onClick={onDownloadDoc}
+            title="Download active doc as .md"
+            aria-label="Download active doc as .md"
+          >
+            .md
+          </button>
+          <button
+            type="button"
+            className="doc-btn"
+            onClick={onDownloadLibrary}
+            title="Download full library as .json"
+            aria-label="Download library"
+          >
+            Library
+          </button>
+          <button
+            type="button"
+            className="doc-btn"
+            onClick={onImportClick}
+            title="Import library JSON (merge or replace)"
+            aria-label="Import library"
+          >
+            Import
+          </button>
+        </div>
         <input
           ref={importFileRef}
           type="file"
@@ -818,8 +835,8 @@ export default function App() {
             >
               <div className="validation-panel-title">
                 {validation.ok
-                  ? `Warnings (${validation.issues.length}) — outline still renders`
-                  : `Errors (${validation.issues.filter((i) => i.severity === 'error').length}) — download/share gated; outline still renders when parseable`}
+                  ? `Warnings (${validation.issues.length})`
+                  : `Errors (${validation.issues.filter((i) => i.severity === 'error').length})`}
               </div>
               <ul className="validation-list">
                 {validation.issues.map((iss, idx) => (
@@ -867,37 +884,6 @@ export default function App() {
                 Map
               </button>
             </div>
-            {previewMode === 'map' ? (
-              <div className="map-tools" role="toolbar" aria-label="Map view tools">
-                <button
-                  type="button"
-                  onClick={() => {
-                    const host = mapHostRef.current;
-                    const map = mapRef.current;
-                    if (!host || !map) return;
-                    const r = host.getBoundingClientRect();
-                    map.zoomAt(r.left + r.width / 2, r.top + r.height / 2, 1.2);
-                  }}
-                >
-                  Zoom +
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const host = mapHostRef.current;
-                    const map = mapRef.current;
-                    if (!host || !map) return;
-                    const r = host.getBoundingClientRect();
-                    map.zoomAt(r.left + r.width / 2, r.top + r.height / 2, 1 / 1.2);
-                  }}
-                >
-                  Zoom −
-                </button>
-                <button type="button" onClick={() => mapRef.current?.resetCam()}>
-                  Reset
-                </button>
-              </div>
-            ) : null}
           </div>
           {!html ? (
             <div className="parse-error" role="alert">
@@ -920,6 +906,44 @@ export default function App() {
             hidden={!html || previewMode !== 'map'}
             aria-label="Map preview"
           />
+          {html && previewMode === 'map' ? (
+            <div className="map-tools" role="toolbar" aria-label="Map view tools">
+              <button
+                type="button"
+                aria-label="Zoom out"
+                onClick={() => {
+                  const host = mapHostRef.current;
+                  const map = mapRef.current;
+                  if (!host || !map) return;
+                  const r = host.getBoundingClientRect();
+                  map.zoomAt(r.left + r.width / 2, r.top + r.height / 2, 1 / 1.2);
+                }}
+              >
+                −
+              </button>
+              <button
+                type="button"
+                aria-label="Zoom in"
+                onClick={() => {
+                  const host = mapHostRef.current;
+                  const map = mapRef.current;
+                  if (!host || !map) return;
+                  const r = host.getBoundingClientRect();
+                  map.zoomAt(r.left + r.width / 2, r.top + r.height / 2, 1.2);
+                }}
+              >
+                +
+              </button>
+              <button
+                type="button"
+                aria-label="Fit"
+                title="Fit the outline in the window"
+                onClick={() => mapRef.current?.resetCam()}
+              >
+                Fit
+              </button>
+            </div>
+          ) : null}
         </section>
       </div>
     </div>

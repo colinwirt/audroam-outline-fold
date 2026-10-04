@@ -41,7 +41,6 @@ const foldOut = document.getElementById('foldOut');
 const pageTitle = document.getElementById('pageTitle');
 const pageSub = document.getElementById('pageSub');
 const banner = document.getElementById('banner');
-const docMeta = document.getElementById('docMeta');
 const btnZoomIn = document.getElementById('btnZoomIn');
 const btnZoomOut = document.getElementById('btnZoomOut');
 const btnResetView = document.getElementById('btnResetView');
@@ -97,16 +96,17 @@ function showError(msg) {
 
 function showValidation(v) {
   if (!validationEl || !v) return;
-  validationEl.hidden = false;
   if (v.ok && v.issues.length === 0) {
-    validationEl.className = 'validation ok';
-    validationEl.textContent = 'validateDocument: ok — outline renders; no issues.';
+    validationEl.hidden = true;
+    validationEl.textContent = '';
     return;
   }
+  validationEl.hidden = false;
   validationEl.className = 'validation ' + (v.ok ? 'ok' : 'bad');
+  const errorCount = v.issues.filter((i) => i.severity === 'error').length;
   const title = v.ok
-    ? 'validateDocument: warnings (outline still renders)'
-    : 'validateDocument: errors (outline still renders when parseable; gate save/share)';
+    ? 'Warnings (' + v.issues.length + ')'
+    : 'Errors (' + errorCount + ')';
   validationEl.innerHTML =
     '<strong>' +
     title +
@@ -203,6 +203,13 @@ function setMode(next) {
   btnOutline.setAttribute('aria-pressed', mode === 'outline' ? 'true' : 'false');
   btnMap.setAttribute('aria-pressed', mode === 'map' ? 'true' : 'false');
   paint();
+  // The host is display:none until this turn, so the first paint can see a
+  // zero height. Paint again after layout so the canvas fills the window.
+  if (next === 'map') {
+    requestAnimationFrame(() => {
+      if (mode === 'map') map?.paint();
+    });
+  }
 }
 
 btnOutline.addEventListener('click', () => setMode('outline'));
@@ -223,8 +230,9 @@ async function boot() {
     showError(
       'Missing ?doc= — pass a markdown path, e.g. ?doc=../fixtures/pci-dss.md or ?doc=../solar-system/solar-system.md&layout=../solar-system/solar-system.layout.json',
     );
+    pageSub.hidden = false;
     pageSub.innerHTML =
-      'Open from the <a href="../../">landing page</a> or fixtures. Example: ' +
+      'Open from the <a href="../../">landing page</a>. Example: ' +
       '<a href="?doc=../solar-system/solar-system.md&layout=../solar-system/solar-system.layout.json"><code>?doc=../solar-system/…</code></a>';
     return;
   }
@@ -316,41 +324,34 @@ async function boot() {
 
   if (stubUnlock) {
     banner.hidden = false;
-    banner.innerHTML =
-      '<strong>Sealed stub:</strong> trailer <code>ct: PLACEHOLDER</code> — Unlock / Decrypt reports <em>stub unlock N/A</em> until <code>demo:seal</code>. Fiction only — no real secrets.';
-  } else if (!sealed) {
+    banner.textContent = 'Sealed stub. Unlock is not available.';
+  } else if (sealed) {
     banner.hidden = false;
-    banner.innerHTML =
-      '<strong>Cleartext study/demo:</strong> no sealed payloads (or caption-only). Fiction / public names only — not legal advice.';
+    banner.textContent = 'Sealed demo. Unlock stays in this tab.';
   } else {
-    banner.hidden = false;
-    banner.innerHTML =
-      '<strong>Sealed demo:</strong> real demo ciphertext present — Unlock / Decrypt with sample key sources. Session reveal only — not written back.';
+    banner.hidden = true;
+    banner.textContent = '';
   }
 
   const layoutSrc = layout._source || 'auto-pack';
   const shortDoc = mdUrl.pathname.split('/').slice(-2).join('/');
+  pageSub.hidden = false;
   pageSub.innerHTML =
-    'Dual <strong>Outline | Map</strong>, shared fold. Source: ' +
     '<a href="' +
     mdUrl.href +
     '"><code>' +
     shortDoc +
     '</code></a>' +
     (layoutUrl
-      ? ' · layout: <a href="' +
+      ? ' · <a href="' +
         layoutUrl.href +
         '"><code>' +
         layoutUrl.pathname.split('/').pop() +
         '</code></a>'
       : '') +
-    ' · layout source: <code>' +
+    ' · <code>' +
     layoutSrc +
-    '</code>. ' +
-    '<a href="../../">All demos</a> · paste into <a href="../../react-live/">React live</a>';
-
-  docMeta.textContent =
-    'Sealed policy: sealed nodes stay on the outline; map shows current fold graph. Unlock chrome outside the map canvas.';
+    '</code>';
 
   outline = createOutlineView(outlineHost, {
     getDoc: () => doc,

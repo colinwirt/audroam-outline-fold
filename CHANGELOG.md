@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.24 — 2026-10-04
+
+### Examples
+- The Pages viewer and the React live demo fill the window. Zoom is − / + / Fit on the map.
+
 ## Unreleased
 
 ### Map

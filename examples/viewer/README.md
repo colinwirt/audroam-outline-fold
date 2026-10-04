@@ -17,7 +17,7 @@ Uses shared core (`../_shared/`): `parseDoc` → `createOutlineView` → `create
 
 ## Versions on the page
 
-When JS loads, the chrome strip under the gold rule shows three build stamps:
+When JS loads, the title row shows three build stamps:
 
 | Label | Source |
 |-------|--------|

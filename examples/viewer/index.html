@@ -14,34 +14,31 @@
 </head>
 <body>
 <div class="shell">
-  <div class="gold-rule" aria-hidden="true"></div>
-  <p class="build-meta" id="buildMeta" aria-label="Build versions"></p>
-  <h1 id="pageTitle">Outline | Map</h1>
-  <p class="sub" id="pageSub">
-    Dual <strong>Outline | Map</strong>, shared fold. Pass
-    <code>?doc=</code> (markdown URL) and optional <code>&amp;layout=</code>
-    (sidecar JSON). Without a sidecar, positions auto-pack L→R.
-    <a href="../../">All demos</a>
-  </p>
-  <p class="banner" id="banner" hidden></p>
+  <header class="top">
+    <div class="gold-rule" aria-hidden="true"></div>
+    <div class="title-row">
+      <h1 id="pageTitle">Outline | Map</h1>
+      <p class="build-meta" id="buildMeta" aria-label="Build versions"></p>
+    </div>
+    <p class="sub" id="pageSub" hidden></p>
+    <p class="banner" id="banner" hidden></p>
+  </header>
 
   <div class="bar">
     <div class="seg" role="group" aria-label="View mode">
       <button type="button" id="btnOutline" aria-pressed="true">Outline</button>
       <button type="button" id="btnMap" aria-pressed="false">Map</button>
     </div>
-    <div class="map-tools" id="mapTools" hidden>
-      <button type="button" id="btnZoomIn" title="Zoom in">+</button>
-      <button type="button" id="btnZoomOut" title="Zoom out">−</button>
-      <button type="button" id="btnResetView" title="Reset pan/zoom">Reset view</button>
-    </div>
-    <p class="legend">
-      Outline: <kbd>↑</kbd><kbd>↓</kbd> row · <kbd>←</kbd><kbd>→</kbd> fold/parent ·
-      <kbd>.</kbd>/<kbd>Space</kbd> toggle · <kbd>0</kbd>–<kbd>9</kbd> levels ·
-      Map: <kbd>↑</kbd><kbd>↓</kbd> siblings · <kbd>→</kbd> child · <kbd>←</kbd> parent ·
-      <kbd>.</kbd>/<kbd>Space</kbd> fold · <kbd>0</kbd>–<kbd>9</kbd> when selected ·
-      wheel/drag/pinch pan-zoom · session-local
-    </p>
+    <details class="keys">
+      <summary>Keys</summary>
+      <p>
+        Outline: <kbd>↑</kbd><kbd>↓</kbd> row · <kbd>←</kbd><kbd>→</kbd> fold/parent ·
+        <kbd>.</kbd>/<kbd>Space</kbd> toggle · <kbd>0</kbd>–<kbd>9</kbd> levels.
+        Map: <kbd>↑</kbd><kbd>↓</kbd> siblings · <kbd>→</kbd> child · <kbd>←</kbd> parent ·
+        <kbd>.</kbd>/<kbd>Space</kbd> fold · <kbd>0</kbd>–<kbd>9</kbd> when selected.
+        Wheel, drag, and pinch pan and zoom. Session-local.
+      </p>
+    </details>
   </div>
 
   <div id="loadErr" class="err" hidden></div>
@@ -50,14 +47,17 @@
   <div id="panel" class="tile" data-mode="outline">
     <div id="outlineHost"></div>
     <div id="mapHost" class="map-wrap" hidden></div>
+    <div class="map-tools" id="mapTools" hidden>
+      <button type="button" id="btnZoomOut" title="Zoom out" aria-label="Zoom out">−</button>
+      <button type="button" id="btnZoomIn" title="Zoom in" aria-label="Zoom in">+</button>
+      <button type="button" id="btnResetView" title="Fit the outline in the window" aria-label="Fit">Fit</button>
+    </div>
   </div>
 
   <details class="serialize" id="serializeBox">
-    <summary>Current handoff text (fold state · sealed ciphertext stays in outline)</summary>
+    <summary>Handoff text</summary>
     <pre id="foldOut"></pre>
   </details>
-
-  <p class="note" id="docMeta"></p>
 </div>
 
 <script type="module" src="./main.js"></script>
