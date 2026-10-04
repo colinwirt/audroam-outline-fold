@@ -35,10 +35,47 @@ export const CHAR_W = 7.2;
 export const CODE_CHAR_W = 8.4;
 export const LINE_H = 16;
 export const PILL_PAD_Y = 10;
-export const TASK_LEAD = 28;
+/** Map checkbox. The lead is the inset, the box, and the gap before the caption. */
+export const TASK_BOX = 14;
+export const TASK_INSET = 8;
+export const TASK_GAP = 6;
+export const TASK_LEAD = TASK_INSET + TASK_BOX + TASK_GAP;
 export const MIN_TEXT_W = 36;
-/** Air between the glyphs and the pill border. The border is this plus the measured line. */
+/** Air between the caption and the pill border. A task box replaces the left pad. */
 export const PILL_PAD_X = 16;
+/** Gap, then `#id` labels, then air before the pill edge. Digits at 12px. */
+const NOTE_CHIP_GAP = 6;
+const NOTE_CHIP_TRAIL = 10;
+const NOTE_CHIP_CHAR = 7.2;
+
+export function noteChipLabel(pnid: string): string {
+  return `#${pnid}`;
+}
+
+export interface NoteChipPiece {
+  id: string;
+  label: string;
+  w: number;
+}
+
+export function noteChipPieces(ids: string[]): NoteChipPiece[] {
+  return ids.map((id) => {
+    const label = noteChipLabel(id);
+    return { id, label, w: Math.ceil(label.length * NOTE_CHIP_CHAR) };
+  });
+}
+
+/** Width after the caption: gap, chips, and a little air before the border. */
+export function noteChipSpan(ids: string[]): number {
+  const pieces = noteChipPieces(ids);
+  if (!pieces.length) return 0;
+  let inner = 0;
+  for (let i = 0; i < pieces.length; i++) {
+    if (i) inner += 8;
+    inner += pieces[i]!.w;
+  }
+  return NOTE_CHIP_GAP + inner + NOTE_CHIP_TRAIL;
+}
 /** Extra height reserved for “more”/“less” affordance when clipped or expanded. */
 export const MORE_AFFORDANCE_H = 18;
 
@@ -312,6 +349,8 @@ export interface MeasurePillOpts {
   reserveTask?: boolean;
   foldSlot?: number;
   taskLead?: number;
+  /** `<t:N>` ids drawn after the caption. They widen the pill; they do not wrap the caption. */
+  noteLinks?: string[];
   /** Reserve height for more/less chrome when truncated or expanded-from-clip. */
   reserveMoreAffordance?: boolean;
   fontSize?: number;
@@ -611,9 +650,11 @@ function wrapLinesToWidth(
   widthPx: number,
   maxLines: number | null,
   fontPx: number,
+  padLeft = PILL_PAD_X,
+  padRight = PILL_PAD_X,
 ): WrapResult {
   const loose = wrapLines(text, 100000, null);
-  const inner = Math.max(48, widthPx - PILL_PAD_X * 2);
+  const inner = Math.max(48, widthPx - padLeft - padRight);
   const rawRich: CaptionStyleRun[][] = [];
   for (const line of loose.richLines) {
     const parts = wrapCharsToWidth(runsToChars(line), inner, fontPx);
@@ -657,6 +698,7 @@ export function measurePill(
     opts.reserveTask ? 1 : 0,
     opts.foldSlot ?? '',
     opts.taskLead ?? '',
+    (opts.noteLinks || []).join(','),
     opts.reserveMoreAffordance === false ? 0 : 1,
     opts.fontSize ?? '',
   ].join('\u0001');
@@ -674,13 +716,18 @@ export function measurePill(
     typeof opts.widthPx === 'number' && opts.widthPx > 0
       ? Math.max(MIN_COL_W, opts.widthPx)
       : undefined;
+  // The checkbox sits in the left pad. Do not add that pad again before the caption.
+  const padLeft = taskLead > 0 ? 0 : PILL_PAD_X;
+  const padRight = PILL_PAD_X;
   const wrapped = widthPx
-    ? wrapLinesToWidth(label, widthPx, effectiveMaxLines, fontPx)
+    ? wrapLinesToWidth(label, widthPx, effectiveMaxLines, fontPx, padLeft, padRight)
     : balanceAutoWrap(label, wrapCh, effectiveMaxLines, fontPx);
   const widest = wrapped.richLines.reduce((max, line) => Math.max(max, lineWidth(line, fontPx)), 0);
   const textW = widthPx
     ? Math.round(widthPx)
-    : Math.max(MIN_TEXT_W, Math.round(widest + PILL_PAD_X * 2));
+    : Math.max(MIN_TEXT_W, Math.round(widest + padLeft + padRight));
+  const roomAfter = Math.max(0, textW - padLeft - widest);
+  const noteExtra = Math.ceil(Math.max(0, noteChipSpan(opts.noteLinks || []) - roomAfter));
   const lineCount = Math.max(1, wrapped.lines.length);
   const box = lineBox(fontPx);
 
@@ -707,7 +754,7 @@ export function measurePill(
     (needsAffordance ? MORE_AFFORDANCE_H : 0);
 
   const measured: MeasuredPill = {
-    w: textW + foldSlot + taskLead,
+    w: textW + foldSlot + taskLead + noteExtra,
     h,
     textW,
     foldSlot,

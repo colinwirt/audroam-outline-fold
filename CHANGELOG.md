@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.28 — 2026-10-04
+
+### Map
+- A task checkbox sits in the left pad. The caption starts just after the box.
+- A `<t:N>` link draws as `#N` on the caption line. The outline chip uses the same label.
+
 ## 0.2.27 — 2026-10-04
 
 ### Tasks

@@ -4,6 +4,8 @@ import {
   pillSize,
   FOLD_SLOT,
   TASK_LEAD,
+  PILL_PAD_X,
+  noteChipSpan,
   DEFAULT_WRAP_CH,
   DEFAULT_MAX_LINES,
   SOFT_SAFETY_MAX_LINES,
@@ -107,6 +109,16 @@ describe('scrapbook wrap (~30 + more/less)', () => {
     });
     expect(withTask.taskLead).toBe(TASK_LEAD);
     expect(withTask.w).toBe(withTask.textW + FOLD_SLOT + TASK_LEAD);
+    const plain = pillSize('can edit');
+    const task = pillSize('can edit', { reserveTask: true });
+    expect(task.textW).toBe(plain.textW - PILL_PAD_X);
+    expect(task.w).toBe(plain.w + TASK_LEAD - PILL_PAD_X);
+    const linked = pillSize('Test in viewer', { noteLinks: ['41742'] });
+    const bare = pillSize('Test in viewer');
+    const chip = noteChipSpan(['41742']);
+    expect(linked.textW).toBe(bare.textW);
+    expect(linked.w - bare.w).toBeGreaterThanOrEqual(chip - PILL_PAD_X);
+    expect(linked.w - bare.w).toBeLessThanOrEqual(chip - PILL_PAD_X + 1);
   });
 
   it('honours sidecar wrapCh; bodyExpanded orthogonal to fold ids', () => {

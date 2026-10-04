@@ -10,6 +10,7 @@ import {
   FOLD_SLOT,
   displayCaption,
   resolveTask,
+  resolveNoteLinks,
 } from '../src/index.js';
 import { captionWithoutLinks } from '../src/captionRich.js';
 
@@ -201,6 +202,7 @@ describe('autoPackPositions', () => {
       const { w } = pillSize(label, {
         reserveFold: !!(n.children?.length),
         reserveTask: !!resolveTask(n),
+        noteLinks: resolveNoteLinks(n),
       });
       return pos.x - w / 2;
     }

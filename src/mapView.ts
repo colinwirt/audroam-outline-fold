@@ -48,8 +48,12 @@ import {
   SOFT_SAFETY_MAX_LINES,
   SOFT_SAFETY_MAX_CHARS,
   TASK_LEAD,
+  TASK_BOX,
+  TASK_INSET,
   LINE_H,
   PILL_PAD_X,
+  lineWidth,
+  noteChipPieces,
   PILL_PAD_Y,
   MORE_AFFORDANCE_H,
   DEFAULT_FONT_PX,
@@ -153,6 +157,8 @@ export interface PillSizeOptions {
   fontSize?: number;
   /** Caption column width in px. Overrides wrapCh. */
   widthPx?: number;
+  /** `<t:N>` ids drawn after the caption. */
+  noteLinks?: string[];
 }
 
 export interface PillSize {
@@ -351,6 +357,7 @@ export function pillSize(label: string, opts: PillSizeOptions = {}): PillSize {
     reserveTask: opts.reserveTask,
     foldSlot: FOLD_SLOT,
     taskLead: TASK_LEAD,
+    noteLinks: opts.noteLinks,
   });
   return measured;
 }
@@ -379,6 +386,7 @@ function nodePillOpts(
     maxLines,
     bodyExpanded: !!lay?.bodyExpanded,
     fontSize: lay?.fontSize ?? defaults?.fontSize,
+    noteLinks: resolveNoteLinks(n),
   };
 }
 
@@ -1600,6 +1608,7 @@ export function createMapView(
         maxLines: pos.maxLines,
         bodyExpanded: !!pos.bodyExpanded,
         fontSize: resolveFontPx(pos.fontSize, layout.fontSize, doc.frontmatter?.fontSize),
+        noteLinks: resolveNoteLinks(n),
       });
       const cue = isCue(n);
       const thread = resolveThread(n);
@@ -1644,6 +1653,7 @@ export function createMapView(
             maxLines: cpos.maxLines,
             bodyExpanded: !!cpos.bodyExpanded,
             fontSize: resolveFontPx(cpos.fontSize, layout.fontSize, doc.frontmatter?.fontSize),
+            noteLinks: resolveNoteLinks(c),
           });
           // Start on the pill's right edge so the curve runs through the
           // fold circle (centre is foldSlot/2 past that edge) and on to the child.
@@ -1730,11 +1740,11 @@ export function createMapView(
             : '';
           const taskHit =
             task != null
-              ? `<rect class="map-task-hit" x="${x}" y="${Math.min(y, pos.y - 22)}" width="${Math.max(taskLead, 44)}" height="${Math.max(h, 44)}" fill="transparent" cursor="pointer" role="checkbox" aria-checked="${task === 'done' ? 'true' : task === 'pending' ? 'mixed' : 'false'}"/>`
+              ? `<rect class="map-task-hit" x="${x + 2}" y="${Math.min(y, pos.y - 22)}" width="${Math.max(taskLead - 2, TASK_BOX)}" height="${Math.max(h, 44)}" fill="transparent" cursor="pointer" role="checkbox" aria-checked="${task === 'done' ? 'true' : task === 'pending' ? 'mixed' : 'false'}"/>`
               : '';
           const taskChrome =
             task != null
-              ? taskGlyphSvg(task, x + taskLead / 2, textCentreY)
+              ? taskGlyphSvg(task, x + TASK_INSET + TASK_BOX / 2, textCentreY)
               : '';
           const tip = fullText || label;
           const bodyAction = showMore ? 'more' : showLess ? 'less' : '';
@@ -1757,16 +1767,21 @@ export function createMapView(
             <text text-anchor="middle" y="3" fill="#C9A227" font-size="10">Thread</text>
           </g>`
             : '';
-          const noteChipY = y + h - (affordance ? affordance + 4 : 6);
-          const noteOrigin = thread ? textX + 78 : textX;
-          const noteChips = noteLinks
-            .map((pnid, i) => {
-              const chip = `t:${pnid}`;
-              const chipW = Math.max(44, 10 + chip.length * 6.5);
-              return `<g class="map-note-link-hit" data-note-link="${esc(pnid)}" transform="translate(${noteOrigin + i * (chipW + 6)} ${noteChipY})" cursor="pointer">
-            <rect x="${-chipW / 2}" y="-10" width="${chipW}" height="18" rx="9" fill="rgba(56,189,248,0.12)" stroke="#38bdf8" stroke-width="1"/>
-            <text text-anchor="middle" y="3" fill="#38bdf8" font-size="10">${esc(chip)}</text>
+          const captionX = task != null ? textLeft : x + PILL_PAD_X;
+          const widest = richLines.reduce(
+            (max, line) => Math.max(max, lineWidth(line, fontPx)),
+            0,
+          );
+          let chipCursor = captionX + widest + 6;
+          const noteChips = noteChipPieces(noteLinks)
+            .map((piece) => {
+              const chip = `<g class="map-note-link-hit" data-note-link="${esc(piece.id)}" transform="translate(${chipCursor} ${textCentreY})" cursor="pointer">
+            <title>Note ${esc(piece.id)}</title>
+            <rect x="0" y="-11" width="${piece.w}" height="20" fill="transparent"/>
+            <text class="map-note-link" text-anchor="start" y="4">${esc(piece.label)}</text>
           </g>`;
+              chipCursor += piece.w + 8;
+              return chip;
             })
             .join('');
           return `<g class="${cls}" id="${esc(mapNodeDomId(domPrefix, key))}" data-id="${esc(key)}" data-text-w="${textW}"
@@ -1776,7 +1791,7 @@ export function createMapView(
       <rect class="map-pill" x="${x}" y="${y}" width="${boxW}" height="${h}" rx="18" ry="18"/>
       ${taskChrome}
       ${globe}
-      ${multiLineText(lines, textLeft + PILL_PAD_X, textCentreY, textW, richLines, fontPx)}
+      ${multiLineText(lines, captionX, textCentreY, textW, richLines, fontPx)}
       ${moreChrome}
       ${threadChip}
       ${noteChips}

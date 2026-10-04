@@ -113,6 +113,37 @@
   flex: none;
   opacity: 0.85;
 }
+.of-task {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+.of-task[aria-disabled='true'] {
+  cursor: default;
+}
+.of-note-link {
+  flex: none;
+  border: 0;
+  background: transparent;
+  color: var(--accent, var(--of-accent));
+  font: inherit;
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1;
+  padding: 0 0.1rem;
+  cursor: pointer;
+}
+.of-note-link:hover {
+  text-decoration: underline;
+}
 .of-code {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 0.92em;
@@ -218,6 +249,12 @@
   cursor: text;
   -webkit-user-select: text;
   user-select: text;
+}
+.map-note-link {
+  fill: var(--accent, var(--of-accent));
+  font-family: var(--of-font);
+  font-size: 12px;
+  font-weight: 600;
 }
 .map-node.cue .map-label {
   fill: var(--cue-text);

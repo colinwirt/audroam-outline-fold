@@ -543,7 +543,7 @@ describe('<t: pnid> note links', () => {
     expect(out).toContain('- Child row <t: 202> <id:aud-ov-2>');
     const html = toHtml(doc);
     expect(html).toContain('data-note-link="101"');
-    expect(html).toContain('>t:102<');
+    expect(html).toContain('>#102<');
     expect(html).not.toContain('&lt;t:');
     const again = parse(out);
     expect(again.nodes[0].noteLinks).toEqual(['101', '102']);

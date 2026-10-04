@@ -92,7 +92,7 @@ function renderNode(
   const noteChips = (node.noteLinks || [])
     .map(
       (pnid) =>
-        `<button type="button" class="${p}-note-link" data-note-link="${esc(pnid)}" data-note-node="${esc(node.id ?? '')}" data-testid="of-note-link-${esc(pnid)}" tabindex="-1">t:${esc(pnid)}</button>`,
+        `<button type="button" class="${p}-note-link" data-note-link="${esc(pnid)}" data-note-node="${esc(node.id ?? '')}" data-testid="of-note-link-${esc(pnid)}" tabindex="-1">#${esc(pnid)}</button>`,
     )
     .join('');
 
