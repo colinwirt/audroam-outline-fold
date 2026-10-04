@@ -1,0 +1,269 @@
+/* Default paint for toHtml outlines and createMapView maps.
+   Link this file first. Override only the chrome that belongs to the host. */
+
+:root {
+  --of-text: #e7ecf1;
+  --of-muted: #8b9bab;
+  --of-accent: #6cb6ff;
+  --of-stroke: #2a3540;
+  --of-font: system-ui, -apple-system, "Segoe UI", "Inter", sans-serif;
+  --map-bg: #0a1f28;
+  --gold: #c9a227;
+  --cue: #3d6b52;
+  --cue-text: #e8f5ee;
+  --connector: #9bb0d0;
+  --pill-fill: #0c222c;
+  --pill-stroke: #7a9bb0;
+}
+
+.of-outline,
+.of-children {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.of-children {
+  padding-left: 1.1rem;
+  border-left: 1px solid var(--stroke, var(--of-stroke));
+  margin-left: 0.4rem;
+}
+.of-node {
+  margin: 0.1rem 0;
+}
+.of-node[data-collapsed="true"] > .of-children {
+  display: none;
+}
+.of-row {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-height: 44px;
+  padding: 2px 6px;
+  border-radius: 8px;
+}
+.of-row:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+.of-fold {
+  flex: none;
+  width: 44px;
+  min-width: 44px;
+  min-height: 44px;
+  border: 0;
+  background: transparent;
+  color: var(--accent, var(--of-accent));
+  cursor: pointer;
+  font: inherit;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.of-fold-leaf {
+  visibility: hidden;
+  pointer-events: none;
+  cursor: default;
+}
+.of-chevron {
+  display: block;
+  transition: transform 0.12s ease;
+}
+.of-fold-expanded .of-chevron {
+  transform: rotate(90deg);
+}
+.of-title {
+  flex: 1;
+  min-width: 0;
+}
+.of-caption-img {
+  display: inline-block;
+  vertical-align: middle;
+  max-height: 30px;
+  max-width: 120px;
+  width: auto;
+  height: auto;
+  margin: 0 0.2em;
+  border-radius: 3px;
+}
+.of-title a {
+  color: var(--accent, var(--of-accent));
+}
+.of-title a.of-hop {
+  color: #9ecbff;
+  text-decoration: underline dotted;
+}
+.of-title a.of-hop:hover {
+  color: #cfe0ef;
+}
+.of-node[data-id^="cue"] .of-title,
+.of-cue .of-title {
+  color: #b8e0c8;
+}
+.of-node[role="treeitem"]:focus {
+  outline: none;
+}
+.of-node[role="treeitem"]:focus > .of-row {
+  background: rgba(108, 182, 255, 0.08);
+}
+.of-node[role="treeitem"]:focus-visible > .of-row {
+  outline: 2px solid var(--accent, var(--of-accent));
+  outline-offset: 2px;
+}
+.of-row > svg {
+  flex: none;
+  opacity: 0.85;
+}
+.of-code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.92em;
+}
+.of-unlock {
+  flex: none;
+  margin-left: 0.35rem;
+  border: 1px solid var(--stroke, var(--of-stroke));
+  background: #1a2330;
+  color: var(--accent, var(--of-accent));
+  border-radius: 6px;
+  padding: 0.1rem 0.45rem;
+  font: inherit;
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+.of-unlock:hover {
+  border-color: var(--accent, var(--of-accent));
+}
+.of-locked-chrome {
+  color: var(--muted, var(--of-muted));
+  font-size: 0.85rem;
+  padding: 0.15rem 0 0.15rem 1.95rem;
+}
+.of-reveal {
+  margin: 0.25rem 0 0.35rem 1.95rem;
+  padding: 0.55rem 0.7rem;
+  background: #1a2330;
+  border: 1px solid #3d5a3a;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  white-space: pre-wrap;
+  color: #c8e6c9;
+}
+.of-reveal-label {
+  display: block;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted, var(--of-muted));
+  margin-bottom: 0.25rem;
+}
+
+.map-wrap {
+  touch-action: none;
+  cursor: grab;
+  overflow: hidden;
+}
+.map-wrap:focus {
+  outline: none;
+}
+.map-wrap:focus-visible {
+  outline: 2px solid var(--accent, var(--of-accent));
+  outline-offset: -2px;
+}
+.map-wrap.panning {
+  cursor: grabbing;
+  -webkit-user-select: none;
+  user-select: none;
+}
+.map-svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.map-node {
+  cursor: pointer;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+.map-node.leaf {
+  cursor: default;
+}
+.map-pill {
+  fill: var(--pill-fill);
+  stroke: var(--pill-stroke);
+  stroke-width: 1.5;
+}
+.map-node.cue .map-pill {
+  fill: var(--cue);
+  stroke: #6fa88a;
+}
+.map-node.collapsed .map-pill {
+  stroke: var(--gold);
+  stroke-width: 2.25;
+}
+.map-node:focus {
+  outline: none;
+}
+.map-node.is-focused .map-pill,
+.map-node:focus-visible .map-pill {
+  stroke: var(--accent, var(--of-accent));
+  stroke-width: 2.5;
+}
+.map-width-hit {
+  cursor: ew-resize;
+}
+.map-label {
+  fill: var(--text, var(--of-text));
+  font-family: var(--of-font);
+  font-weight: 400;
+  pointer-events: auto;
+  cursor: text;
+  -webkit-user-select: text;
+  user-select: text;
+}
+.map-node.cue .map-label {
+  fill: var(--cue-text);
+}
+.map-fold-indicator {
+  pointer-events: none;
+}
+.map-fold-indicator circle {
+  fill: var(--gold);
+  stroke: var(--gold);
+  stroke-width: 1;
+}
+.map-fold-indicator path {
+  fill: none;
+  stroke: var(--map-bg);
+  stroke-width: 1.8;
+  stroke-linecap: round;
+}
+.map-fold-indicator.is-expanded circle {
+  fill: #000;
+  stroke: var(--gold);
+  stroke-width: 1.6;
+}
+.map-fold-indicator.is-expanded path {
+  stroke: var(--gold);
+}
+.map-edge,
+.map-fold-stem {
+  fill: none;
+  stroke: var(--connector);
+  stroke-width: 1.4;
+  opacity: 0.85;
+}
+.map-fold-stem {
+  pointer-events: none;
+}
+
+.of-map-controls button {
+  font: inherit;
+  font-weight: 600;
+  color: var(--text, var(--of-text));
+  background: rgba(13, 24, 32, 0.92);
+  border: 1px solid var(--stroke, var(--of-stroke));
+  border-radius: 10px;
+  cursor: pointer;
+}
+.of-map-controls button:hover {
+  border-color: var(--accent, var(--of-accent));
+}

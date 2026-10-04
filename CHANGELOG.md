@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.25 — 2026-10-04
+
+### Styles
+- `dist/outline-fold.css` is the default outline and map paint. Link it before host CSS.
+- A collapsed fold circle is solid gold. An expanded circle stays black so the dash stays visible.
+
 ## 0.2.24 — 2026-10-04
 
 ### Examples

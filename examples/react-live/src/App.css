@@ -204,127 +204,7 @@ kbd {
   font: 13px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
 
-/* Match examples/outline-demo.html tree chrome */
-.of-outline,
-.of-children {
-  list-style: none;
-  margin: 0;
-  padding-left: 0;
-}
 
-.of-children {
-  padding-left: 1.1rem;
-  border-left: 1px solid var(--border);
-  margin-left: 0.35rem;
-}
-
-.of-node {
-  margin: 0.15rem 0;
-}
-
-.of-row {
-  display: flex;
-  align-items: flex-start;
-  gap: 0.35rem;
-}
-
-.of-title {
-  flex: 1;
-}
-
-.of-caption-img {
-  display: inline-block;
-  vertical-align: middle;
-  max-height: 30px;
-  max-width: 120px;
-  width: auto;
-  height: auto;
-  margin: 0 0.2em;
-  border-radius: 3px;
-}
-
-.of-title a {
-  color: var(--accent, #6cb6ff);
-}
-
-.of-title a.of-hop {
-  color: #9ecbff;
-  text-decoration: underline dotted;
-}
-
-.of-fold {
-  flex: none;
-  width: 44px;
-  min-width: 44px;
-  min-height: 44px;
-  border: 0;
-  background: transparent;
-  color: var(--accent);
-  cursor: pointer;
-  padding: 0;
-  line-height: 1.2;
-  font: inherit;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.of-fold-leaf {
-  visibility: hidden;
-  pointer-events: none;
-  cursor: default;
-}
-
-.of-chevron {
-  display: block;
-  transition: transform 0.12s ease;
-}
-
-.of-fold-expanded .of-chevron {
-  transform: rotate(90deg);
-}
-
-.of-node[role="treeitem"]:focus {
-  outline: none;
-}
-
-.of-node[role="treeitem"]:focus > .of-row {
-  background: rgba(108, 182, 255, 0.08);
-}
-
-.of-node[role="treeitem"]:focus-visible > .of-row {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-}
-
-.of-row > svg {
-  flex: none;
-  margin-top: 0.15rem;
-  opacity: 0.85;
-}
-
-.of-unlock {
-  flex: none;
-  margin-left: 0.35rem;
-  border: 1px solid var(--border);
-  background: var(--panel);
-  color: var(--accent);
-  border-radius: 6px;
-  padding: 0.1rem 0.45rem;
-  font: inherit;
-  font-size: 0.75rem;
-  cursor: pointer;
-}
-
-.of-unlock:hover {
-  border-color: var(--accent);
-}
-
-.of-locked-chrome {
-  color: var(--muted);
-  font-size: 0.85rem;
-  padding: 0.15rem 0 0.15rem 1.95rem;
-}
 
 .sr-only {
   position: absolute;
@@ -396,27 +276,6 @@ kbd {
   color: var(--accent);
 }
 
-
-
-.of-reveal {
-  margin: 0.25rem 0 0.35rem 1.95rem;
-  padding: 0.55rem 0.7rem;
-  background: var(--panel);
-  border: 1px solid #3d5a3a;
-  border-radius: 8px;
-  font-size: 0.85rem;
-  white-space: pre-wrap;
-  color: #c8e6c9;
-}
-.of-reveal-label {
-  display: block;
-  font-size: 0.7rem;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--muted);
-  margin-bottom: 0.25rem;
-}
-
 /* Package version stamp */
 .pkg-stamp {
   color: var(--muted);
@@ -477,35 +336,13 @@ kbd {
   align-items: center;
 }
 .map-tools button {
-  border: 1px solid var(--border);
-  background: rgba(18, 24, 32, 0.92);
-  color: var(--text);
-  border-radius: 10px;
-  padding: 0.3rem 0.7rem;
-  font: inherit;
-  font-size: 0.85rem;
-  font-weight: 600;
-  cursor: pointer;
   min-width: 44px;
   min-height: 44px;
-  text-transform: none;
-  letter-spacing: 0;
-}
-.map-tools button:hover {
-  border-color: var(--accent);
 }
 
 /* Map preview (package createMapView SVG) */
 .preview-pane {
   position: relative;
-  --map-bg: #0a1f28;
-  --gold: #c9a227;
-  --cue: #3d6b52;
-  --cue-text: #e8f5ee;
-  --connector: #9bb0d0;
-  --pill-fill: #0c222c;
-  --pill-stroke: #7a9bb0;
-  --font: system-ui, -apple-system, "Segoe UI", "Inter", sans-serif;
 }
 .preview-pane-map {
   background: var(--map-bg);
@@ -514,98 +351,5 @@ kbd {
   flex: 1;
   position: relative;
   min-height: 0;
-  touch-action: none;
-  cursor: grab;
-  overflow: hidden;
   background: var(--map-bg);
-}
-.preview-pane .map-wrap:focus {
-  outline: none;
-}
-/* 0.2.16: host is the single keyboard focus owner (tabindex=0). */
-.preview-pane .map-wrap:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: -2px;
-}
-.preview-pane .map-wrap.panning {
-  cursor: grabbing;
-  -webkit-user-select: none;
-  user-select: none;
-}
-.preview-pane .map-svg {
-  display: block;
-  width: 100%;
-  height: 100%;
-}
-.preview-pane .map-node {
-  cursor: pointer;
-  transform-box: fill-box;
-  transform-origin: center;
-}
-.preview-pane .map-node.leaf {
-  cursor: default;
-}
-.preview-pane .map-pill {
-  fill: var(--pill-fill);
-  stroke: var(--pill-stroke);
-  stroke-width: 1.5;
-}
-.preview-pane .map-node.cue .map-pill {
-  fill: var(--cue);
-  stroke: #6fa88a;
-}
-.preview-pane .map-node.collapsed .map-pill {
-  stroke: var(--gold);
-  stroke-width: 2.25;
-}
-.preview-pane .map-node:focus {
-  outline: none;
-}
-/* Selection chrome from focusId (click/arrows) — not only :focus-visible */
-.preview-pane .map-node.is-focused .map-pill,
-.preview-pane .map-node:focus-visible .map-pill {
-  stroke: var(--accent);
-  stroke-width: 2.5;
-}
-.preview-pane .map-width-hit { cursor: ew-resize; }
-.preview-pane .map-label {
-  fill: var(--text);
-  font-family: var(--font);
-  font-weight: 400;
-  pointer-events: auto;
-  cursor: text;
-  -webkit-user-select: text;
-  user-select: text;
-}
-.preview-pane .map-node.cue .map-label {
-  fill: var(--cue-text);
-}
-.preview-pane .map-fold-indicator {
-  pointer-events: none;
-}
-.preview-pane .map-fold-indicator circle {
-  fill: var(--map-bg);
-  stroke: var(--gold);
-  stroke-width: 1.75;
-}
-.preview-pane .map-fold-indicator path {
-  stroke: var(--gold);
-  stroke-width: 1.75;
-  stroke-linecap: round;
-}
-.preview-pane .map-fold-indicator.is-expanded circle {
-  fill: #000;
-}
-.preview-pane .map-edge,
-.preview-pane .map-fold-stem {
-  fill: none;
-  stroke: var(--connector);
-  stroke-width: 1.5;
-  opacity: 0.85;
-}
-.preview-pane .map-fold-stem {
-  pointer-events: none;
-}
-.preview-pane .of-node[data-collapsed="true"] > .of-children {
-  display: none;
 }

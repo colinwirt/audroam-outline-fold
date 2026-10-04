@@ -907,7 +907,7 @@ export default function App() {
             aria-label="Map preview"
           />
           {html && previewMode === 'map' ? (
-            <div className="map-tools" role="toolbar" aria-label="Map view tools">
+            <div className="map-tools of-map-controls" role="toolbar" aria-label="Map view tools">
               <button
                 type="button"
                 aria-label="Zoom out"

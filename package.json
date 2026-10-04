@@ -1,6 +1,6 @@
 {
   "name": "@audroam/outline-fold",
-  "version": "0.2.24",
+  "version": "0.2.25",
   "description": "Pure TS outline language: parse/serialize, fold-/fold+, sealed payloads, demo crypto, toHtml, createMapView/autoPack. Host owns MFA/key release.",
   "type": "module",
   "main": "./dist/index.js",
@@ -9,7 +9,8 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
-    }
+    },
+    "./outline-fold.css": "./dist/outline-fold.css"
   },
   "files": [
     "dist",
@@ -18,7 +19,7 @@
     "LICENSE"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.json && node scripts/copy-style.mjs",
     "test": "vitest run",
     "smoke:autopack": "node scripts/smoke-autopack.mjs",
     "test:watch": "vitest",

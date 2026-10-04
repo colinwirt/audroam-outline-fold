@@ -10,6 +10,7 @@
   Layout: query layout= wins, else frontmatter layoutSidecar: / sibling *.layout.json,
   else auto-pack (empty nodes).
 -->
+<link rel="stylesheet" href="../../dist/outline-fold.css"/>
 <link rel="stylesheet" href="./viewer.css"/>
 </head>
 <body>
@@ -47,7 +48,7 @@
   <div id="panel" class="tile" data-mode="outline">
     <div id="outlineHost"></div>
     <div id="mapHost" class="map-wrap" hidden></div>
-    <div class="map-tools" id="mapTools" hidden>
+    <div class="map-tools of-map-controls" id="mapTools" hidden>
       <button type="button" id="btnZoomOut" title="Zoom out" aria-label="Zoom out">−</button>
       <button type="button" id="btnZoomIn" title="Zoom in" aria-label="Zoom in">+</button>
       <button type="button" id="btnResetView" title="Fit the outline in the window" aria-label="Fit">Fit</button>
