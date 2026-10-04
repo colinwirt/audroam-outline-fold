@@ -63,6 +63,19 @@ export function pinchFrame(anchor: PinchAnchor, a: Pt, b: Pt): Cam {
   return { k, x: m.x - anchor.W.x * k, y: m.y - anchor.W.y * k };
 }
 
+/**
+ * Rebuild x/y so the world point under `screen` at `raw` stays under `screen`
+ * at `k`. A pinch sample solves x for its raw scale. Drawing that x at a
+ * capped scale (max zoom) throws the map off the fingers.
+ */
+export function retargetZoom(raw: Cam, k: number, screen: Pt): Cam {
+  if (!(raw.k > 0) || !Number.isFinite(k)) return { x: raw.x, y: raw.y, k: raw.k };
+  if (Math.abs(k - raw.k) < 1e-9) return { x: raw.x, y: raw.y, k };
+  const wx = (screen.x - raw.x) / raw.k;
+  const wy = (screen.y - raw.y) / raw.k;
+  return { k, x: screen.x - wx * k, y: screen.y - wy * k };
+}
+
 export interface PanAnchor {
   W: Pt;
   k: number;

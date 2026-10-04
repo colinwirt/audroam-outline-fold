@@ -9,6 +9,7 @@ import {
   INERTIA_TAU_MS,
   panFrame,
   pinchFrame,
+  retargetZoom,
   decayVelocity,
   inertiaEligible,
   isDoubleTap,
@@ -41,6 +42,24 @@ describe('anchored pinch', () => {
     const mid = { x: 130, y: 130 };
     expect(mid.x).toBeCloseTo(anchor.W.x * panned.k + panned.x);
     expect(mid.y).toBeCloseTo(anchor.W.y * panned.k + panned.y);
+  });
+
+  it('keeps the pinch point when a sample past max zoom is drawn at the cap', () => {
+    const cam = { x: -500, y: -200, k: 3.5 };
+    const a0 = { x: 160, y: 150 };
+    const b0 = { x: 240, y: 150 };
+    const anchor = anchorPinch(cam, a0, b0);
+    const screen = { x: 200, y: 150 };
+    // First sample only arms the dead-zone. The next one past that spreads.
+    pinchFrame(anchor, { x: 120, y: 150 }, { x: 280, y: 150 });
+    const raw = pinchFrame(anchor, { x: 80, y: 150 }, { x: 320, y: 150 });
+    expect(raw.k).toBeGreaterThan(3.5);
+    const worldX = (screen.x - cam.x) / cam.k;
+    expect(worldX * 3.5 + raw.x).not.toBeCloseTo(screen.x);
+    const shown = retargetZoom(raw, 3.5, screen);
+    expect(shown.k).toBe(3.5);
+    expect(worldX * shown.k + shown.x).toBeCloseTo(screen.x);
+    expect((screen.y - cam.y) / cam.k * shown.k + shown.y).toBeCloseTo(screen.y);
   });
 });
 

@@ -22,8 +22,10 @@ import {
   inertiaEligible,
   isDoubleTap,
   isTwoFingerTap,
+  mid,
   panFrame,
   pinchFrame,
+  retargetZoom,
   slopPx,
   softAxis,
   softZoom,
@@ -2187,24 +2189,39 @@ export function createMapView(
       host.style.removeProperty('-webkit-user-select');
     }
 
-    function applyGestureCam(next: GestureCam): void {
+    /** Screen point a pinch is scaling around. Release springs back around it. */
+    let pinchZoomAnchor: Pt | null = null;
+
+    function applyGestureCam(next: GestureCam, zoomAnchor?: Pt): void {
       const hard = hardCam(next);
+      const shownK = rubberOn ? softZoom(next.k, hard.k) : hard.k;
+      const framed =
+        zoomAnchor && next.k > 0 && Math.abs(shownK - next.k) > 1e-6
+          ? retargetZoom(next, shownK, zoomAnchor)
+          : { x: next.x, y: next.y, k: shownK };
+      if (zoomAnchor) pinchZoomAnchor = zoomAnchor;
       if (!rubberOn) {
-        cam.x = hard.x;
-        cam.y = hard.y;
-        cam.k = hard.k;
+        const clamped = hardCam(framed);
+        cam.x = clamped.x;
+        cam.y = clamped.y;
+        cam.k = clamped.k;
       } else {
-        const lo = hardCam({ x: -1e9, y: -1e9, k: hard.k });
-        const hi = hardCam({ x: 1e9, y: 1e9, k: hard.k });
-        cam.x = softAxis(next.x, Math.min(lo.x, hi.x), Math.max(lo.x, hi.x));
-        cam.y = softAxis(next.y, Math.min(lo.y, hi.y), Math.max(lo.y, hi.y));
-        cam.k = softZoom(next.k, hard.k);
+        const lo = hardCam({ x: -1e9, y: -1e9, k: framed.k });
+        const hi = hardCam({ x: 1e9, y: 1e9, k: framed.k });
+        cam.x = softAxis(framed.x, Math.min(lo.x, hi.x), Math.max(lo.x, hi.x));
+        cam.y = softAxis(framed.y, Math.min(lo.y, hi.y), Math.max(lo.y, hi.y));
+        cam.k = framed.k;
       }
       applyCam();
     }
 
     function springBack(): void {
-      const target = hardCam(cam);
+      const hard = hardCam(cam);
+      let target = hard;
+      if (pinchZoomAnchor && cam.k > 0 && Math.abs(hard.k - cam.k) > 1e-4) {
+        target = hardCam(retargetZoom(cam, hard.k, pinchZoomAnchor));
+      }
+      pinchZoomAnchor = null;
       animateCamTo(target, 200);
     }
 
@@ -2317,6 +2334,7 @@ export function createMapView(
       pointers.clear();
       pinch = null;
       pan = null;
+      pinchZoomAnchor = null;
       singlePanLocked = false;
       mode = 'idle';
       endPanGuard();
@@ -2330,7 +2348,7 @@ export function createMapView(
         if (!isActive()) return;
         const ds = drivers();
         if (mode === 'pinch' && pinch && ds.length >= 2) {
-          applyGestureCam(pinchFrame(pinch, ds[0], ds[1]));
+          applyGestureCam(pinchFrame(pinch, ds[0], ds[1]), mid(ds[0], ds[1]));
           pinchScaleLive = pinch.scaleLive;
         } else if (mode === 'pan' && pan && ds.length === 1) {
           const next = panFrame(pan, ds[0]);
@@ -2745,6 +2763,10 @@ export function createMapView(
       }
       if (e.type === 'gesturechange' && typeof e.scale === 'number') {
         e.preventDefault?.();
+        // Touch pinch already updates the camera from the pointer pair.
+        // Applying the Safari gesture scale on top of that double-zooms,
+        // and at the cap the second write flings the map off the fingers.
+        if (mode === 'pinch') return;
         const factor = (gestureK0 * e.scale) / Math.max(0.0001, cam.k);
         zoomAt(e.clientX || 0, e.clientY || 0, factor);
         return;

@@ -3,6 +3,7 @@
 ## Unreleased
 
 ### Map
+- Pinching at maximum zoom stays on the pinch point. The scale cap no longer draws the unclamped pinch position, which flung the map off screen.
 - The link globe sits in the top-right corner, flush with the top of the pill.
 - The child connector runs through the fold circle.
 - A pill taller than its expanded children no longer overlaps the sibling above it.
