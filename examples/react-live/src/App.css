@@ -582,7 +582,7 @@ kbd {
   stroke-linecap: round;
 }
 .preview-pane .map-fold-indicator.is-expanded circle {
-  fill: none;
+  fill: #000;
 }
 .preview-pane .map-edge,
 .preview-pane .map-fold-stem {

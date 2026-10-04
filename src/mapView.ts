@@ -380,18 +380,7 @@ function nodePillOpts(
   };
 }
 
-function connectorPath(
-  px: number,
-  py: number,
-  pw: number,
-  cx: number,
-  cy: number,
-  cw: number,
-): string {
-  const x1 = px + pw / 2;
-  const y1 = py;
-  const x2 = cx - cw / 2;
-  const y2 = cy;
+function connectorPath(x1: number, y1: number, x2: number, y2: number): string {
   const mx = (x1 + x2) / 2;
   return `M ${x1} ${y1} C ${mx} ${y1}, ${mx} ${y2}, ${x2} ${y2}`;
 }
@@ -521,13 +510,23 @@ export function autoPackPositions(
 
     const childGroupLeft = groupLeft + painted.w + gapX;
     let y = top;
+    const seen = new Set(Object.keys(positions));
     for (let i = 0; i < kids.length; i++) {
       const ch = layoutSubtree(kids[i]!, childGroupLeft, y);
       y += ch;
       if (i < kids.length - 1) y += gapY;
     }
     const stackH = y - top;
-    positions[key] = { x, y: top + stackH / 2, w: n.layout?.w };
+    // A pill taller than its child stack used to stay centred on the stack
+    // and spill upward into the sibling above. Shift the stack down so the
+    // pill starts at `top` and the children stay centred on the pill.
+    const shift = painted.h > stackH ? (painted.h - stackH) / 2 : 0;
+    if (shift !== 0) {
+      for (const k of Object.keys(positions)) {
+        if (!seen.has(k)) positions[k]!.y += shift;
+      }
+    }
+    positions[key] = { x, y: top + shift + stackH / 2, w: n.layout?.w };
     return Math.max(stackH, painted.h);
   }
 
@@ -1642,10 +1641,12 @@ export function createMapView(
             bodyExpanded: !!cpos.bodyExpanded,
             fontSize: resolveFontPx(cpos.fontSize, layout.fontSize, doc.frontmatter?.fontSize),
           });
-          const parentW =
-            size.foldSlot > 0 ? size.w - size.foldSlot + 18 : size.w;
+          // Start on the pill's right edge so the curve runs through the
+          // fold circle (centre is foldSlot/2 past that edge) and on to the child.
+          const fromX =
+            size.foldSlot > 0 ? pos.x + size.w / 2 - size.foldSlot : pos.x + size.w / 2;
           edges.push({
-            d: connectorPath(pos.x, pos.y, parentW, cpos.x, cpos.y, cs.w),
+            d: connectorPath(fromX, pos.y, cpos.x - cs.w / 2, cpos.y),
           });
           walk(c);
         }
@@ -1713,15 +1714,15 @@ export function createMapView(
           <path d="M -4 0 H 4 M 0 -4 V 4"/>
         </g>`
               : `<g class="map-fold-indicator is-expanded" transform="translate(${foldCx} ${pos.y})" aria-hidden="true">
-          <circle r="9" fill="none"/>
+          <circle r="9" fill="#000"/>
           <path d="M -4 0 H 4"/>
         </g>`
             : '';
-          // Neck from the pill border through the fold circle. Collapsed, it
-          // tucks under the filled plus. Expanded, it meets the child edge
-          // at the circle's right side (connectorPath starts at foldCx + 9).
+          // Same y as the fold circle. The disc paints after this neck, so the
+          // line stops at the rim and the yellow dash stays on top.
+          const stemEnd = col ? foldCx : foldCx + 9;
           const stem = foldable
-            ? `<path class="map-fold-stem" d="M ${boxRight} ${pos.y} H ${col ? foldCx : foldCx + 9}" pointer-events="none"/>`
+            ? `<path class="map-fold-stem" d="M ${boxRight} ${pos.y} H ${stemEnd}" fill="none" stroke="var(--connector)" stroke-width="1.5" pointer-events="none"/>`
             : '';
           const taskHit =
             task != null
@@ -1740,12 +1741,11 @@ export function createMapView(
           </g>`
             : '';
           const links = captionLinks(n.title || '');
-          // On the rounded top-right corner (pill rx 18), biased above the
-          // stroke so a 44px pill still clears the mid-edge fold circle.
-          // Overlaps the corner outline, same idea as the resize mark.
+          // In the top-right corner, top of the glyph flush with the pill
+          // top so it does not sit in the gap above the node.
           const globe =
             links.length > 0
-              ? globeGlyphSvg(boxRight - 5, y - 3)
+              ? globeGlyphSvg(boxRight - 2, y + 8)
               : '';
           const threadChip = thread
             ? `<g class="map-thread-hit" data-thread="${esc(thread)}" transform="translate(${textX} ${y + h - (affordance ? affordance + 4 : 6)})" cursor="pointer">

@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Map
+- The link globe sits in the top-right corner, flush with the top of the pill.
+- The child connector runs through the fold circle.
+- A pill taller than its expanded children no longer overlaps the sibling above it.
+- The expanded fold circle is opaque black, so the connector does not cover the yellow dash.
+
 ## 0.2.23 — 2026-10-03
 
 ### Map

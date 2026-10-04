@@ -80,6 +80,35 @@ describe('autoPackPositions', () => {
     }
   });
 
+  it('keeps a tall expanded pill clear of the sibling above', () => {
+    const doc = parse(
+      [
+        '- Short above <id:above>',
+        '- Tall parent with enough words to wrap onto two or three lines in the map pill <id:tall>',
+        '  - Kid <id:kid>',
+        '- Short below <id:below>',
+      ].join('\n'),
+    );
+    const packed = autoPackPositions(doc, { isNodeCollapsed: () => false });
+    function box(id: string) {
+      const n = findNodeById(doc.nodes, id)!;
+      const label = captionWithoutLinks(displayCaption(n.title));
+      const size = pillSize(label, {
+        reserveFold: !!(n.children && n.children.length),
+      });
+      const y = packed.nodes[id]!.y;
+      return { top: y - size.h / 2, bot: y + size.h / 2, y, h: size.h };
+    }
+    const above = box('above');
+    const tall = box('tall');
+    const kid = box('kid');
+    const below = box('below');
+    expect(tall.h).toBeGreaterThan(kid.h);
+    expect(tall.top - above.bot).toBeGreaterThanOrEqual(GAP_Y - 0.01);
+    expect(below.top - tall.bot).toBeGreaterThanOrEqual(GAP_Y - 0.01);
+    expect(Math.abs(tall.y - kid.y)).toBeLessThan(1);
+  });
+
   it('centres parent on child stack midpoint (M9)', () => {
     const expanded = pack(doc);
     const e8Kids = childIds(doc, 'e8');
