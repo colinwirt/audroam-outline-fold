@@ -5,6 +5,7 @@ import {
   peelTrailingSections,
 } from './payloads.js';
 import { parseEncBody } from './sealed.js';
+import { parseLeadingTask } from './taskChrome.js';
 import type {
   FoldMode,
   NodeFlag,
@@ -42,9 +43,6 @@ const THREAD_TRAILING = /\s*<thread:([^>]+)>\s*$/i;
 const NOTE_LINK_SPAN = /^<t:\s*(\d+)\s*>\s*/i;
 const NOTE_LINK_TRAILING = /\s*<t:\s*(\d+)\s*>\s*$/i;
 const NOTE_LINK_ANY = /<t:\s*(\d+)\s*>/gi;
-/** Leading task checkbox marker — space required inside brackets for open. */
-const TASK_LEADING = /^\[([ xX\-])\]\s+/;
-
 /** Short `<design>` form — excluded reserved flag/kind/enc words. */
 const RESERVED_SHORT = new Set([
   'private',
@@ -212,15 +210,12 @@ function parseTitleAndMeta(
     if (id && !into.includes(id)) into.push(id);
   };
 
-  // Leading task marker only (mid-caption `[ ]` is plain text).
+  // Leading task marker only (mid-caption `[ ]` / `☐` stay plain text).
   {
-    const tm = rest.match(TASK_LEADING);
-    if (tm) {
-      const ch = tm[1];
-      if (ch === 'x' || ch === 'X') task = 'done';
-      else if (ch === '-') task = 'pending';
-      else task = 'open';
-      rest = rest.slice(tm[0].length);
+    const leading = parseLeadingTask(rest);
+    if (leading) {
+      task = leading.state;
+      rest = leading.label;
     }
   }
 

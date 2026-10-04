@@ -1768,7 +1768,7 @@ export function createMapView(
             })
             .join('');
           return `<g class="${cls}" id="${esc(mapNodeDomId(domPrefix, key))}" data-id="${esc(key)}" data-text-w="${textW}"
-      role="treeitem" aria-selected="${focused ? 'true' : 'false'}" aria-current="${focused ? 'true' : 'false'}" aria-label="${esc(label)}${task != null ? (task === 'done' ? ', task done' : ', task open') : ''}${foldable ? (col ? ', collapsed' : ', expanded') : ''}${showMore ? ', more text available' : ''}${showLess ? ', showing full body' : ''}"
+      role="treeitem" aria-selected="${focused ? 'true' : 'false'}" aria-current="${focused ? 'true' : 'false'}" aria-label="${esc(label)}${task != null ? (task === 'done' ? ', task done' : task === 'pending' ? ', task pending' : ', task open') : ''}${foldable ? (col ? ', collapsed' : ', expanded') : ''}${showMore ? ', more text available' : ''}${showLess ? ', showing full body' : ''}"
       ${foldable ? `aria-expanded="${col ? 'false' : 'true'}"` : ''}>
       <title>${esc(tip)}</title>
       <rect class="map-pill" x="${x}" y="${y}" width="${boxW}" height="${h}" rx="18" ry="18"/>

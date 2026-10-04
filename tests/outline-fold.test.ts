@@ -44,6 +44,35 @@ describe('parse sample line', () => {
     expect(doc.nodes[0].task).toBe('open');
   });
 
+  it('treats [], [-], and ballot-box glyphs as task markers', () => {
+    const empty = parse('- [] Land it <id:empty>\n');
+    expect(empty.nodes[0].task).toBe('open');
+    expect(empty.nodes[0].title).toBe('Land it');
+    expect(serialize(empty)).toContain('[ ] Land it');
+
+    const pending = parse('- [-] Waiting on review <id:wait>\n');
+    expect(pending.nodes[0].task).toBe('pending');
+    expect(pending.nodes[0].title).toBe('Waiting on review');
+
+    const dash = parse('- [\u2013] Waiting <id:dash>\n');
+    expect(dash.nodes[0].task).toBe('pending');
+    expect(dash.nodes[0].title).toBe('Waiting');
+
+    const box = parse('- \u2610 Copilot wrote this <id:box>\n');
+    expect(box.nodes[0].task).toBe('open');
+    expect(box.nodes[0].title).toBe('Copilot wrote this');
+    expect(serialize(box)).toContain('[ ] Copilot wrote this');
+
+    const checked = parse('- \u2611 Already done <id:checked>\n');
+    expect(checked.nodes[0].task).toBe('done');
+    expect(checked.nodes[0].title).toBe('Already done');
+    expect(serialize(checked)).toContain('[x] Already done');
+
+    const mid = parse('- See [] and \u2610 later <id:mid>\n');
+    expect(mid.nodes[0].task).toBeUndefined();
+    expect(mid.nodes[0].title).toBe('See [] and \u2610 later');
+  });
+
   it('parses trailing flag then id with (+)', () => {
     const doc = parse(`- Payroll notes <private> <id:secret> (+)\n`);
     expect(doc.nodes[0].id).toBe('secret');

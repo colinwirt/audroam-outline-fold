@@ -1,7 +1,8 @@
 /**
  * Task checkbox chrome helpers (title-scan fallback + display caption).
  * Prefer structured `node.task` / `node.action` / `node.thread` from parse when set.
- * Leading `[ ]` / `[x]` / `[-]` only — mid-caption brackets stay text.
+ * Leading task markers only — mid-caption brackets and ballot boxes stay text.
+ * Open: `[ ]`, `[]`, or `☐`. Done: `[x]` or `☑`. Pending: `[-]`.
  */
 
 import type { OutlineNode, TaskState } from './types.js';
@@ -20,8 +21,28 @@ export interface TaskToggleEvent {
   node: OutlineNode;
 }
 
-/** Leading task marker only (space required inside open brackets). */
-const LEADING_TASK = /^\s*\[([ xX\-])\]\s+/;
+/** Hyphen-minus and the dashes a copilot may type instead. */
+const DASH = '-\u2010\u2011\u2012\u2013\u2014\u2015\u2212';
+/** Empty box, white squares. */
+const OPEN_GLYPH = '\u2610\u25A1\u25A2\u25FB\u25FD\u2B1C';
+/** Checked, crossed, and tick marks. */
+const DONE_GLYPH = '\u2611\u2612\u2713\u2714\u2705';
+
+/** `[ ]`, `[]`, `[x]`/`[X]`, `[-]` and unicode dashes. Whitespace after the bracket is required. */
+const LEADING_BRACKETS = new RegExp(
+  `^\\s*\\[(?:([xX])|([${DASH}])|(\\s*))\\]\\s+`,
+);
+/** Leading `☐` / `☑` and the same family. A space after the glyph is required. */
+const LEADING_GLYPH = new RegExp(
+  `^\\s*([${OPEN_GLYPH}${DONE_GLYPH}])\\s+`,
+  'u',
+);
+
+function taskStateFromMatch(done: string | undefined, pending: string | undefined): TaskState {
+  if (done) return 'done';
+  if (pending) return 'pending';
+  return 'open';
+}
 
 /** `<action:https://…>` or `<action:event:…>` */
 const ACTION_TAG = /<action:([^>]+)>/i;
@@ -33,12 +54,20 @@ const THREAD_TAG = /<thread:([^>]+)>/i;
 const NOTE_LINK_TAG = /<t:\s*(\d+)\s*>/gi;
 
 export function parseLeadingTask(title: string): ParsedTask | null {
-  const m = String(title).match(LEADING_TASK);
+  const text = String(title);
+  const glyph = text.match(LEADING_GLYPH);
+  if (glyph) {
+    const ch = glyph[1];
+    const state: TaskState = DONE_GLYPH.includes(ch) ? 'done' : 'open';
+    const label = text.slice(glyph[0].length).replace(/^\uFE0F/, '');
+    return { state, label };
+  }
+  const m = text.match(LEADING_BRACKETS);
   if (!m) return null;
-  const ch = m[1];
-  const state: TaskState =
-    ch === 'x' || ch === 'X' ? 'done' : ch === '-' ? 'pending' : 'open';
-  return { state, label: String(title).slice(m[0].length) };
+  return {
+    state: taskStateFromMatch(m[1], m[2]),
+    label: text.slice(m[0].length),
+  };
 }
 
 /** Display caption: strip leading task ASCII + optional action/thread tags.
@@ -71,8 +100,15 @@ export function parseThreadTag(title: string): string | null {
 export function toggleTaskMarker(title: string, to: TaskState): string {
   const marker =
     to === 'done' ? '[x] ' : to === 'pending' ? '[-] ' : '[ ] ';
-  if (LEADING_TASK.test(title)) {
-    return String(title).replace(LEADING_TASK, marker);
+  const parsed = parseLeadingTask(title);
+  if (parsed) {
+    const text = String(title);
+    const glyph = text.match(LEADING_GLYPH);
+    if (glyph) {
+      const rest = text.slice(glyph[0].length).replace(/^\uFE0F/, '');
+      return marker + rest;
+    }
+    return text.replace(LEADING_BRACKETS, marker);
   }
   return marker + String(title);
 }

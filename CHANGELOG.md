@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.26 — 2026-10-04
+
+### Tasks
+- A leading `[]` is an open task, the same as `[ ]`.
+- A leading `[-]` is a pending task. An en dash or minus inside the brackets counts too.
+- A leading `☐` is an open task. `☑`, `☒`, and `✓` are done. The saved text uses `[ ]`, `[x]`, or `[-]`.
+
 ## 0.2.25 — 2026-10-04
 
 ### Styles
