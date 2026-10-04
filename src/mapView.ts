@@ -90,7 +90,7 @@ import {
   type WorldRect,
 } from './mapCamera.js';
 import { assignPersistentId, indexOutline, nodeMapKey } from './nodeAddress.js';
-import { toggleTask, shouldFireAction } from './task.js';
+import { toggleTask, nextTaskState, shouldFireAction } from './task.js';
 
 export interface MapPoint {
   x: number;
@@ -332,7 +332,7 @@ export function mapNodeClassNames(opts: {
     opts.foldable ? '' : 'leaf',
     opts.collapsed ? 'collapsed' : '',
     opts.cue ? 'cue' : '',
-    opts.task === 'done' ? 'task-done' : opts.task ? 'task-open' : '',
+    opts.task === 'done' ? 'task-done' : opts.task === 'pending' ? 'task-pending' : opts.task ? 'task-open' : '',
     opts.bodyExpanded ? 'body-expanded' : '',
     opts.focused ? 'is-focused' : '',
   ]
@@ -407,14 +407,16 @@ function prefersReducedMotion(): boolean {
 }
 
 function taskGlyphSvg(state: TaskState, x: number, y: number): string {
-  const stroke = state === 'done' ? '#C9A227' : '#8b9bab';
-  const check =
+  const stroke = state === 'open' ? '#8b9bab' : '#C9A227';
+  const mark =
     state === 'done'
       ? `<path d="M-4 0.5 l2.5 2.5 L4 -3" fill="none" stroke="${stroke}" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"/>`
-      : '';
+      : state === 'pending'
+        ? `<path d="M-4 0 H4" fill="none" stroke="${stroke}" stroke-width="1.75" stroke-linecap="round"/>`
+        : '';
   return `<g class="map-task-glyph" transform="translate(${x} ${y})" aria-hidden="true">
     <rect x="-7" y="-7" width="14" height="14" rx="3" fill="none" stroke="${stroke}" stroke-width="1.75"/>
-    ${check}
+    ${mark}
   </g>`;
 }
 
@@ -1511,7 +1513,7 @@ export function createMapView(
     const cur = resolveTask(n);
     if (!cur) return;
     const from = cur;
-    const to: TaskState = from === 'done' ? 'open' : 'done';
+    const to = nextTaskState(from);
     const nextTitle = toggleTaskMarker(n.title, to);
     const nextDoc: OutlineFoldDoc = {
       frontmatter: doc.frontmatter
@@ -1728,7 +1730,7 @@ export function createMapView(
             : '';
           const taskHit =
             task != null
-              ? `<rect class="map-task-hit" x="${x}" y="${Math.min(y, pos.y - 22)}" width="${Math.max(taskLead, 44)}" height="${Math.max(h, 44)}" fill="transparent" cursor="pointer" role="checkbox" aria-checked="${task === 'done' ? 'true' : 'false'}"/>`
+              ? `<rect class="map-task-hit" x="${x}" y="${Math.min(y, pos.y - 22)}" width="${Math.max(taskLead, 44)}" height="${Math.max(h, 44)}" fill="transparent" cursor="pointer" role="checkbox" aria-checked="${task === 'done' ? 'true' : task === 'pending' ? 'mixed' : 'false'}"/>`
               : '';
           const taskChrome =
             task != null

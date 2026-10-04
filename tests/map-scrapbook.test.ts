@@ -18,6 +18,7 @@ import {
   pagesDocKey,
   mapResumeStorageKey,
   toggleTask,
+  nextTaskState,
   shouldFireAction,
   setExpandLevel,
   isCollapsed,
@@ -217,9 +218,15 @@ describe('task toggle', () => {
     );
     expect(doc.nodes[0].task).toBe('open');
     expect(doc.nodes[0].title).toBe('Land PR');
+    expect(nextTaskState('open')).toBe('pending');
+    expect(nextTaskState('pending')).toBe('done');
+    expect(nextTaskState('done')).toBe('open');
     const r = toggleTask(doc, 't1');
-    expect(r?.to).toBe('done');
-    expect(shouldFireAction(r!.from, r!.to)).toBe(true);
+    expect(r?.to).toBe('pending');
+    expect(shouldFireAction(r!.from, r!.to)).toBe(false);
+    const done = toggleTask(r!.doc, 't1');
+    expect(done?.to).toBe('done');
+    expect(shouldFireAction(done!.from, done!.to)).toBe(true);
     const mid = parse('- See [ ] later <id:x>\n');
     expect(mid.nodes[0].task).toBeUndefined();
   });

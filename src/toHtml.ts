@@ -68,12 +68,19 @@ function renderNode(
   // Task SVG lead — ASCII `[ ]`/`[x]` stripped from title at parse time.
   let taskChrome = '';
   if (node.task && node.id) {
-    const checked = node.task === 'done';
+    const checked =
+      node.task === 'done' ? 'true' : node.task === 'pending' ? 'mixed' : 'false';
+    const taskLabel =
+      node.task === 'done'
+        ? 'Mark open'
+        : node.task === 'pending'
+          ? 'Mark done'
+          : 'Mark in progress';
     const svg = iconForTask(node.task);
     if (interactiveTasks) {
-      taskChrome = `<button type="button" class="${p}-task ${p}-task-${node.task}" data-toggle-task="${esc(node.id)}" data-testid="of-task-${esc(node.id)}" role="checkbox" aria-checked="${checked ? 'true' : 'false'}" aria-label="${checked ? 'Mark open' : 'Mark done'}" tabindex="-1">${svg}</button>`;
+      taskChrome = `<button type="button" class="${p}-task ${p}-task-${node.task}" data-toggle-task="${esc(node.id)}" data-testid="of-task-${esc(node.id)}" role="checkbox" aria-checked="${checked}" aria-label="${taskLabel}" tabindex="-1">${svg}</button>`;
     } else {
-      taskChrome = `<span class="${p}-task ${p}-task-${node.task}" data-testid="of-task-${esc(node.id)}" role="checkbox" aria-checked="${checked ? 'true' : 'false'}" aria-disabled="true">${svg}</span>`;
+      taskChrome = `<span class="${p}-task ${p}-task-${node.task}" data-testid="of-task-${esc(node.id)}" role="checkbox" aria-checked="${checked}" aria-disabled="true">${svg}</span>`;
     }
   }
 

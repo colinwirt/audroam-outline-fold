@@ -68,6 +68,11 @@ describe('parse sample line', () => {
     expect(checked.nodes[0].title).toBe('Already done');
     expect(serialize(checked)).toContain('[x] Already done');
 
+    const pendingHtml = toHtml(pending);
+    expect(pendingHtml).toContain('of-task-pending');
+    expect(pendingHtml).toContain('aria-checked="mixed"');
+    expect(pendingHtml).toContain('M8 12h8');
+
     const mid = parse('- See [] and \u2610 later <id:mid>\n');
     expect(mid.nodes[0].task).toBeUndefined();
     expect(mid.nodes[0].title).toBe('See [] and \u2610 later');

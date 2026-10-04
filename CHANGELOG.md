@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.27 — 2026-10-04
+
+### Tasks
+- The map draws a gold dash for a pending task. A click cycles open, then pending, then done.
+- Outline task buttons use `aria-checked="mixed"` while a task is pending.
+
 ## 0.2.26 — 2026-10-04
 
 ### Tasks

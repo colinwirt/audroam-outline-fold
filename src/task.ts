@@ -32,10 +32,11 @@ function findMutable(
   return null;
 }
 
-/** Next state when clicking the task SVG (open/pending → done → open). */
+/** Next state when clicking the task control: open → pending → done → open. */
 export function nextTaskState(from: TaskState): TaskState {
-  if (from === 'done') return 'open';
-  return 'done';
+  if (from === 'open') return 'pending';
+  if (from === 'pending') return 'done';
+  return 'open';
 }
 
 /**
