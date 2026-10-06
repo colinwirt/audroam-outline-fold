@@ -31,6 +31,10 @@
     }
   ],
   "examples": {
+    "examples/cafe-map.md": [
+      { "id": "supplier-accounts", "kid": "cafe-map-sup-1", "plaintext": "Altitude Roasters account NC-4471 · standing order Tue + Fri · co-op invoices on 30-day terms" },
+      { "id": "alarm", "kid": "cafe-map-alarm-1", "plaintext": "Monitoring line 0491 570 042 · site ref NCC-22 · after-hours callout Sam 0491 570 159" }
+    ],
     "examples/student-study/student-study.md": [
       { "id": "portal-pack", "kid": "study-portal-1", "plaintext": "Willow Creek portal · mvale07 · tide-lantern-42" },
       { "id": "recovery-pack", "kid": "study-recovery-1", "plaintext": "Bayshore Uni recovery codes · 4821-0937 · 5530-1186 · 7702-6649" },

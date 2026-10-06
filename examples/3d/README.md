@@ -8,11 +8,11 @@ Lightweight Three.js demo consuming the same `OutlineFoldDoc` + fold state.
 
 ```bash
 cd ../.. && npm run build
-# open index.html via a static server, or:
+# serve the repo root with any static server, then open examples/3d/
 npx serve .
 ```
 
-Uses an import map CDN for `three` so the package does not depend on Three.js at publish time.
+Uses an import map CDN for `three` (and its `CSS2DRenderer` addon) so the package does not depend on Three.js at publish time.
 
-Nodes are spheres on a tree layout; gold = collapsed `(+)`. Click to toggle fold.  
-Private/encrypted nodes render a “locked” darker material — host would call `onUnlock` / `onDecrypt`.
+The outline is `../cafe-map.md`, shared with the 2D map. Nodes are spheres on a tree layout; gold = collapsed `(+)`. Each sphere has an HTML caption label (`CSS2DRenderer`). Click a sphere to toggle fold.
+Locked rows are dark grey with a `🔒 locked` label. Click one, or **Unlock** for all, to open it with the demo password from `../demo-values.json`.

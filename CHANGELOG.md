@@ -21,8 +21,15 @@
 - A note link keeps the spelling it was written with. `<t:1002>` stays `<t:1002>` and `<t: 1002>` stays `<t: 1002>` through parse, serialize, a fold toggle and a task tick. Before this, serialize wrote every link as `<t: N>`, so a fold or a tick in the Map rewrote `<t:N>` tags across the whole body. Parse keeps the spelling in the new optional `node.noteLinkTags` (id → tag, only when it isn't `<t: N>`). A link the host adds, or a kept spelling that no longer names the id, is written as `<t: N>`. Leading and mid-caption links still move to the trailing slot, and a repeated id still writes one tag (spelled as its first occurrence).
 - A character typed right after a closing tag or fold marker (`<id:n>3`, `(+)3`) no longer hides the token. The id and fold state still parse, and the character stays on the caption. (Shipped in `7349c83` without an entry.)
 
+### Examples
+- The cafe 2D and 3D maps load one outline, `examples/cafe-map.md`. Its two locked rows (Supplier accounts, Alarm monitoring contact) carry real payloads sealed by `npm run demo:seal` with the demo password. Both pages show **Unlock** and `Demo password: 123`, and a click on a locked node opens just that row.
+- The 3D map draws a caption label under every sphere (`CSS2DRenderer`). Locked rows show `🔒 locked`, then the opened text. The page never had label code; spheres were the only output. Leaves get their own x slot, so siblings from different branches no longer sit on top of each other, and the camera backs off until the tree fits.
+- The 2D map lists its labels as canvas fallback content, scales clicks when the canvas is shrunk, and drops the blank row after each open branch.
+
 ### Tests
 - Playwright projects `touch-pixel` (Pixel 7) and `touch-iphone` (iPhone 13 profile), both Chromium with touch, drive CDP touch events against `examples/e2e-touch`: −/+/Fit and popover single taps (fresh, after a slow pan, after a fling, after Fit, edge pills, repeated and double taps), taps on map handles after a pan or pinch and 60 / 200 ms after a fling, swallow expiry, and the pinch-lift regression (no camera motion after the last finger lifts).
+- `e2e/cafe-maps.spec.ts`: 3D labels present, visible, inside the window and not overlapping (1400 × 900, and 1024 × 700 with every branch open); locked rows in both maps show caption + `🔒 locked` and open with the demo password.
+- `tests/examples.test.ts`: every private / encrypted row in an example outline has a sealed payload; the cafe maps load `examples/cafe-map.md`.
 
 ## 0.2.29 — 2026-10-04
 

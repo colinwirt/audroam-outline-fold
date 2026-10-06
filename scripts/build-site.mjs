@@ -27,6 +27,7 @@ mkdirSync(join(site, 'examples'), { recursive: true });
 cpSync(join(root, 'dist'), join(site, 'dist'), { recursive: true });
 cpSync(join(root, 'examples', 'outline-demo.html'), join(site, 'examples', 'outline-demo.html'));
 cpSync(join(root, 'examples', 'outline-demo.md'), join(site, 'examples', 'outline-demo.md'));
+cpSync(join(root, 'examples', 'cafe-map.md'), join(site, 'examples', 'cafe-map.md'));
 cpSync(join(root, 'examples', 'outline-viewer.js'), join(site, 'examples', 'outline-viewer.js'));
 cpSync(join(root, 'examples', 'demo-values.json'), join(site, 'examples', 'demo-values.json'));
 // examples/_shared + demo folders copied in the directory loop below

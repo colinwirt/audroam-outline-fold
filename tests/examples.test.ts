@@ -145,6 +145,25 @@ describe('example payloads', () => {
     });
   }
 
+  it('every private / encrypted row has a sealed payload', () => {
+    const bare: string[] = [];
+    for (const file of mdFiles) {
+      for (const n of allNodes(parse(readFileSync(file, 'utf8')).nodes)) {
+        const locked = n.flags?.includes('private') || n.flags?.includes('encrypted');
+        if (locked && !hasSealed(n)) bare.push(`${rel(file)}: ${n.id}`);
+      }
+    }
+    expect(bare).toEqual([]);
+  });
+
+  it('cafe 2D and 3D maps load examples/cafe-map.md, not an inline outline', () => {
+    for (const page of ['canvas-2d', '3d']) {
+      const js = readFileSync(join(examplesDir, page, 'main.js'), 'utf8');
+      expect(js, page).toContain("'../cafe-map.md'");
+      expect(js, page).not.toMatch(/<(private|encrypted)>/);
+    }
+  });
+
   it('examples/fixtures/ twins match their examples/<name>/ source', () => {
     for (const f of files.filter((p) => p.includes('/fixtures/') && p.endsWith('.md'))) {
       const name = f.split('/').pop()!.replace(/\.md$/, '');
