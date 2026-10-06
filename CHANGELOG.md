@@ -6,12 +6,25 @@
 - A click on **Map** while the outline is still loading is kept. Before this, the end of loading switched the viewer back to Outline.
 - The viewer parses with `sessionIds: true`. An outline written without `<id:…>` tags now gets fold handles and task boxes in Outline, the same as one with ids. Examples with an id on every line are unchanged.
 
+### Map: fold handle and connectors (phase 1)
+Design UX spec `20261007-map-fold-handle-connector-polish-ux.md`, locked 2026-10-07 with defaults H1–H10. Phase 1 is H1, H2, H3 (a), H5 and H7.
+- Child connectors start at the outer edge of the fold handle's ring (`foldCx + r + ring stroke / 2`, which is pill edge + 26.8 px with the default slot) instead of the pill edge. No line runs under the handle any more, so seven children no longer bunch up behind the −. A node without a handle still starts at its pill edge.
+- Every foldable node has the same 8 px stem from the pill edge to the handle's inner rim, folded or expanded. Before, the expanded stem ran to the far rim and was lost among the child lines.
+- The expanded − is see-through (`fill: none`). It used to be hard-coded black (`fill="#000"` in `mapView.ts` and `fill: #000` in the css, from `a1619fd`), which read as a hole on `--map-bg`. With the lines starting outside the ring it doesn't need to hide anything.
+- `.map-edge` and `.map-fold-stem` no longer have `opacity: .85`, so connectors show at full `--connector` contrast.
+- Unchanged: paint order (edges, pills, stem, handle, hit rect), `FOLD_SLOT` 34, the 32 × 32 fold hit area and its centre, and node positions.
+- New exports from `mapView`: `FOLD_R`, `FOLD_RING_W`, `foldHandleGeometry`, `connectorStartX`, `childConnectorPath`, `foldStemSvg`, `foldHandleSvg`, `foldChromeSvg`, `mapEdgeSvg`. Paint uses them, and the tests check them.
+- Not yet (phases 2 and 3 of the same spec): `--map-handle-bg` (opt-in solid disc, default transparent), `--map-handle-glyph-on-gold` for the + glyph, a `--map-halo` casing under the − ring and dash, opt-in `--connector-casing`, a stated ≥ 3:1 `--connector` contrast target, and light-theme tokens.
+- The fold animation still draws edges at their final place and fades them in while pills slide. With the new start, the fan's join point sits just past the handle's final position for the first part of the slide, as it sat at the pill edge before. It meets the handle when the slide ends.
+
 ### Examples
 - New outline, `examples/lighthouse/lighthouse.md`: a lighthouse keeper's week, with task boxes, two done, and Tuesday folded with `(+)`. It has no `<id:…>` tags or layout block. Linked from the README, the landing page, the demos index and the fixtures page, with a twin in `examples/fixtures/`.
 
 ### Tests
 - `tests/examples.test.ts`: every example outline validates with no errors, and an outline without ids round-trips byte for byte through `parse(text, { sessionIds: true })` and `serialize`.
 - `e2e/pages-viewer.spec.ts`: the lighthouse outline gets a session id, task box and fold handle on every row in the viewer, and **Handoff text** stays free of ids. A **Map** click made while the outline is still loading is kept.
+- `tests/map-fold-handle.test.ts`: a node with children starts every connector at the handle's outer rim; a node without a handle starts at its pill edge; the stem is the same for folded and expanded, runs 8 px to the inner rim and paints before the handle; no `#000` in the handle markup or css; no opacity on connectors or stems; `FOLD_RING_W` matches the css ring stroke. `tests/outline-fold-css.test.ts` now expects the expanded circle to be `fill: none`.
+- `e2e/pages-viewer.spec.ts`: on the lighthouse Map, the root's seven connectors start at the handle's outer rim, the − and + have the same 8 px stub, the fold hit is still 32 × 32 on the handle centre, the − circle's computed fill is `none`, and edges and stems have computed opacity 1.
 
 ## 0.2.30 — 2026-10-06
 

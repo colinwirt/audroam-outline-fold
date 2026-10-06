@@ -274,8 +274,9 @@
   stroke-width: 1.8;
   stroke-linecap: round;
 }
+/* See-through: connectors start outside the ring, so nothing runs behind it. */
 .map-fold-indicator.is-expanded circle {
-  fill: #000;
+  fill: none;
   stroke: var(--gold);
   stroke-width: 1.6;
 }
@@ -287,7 +288,6 @@
   fill: none;
   stroke: var(--connector);
   stroke-width: 1.4;
-  opacity: 0.85;
 }
 .map-fold-stem {
   pointer-events: none;

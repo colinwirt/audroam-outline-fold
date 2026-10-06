@@ -158,3 +158,81 @@ test.describe('Pages viewer outline without ids', () => {
     await expect(page.locator('#outlineHost')).toBeHidden();
   });
 });
+
+test.describe('Map fold handle and connectors (0.2.31)', () => {
+  const LIGHTHOUSE = 'examples/viewer/?doc=../lighthouse/lighthouse.md';
+
+  test('connectors start past the handle, one stub per handle, see-through −, no opacity', async ({ page }) => {
+    await page.goto(LIGHTHOUSE);
+    await page.locator('#btnMap').click();
+    await expect(page.locator('#mapHost .map-node').first()).toBeVisible();
+    await settle(page);
+
+    const r = await page.evaluate(() => {
+      const num = (s: string | null, re: RegExp) => {
+        const m = re.exec(s || '');
+        return m ? m.slice(1).map(Number) : [];
+      };
+      const handle = (g: Element) => {
+        const ind = g.querySelector(':scope > .map-fold-indicator')!;
+        const [cx, cy] = num(ind.getAttribute('transform'), /translate\(([-\d.]+) ([-\d.]+)\)/);
+        const [sx, sy, ex] = num(
+          g.querySelector(':scope > .map-fold-stem')!.getAttribute('d'),
+          /^M ([-\d.]+) ([-\d.]+) H ([-\d.]+)$/,
+        );
+        const hit = g.querySelector(':scope > .map-fold-hit')!;
+        return {
+          cx,
+          cy,
+          stem: { sx, sy, ex },
+          hit: {
+            w: Number(hit.getAttribute('width')),
+            h: Number(hit.getAttribute('height')),
+            cx: Number(hit.getAttribute('x')) + 16,
+          },
+          circleFill: getComputedStyle(ind.querySelector('circle')!).fill,
+          expanded: ind.classList.contains('is-expanded'),
+        };
+      };
+      const root = document.querySelector('#mapHost .map-node')!;
+      const rootExpanded = root.getAttribute('aria-expanded');
+      const folded = document.querySelector('#mapHost .map-node.collapsed')!;
+      const rh = handle(root);
+      const edges = [...document.querySelectorAll('#mapHost .map-edge')];
+      const fromRoot = edges
+        .map((e) => num(e.getAttribute('d'), /^M ([-\d.]+) ([-\d.]+)/))
+        .filter(([, y]) => Math.abs(y - rh.cy) < 0.01);
+      return {
+        rootExpanded,
+        root: rh,
+        folded: handle(folded),
+        fromRoot,
+        edgeOpacity: [...new Set(edges.map((e) => getComputedStyle(e).opacity))],
+        stemOpacity: [
+          ...new Set(
+            [...document.querySelectorAll('#mapHost .map-fold-stem')].map((e) => getComputedStyle(e).opacity),
+          ),
+        ],
+      };
+    });
+
+    expect(r.rootExpanded).toBe('true');
+    expect(r.root.expanded).toBe(true);
+    expect(r.fromRoot.length).toBe(7);
+    for (const [x] of r.fromRoot) {
+      expect(x).toBeCloseTo(r.root.cx + 9.8, 5);
+      expect(x).toBeGreaterThanOrEqual(r.root.cx + 9);
+    }
+    // Same 8 px stub, pill edge to inner rim, on the − and the +.
+    for (const h of [r.root, r.folded]) {
+      expect(h.stem.sy).toBe(h.cy);
+      expect(h.stem.ex).toBeCloseTo(h.cx - 9, 5);
+      expect(h.stem.ex - h.stem.sx).toBeCloseTo(8, 5);
+      expect(h.hit).toEqual({ w: 32, h: 32, cx: h.cx });
+    }
+    expect(r.folded.expanded).toBe(false);
+    expect(r.root.circleFill).toBe('none');
+    expect(r.edgeOpacity).toEqual(['1']);
+    expect(r.stemOpacity).toEqual(['1']);
+  });
+});

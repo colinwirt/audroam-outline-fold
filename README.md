@@ -158,7 +158,7 @@ Unlock reveals **session-only** plaintext under the node (default: do **not** wr
 
 **Demo ≠ production MFA.** The Pages examples unlock with the demo password so they work offline.
 
-Link `dist/outline-fold.css` before any host stylesheet. The export is `@audroam/outline-fold/outline-fold.css`. It paints `toHtml` rows and the map. A collapsed fold circle is solid gold. Override only chrome that belongs to the host.
+Link `dist/outline-fold.css` before any host stylesheet. The export is `@audroam/outline-fold/outline-fold.css`. It paints `toHtml` rows and the map. A collapsed fold circle is solid gold; an expanded one is a gold ring you can see through. Override only chrome that belongs to the host.
 
 ## API
 

@@ -329,6 +329,105 @@ function shortLabel(title: string): string {
  * 34 = 2*(r+clear) with r≈9 and ≥8px clear for gold focus stroke (Design UX 2026-09-29 end-cap air). */
 export const FOLD_SLOT = 34;
 
+/** Fold handle radius. */
+export const FOLD_R = 9;
+/** Stroke of the expanded handle's gold ring. Keep in step with
+ * `.map-fold-indicator.is-expanded circle` in outline-fold.css. */
+export const FOLD_RING_W = 1.6;
+/** Connector and stem stroke, same as `.map-edge` in outline-fold.css. */
+const CONNECTOR_W = 1.4;
+
+export type FoldHandleGeometry = {
+  /** Handle centre x. */
+  cx: number;
+  r: number;
+  /** Where the stem from the pill stops. */
+  innerRim: number;
+  /** Outside edge of the gold ring. Child connectors start here. */
+  outerRim: number;
+};
+
+/** Handle geometry for a pill whose visible right edge is `boxRight`. The
+ * handle sits in the middle of the fold slot, past the pill. */
+export function foldHandleGeometry(boxRight: number, foldSlot: number = FOLD_SLOT): FoldHandleGeometry {
+  const cx = boxRight + foldSlot / 2;
+  return {
+    cx,
+    r: FOLD_R,
+    innerRim: cx - FOLD_R,
+    outerRim: cx + FOLD_R + FOLD_RING_W / 2,
+  };
+}
+
+/** Visible right edge of a pill. The fold slot is drawn outside the pill. */
+function pillBoxRight(centreX: number, w: number, foldSlot: number): number {
+  return centreX - w / 2 + Math.max(1, w - foldSlot);
+}
+
+/**
+ * x where the connectors to a node's children begin. With a fold handle it's
+ * the outer edge of the ring, so no line runs under the handle (0.2.31).
+ * Without one it's the pill's right edge, as before.
+ */
+export function connectorStartX(centreX: number, w: number, foldSlot: number): number {
+  const boxRight = pillBoxRight(centreX, w, foldSlot);
+  return foldSlot > 0 ? foldHandleGeometry(boxRight, foldSlot).outerRim : boxRight;
+}
+
+/** The short stem from the pill to the handle's inner rim. It is the same for
+ * a folded and an expanded node. */
+export function foldStemSvg(boxRight: number, y: number, foldSlot: number = FOLD_SLOT): string {
+  const { innerRim } = foldHandleGeometry(boxRight, foldSlot);
+  return `<path class="map-fold-stem" d="M ${boxRight} ${y} H ${innerRim}" fill="none" stroke="var(--connector)" stroke-width="${CONNECTOR_W}" pointer-events="none"/>`;
+}
+
+/** Fold handle: solid gold with a + when folded, a gold ring with a − when
+ * expanded. The expanded disc is see-through; nothing is drawn behind it. */
+export function foldHandleSvg(
+  boxRight: number,
+  y: number,
+  collapsed: boolean,
+  foldSlot: number = FOLD_SLOT,
+): string {
+  const { cx, r } = foldHandleGeometry(boxRight, foldSlot);
+  return collapsed
+    ? `<g class="map-fold-indicator" transform="translate(${cx} ${y})" aria-hidden="true">
+          <circle r="${r}"/>
+          <path d="M -4 0 H 4 M 0 -4 V 4"/>
+        </g>`
+    : `<g class="map-fold-indicator is-expanded" transform="translate(${cx} ${y})" aria-hidden="true">
+          <circle r="${r}" fill="none"/>
+          <path d="M -4 0 H 4"/>
+        </g>`;
+}
+
+/** Stem then handle, in paint order, so the handle covers the stem's end. */
+export function foldChromeSvg(
+  boxRight: number,
+  y: number,
+  collapsed: boolean,
+  foldSlot: number = FOLD_SLOT,
+): string {
+  return foldStemSvg(boxRight, y, foldSlot) + '\n      ' + foldHandleSvg(boxRight, y, collapsed, foldSlot);
+}
+
+/** Connector from a parent pill to one child. Positions are pill centres. */
+export function childConnectorPath(
+  parent: { x: number; y: number; w: number; foldSlot: number },
+  child: { x: number; y: number; w: number },
+): string {
+  return connectorPath(
+    connectorStartX(parent.x, parent.w, parent.foldSlot),
+    parent.y,
+    child.x - child.w / 2,
+    child.y,
+  );
+}
+
+export function mapEdgeSvg(d: string): string {
+  return `<path class="map-edge" d="${d}"/>`;
+}
+
 export { DEFAULT_WRAP_CH, DEFAULT_MAX_LINES, SOFT_SAFETY_MAX_LINES, SOFT_SAFETY_MAX_CHARS, TASK_LEAD };
 
 /**
@@ -1791,12 +1890,12 @@ export function createMapView(
             fontSize: resolveFontPx(cpos.fontSize, layout.fontSize, doc.frontmatter?.fontSize),
             noteLinks: resolveNoteLinks(c),
           });
-          // Start on the pill's right edge so the curve runs through the
-          // fold circle (centre is foldSlot/2 past that edge) and on to the child.
-          const fromX =
-            size.foldSlot > 0 ? pos.x + size.w / 2 - size.foldSlot : pos.x + size.w / 2;
+          // Starts past the fold handle, not under it.
           edges.push({
-            d: connectorPath(fromX, pos.y, cpos.x - cs.w / 2, cpos.y),
+            d: childConnectorPath(
+              { x: pos.x, y: pos.y, w: size.w, foldSlot: size.foldSlot },
+              { x: cpos.x, y: cpos.y, w: cs.w },
+            ),
           });
           walk(c);
         }
@@ -1804,9 +1903,7 @@ export function createMapView(
     }
     for (const root of doc.nodes) walk(root);
 
-    const edgeSvg = edges
-      .map((e) => `<path class="map-edge" d="${e.d}"/>`)
-      .join('');
+    const edgeSvg = edges.map((e) => mapEdgeSvg(e.d)).join('');
     const nodeSvg = nodes
       .map(
         ({
@@ -1853,27 +1950,11 @@ export function createMapView(
             bodyExpanded,
             focused,
           });
-          const foldCx = boxRight + foldSlot / 2;
+          const foldCx = foldHandleGeometry(boxRight, foldSlot).cx;
           const foldHit = foldable
             ? `<rect class="map-fold-hit" x="${foldCx - 16}" y="${pos.y - 16}" width="32" height="32" fill="transparent" cursor="pointer"/>`
             : '';
-          const marker = foldable
-            ? col
-              ? `<g class="map-fold-indicator" transform="translate(${foldCx} ${pos.y})" aria-hidden="true">
-          <circle r="9"/>
-          <path d="M -4 0 H 4 M 0 -4 V 4"/>
-        </g>`
-              : `<g class="map-fold-indicator is-expanded" transform="translate(${foldCx} ${pos.y})" aria-hidden="true">
-          <circle r="9" fill="#000"/>
-          <path d="M -4 0 H 4"/>
-        </g>`
-            : '';
-          // Same y as the fold circle. The disc paints after this neck, so the
-          // line stops at the rim and the yellow dash stays on top.
-          const stemEnd = col ? foldCx : foldCx + 9;
-          const stem = foldable
-            ? `<path class="map-fold-stem" d="M ${boxRight} ${pos.y} H ${stemEnd}" fill="none" stroke="var(--connector)" stroke-width="1.5" pointer-events="none"/>`
-            : '';
+          const foldChrome = foldable ? foldChromeSvg(boxRight, pos.y, !!col, foldSlot) : '';
           const taskHit =
             task != null
               ? `<rect class="map-task-hit" x="${x + 2}" y="${Math.min(y, pos.y - 22)}" width="${Math.max(taskLead - 2, TASK_BOX)}" height="${Math.max(h, 44)}" fill="transparent" cursor="pointer" role="checkbox" aria-checked="${task === 'done' ? 'true' : task === 'pending' ? 'mixed' : 'false'}"/>`
@@ -1936,8 +2017,7 @@ export function createMapView(
       ${moreChrome}
       ${threadChip}
       ${noteChips}
-      ${stem}
-      ${marker}
+      ${foldChrome}
       ${taskHit}
       ${foldHit}
       <g class="map-width-grip" stroke="#8ec8ff" stroke-width="1.75" stroke-linecap="round" fill="none" pointer-events="none" opacity="${widthShown ? '1' : '0'}">
