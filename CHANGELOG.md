@@ -6,6 +6,7 @@
 - The click swallow after a pan, pinch or touch tap is one-shot. It expires after 400 ms, only covers about 30 px around the point where the finger lifted, and the next press clears it. Cancel, blur and a hidden page clear it too. Before this, the first tap on a fold handle, task box, globe, `#N` chip or popover button after a pan was eaten.
 - `zoomAt` and `resetCam` stop a running spring-back, Fit or glide first, so −/+ zoom the camera shown at that moment and no later frame overwrites it.
 - New export `bindTap(el, fn)`. Touch and pen activate on `pointerup` (a press that started on the button and moved < 10 px), and the click that follows is ignored. Mouse and keyboard keep `click`. One activation per tap, including after a fling, when the browser can drop the click. `mountMapControls`, the resize popover, and the example hosts' − / + / Fit use it.
+- In-map handles (fold handle, task box, body more/less, globe, `#N` chip, thread chip) use the same rule on touch and pen: they activate on `pointerup` and ignore the click that follows within 800 ms. A tap right after a fling, when the browser drops the click, now lands. A pan end never activates a handle (the swallow record still applies). Mouse keeps `click`; keyboard is unchanged.
 - `touch-action: manipulation` on `.of-map-controls`, its buttons, and the popover buttons (and the example toolbars), so quick repeated taps don't become a double-tap zoom.
 - The map ignores a press on its own controls: `.of-map-controls` inside the host gets no `preventDefault`, pointer capture or double-tap zoom. Controls and the resize popover inside the host survive `paint()`.
 - Touch capture is lazy: the host captures a finger only once a pan or pinch is recognised (or a corner press turns into a width drag), so a tap still reaches the pill's own handler.
@@ -20,7 +21,7 @@
 - A character typed right after a closing tag or fold marker (`<id:n>3`, `(+)3`) no longer hides the token. The id and fold state still parse, and the character stays on the caption. (Shipped in `7349c83` without an entry.)
 
 ### Tests
-- Playwright projects `touch-pixel` (Pixel 7) and `touch-iphone` (iPhone 13 profile), both Chromium with touch, drive CDP touch events against `examples/e2e-touch`: −/+/Fit and popover single taps (fresh, after a slow pan, after a fling, after Fit, edge pills, repeated and double taps), taps on map handles after a pan or pinch, swallow expiry, and the pinch-lift regression (no camera motion after the last finger lifts).
+- Playwright projects `touch-pixel` (Pixel 7) and `touch-iphone` (iPhone 13 profile), both Chromium with touch, drive CDP touch events against `examples/e2e-touch`: −/+/Fit and popover single taps (fresh, after a slow pan, after a fling, after Fit, edge pills, repeated and double taps), taps on map handles after a pan or pinch and 60 / 200 ms after a fling, swallow expiry, and the pinch-lift regression (no camera motion after the last finger lifts).
 
 ## 0.2.29 — 2026-10-04
 

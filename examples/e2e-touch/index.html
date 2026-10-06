@@ -29,6 +29,7 @@ const host = document.getElementById('mapHost');
 
 window.__tasks = [];
 window.__notes = [];
+window.__threads = [];
 window.__zooms = [];
 window.__fits = 0;
 window.__paints = 0;
@@ -42,6 +43,7 @@ const map = createMapView(host, {
   onChange: () => { window.__paints++; map.paint(); },
   onTaskToggle: (ev) => window.__tasks.push({ id: ev.id, from: ev.from, to: ev.to }),
   onNoteLink: (ev) => window.__notes.push({ id: ev.id, pnid: ev.pnid }),
+  onThread: (ev) => window.__threads.push({ id: ev.id, thread: ev.thread }),
   isActive: () => true,
 });
 

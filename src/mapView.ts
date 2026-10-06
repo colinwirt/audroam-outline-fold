@@ -61,7 +61,15 @@ import {
   resolveFontPx,
 } from './mapLabel.js';
 import { LABEL_FONT_FAMILY } from './svgTextMeasure.js';
-import { armSwallow, bindTap, swallowConsumes, type SwallowRecord } from './mapTap.js';
+import {
+  armSwallow,
+  bindTap,
+  isTapPointer,
+  nodeTapShouldActivate,
+  swallowConsumes,
+  touchClickGuarded,
+  type SwallowRecord,
+} from './mapTap.js';
 import {
   displayCaption,
   resolveTask,
@@ -1562,6 +1570,120 @@ export function createMapView(
     onChange?.();
   }
 
+  /**
+   * One activation of a pill or one of its in-map handles (fold, task box,
+   * body more/less, globe, `#N` chip, thread chip). Mouse and keyboard reach
+   * this from the node's `click`; touch and pen reach it from `pointerup`
+   * (0.2.30), because the browser can drop the click after a fling.
+   */
+  function activateNodeHit(g: Element, t: Element | null, e: Event): void {
+    const id = g.getAttribute('data-id');
+    if (!id) return;
+    if (t?.closest?.('.map-width-hit')) return;
+    if (t?.closest?.('.map-fold-hit') || t?.closest?.('.map-fold-indicator')) {
+      setFocusId(id);
+      // Focus host/pill BEFORE paint so Map keys work (0.2.13).
+      focusMapForKeys();
+      const n = findNode(getDoc().nodes, id);
+      userCamGesture = false;
+      if (n && hasKids(n)) {
+        const wasCollapsed = isCollapsed(getDoc(), id);
+        setDoc(toggleFold(getDoc(), id));
+        pendingFollow = wasCollapsed
+          ? { kind: 'expand', focusId: id }
+          : { kind: 'focus' };
+      } else {
+        pendingFollow = { kind: 'focus' };
+      }
+      onChange?.();
+      return;
+    }
+    if (t?.closest?.('.map-task-hit') || t?.closest?.('.map-task-glyph')) {
+      setFocusId(id);
+      focusMapForKeys();
+      userCamGesture = false;
+      pendingFollow = { kind: 'focus' };
+      applyTaskToggle(id);
+      return;
+    }
+    if (t?.closest?.('.map-body-more-hit')) {
+      // Body more/less — orthogonal to child fold / task.
+      setFocusId(id);
+      focusMapForKeys();
+      userCamGesture = false;
+      pendingFollow = { kind: 'focus' };
+      const hit = t.closest('.map-body-more-hit') as Element;
+      const action = hit.getAttribute('data-body-action');
+      const lay = getLayout();
+      if (!lay.nodes) lay.nodes = {};
+      const cur = lay.nodes[id] || { x: 100, y: 100 };
+      lay.nodes[id] = {
+        ...cur,
+        bodyExpanded: action === 'more',
+      };
+      onChange?.();
+      return;
+    }
+    if (t?.closest?.('.map-link-hit')) {
+      const n = findNode(getDoc().nodes, id);
+      showLinkPop(t.closest('.map-link-hit') as Element, n?.title || '');
+      return;
+    }
+    if (t?.closest?.('.map-note-link-hit')) {
+      setFocusId(id);
+      focusMapForKeys();
+      userCamGesture = false;
+      pendingFollow = { kind: 'focus' };
+      const hit = t.closest('.map-note-link-hit') as Element;
+      const pnid = hit.getAttribute('data-note-link') || '';
+      const n = findNode(getDoc().nodes, id);
+      const href = noteLinkHref(
+        getDoc().frontmatter?.noteUri || noteUriFallback,
+        pnid,
+      );
+      if (href) {
+        e.preventDefault();
+        window.open(href, '_blank', 'noopener,noreferrer');
+      }
+      if (n && pnid) onNoteLink?.({ id, pnid, node: n });
+      onChange?.();
+      return;
+    }
+    if (t?.closest?.('.map-thread-hit')) {
+      setFocusId(id);
+      focusMapForKeys();
+      userCamGesture = false;
+      pendingFollow = { kind: 'focus' };
+      const n = findNode(getDoc().nodes, id);
+      const thread = n ? resolveThread(n) : null;
+      if (n && thread) onThread?.({ id, thread, node: n });
+      onChange?.();
+      return;
+    }
+    // Text / pill chrome: select + focus only — never fold.
+    // Label text-drag: keep native Selection (skip paint that would wipe it).
+    const prevFocus = getFocusId();
+    setFocusId(id);
+    // Always move focus to the map host on node click so keys work.
+    focusMapForKeys();
+    userCamGesture = false;
+    pendingFollow = { kind: 'focus' };
+    const sel =
+      typeof window !== 'undefined' && window.getSelection
+        ? window.getSelection()
+        : null;
+    if (mapNodeKeepsTextSelection(g, sel)) {
+      // Still ensure visible without wiping selection via paint when possible.
+      runPendingFollow();
+      return;
+    }
+    if (prevFocus !== id) {
+      onChange?.();
+    } else {
+      runPendingFollow();
+    }
+  }
+
   function paint(): void {
     invalidateContentUnion();
     // Boolean snapshot BEFORE the DOM rebuild (an element ref would be detached
@@ -1853,112 +1975,7 @@ export function createMapView(
     host.querySelectorAll<SVGGElement>('.map-node').forEach((g) => {
       g.addEventListener('click', (e) => {
         e.stopPropagation();
-        const id = g.getAttribute('data-id');
-        if (!id) return;
-        const t = e.target as Element | null;
-        if (t?.closest?.('.map-width-hit')) return;
-        if (t?.closest?.('.map-fold-hit') || t?.closest?.('.map-fold-indicator')) {
-          setFocusId(id);
-          // Focus host/pill BEFORE paint so Map keys work (0.2.13).
-          focusMapForKeys();
-          const n = findNode(getDoc().nodes, id);
-          userCamGesture = false;
-          if (n && hasKids(n)) {
-            const wasCollapsed = isCollapsed(getDoc(), id);
-            setDoc(toggleFold(getDoc(), id));
-            pendingFollow = wasCollapsed
-              ? { kind: 'expand', focusId: id }
-              : { kind: 'focus' };
-          } else {
-            pendingFollow = { kind: 'focus' };
-          }
-          onChange?.();
-          return;
-        }
-        if (t?.closest?.('.map-task-hit') || t?.closest?.('.map-task-glyph')) {
-          setFocusId(id);
-          focusMapForKeys();
-          userCamGesture = false;
-          pendingFollow = { kind: 'focus' };
-          applyTaskToggle(id);
-          return;
-        }
-        if (t?.closest?.('.map-body-more-hit')) {
-          // Body more/less — orthogonal to child fold / task.
-          setFocusId(id);
-          focusMapForKeys();
-          userCamGesture = false;
-          pendingFollow = { kind: 'focus' };
-          const hit = t.closest('.map-body-more-hit') as Element;
-          const action = hit.getAttribute('data-body-action');
-          const lay = getLayout();
-          if (!lay.nodes) lay.nodes = {};
-          const cur = lay.nodes[id] || { x: 100, y: 100 };
-          lay.nodes[id] = {
-            ...cur,
-            bodyExpanded: action === 'more',
-          };
-          onChange?.();
-          return;
-        }
-        if (t?.closest?.('.map-link-hit')) {
-          const n = findNode(getDoc().nodes, id);
-          showLinkPop(t.closest('.map-link-hit') as Element, n?.title || '');
-          return;
-        }
-        if (t?.closest?.('.map-note-link-hit')) {
-          setFocusId(id);
-          focusMapForKeys();
-          userCamGesture = false;
-          pendingFollow = { kind: 'focus' };
-          const hit = t.closest('.map-note-link-hit') as Element;
-          const pnid = hit.getAttribute('data-note-link') || '';
-          const n = findNode(getDoc().nodes, id);
-          const href = noteLinkHref(
-            getDoc().frontmatter?.noteUri || noteUriFallback,
-            pnid,
-          );
-          if (href) {
-            e.preventDefault();
-            window.open(href, '_blank', 'noopener,noreferrer');
-          }
-          if (n && pnid) onNoteLink?.({ id, pnid, node: n });
-          onChange?.();
-          return;
-        }
-        if (t?.closest?.('.map-thread-hit')) {
-          setFocusId(id);
-          focusMapForKeys();
-          userCamGesture = false;
-          pendingFollow = { kind: 'focus' };
-          const n = findNode(getDoc().nodes, id);
-          const thread = n ? resolveThread(n) : null;
-          if (n && thread) onThread?.({ id, thread, node: n });
-          onChange?.();
-          return;
-        }
-        // Text / pill chrome: select + focus only — never fold.
-        // Label text-drag: keep native Selection (skip paint that would wipe it).
-        const prevFocus = getFocusId();
-        setFocusId(id);
-        // Always move focus to the map host on node click so keys work.
-        focusMapForKeys();
-        userCamGesture = false;
-        pendingFollow = { kind: 'focus' };
-        const sel =
-          typeof window !== 'undefined' && window.getSelection
-            ? window.getSelection()
-            : null;
-        if (mapNodeKeepsTextSelection(g, sel)) {
-          // Still ensure visible without wiping selection via paint when possible.
-          runPendingFollow();
-          return;
-        }
-        if (prevFocus !== id) {
-          onChange?.();
-        } else {
-          runPendingFollow();
-        }
+        activateNodeHit(g, e.target as Element | null, e);
       });
     });
 
@@ -2019,6 +2036,8 @@ export function createMapView(
       role: 'driver' | 'spare' | 'select';
       /** Pill to select after a still touch. Empty for mouse and for control hits. */
       selectId?: string;
+      /** In-map handle a touch / pen press began on (activates on pointerup). */
+      hit?: Element;
     };
     const pointers = new Map<number, Tracked>();
     let mode: 'idle' | 'pending' | 'pan' | 'pinch' = 'idle';
@@ -2285,6 +2304,8 @@ export function createMapView(
     let swallow: SwallowRecord | null = null;
     /** This touch sequence had two fingers down: never glide from it. */
     let gestureHadTwo = false;
+    /** Last in-map handle activated from a touch / pen pointerup. */
+    let nodeTouchTapAt = -Infinity;
     let releasing = false;
     let longPressTimer = 0;
     let touchSelectTimer = 0;
@@ -2498,6 +2519,8 @@ export function createMapView(
       endPanGuard();
       // Cancel / blur / hidden must not leave a swallow armed (0.2.30).
       swallow = null;
+      // nodeTouchTapAt stays: it is time-boxed, and a handle that opens a tab
+      // (blur) must still drop its own trailing click.
       gestureHadTwo = false;
     }
 
@@ -2532,9 +2555,23 @@ export function createMapView(
     host.addEventListener(
       'click',
       (e) => {
+        const now = performance.now();
+        const target = e.target as Element | null;
+        // The click that follows a handle activated on touch pointerup
+        // (bindTap rule: 800 ms, keyboard clicks never). The popover and
+        // in-map controls guard their own clicks.
+        if (
+          touchClickGuarded(e.detail, now, nodeTouchTapAt) &&
+          !target?.closest?.('.map-width-pop, .of-map-controls')
+        ) {
+          swallow = null;
+          e.preventDefault();
+          e.stopPropagation();
+          return;
+        }
         const rec = swallow;
         swallow = null;
-        if (!swallowConsumes(rec, performance.now(), e.clientX, e.clientY)) return;
+        if (!swallowConsumes(rec, now, e.clientX, e.clientY)) return;
         e.preventDefault();
         e.stopPropagation();
       },
@@ -2570,6 +2607,8 @@ export function createMapView(
       // Any new primary press is a new gesture: the last one's click swallow
       // is over, even inside the popover or the controls (0.2.30).
       if (e.isPrimary) swallow = null;
+      // A mouse press ends the touch click guard (as in bindTap).
+      if ((e.pointerType || 'mouse') === 'mouse') nodeTouchTapAt = -Infinity;
       if (!isActive()) return;
       const target = e.target as Element | null;
       // The resize popover and in-map controls handle their own taps: no
@@ -2673,6 +2712,10 @@ export function createMapView(
       );
       const selectId =
         finger && nodeEl && !control ? nodeEl.getAttribute('data-id') || '' : '';
+      const hit =
+        isTapPointer(type) && nodeEl && control && !control.matches('.map-width-hit')
+          ? control
+          : undefined;
       pointers.set(e.pointerId, {
         id: e.pointerId,
         type,
@@ -2682,6 +2725,7 @@ export function createMapView(
         sy: pt.y,
         role,
         selectId,
+        hit,
       });
 
       const count = drivers().length;
@@ -2885,6 +2929,25 @@ export function createMapView(
           springBack();
           lastTap = { t: 0, x: 0, y: 0 };
         } else if (!wasPan && !wasPinch) {
+          // Touch / pen tap on an in-map handle: activate now. After a fling
+          // the browser can drop the click for a few hundred ms (0.2.30).
+          if (e.type === 'pointerup' && had.hit) {
+            const lp = localPt(e);
+            const g = had.hit.closest('.map-node');
+            const tapped = nodeTapShouldActivate({
+              pointerType: had.type,
+              movedPx: Math.hypot(lp.x - had.sx, lp.y - had.sy),
+              swallow,
+              now,
+              x: e.clientX,
+              y: e.clientY,
+            });
+            if (swallowConsumes(swallow, now, e.clientX, e.clientY)) swallow = null;
+            if (tapped && g && had.hit.isConnected) {
+              nodeTouchTapAt = now;
+              activateNodeHit(g, had.hit, e);
+            }
+          }
           if (
             had.selectId &&
             !labelTextHold &&

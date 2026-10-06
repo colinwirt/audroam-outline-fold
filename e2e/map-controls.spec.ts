@@ -94,4 +94,17 @@ test.describe('controls: mouse and keyboard activate exactly once', () => {
     expect(await page.evaluate(() => (window as any).__layout().nodes.tasks?.w ?? null)).toBeNull();
     expect(await expanded()).toBe('true');
   });
+
+  test('in-map handles: a mouse click activates once (click path kept)', async ({ page }) => {
+    await open(page);
+    const exp = () => page.locator('.map-node[data-id="tasks"]').getAttribute('aria-expanded');
+    expect(await exp()).toBe('true');
+    await page.locator('.map-node[data-id="tasks"] .map-fold-hit').click();
+    await expect.poll(exp).toBe('false');
+    await page.waitForTimeout(300);
+    expect(await exp()).toBe('false');
+    await page.locator('.map-node[data-id="disc"] .map-thread-hit').click();
+    await page.waitForTimeout(300);
+    expect(await page.evaluate(() => (window as any).__threads.length)).toBe(1);
+  });
 });

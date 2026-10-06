@@ -5,6 +5,10 @@ import { describe, expect, it, vi, afterEach } from 'vitest';
 import {
   armSwallow,
   bindTap,
+  isTapPointer,
+  isTouchTap,
+  nodeTapShouldActivate,
+  touchClickGuarded,
   swallowConsumes,
   SWALLOW_MS,
   SWALLOW_RADIUS_PX,
@@ -216,5 +220,47 @@ describe('bindTap (0.2.30 C3/C7)', () => {
     ac.abort();
     el.dispatchEvent(click(0));
     expect(fn).not.toHaveBeenCalled();
+  });
+});
+
+describe('in-map handle tap rule (0.2.30, same as bindTap)', () => {
+  it('touch and pen only, moved under 10 px', () => {
+    expect(isTapPointer('touch')).toBe(true);
+    expect(isTapPointer('pen')).toBe(true);
+    expect(isTapPointer('mouse')).toBe(false);
+    expect(isTapPointer('')).toBe(false);
+    expect(isTouchTap('touch', 0)).toBe(true);
+    expect(isTouchTap('touch', 9.9)).toBe(true);
+    expect(isTouchTap('touch', 10)).toBe(false);
+    expect(isTouchTap('mouse', 0)).toBe(false);
+  });
+
+  it('guards the following pointer click for 800 ms; keyboard clicks never', () => {
+    expect(touchClickGuarded(1, 1000, 1000)).toBe(true);
+    expect(touchClickGuarded(1, 1000 + TAP_CLICK_GUARD_MS - 1, 1000)).toBe(true);
+    expect(touchClickGuarded(1, 1000 + TAP_CLICK_GUARD_MS, 1000)).toBe(false);
+    expect(touchClickGuarded(0, 1000, 1000)).toBe(false);
+    expect(touchClickGuarded(1, 1000, -Infinity)).toBe(false);
+  });
+
+  it('honours the gesture swallow record (a pan end never activates a handle)', () => {
+    const base = { pointerType: 'touch', movedPx: 2, now: 100, x: 50, y: 50 };
+    expect(nodeTapShouldActivate({ ...base, swallow: null })).toBe(true);
+    expect(nodeTapShouldActivate({ ...base, swallow: armSwallow(0, 50, 50) })).toBe(false);
+    expect(nodeTapShouldActivate({ ...base, swallow: armSwallow(0, 200, 50) })).toBe(true);
+    expect(nodeTapShouldActivate({ ...base, now: 500, swallow: armSwallow(0, 50, 50) })).toBe(true);
+    expect(nodeTapShouldActivate({ ...base, movedPx: 12, swallow: null })).toBe(false);
+    expect(nodeTapShouldActivate({ ...base, pointerType: 'mouse', swallow: null })).toBe(false);
+  });
+
+  it('mapView activates handles on touch pointerup through the shared rule', () => {
+    const src = readFileSync(
+      join(dirname(fileURLToPath(import.meta.url)), '../src/mapView.ts'),
+      'utf8',
+    );
+    expect(src).toMatch(/function activateNodeHit\(/);
+    expect(src).toMatch(/nodeTapShouldActivate\(/);
+    expect(src).toMatch(/touchClickGuarded\(e\.detail, now, nodeTouchTapAt\)/);
+    expect(src).toMatch(/e\.type === 'pointerup' && had\.hit/);
   });
 });

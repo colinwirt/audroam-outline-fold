@@ -274,6 +274,86 @@ test.describe('next single tap after a pan or pinch activates', () => {
   }
 });
 
+// ── In-map handles on touch pointerup (C3 on the map) ──────────────────────
+// After a fling Chromium drops the click on the next tap for a few hundred
+// ms. Handles activate on pointerup, so the tap still lands, exactly once.
+
+type Handle = { name: string; sel: string; count: (page: Page) => Promise<number> };
+
+const HANDLES: Handle[] = [
+  {
+    name: 'fold handle',
+    sel: '.map-node[data-id="tasks"] .map-fold-hit',
+    // Toggled an odd number of times → collapsed. Two activations would reopen it.
+    count: async (page) => ((await expanded(page, 'tasks')) === 'false' ? 1 : 0),
+  },
+  {
+    name: 'task box',
+    sel: '.map-node[data-id="t2"] .map-task-hit',
+    count: (page) => page.evaluate(() => (window as any).__tasks.length),
+  },
+  {
+    name: 'globe',
+    sel: '.map-node[data-id="view"] .map-link-hit',
+    count: (page) => page.locator('.map-link-pop').count(),
+  },
+  {
+    name: '#N chip',
+    sel: '.map-node[data-id="note"] .map-note-link-hit',
+    count: (page) => page.evaluate(() => (window as any).__notes.length),
+  },
+  {
+    name: 'thread chip',
+    sel: '.map-node[data-id="disc"] .map-thread-hit',
+    count: (page) => page.evaluate(() => (window as any).__threads.length),
+  },
+];
+
+/** Stop the glide and put the camera back at Fit without a gesture (swallow state untouched). */
+async function recentre(c: Ctx): Promise<void> {
+  await c.page.evaluate((f) => {
+    const m = (window as any).__map;
+    m.panBy(0, 0);
+    Object.assign(m.cam, f);
+    m.applyCam();
+  }, c.fitCam);
+}
+
+test.describe('in-map handle: one tap shortly after a fling', () => {
+  for (const h of HANDLES) {
+    for (const delay of [60, 200]) {
+      test(`${h.name} ${delay} ms after a fling → activates once`, async ({ page }) => {
+        const c = await open(page);
+        expect(await h.count(page)).toBe(0);
+        await c.t.fling(c.bg.x, c.bg.y);
+        const lifted = Date.now();
+        await recentre(c);
+        const p = centre(await box(page, h.sel));
+        const wait = lifted + delay - Date.now();
+        if (wait > 0) await page.waitForTimeout(wait);
+        await c.t.tap(p.x, p.y, 20);
+        await expect.poll(() => h.count(page), { timeout: 2000 }).toBe(1);
+        // The click that may follow must not activate it a second time.
+        await page.waitForTimeout(900);
+        expect(await h.count(page)).toBe(1);
+      });
+    }
+  }
+
+  test('a drag that starts on a handle pans and does not activate it', async ({ page }) => {
+    const c = await open(page);
+    const p = centre(await box(page, '.map-node[data-id="tasks"] .map-fold-hit'));
+    await c.t.start([{ x: p.x, y: p.y }]);
+    for (let i = 1; i <= 8; i++) {
+      await c.t.move([{ x: p.x - i * 4, y: p.y }]);
+      await page.waitForTimeout(16);
+    }
+    await c.t.end();
+    await page.waitForTimeout(500);
+    expect(await expanded(page, 'tasks')).toBe('true');
+  });
+});
+
 test.describe('only the gesture’s own click is swallowed', () => {
   /** Dispatch a click that did not come with a pointerdown (like the one a pan can produce). */
   async function bareClickOnFold(page: Page, x: number, y: number): Promise<void> {

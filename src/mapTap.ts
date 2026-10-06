@@ -47,6 +47,44 @@ export const TAP_SLOP_PX = 10;
 /** A synthetic click this soon after a touch activation belongs to it. */
 export const TAP_CLICK_GUARD_MS = 800;
 
+/** Touch and pen get pointerup activation; mouse keeps click. */
+export function isTapPointer(pointerType: string | undefined): boolean {
+  return pointerType === 'touch' || pointerType === 'pen';
+}
+
+/**
+ * The tap rule shared by `bindTap` and the map's in-map handles: a touch/pen
+ * press that moved less than 10 px between down and up.
+ */
+export function isTouchTap(pointerType: string | undefined, movedPx: number): boolean {
+  return isTapPointer(pointerType) && movedPx < TAP_SLOP_PX;
+}
+
+/**
+ * True when a `click` belongs to a touch activation that already ran on
+ * `pointerup` (within 800 ms). Keyboard / programmatic clicks (`detail` 0)
+ * are never guarded.
+ */
+export function touchClickGuarded(detail: number | undefined, now: number, lastTouchActivation: number): boolean {
+  return (detail ?? 0) !== 0 && now - lastTouchActivation < TAP_CLICK_GUARD_MS;
+}
+
+/**
+ * In-map handle on `pointerup`: activate when it is a touch tap and the
+ * gesture swallow record (a pan / pinch end) does not cover this point.
+ */
+export function nodeTapShouldActivate(opts: {
+  pointerType: string | undefined;
+  movedPx: number;
+  swallow: SwallowRecord | null | undefined;
+  now: number;
+  x: number;
+  y: number;
+}): boolean {
+  if (!isTouchTap(opts.pointerType, opts.movedPx)) return false;
+  return !swallowConsumes(opts.swallow, opts.now, opts.x, opts.y);
+}
+
 type TapEl = Pick<EventTarget, 'addEventListener' | 'removeEventListener'> & {
   style?: { touchAction?: string };
 };
@@ -92,7 +130,7 @@ export function bindTap(
   let down: { id: number; x: number; y: number } | null = null;
   let lastTouchActivation = -Infinity;
 
-  const isTouchLike = (t: string | undefined) => t === 'touch' || t === 'pen';
+  const isTouchLike = isTapPointer;
 
   el.addEventListener(
     'pointerdown',
@@ -124,8 +162,8 @@ export function bindTap(
       const e = ev as PointerEvent;
       const d = down;
       down = null;
-      if (!d || e.pointerId !== d.id || !isTouchLike(e.pointerType)) return;
-      if (Math.hypot(e.clientX - d.x, e.clientY - d.y) >= TAP_SLOP_PX) return;
+      if (!d || e.pointerId !== d.id) return;
+      if (!isTouchTap(e.pointerType, Math.hypot(e.clientX - d.x, e.clientY - d.y))) return;
       lastTouchActivation = nowMs();
       fn(e);
     },
@@ -143,7 +181,7 @@ export function bindTap(
     (ev) => {
       const e = ev as MouseEvent;
       // detail 0 = keyboard / programmatic click: always a real activation.
-      if ((e.detail ?? 0) !== 0 && nowMs() - lastTouchActivation < TAP_CLICK_GUARD_MS) {
+      if (touchClickGuarded(e.detail, nowMs(), lastTouchActivation)) {
         e.preventDefault?.();
         e.stopImmediatePropagation?.();
         return;
