@@ -6,6 +6,7 @@ collapsedMarker: "(+)"
     - 🗺️ This index · [Open](?doc=../demos-index/demos-index.md) <id:start-index>
     - 🖥️ Viewer · open any outline with ?doc= <id:start-viewer>
     - 🪐 Solar System · with saved layout · [Open](?doc=../solar-system/solar-system.md&layout=../solar-system/solar-system.layout.json) <id:start-solar>
+    - 🌊 Lighthouse keeper's week · written without ids · [Open](?doc=../lighthouse/lighthouse.md) <id:start-lighthouse>
     - ☕ Northside Corner Cafe · ops handoff · [Open](?doc=../outline-demo.md) <id:start-cafe>
   - 🛣️ Shire of Cedarvale · field crews <kind:globe> <id:field>
     - 💡 Streetlamp night run · [Open](?doc=../streetlamps/streetlamps.md) <id:field-lamps>

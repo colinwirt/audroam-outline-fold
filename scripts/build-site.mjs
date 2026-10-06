@@ -72,6 +72,7 @@ code{font-size:.9em;background:#1a2330;padding:.1em .35em;border-radius:4px}
   <li><a href="examples/viewer/?doc=../demos-index/demos-index.md"><strong>Demos index</strong></a> — every example as one map</li>
   <li><a href="examples/viewer/?doc=../outline-demo.md">Northside Corner Cafe</a> — ops handoff with locked rows</li>
   <li><a href="examples/viewer/?doc=../solar-system/solar-system.md&amp;layout=../solar-system/solar-system.layout.json">Solar System</a> — with a saved layout</li>
+  <li><a href="examples/viewer/?doc=../lighthouse/lighthouse.md">Lighthouse keeper's week</a> — task boxes, written without ids</li>
   <li><a href="examples/viewer/">Viewer</a> — open any outline with <code>?doc=</code> (+ optional <code>&amp;layout=</code>)</li>
 </ul>
 

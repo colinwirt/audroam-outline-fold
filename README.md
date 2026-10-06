@@ -25,6 +25,7 @@ npx serve -l 4173 .   # then open the live demos below
 | Shared Outline \| Map viewer | […/examples/viewer/](https://colinwirt.github.io/audroam-outline-fold/examples/viewer/) |
 | Cafe ops | […/viewer/?doc=../outline-demo.md](https://colinwirt.github.io/audroam-outline-fold/examples/viewer/?doc=../outline-demo.md) |
 | Solar System (+ layout) | […/viewer/?doc=…/solar-system.md&layout=…](https://colinwirt.github.io/audroam-outline-fold/examples/viewer/?doc=../solar-system/solar-system.md&layout=../solar-system/solar-system.layout.json) |
+| Lighthouse keeper's week | […/viewer/?doc=…/lighthouse.md](https://colinwirt.github.io/audroam-outline-fold/examples/viewer/?doc=../lighthouse/lighthouse.md) |
 | Teacher ↔ parent | […/viewer/?doc=…/teacher-parent.md](https://colinwirt.github.io/audroam-outline-fold/examples/viewer/?doc=../teacher-parent/teacher-parent.md) |
 | Streetlamps | […/viewer/?doc=…/streetlamps.md](https://colinwirt.github.io/audroam-outline-fold/examples/viewer/?doc=../streetlamps/streetlamps.md) |
 | Potholes | […/viewer/?doc=…/potholes.md](https://colinwirt.github.io/audroam-outline-fold/examples/viewer/?doc=../potholes/potholes.md) |

@@ -7,9 +7,11 @@ import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import {
+  cleanIds,
   demoOpen,
   hasSealed,
   parse,
+  serialize,
   validateDocument,
   type OutlineNode,
 } from '../src/index.js';
@@ -175,6 +177,44 @@ describe('example payloads', () => {
       const lines = (s: string) => s.split('\n').filter((l) => /^\s*- /.test(l));
       expect(lines(a), rel(f)).toEqual(lines(b));
     }
+  });
+});
+
+describe('example outlines', () => {
+  for (const file of mdFiles) {
+    it(`${rel(file)}: validates with no errors`, () => {
+      const { ok, issues } = validateDocument(readFileSync(file, 'utf8'));
+      expect(issues.filter((i) => i.severity === 'error')).toEqual([]);
+      expect(ok).toBe(true);
+    });
+  }
+
+  const idless = mdFiles.filter((f) => !readFileSync(f, 'utf8').includes('<id:'));
+
+  it('the lighthouse outline is written without ids', () => {
+    expect(idless.map(rel)).toContain('examples/lighthouse/lighthouse.md');
+  });
+
+  for (const file of idless) {
+    it(`${rel(file)}: round-trips byte for byte with session ids`, () => {
+      const text = readFileSync(file, 'utf8');
+      const doc = parse(text, { sessionIds: true });
+      expect(serialize(doc)).toBe(text);
+      expect(serialize(parse(serialize(doc), { sessionIds: true }))).toBe(text);
+      expect(cleanIds(text).text).toBe(text);
+    });
+  }
+
+  it('lighthouse: Tuesday starts folded; the week has open and done tasks', () => {
+    const doc = parse(readFileSync(join(examplesDir, 'lighthouse/lighthouse.md'), 'utf8'), {
+      sessionIds: true,
+    });
+    const nodes = allNodes(doc.nodes);
+    const tuesday = nodes.find((n) => n.title === 'Tuesday');
+    expect(doc.fold.ids).toEqual([tuesday?.id]);
+    const tasks = nodes.map((n) => n.task).filter(Boolean);
+    expect(tasks.filter((t) => t === 'done').length).toBeGreaterThan(0);
+    expect(tasks.filter((t) => t === 'open').length).toBeGreaterThan(0);
   });
 });
 

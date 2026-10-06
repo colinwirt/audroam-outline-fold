@@ -6,6 +6,13 @@
 - A click on **Map** while the outline is still loading is kept. Before this, the end of loading switched the viewer back to Outline.
 - The viewer parses with `sessionIds: true`. An outline written without `<id:…>` tags now gets fold handles and task boxes in Outline, the same as one with ids. Examples with an id on every line are unchanged.
 
+### Examples
+- New outline, `examples/lighthouse/lighthouse.md`: a lighthouse keeper's week, with task boxes, two done, and Tuesday folded with `(+)`. It has no `<id:…>` tags or layout block. Linked from the README, the landing page, the demos index and the fixtures page, with a twin in `examples/fixtures/`.
+
+### Tests
+- `tests/examples.test.ts`: every example outline validates with no errors, and an outline without ids round-trips byte for byte through `parse(text, { sessionIds: true })` and `serialize`.
+- `e2e/pages-viewer.spec.ts`: the lighthouse outline gets a session id, task box and fold handle on every row in the viewer, and **Handoff text** stays free of ids. A **Map** click made while the outline is still loading is kept.
+
 ## 0.2.30 — 2026-10-06
 
 ### Map: single-tap activation on touch

@@ -1,0 +1,24 @@
+- 🌊 Lighthouse keeper's week
+  - Monday
+    - [x] Trim the wicks and polish the lens
+    - [x] Log the fog horn hours
+  - Tuesday (+)
+    - [ ] Row out to the bell buoy
+    - [ ] Count the gulls on the north rocks
+  - Wednesday
+    - [ ] Paint the gallery rail
+      - [ ] Buy linseed oil in the village
+      - [ ] Ask Marta about the old ladder
+  - Thursday
+    - [ ] Carry the lamp oil up from the jetty
+    - [ ] Grease the clockwork that turns the lens
+  - Friday
+    - [ ] Wash the salt off the lantern glass
+    - Answer the letters that came on the boat
+  - Weekend
+    - Saturday: walk the cliff path and check the steps
+    - Sunday off, unless the fog comes in
+  - ⛵ Supply boat, Thursday morning
+    - Flour, lamp oil, tea
+    - Letters for the mainland
+    - [ ] Send back the empty oil drums

@@ -118,3 +118,43 @@ test.describe('Pages viewer demo unlock', () => {
     await expect(page.locator('#demoUnlock')).toBeHidden();
   });
 });
+
+test.describe('Pages viewer outline without ids', () => {
+  const LIGHTHOUSE = 'examples/viewer/?doc=../lighthouse/lighthouse.md';
+
+  test('lighthouse: every row gets a session id, task box and fold handle', async ({ page }) => {
+    await page.goto(LIGHTHOUSE);
+    const outline = page.locator('#outlineHost');
+    await expect(outline.locator('[role="treeitem"]')).toHaveCount(24);
+    await expect(outline.locator('[role="treeitem"]:not([data-id])')).toHaveCount(0);
+    await expect(outline.locator('[data-testid^="of-task-"]')).toHaveCount(11);
+    await expect(outline.locator('[data-testid^="of-task-"][aria-checked="true"]')).toHaveCount(2);
+    await expect(page.locator('#validation')).toBeHidden();
+
+    const tuesday = outline.locator('[role="treeitem"]', { hasText: 'Tuesday' }).first();
+    const id = await tuesday.getAttribute('data-id');
+    const before = await tuesday.getAttribute('aria-expanded');
+    await page.locator(`[data-testid="of-fold-${id}"]`).click();
+    await expect(tuesday).toHaveAttribute('aria-expanded', before === 'true' ? 'false' : 'true');
+    await expect(page.locator('#foldOut')).toContainText('Tuesday');
+    await expect(page.locator('#foldOut')).not.toContainText('<id:');
+
+    await page.locator('#btnMap').click();
+    await expect(page.locator(`#mapHost .map-node[data-id="${id}"]`)).toHaveCount(1);
+  });
+
+  test('a Map click made while the outline loads is kept', async ({ page }) => {
+    let release!: () => void;
+    const held = new Promise<void>((r) => (release = r));
+    await page.route((url) => url.pathname.endsWith('/lighthouse/lighthouse.md'), async (route) => {
+      await held;
+      await route.continue();
+    });
+    await page.goto(LIGHTHOUSE, { waitUntil: 'domcontentloaded' });
+    await page.locator('#btnMap').click();
+    release();
+    await expect(page.locator('#mapHost .map-node').first()).toBeVisible();
+    await expect(page.locator('#btnMap')).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.locator('#outlineHost')).toBeHidden();
+  });
+});
