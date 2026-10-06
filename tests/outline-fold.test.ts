@@ -577,21 +577,21 @@ describe('<t: pnid> note links', () => {
 
   it('opens a layout noteUri in a new tab', () => {
     const pattern = 'https://b.audroam.com/view/pnid/{id}';
-    const doc = parse(`- Test in viewer <t:41742> <id:root>
+    const doc = parse(`- Seed swap list <t:1001> <id:root>
 
 --- layout ---
 noteUri: ${pattern}
 ---
 `);
     expect(doc.frontmatter?.noteUri).toBe(pattern);
-    expect(noteLinkHref(pattern, '41742')).toBe(
-      'https://b.audroam.com/view/pnid/41742',
+    expect(noteLinkHref(pattern, '1001')).toBe(
+      'https://b.audroam.com/view/pnid/1001',
     );
     expect(noteLinkHref('javascript:alert({id})', '1')).toBeNull();
-    expect(noteLinkHref('/view/pnid/{id}', '41742')).toBe('/view/pnid/41742');
+    expect(noteLinkHref('/view/pnid/{id}', '1001')).toBe('/view/pnid/1001');
     const html = toHtml(doc);
     expect(html).toContain(
-      'href="https://b.audroam.com/view/pnid/41742" target="_blank" rel="noopener noreferrer"',
+      'href="https://b.audroam.com/view/pnid/1001" target="_blank" rel="noopener noreferrer"',
     );
     const fallback = toHtml(parse('- Row <t:9> <id:r>\n'), {
       noteUri: '/view/pnid/{id}',
