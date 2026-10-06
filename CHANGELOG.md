@@ -32,6 +32,9 @@
 - `cleanMarkdown(text, { tasks? })` returns a plain markdown list (`- ` bullets, two spaces per level): captions and task boxes only, with no ids, note links, kind / flag / action / thread / enc tags, fold markers, or layout and payload blocks. Grammar tags a translation moved into a caption are dropped too.
 
 ### Examples
+- Plain-language pass on the demo outlines, fixtures, READMEs and the Pages viewer. All example names, places and numbers are made up.
+- Locked rows in the examples hold real demo ciphertext, sealed by `npm run demo:seal`, instead of `ct: PLACEHOLDER`. When an outline has them, the viewer shows **Unlock** and `Demo password: 123`. The password comes from `examples/demo-values.json` (the demo values provider), never from the outline text. `examples/_shared/unlock.js` replaces `unlockStub.js`. `DEMO_PASSPHRASE` stays as a sample constant for tests.
+- Test sample text uses a made-up garden-club outline with note ids 1001+. Structure, link spellings and assertions are unchanged.
 - The cafe 2D and 3D maps load one outline, `examples/cafe-map.md`. Its two locked rows (Supplier accounts, Alarm monitoring contact) carry real payloads sealed by `npm run demo:seal` with the demo password. Both pages show **Unlock** and `Demo password: 123`, and a click on a locked node opens just that row.
 - The 3D map draws a caption label under every sphere (`CSS2DRenderer`). Locked rows show `🔒 locked`, then the opened text. The page never had label code; spheres were the only output. Leaves get their own x slot, so siblings from different branches no longer sit on top of each other, and the camera backs off until the tree fits.
 - The 2D map lists its labels as canvas fallback content, scales clicks when the canvas is shrunk, and drops the blank row after each open branch.
