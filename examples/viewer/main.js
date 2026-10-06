@@ -16,6 +16,7 @@ import {
   isResumeStale,
   collectNodeIds,
   createDebouncedResumeSave,
+  bindTap,
 } from '../_shared/mapView.js';
 import { resolveLayout } from '../_shared/layoutSidecar.js';
 import {
@@ -215,15 +216,17 @@ function setMode(next) {
 btnOutline.addEventListener('click', () => setMode('outline'));
 btnMap.addEventListener('click', () => setMode('map'));
 
-btnZoomIn.addEventListener('click', () => {
+// bindTap: touch activates on pointerup (a fling can drop the click), mouse
+// and keyboard keep click, one activation per tap (0.2.30).
+bindTap(btnZoomIn, () => {
   const r = mapHost.getBoundingClientRect();
   map?.zoomAt(r.left + r.width / 2, r.top + r.height / 2, 1.2);
 });
-btnZoomOut.addEventListener('click', () => {
+bindTap(btnZoomOut, () => {
   const r = mapHost.getBoundingClientRect();
   map?.zoomAt(r.left + r.width / 2, r.top + r.height / 2, 1 / 1.2);
 });
-btnResetView.addEventListener('click', () => map?.resetCam());
+bindTap(btnResetView, () => map?.resetCam());
 
 async function boot() {
   if (!docParam) {

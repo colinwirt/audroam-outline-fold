@@ -1,0 +1,15 @@
+---
+fold-: globe
+---
+- Newsletter: drafts in progress / review <id:fb>
+- Allotment plan <id:mr>
+  - [x] raised beds <id:rh>
+  - [x] compost corner <id:globe>
+    - [x] turn heap weekly <id:g1>
+  - [x] gravel path along the hedge <id:line>
+  - Shed key rota <id:share>
+    - [-] key 1004: https://garden-club.example/shed-rota?id=1004 <id:view>
+  - Tasks <id:tasks>
+    - [x] new: water seedlings <id:t1>
+    - [ ] order more bark mulch? <id:t2>
+  - Related note <t:1004> <id:note>

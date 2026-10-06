@@ -1,0 +1,12 @@
+# e2e-touch harness
+
+Playwright touch harness for the Map (0.2.30+). Not a demo.
+
+- `fixture.md` mirrors the 2026-10-05 fresh-review repro (fold handles, task
+  boxes, a link globe, a `#N` note chip, a pill that sits on the right edge).
+- The package controls (`mountMapControls`, − / + / Fit) are mounted **inside**
+  the map host by default (`?controls=outside` puts them beside it), so the
+  specs also cover a host that keeps its toolbar inside `.map-wrap`.
+- `onChange` repaints, like the example hosts.
+- `window.__map`, `__zooms`, `__fits`, `__tasks`, `__notes`, `__setFocus`
+  are test hooks used by `e2e/touch-*.spec.ts` and `e2e/map-controls.spec.ts`.

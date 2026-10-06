@@ -61,6 +61,7 @@ import {
   resolveFontPx,
 } from './mapLabel.js';
 import { LABEL_FONT_FAMILY } from './svgTextMeasure.js';
+import { armSwallow, bindTap, swallowConsumes, type SwallowRecord } from './mapTap.js';
 import {
   displayCaption,
   resolveTask,
@@ -1329,6 +1330,10 @@ export function createMapView(
   }
 
   function resetCam(): void {
+    // A running spring-back / Fit / glide would overwrite this camera on its
+    // next frame (0.2.30).
+    stopMotion();
+    cancelFollowAnim();
     const layout = getLayout();
     const vb = layout.viewBox || { w: 1200, h: 960 };
     const rect = host.getBoundingClientRect();
@@ -1346,14 +1351,16 @@ export function createMapView(
   }
 
   function zoomAt(clientX: number, clientY: number, factor: number): void {
+    // Zoom the camera shown right now. Without this, a spring-back or Fit
+    // animation still running overwrites the zoom on its next frame (0.2.30).
+    stopMotion();
     userCamGesture = true;
     cancelFollowAnim();
     const rect = host.getBoundingClientRect();
     const mx = clientX - rect.left;
     const my = clientY - rect.top;
     let next = Math.max(CAM_MIN, Math.min(CAM_MAX, cam.k * factor));
-    const { rects } = collectVisiblePillRects();
-    const content = unionWorldRects(rects);
+    const content = contentUnion();
     if (content && factor < 1) {
       next = Math.max(
         next,
@@ -1820,6 +1827,11 @@ export function createMapView(
       )
       .join('');
 
+    // Overlays that live inside the host (resize popover, controls a host put
+    // in the map) survive the SVG rewrite (0.2.30).
+    const overlays = Array.from(host.children).filter((el) =>
+      el.matches?.('.map-width-pop, .of-map-controls'),
+    );
     host.innerHTML = `<svg class="map-svg" viewBox="0 0 ${Math.max(1, host.clientWidth || 1180)} ${Math.max(1, host.clientHeight || 520)}"
       preserveAspectRatio="xMidYMid meet" role="none" focusable="false">
       <rect width="100%" height="100%" fill="var(--map-bg)"/>
@@ -1829,6 +1841,7 @@ export function createMapView(
         ${nodeSvg}
       </g>
     </svg>`;
+    for (const el of overlays) host.appendChild(el);
 
     if (!hadViewport) resetCam();
     else applyCam();
@@ -2071,15 +2084,55 @@ export function createMapView(
       persistColumn(key, w);
     }
 
+    /** Last popover choice per pill key, to mark it when the width still matches. */
+    const widthChoiceByKey = new Map<string, { label: string; w: number }>();
+    let widthPopAbort: AbortController | null = null;
+
     function dismissWidthPop(): void {
+      widthPopAbort?.abort();
+      widthPopAbort = null;
       host.querySelector('.map-width-pop')?.remove();
+    }
+
+    /**
+     * Above-left of the corner the finger released on, so the finger does not
+     * cover it; below only when there is no room above. Clamped inside the
+     * host on all four sides (8 px inset). The host clips overflow.
+     */
+    function placeWidthPop(pop: HTMLElement, clientX: number, clientY: number): void {
+      const inset = 8;
+      const gap = 28;
+      const hr = host.getBoundingClientRect();
+      const pr = pop.getBoundingClientRect();
+      const pw = pr.width;
+      const ph = pr.height;
+      const ax = clientX - hr.left;
+      const ay = clientY - hr.top;
+      let left = ax - pw + 16;
+      let top = ay - gap - ph;
+      if (top < inset) top = ay + gap;
+      const maxLeft = Math.max(inset, hr.width - pw - inset);
+      const maxTop = Math.max(inset, hr.height - ph - inset);
+      left = Math.min(maxLeft, Math.max(inset, left));
+      top = Math.min(maxTop, Math.max(inset, top));
+      pop.style.left = `${Math.round(left)}px`;
+      pop.style.top = `${Math.round(top)}px`;
+    }
+
+    function storedWidth(key: string): number | null {
+      const node = findNodeByKey(key);
+      const w = node?.layout?.w ?? getLayout().nodes?.[key]?.w;
+      return typeof w === 'number' ? w : null;
     }
 
     function showWidthPop(clientX: number, clientY: number, key: string, textW: number): void {
       dismissWidthPop();
+      const ac = new AbortController();
+      widthPopAbort = ac;
       const pop = document.createElement('div');
       pop.className = 'map-width-pop';
       pop.setAttribute('role', 'menu');
+      pop.setAttribute('aria-label', 'Pill width');
       pop.style.cssText = [
         'position:absolute',
         'z-index:6',
@@ -2090,40 +2143,99 @@ export function createMapView(
         'background:#13202b',
         'border:1px solid #3d5a73',
         'box-shadow:0 8px 24px rgba(0,0,0,.35)',
+        'touch-action:manipulation',
       ].join(';');
-      const choices: { label: string; apply: () => void }[] = [
-        { label: 'Slim', apply: () => persistColumn(key, textW - 56) },
-        { label: 'Wider', apply: () => persistColumn(key, textW + 56) },
-        { label: 'Auto', apply: () => persistColumn(key, null) },
+      const slimW = Math.max(MIN_COL, Math.min(MAX_COL, Math.round(textW - 56)));
+      const widerW = Math.max(MIN_COL, Math.min(MAX_COL, Math.round(textW + 56)));
+      const choices: { label: string; w: number | null }[] = [
+        { label: 'Slim', w: slimW },
+        { label: 'Wider', w: widerW },
+        { label: 'Auto', w: null },
       ];
+      const cur = storedWidth(key);
+      const last = widthChoiceByKey.get(key);
+      const currentLabel =
+        cur == null ? 'Auto' : last && last.w === cur ? last.label : null;
+      const buttons: HTMLButtonElement[] = [];
       for (const choice of choices) {
         const btn = document.createElement('button');
         btn.type = 'button';
-        btn.textContent = choice.label;
+        const checked = choice.label === currentLabel;
+        btn.setAttribute('role', 'menuitemradio');
+        btn.setAttribute('aria-checked', checked ? 'true' : 'false');
+        btn.dataset.choice = choice.label.toLowerCase();
+        btn.textContent = checked ? `✓ ${choice.label}` : choice.label;
         btn.style.cssText = [
-          'min-height:36px',
-          'padding:0 12px',
+          'min-height:44px',
+          'min-width:44px',
+          'padding:0 14px',
           'border-radius:8px',
-          'border:1px solid #3d5a73',
-          'background:#1b3044',
+          `border:1px solid ${checked ? '#8ec8ff' : '#3d5a73'}`,
+          `background:${checked ? '#24425e' : '#1b3044'}`,
           'color:#e7ecf1',
-          'font:14px/1 system-ui,sans-serif',
+          'font:15px/1 system-ui,sans-serif',
           'cursor:pointer',
+          'touch-action:manipulation',
         ].join(';');
-        btn.addEventListener('click', (ev) => {
-          ev.preventDefault();
-          ev.stopPropagation();
-          pop.remove();
-          choice.apply();
-        });
+        bindTap(
+          btn,
+          (ev) => {
+            ev.preventDefault();
+            ev.stopPropagation();
+            dismissWidthPop();
+            if (ev.type === 'pointerup') {
+              // The repaint removes this button; its trailing click must not
+              // land on whatever is drawn under the finger next.
+              const pe = ev as PointerEvent;
+              swallow = armSwallow(performance.now(), pe.clientX, pe.clientY);
+            }
+            if (choice.w == null) widthChoiceByKey.delete(key);
+            else widthChoiceByKey.set(key, { label: choice.label, w: choice.w });
+            persistColumn(key, choice.w);
+          },
+          { signal: ac.signal },
+        );
+        buttons.push(btn);
         pop.appendChild(btn);
       }
+      // Keys stay inside the menu: Enter / Space must not reach the host's
+      // fold keys, arrows move between items, Esc closes.
+      pop.addEventListener(
+        'keydown',
+        (e) => {
+          const i = buttons.indexOf(document.activeElement as HTMLButtonElement);
+          if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+            buttons[(i + 1 + buttons.length) % buttons.length]?.focus();
+          } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+            buttons[(i - 1 + buttons.length) % buttons.length]?.focus();
+          } else if (e.key === 'Home') {
+            buttons[0]?.focus();
+          } else if (e.key === 'End') {
+            buttons[buttons.length - 1]?.focus();
+          } else if (e.key !== 'Enter' && e.key !== ' ' && e.key !== 'Escape' && e.key !== 'Tab') {
+            return;
+          }
+          e.stopPropagation();
+          if (e.key !== 'Enter' && e.key !== ' ' && e.key !== 'Tab') e.preventDefault();
+        },
+        { signal: ac.signal },
+      );
+      document.addEventListener(
+        'keydown',
+        (e) => {
+          if (e.key !== 'Escape') return;
+          e.preventDefault();
+          e.stopPropagation();
+          const hadFocus = pop.contains(document.activeElement);
+          dismissWidthPop();
+          if (hadFocus) focusMapForKeys();
+        },
+        { capture: true, signal: ac.signal },
+      );
       const hostStyle = getComputedStyle(host);
       if (hostStyle.position === 'static') host.style.position = 'relative';
       host.appendChild(pop);
-      const hr = host.getBoundingClientRect();
-      pop.style.left = `${Math.max(8, clientX - hr.left - 20)}px`;
-      pop.style.top = `${Math.max(8, clientY - hr.top + 12)}px`;
+      placeWidthPop(pop, clientX, clientY);
     }
 
     let edgeArm: {
@@ -2169,7 +2281,10 @@ export function createMapView(
     let pinch: PinchAnchor | null = null;
     let pan: PanAnchor | null = null;
     let raf = 0;
-    let swallowClick = false;
+    /** One-shot click swallow for the click a pan / pinch / pill tap makes. */
+    let swallow: SwallowRecord | null = null;
+    /** This touch sequence had two fingers down: never glide from it. */
+    let gestureHadTwo = false;
     let releasing = false;
     let longPressTimer = 0;
     let touchSelectTimer = 0;
@@ -2313,12 +2428,18 @@ export function createMapView(
       return true;
     }
 
+    function armSwallowAtLocal(p: Pt): void {
+      const rect = host.getBoundingClientRect();
+      swallow = armSwallow(performance.now(), rect.left + p.x, rect.top + p.y);
+    }
+
     function recognise(kind: 'pan' | 'pinch'): void {
       const was = mode;
       mode = kind;
       if (was === 'pending' || was === 'idle') {
         userCamGesture = true;
-        swallowClick = true;
+        const ds = drivers();
+        if (ds.length) armSwallowAtLocal(kind === 'pinch' && ds.length >= 2 ? mid(ds[0], ds[1]) : ds[0]);
         beginPanGuard();
       }
       for (const p of drivers()) {
@@ -2354,7 +2475,7 @@ export function createMapView(
       longPressTimer = 0;
     }
 
-    function resetPointers(swallow: boolean): void {
+    function resetPointers(): void {
       clearLongPress();
       clearTouchSelect();
       if (raf) cancelAnimationFrame(raf);
@@ -2375,7 +2496,9 @@ export function createMapView(
       singlePanLocked = false;
       mode = 'idle';
       endPanGuard();
-      if (!swallow) swallowClick = false;
+      // Cancel / blur / hidden must not leave a swallow armed (0.2.30).
+      swallow = null;
+      gestureHadTwo = false;
     }
 
     function schedule(): void {
@@ -2409,8 +2532,9 @@ export function createMapView(
     host.addEventListener(
       'click',
       (e) => {
-        if (!swallowClick) return;
-        swallowClick = false;
+        const rec = swallow;
+        swallow = null;
+        if (!swallowConsumes(rec, performance.now(), e.clientX, e.clientY)) return;
         e.preventDefault();
         e.stopPropagation();
       },
@@ -2443,9 +2567,14 @@ export function createMapView(
     );
 
     host.addEventListener('pointerdown', (e) => {
+      // Any new primary press is a new gesture: the last one's click swallow
+      // is over, even inside the popover or the controls (0.2.30).
+      if (e.isPrimary) swallow = null;
       if (!isActive()) return;
       const target = e.target as Element | null;
-      if (target?.closest?.('.map-width-pop')) return;
+      // The resize popover and in-map controls handle their own taps: no
+      // preventDefault, capture or double-tap zoom on them.
+      if (target?.closest?.('.map-width-pop, .of-map-controls')) return;
       dismissWidthPop();
       if (!target?.closest?.('.map-link-hit, .map-link-pop')) dismissLinkPop();
       const onLabel = !!target?.closest?.('.map-label');
@@ -2488,12 +2617,9 @@ export function createMapView(
           startY: e.clientY,
           startW: edge.textW,
         };
+        // Lazy capture (0.2.30): the host captures only once this turns into
+        // a width drag, so a tap still reaches the pill's own handlers.
         e.preventDefault();
-        try {
-          host.setPointerCapture(e.pointerId);
-        } catch {
-          /* capture is optional */
-        }
         return;
       }
       if (type === 'mouse' && performance.now() - lastFingerDown < 700) return;
@@ -2519,17 +2645,16 @@ export function createMapView(
       if (finger) {
         lastFingerDown = performance.now();
         e.preventDefault();
-        try {
-          host.setPointerCapture(e.pointerId);
-        } catch {
-          /* capture is optional; moves still pan */
-        }
+        // Lazy capture (0.2.30): recognise() captures the drivers once a pan
+        // or pinch is recognised. Capturing here would retarget the tap's
+        // click to the host on some engines and skip fold / task / globe.
       }
 
       if (type === 'touch' && e.isPrimary) {
         const stale = [...pointers.values()].some((p) => p.type === 'touch');
-        if (stale) resetPointers(false);
+        if (stale) resetPointers();
       }
+      if (pointers.size === 0) gestureHadTwo = false;
       if (type === 'pen' && [...pointers.values()].some((p) => p.type === 'touch')) return;
       if ([...pointers.values()].some((p) => p.type === 'pen' && p.role !== 'spare') && type === 'touch') {
         return;
@@ -2560,6 +2685,12 @@ export function createMapView(
       });
 
       const count = drivers().length;
+      if (count >= 2) {
+        // Never glide from a gesture that had two fingers down: drop the
+        // one-finger samples now (0.2.30, gesture amendment 2026-10-05).
+        gestureHadTwo = true;
+        samples = [];
+      }
       const next = nextGestureMode(mode, count, false);
       if (next === 'pinch' && mode !== 'pinch') {
         clearLongPress();
@@ -2622,6 +2753,11 @@ export function createMapView(
               startW: arm.startW,
               moved: true,
             };
+            try {
+              host.setPointerCapture(e.pointerId);
+            } catch {
+              /* capture is optional */
+            }
             applyWidth(arm.key, arm.startW + dx / (cam.k || 1));
             paint();
             return;
@@ -2660,7 +2796,7 @@ export function createMapView(
         const drag = widthDrag;
         widthDrag = null;
         if (!drag.moved) {
-          swallowClick = true;
+          swallow = armSwallow(performance.now(), e.clientX, e.clientY);
           showWidthPop(e.clientX, e.clientY, drag.key, drag.startW);
           return;
         }
@@ -2674,7 +2810,7 @@ export function createMapView(
         edgeArm = null;
         const moved = Math.hypot(e.clientX - arm.startX, e.clientY - arm.startY);
         if (moved < 10) {
-          swallowClick = true;
+          swallow = armSwallow(performance.now(), e.clientX, e.clientY);
           showWidthPop(e.clientX, e.clientY, arm.key, arm.startW);
         }
       }
@@ -2696,6 +2832,8 @@ export function createMapView(
       const ds = drivers();
       const wasPinch = mode === 'pinch';
       const wasPan = mode === 'pan';
+      // The swallow follows the gesture to where the finger lifted.
+      if (wasPan || wasPinch) swallow = armSwallow(performance.now(), e.clientX, e.clientY);
       const lift = afterLift(mode, ds.length, singlePanLocked);
       mode = lift.mode;
       singlePanLocked = lift.singlePanLocked;
@@ -2757,19 +2895,21 @@ export function createMapView(
             userCamGesture = false;
             pendingFollow = { kind: 'focus' };
             onChange?.();
-            swallowClick = true;
+            swallow = armSwallow(now, e.clientX, e.clientY);
           } else if (had.selectId) {
-            swallowClick = true;
+            swallow = armSwallow(now, e.clientX, e.clientY);
           }
           labelTextHold = false;
           clearTouchSelect();
           lastTap = { t: now, x: had.x, y: had.y };
           settleCam();
-        } else if (skipFling || !maybeInertia(had.type)) {
+        } else if (skipFling || wasPinch || gestureHadTwo || !maybeInertia(had.type)) {
+          // No glide from any gesture that had two fingers down.
           springBack();
         }
         samples = [];
         pinchScaleLive = false;
+        gestureHadTwo = false;
       }
     };
     host.addEventListener('pointerup', endPointer, { signal });
@@ -2778,14 +2918,14 @@ export function createMapView(
     }, { signal });
     host.addEventListener('pointercancel', (e) => {
       endPointer(e);
-      if (pointers.size === 0) resetPointers(swallowClick);
+      if (pointers.size === 0) resetPointers();
     }, { signal });
     host.addEventListener('lostpointercapture', () => {
       if (releasing) return;
     }, { signal });
-    window.addEventListener('blur', () => resetPointers(swallowClick), { signal });
+    window.addEventListener('blur', () => resetPointers(), { signal });
     document.addEventListener('visibilitychange', () => {
-      if (document.hidden) resetPointers(swallowClick);
+      if (document.hidden) resetPointers();
     }, { signal });
 
     const onGesture = (ev: Event) => {
@@ -2816,7 +2956,7 @@ export function createMapView(
     host.addEventListener('gesturestart', onGesture, { signal });
     host.addEventListener('gesturechange', onGesture, { signal });
     host.addEventListener('gestureend', onGesture, { signal });
-    window.addEventListener('pagehide', () => resetPointers(false), { signal });
+    window.addEventListener('pagehide', () => resetPointers(), { signal });
 
     window.addEventListener('resize', () => {
       if (!isActive()) return;
@@ -2848,6 +2988,10 @@ export function createMapView(
     const modeButton = wire.modeButton ?? null;
     const onKey = (e: KeyboardEvent): void => {
       if (e.defaultPrevented) return;
+      // A button in the resize popover or in controls a host put inside the
+      // map keeps its own Enter / Space (no fold toggle on the way).
+      const kt = e.target as Element | null;
+      if (kt?.closest?.('.map-width-pop, .of-map-controls')) return;
       if (
         !mapKeyboardShouldHandle({
           isActive: isActive(),
@@ -2976,6 +3120,7 @@ export function mountMapControls(
   bar.className = 'of-map-controls';
   bar.style.display = 'flex';
   bar.style.gap = '8px';
+  bar.style.touchAction = 'manipulation';
   const mk = (label: string, fn: () => void) => {
     const b = document.createElement('button');
     b.type = 'button';
@@ -2983,7 +3128,10 @@ export function mountMapControls(
     b.setAttribute('aria-label', label);
     b.style.minWidth = '44px';
     b.style.minHeight = '44px';
-    b.addEventListener('click', fn);
+    b.style.touchAction = 'manipulation';
+    // Touch activates on pointerup (a fling can drop the click); mouse and
+    // keyboard keep click. One activation per tap (0.2.30).
+    bindTap(b, () => fn());
     bar.appendChild(b);
     return b;
   };

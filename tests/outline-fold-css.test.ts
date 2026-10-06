@@ -22,4 +22,18 @@ describe('outline-fold.css', () => {
     expect(expanded).toContain('fill: #000');
     expect(expanded).not.toContain('fill: none');
   });
+
+  it('marks map controls and the resize popover touch-action: manipulation (0.2.30)', () => {
+    const start = css.indexOf('.of-map-controls,');
+    expect(start).toBeGreaterThan(-1);
+    const rule = css.slice(start, css.indexOf('}', start));
+    for (const sel of [
+      '.of-map-controls,',
+      '.of-map-controls button',
+      '.map-width-pop button',
+    ]) {
+      expect(rule).toContain(sel);
+    }
+    expect(rule).toContain('touch-action: manipulation');
+  });
 });

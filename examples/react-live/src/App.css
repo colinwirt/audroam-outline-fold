@@ -338,6 +338,7 @@ kbd {
 .map-tools button {
   min-width: 44px;
   min-height: 44px;
+  touch-action: manipulation;
 }
 
 /* Map preview (package createMapView SVG) */

@@ -24,4 +24,5 @@ export {
   createDebouncedResumeSave,
   toggleTask,
   shouldFireAction,
+  bindTap,
 } from '../../dist/index.js';

@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>outline-fold e2e touch harness</title>
+<link rel="stylesheet" href="../../dist/outline-fold.css">
+<style>
+  html, body { margin: 0; height: 100%; background: #0d141b; color: #e7ecf1; font: 14px system-ui, sans-serif; }
+  header { height: 40px; display: flex; align-items: center; padding: 0 10px; gap: 8px; }
+  header h1 { font-size: 15px; margin: 0; }
+  #panel { position: absolute; top: 40px; left: 8px; right: 8px; bottom: 8px; border: 1px solid #2a3540; border-radius: 8px; overflow: hidden; background: var(--map-bg, #0f1a22); }
+  #mapHost { position: absolute; inset: 0; }
+  .of-map-controls { position: absolute; top: 8px; right: 8px; z-index: 3; }
+</style>
+</head>
+<body>
+<header><h1>e2e touch harness</h1><span id="ver"></span></header>
+<div id="panel"><div id="mapHost" class="map-wrap" aria-label="Map"></div></div>
+<script type="module">
+import { parse, createMapView, mountMapControls } from '../../dist/index.js';
+
+const params = new URLSearchParams(location.search);
+const md = await (await fetch(params.get('doc') || 'fixture.md')).text();
+let doc = parse(md);
+const layout = { _source: 'auto-pack', nodes: {} };
+let focusId = params.get('focus') || '';
+const host = document.getElementById('mapHost');
+
+window.__tasks = [];
+window.__notes = [];
+window.__zooms = [];
+window.__fits = 0;
+window.__paints = 0;
+
+const map = createMapView(host, {
+  getDoc: () => doc,
+  setDoc: (d) => { doc = d; },
+  getLayout: () => layout,
+  getFocusId: () => focusId,
+  setFocusId: (id) => { focusId = id; },
+  onChange: () => { window.__paints++; map.paint(); },
+  onTaskToggle: (ev) => window.__tasks.push({ id: ev.id, from: ev.from, to: ev.to }),
+  onNoteLink: (ev) => window.__notes.push({ id: ev.id, pnid: ev.pnid }),
+  isActive: () => true,
+});
+
+// Log every −/+ activation with the camera k before and after.
+const zoomBy = map.zoomBy;
+map.zoomBy = (f) => {
+  const before = map.cam.k;
+  zoomBy(f);
+  window.__zooms.push({ f, before, after: map.cam.k, t: performance.now() });
+};
+const fit = map.fit;
+map.fit = () => { window.__fits++; fit(); };
+
+window.__map = map;
+window.__doc = () => doc;
+window.__layout = () => layout;
+window.__focus = () => focusId;
+window.__setFocus = (id) => { focusId = id; map.paint(); };
+
+map.ensurePositions();
+map.bindGestures();
+map.bindKeyboard({});
+map.paint();
+const container = params.get('controls') === 'outside' ? document.getElementById('panel') : host;
+mountMapControls(map, container);
+requestAnimationFrame(() => {
+  map.paint();
+  map.fit();
+  // Fit animates for 250 ms.
+  setTimeout(() => { window.__fits = 0; window.__ready = true; }, 400);
+});
+</script>
+</body>
+</html>

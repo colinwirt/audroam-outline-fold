@@ -5,6 +5,8 @@ import {
   useRef,
   useState,
   type MouseEvent as ReactMouseEvent,
+  type ReactNode,
+  type ButtonHTMLAttributes,
 } from 'react';
 import {
   serialize,
@@ -25,6 +27,7 @@ import {
   isResumeStale,
   collectNodeIds,
   createDebouncedResumeSave,
+  bindTap,
   type OutlineFoldDoc,
   type OutlineNode,
   type ValidationResult,
@@ -75,6 +78,34 @@ function foldSig(d: OutlineFoldDoc | null | undefined): string {
  * serialize syncs fold-/fold+ back into the source. Multi-doc library in
  * localStorage (browser-only notetaker).
  */
+
+/**
+ * Toolbar button wired through the package's bindTap (0.2.30): touch activates
+ * on pointerup, mouse and keyboard keep click, one activation per tap.
+ */
+function TapButton({
+  onTap,
+  children,
+  ...rest
+}: { onTap: () => void; children: ReactNode } & Omit<
+  ButtonHTMLAttributes<HTMLButtonElement>,
+  'onClick' | 'type' | 'children'
+>) {
+  const ref = useRef<HTMLButtonElement | null>(null);
+  const tapRef = useRef(onTap);
+  tapRef.current = onTap;
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    return bindTap(el, () => tapRef.current());
+  }, []);
+  return (
+    <button ref={ref} type="button" {...rest}>
+      {children}
+    </button>
+  );
+}
+
 export default function App() {
   const [library, setLibrary] = useState<DocLibrary>(() =>
     loadLibrary(seedMd),
@@ -908,10 +939,9 @@ export default function App() {
           />
           {html && previewMode === 'map' ? (
             <div className="map-tools of-map-controls" role="toolbar" aria-label="Map view tools">
-              <button
-                type="button"
+              <TapButton
                 aria-label="Zoom out"
-                onClick={() => {
+                onTap={() => {
                   const host = mapHostRef.current;
                   const map = mapRef.current;
                   if (!host || !map) return;
@@ -920,11 +950,10 @@ export default function App() {
                 }}
               >
                 −
-              </button>
-              <button
-                type="button"
+              </TapButton>
+              <TapButton
                 aria-label="Zoom in"
-                onClick={() => {
+                onTap={() => {
                   const host = mapHostRef.current;
                   const map = mapRef.current;
                   if (!host || !map) return;
@@ -933,15 +962,14 @@ export default function App() {
                 }}
               >
                 +
-              </button>
-              <button
-                type="button"
+              </TapButton>
+              <TapButton
                 aria-label="Fit"
                 title="Fit the outline in the window"
-                onClick={() => mapRef.current?.resetCam()}
+                onTap={() => mapRef.current?.resetCam()}
               >
                 Fit
-              </button>
+              </TapButton>
             </div>
           ) : null}
         </section>

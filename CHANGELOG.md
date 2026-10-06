@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.2.30 — 2026-10-06
+
+### Map: single-tap activation on touch
+- The click swallow after a pan, pinch or touch tap is one-shot. It expires after 400 ms, only covers about 30 px around the point where the finger lifted, and the next press clears it. Cancel, blur and a hidden page clear it too. Before this, the first tap on a fold handle, task box, globe, `#N` chip or popover button after a pan was eaten.
+- `zoomAt` and `resetCam` stop a running spring-back, Fit or glide first, so −/+ zoom the camera shown at that moment and no later frame overwrites it.
+- New export `bindTap(el, fn)`. Touch and pen activate on `pointerup` (a press that started on the button and moved < 10 px), and the click that follows is ignored. Mouse and keyboard keep `click`. One activation per tap, including after a fling, when the browser can drop the click. `mountMapControls`, the resize popover, and the example hosts' − / + / Fit use it.
+- `touch-action: manipulation` on `.of-map-controls`, its buttons, and the popover buttons (and the example toolbars), so quick repeated taps don't become a double-tap zoom.
+- The map ignores a press on its own controls: `.of-map-controls` inside the host gets no `preventDefault`, pointer capture or double-tap zoom. Controls and the resize popover inside the host survive `paint()`.
+- Touch capture is lazy: the host captures a finger only once a pan or pinch is recognised (or a corner press turns into a width drag), so a tap still reaches the pill's own handler.
+- No glide from any gesture that had two fingers down. A second finger drops the one-finger velocity samples. The finger-lift-after-pinch behaviour is unchanged (gesture spec amendment 2026-10-05).
+
+### Map: resize popover
+- The popover opens above and left of the corner, so the finger doesn't cover it, and flips below only when there's no room. It is measured and kept fully inside the map, 8 px from every edge.
+- Buttons are at least 44 × 44 px. Items are `menuitemradio`. The current choice shows `✓` and `aria-checked` (Auto when the pill has no stored width).
+- Esc closes it. Arrow keys move between items, and Enter / Space on an item no longer reach the map's fold keys.
+
+### Outline text
+- A character typed right after a closing tag or fold marker (`<id:n>3`, `(+)3`) no longer hides the token. The id and fold state still parse, and the character stays on the caption. (Shipped in `7349c83` without an entry.)
+
+### Tests
+- Playwright projects `touch-pixel` (Pixel 7) and `touch-iphone` (iPhone 13 profile), both Chromium with touch, drive CDP touch events against `examples/e2e-touch`: −/+/Fit and popover single taps (fresh, after a slow pan, after a fling, after Fit, edge pills, repeated and double taps), taps on map handles after a pan or pinch, swallow expiry, and the pinch-lift regression (no camera motion after the last finger lifts).
+
 ## 0.2.29 — 2026-10-04
 
 ### Notes
@@ -34,8 +56,6 @@
 
 ### Examples
 - The Pages viewer and the React live demo fill the window. Zoom is − / + / Fit on the map.
-
-## Unreleased
 
 ### Map
 - Pinching at maximum zoom stays on the pinch point. The scale cap no longer draws the unclamped pinch position, which flung the map off screen.
@@ -197,13 +217,11 @@ Clicking a Map node (pill / fold-slot / task / more / thread) now `focus()`es th
 `createMapView` no longer steals focus on every `paint()`/`onChange` (that made react-live jump focus into Map after each editor keystroke). Map digit / fold / arrow keys run only when focus or the event target is inside the map host (or the Map mode button) — not while typing in a textarea/input. Pan-vs-selection fix from 0.2.11 kept.
 
 ## 0.2.11 — 2026-09-29
-## 0.2.11 — 2026-09-29
 
 ### Map pan no longer drag-selects text
 
 Panning the canvas (pointer drag on background / pinch) clears `window.getSelection()` and temporarily sets `user-select: none` on the map host so the gesture does not paint a huge accidental text range. Intentional drag-select on node labels for copy is unchanged (`pointerdown` on `.map-node` still skips the pan path).
 
-## 0.2.10 — 2026-09-29
 ## 0.2.10 — 2026-09-29
 
 ### Map digits relative to selection

@@ -109,6 +109,18 @@ export {
 } from './mapView.js';
 
 export {
+  bindTap,
+  armSwallow,
+  swallowConsumes,
+  SWALLOW_MS,
+  SWALLOW_RADIUS_PX,
+  TAP_SLOP_PX,
+  TAP_CLICK_GUARD_MS,
+  type SwallowRecord,
+  type BindTapOptions,
+} from './mapTap.js';
+
+export {
   DEFAULT_WRAP_CH,
   DEFAULT_MAX_LINES,
   SOFT_SAFETY_MAX_LINES,

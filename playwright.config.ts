@@ -33,7 +33,30 @@ export default defineConfig({
   projects: [
     {
       name: 'chromium',
+      testIgnore: /touch-.*\.spec\.ts/,
       use: { ...devices['Desktop Chrome'], viewport: { width: 1400, height: 900 } },
+    },
+    // Touch projects (0.2.30): single-tap activation, popover, pinch amendment.
+    // Both run on Chromium with hasTouch so CDP touch events drive them.
+    {
+      name: 'touch-pixel',
+      testMatch: /touch-.*\.spec\.ts/,
+      use: {
+        ...devices['Pixel 7'],
+        browserName: 'chromium',
+        hasTouch: true,
+        viewport: { width: 720, height: 600 },
+      },
+    },
+    {
+      name: 'touch-iphone',
+      testMatch: /touch-.*\.spec\.ts/,
+      use: {
+        ...devices['iPhone 13'],
+        browserName: 'chromium',
+        hasTouch: true,
+        viewport: { width: 390, height: 664 },
+      },
     },
   ],
   webServer: external

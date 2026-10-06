@@ -293,6 +293,14 @@
   pointer-events: none;
 }
 
+/* Taps on controls are single taps: no double-tap zoom, no click delay. */
+.of-map-controls,
+.of-map-controls button,
+.map-width-pop,
+.map-width-pop button {
+  touch-action: manipulation;
+}
+
 .of-map-controls button {
   font: inherit;
   font-weight: 600;

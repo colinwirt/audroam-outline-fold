@@ -82,7 +82,7 @@ kbd {
   display: inline-flex; gap: 6px; align-items: center;
 }
 .map-tools[hidden] { display: none !important; }
-.map-tools button { min-width: 44px; min-height: 44px; }
+.map-tools button { min-width: 44px; min-height: 44px; touch-action: manipulation; }
 .tile {
   flex: 1; min-height: 0; position: relative;
   display: flex; flex-direction: column;
