@@ -4,6 +4,7 @@ import {
   parse,
   serialize,
   toggleFold,
+  toggleTask,
   setExpandLevel,
   toHtml,
   noteLinkHref,
@@ -556,7 +557,7 @@ describe('<t: pnid> note links', () => {
     expect(doc.nodes[0].children?.[0].title).toBe('Child row');
     expect(doc.nodes[0].children?.[0].noteLinks).toEqual(['202']);
     const out = serialize(doc);
-    expect(out).toContain('- Parent row <t: 101> <t: 102> <id:aud-ov-1>');
+    expect(out).toContain('- Parent row <t: 101> <t:102> <id:aud-ov-1>');
     expect(out).toContain('- Child row <t: 202> <id:aud-ov-2>');
     const html = toHtml(doc);
     expect(html).toContain('data-note-link="101"');
@@ -600,5 +601,91 @@ noteUri: ${pattern}
     const out = serialize(doc);
     expect(out).toContain(`noteUri: ${pattern}`);
     expect(parse(out).frontmatter?.noteUri).toBe(pattern);
+  });
+});
+
+describe('<t: N> spelling round-trip', () => {
+  // Two-link note shape: one tag with a space, one without, folds in the layout block.
+  const BODY = [
+    '- 12 Mar - Agenda <id:1>',
+    '  - [x] Minutes? <id:2>',
+    '- Seed Swap <id:3>',
+    '  - [-] Tomato growers <t: 1002> <id:4>',
+    '  - Bean count <id:5>',
+    '- Watering <id:9> (+)',
+    '  - Rain barrel <id:12>',
+    '- Spring Show Rose Pruning <t:1003> <id:13> (+)',
+    '  - Trellis <id:15>',
+    '',
+    '--- layout ---',
+    'fold-: 13, 9',
+    'collapsedMarker: "(+)"',
+    '---',
+    '',
+  ].join('\n');
+
+  const firstLine = (doc: Parameters<typeof serialize>[0]) =>
+    serialize(doc).split('\n')[0];
+
+  const flip = (text: string) =>
+    text
+      .replace('<t: 1002>', '\u0000')
+      .replace('<t:1003>', '<t: 1003>')
+      .replace('\u0000', '<t:1002>');
+
+  for (const [name, body] of [
+    ['as written', BODY],
+    ['opposite spellings', flip(BODY)],
+  ] as const) {
+    it(`parse + serialize is byte-identical (${name})`, () => {
+      expect(serialize(parse(body))).toBe(body);
+      expect(serialize(parse(serialize(parse(body))))).toBe(body);
+    });
+
+    it(`a fold toggle only changes the fold marker and layout (${name})`, () => {
+      const folded = serialize(toggleFold(parse(body), '3'));
+      expect(folded).toBe(
+        body
+          .replace('- Seed Swap <id:3>', '- Seed Swap <id:3> (+)')
+          .replace('fold-: 13, 9', 'fold-: 13, 9, 3'),
+      );
+      const back = serialize(toggleFold(parse(folded), '3'));
+      expect(back).toBe(body);
+    });
+
+    it(`a checkbox tick only changes the task marker (${name})`, () => {
+      const result = toggleTask(parse(body), '4');
+      expect(result?.to).toBe('done');
+      const ticked = serialize(result!.doc);
+      const line = body.split('\n')[3];
+      expect(ticked).toBe(body.replace(line, line.replace('[-]', '[x]')));
+    });
+  }
+
+  it('keeps <t:N> and <t: N> on the node as noteLinks, with the spelling beside them', () => {
+    const doc = parse('- Row <t: 1> <t:2> <id:r>\n');
+    expect(doc.nodes[0].noteLinks).toEqual(['1', '2']);
+    expect(doc.nodes[0].noteLinkTags).toEqual({ 2: '<t:2>' });
+    expect(doc.nodes[0].title).toBe('Row');
+  });
+
+  it('keeps leading, mid-caption and odd spellings', () => {
+    expect(firstLine(parse('- Row <t:5> <id:a>\n'))).toBe('- Row <t:5> <id:a>');
+    expect(firstLine(parse('- Row <T:5 > <id:a>\n'))).toBe('- Row <T:5 > <id:a>');
+    expect(firstLine(parse('- Row <t:  5> <id:a>\n'))).toBe('- Row <t:  5> <id:a>');
+    // Leading and mid-caption tags still move to the trailing slot, with their spelling.
+    expect(firstLine(parse('- <t:5> Row <id:a>\n'))).toBe('- Row <t:5> <id:a>');
+    expect(firstLine(parse('- Row <t:5> more <id:a>\n'))).toBe('- Row more <t:5> <id:a>');
+    // A repeated id keeps one tag, spelled as its first occurrence.
+    expect(firstLine(parse('- <t:9> plain <t: 9> <id:a>\n'))).toBe('- plain <t:9> <id:a>');
+    expect(firstLine(parse('- plain <t:9> <t: 9> <id:a>\n'))).toBe('- plain <t:9> <id:a>');
+  });
+
+  it('writes <t: N> for a link the host adds, and ignores a spelling that names another id', () => {
+    const doc = parse('- Row <t:5> <id:a>\n');
+    doc.nodes[0].noteLinks!.push('6');
+    expect(firstLine(doc)).toBe('- Row <t:5> <t: 6> <id:a>');
+    doc.nodes[0].noteLinkTags = { 5: '<t:7>', 6: 'not a tag' };
+    expect(firstLine(doc)).toBe('- Row <t: 5> <t: 6> <id:a>');
   });
 });

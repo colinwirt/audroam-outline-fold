@@ -67,6 +67,13 @@ export interface OutlineNode {
    */
   noteLinks?: string[];
   /**
+   * How each note link was written, keyed by id, when it is not the default
+   * `<t: N>` (for example `<t:101>`). Serialize writes that spelling back so a
+   * fold or a task tick does not rewrite the author's tag. A link without an
+   * entry, or whose entry no longer names that id, is written as `<t: N>`.
+   */
+  noteLinkTags?: Record<string, string>;
+  /**
    * Layout stored in the outline text (`--- layout ---`), keyed by this node's id.
    * `w` is the caption column width in px. Absent until a custom width (or other
    * payload) needs a persistent id on the outline line.

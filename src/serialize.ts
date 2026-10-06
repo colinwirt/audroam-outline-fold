@@ -18,6 +18,21 @@ function taskMarker(task: TaskState): string {
 }
 
 /**
+ * `<t: N>` by default. A spelling kept by parse (`<t:N>`, `<T: N >`) is written
+ * back as long as it still names this id, so the author's tag round-trips.
+ */
+function noteLinkTag(node: OutlineNode, id: string): string {
+  const kept = node.noteLinkTags?.[id];
+  if (
+    typeof kept === 'string' &&
+    /^<t:[ \t]*(\d+)[ \t]*>$/i.exec(kept)?.[1] === id
+  ) {
+    return kept;
+  }
+  return `<t: ${id}>`;
+}
+
+/**
  * Caption-first trailing tags (v0.2 lean):
  * `[ ]? title <action:…>? <thread:…>? <t: N>* <kind:…>? <flag>* <id:…>? (+)?`
  * Sealed material lives in the trailing `--- payloads ---` block, not on the line.
@@ -28,7 +43,7 @@ function formatTrailingSpans(node: OutlineNode): string {
   if (node.thread) parts.push(`<thread:${node.thread}>`);
   if (node.noteLinks) {
     for (const id of node.noteLinks) {
-      if (/^\d+$/.test(id)) parts.push(`<t: ${id}>`);
+      if (/^\d+$/.test(id)) parts.push(noteLinkTag(node, id));
     }
   }
   if (node.kind) parts.push(`<kind:${node.kind}>`);

@@ -43,6 +43,10 @@ const THREAD_TRAILING = /\s*<thread:([^>]+)>\s*$/i;
 const NOTE_LINK_SPAN = /^<t:\s*(\d+)\s*>\s*/i;
 const NOTE_LINK_TRAILING = /\s*<t:\s*(\d+)\s*>\s*$/i;
 const NOTE_LINK_ANY = /<t:\s*(\d+)\s*>/gi;
+/** The bare `<t:…>` token inside a span match (drops surrounding whitespace). */
+const NOTE_LINK_TOKEN = /<t:\s*\d+\s*>/i;
+/** How serialize writes a note link when the text gave no spelling. */
+const NOTE_LINK_DEFAULT = (id: string) => `<t: ${id}>`;
 /** Short `<design>` form — excluded reserved flag/kind/enc words. */
 const RESERVED_SHORT = new Set([
   'private',
@@ -202,6 +206,7 @@ function parseTitleAndMeta(
   action?: string;
   thread?: string;
   noteLinks?: string[];
+  noteLinkTags?: Record<string, string>;
 } {
   let rest = content.trim();
   let id: string | undefined;
@@ -215,9 +220,21 @@ function parseTitleAndMeta(
   const leadingNotes: string[] = [];
   const trailingNotes: string[] = [];
   const midNotes: string[] = [];
-  const remember = (into: string[], rawId: string) => {
+  // The token as written (`<t:5>`, `<t: 5>`, `<T:5 >`), first spelling per id
+  // within each list. Serialize writes it back so the body round-trips.
+  const spelled = new Map<string[], Map<string, string>>([
+    [leadingNotes, new Map()],
+    [midNotes, new Map()],
+    [trailingNotes, new Map()],
+  ]);
+  const remember = (into: string[], rawId: string, token: string) => {
     const id = rawId.trim();
-    if (id && !into.includes(id)) into.push(id);
+    if (!id) return;
+    if (!into.includes(id)) into.push(id);
+    const tag = (token.match(NOTE_LINK_TOKEN)?.[0] ?? '').trim();
+    const forms = spelled.get(into)!;
+    // Trailing tags peel from the end, so the later match is the earlier tag.
+    if (tag && (into === trailingNotes || !forms.has(id))) forms.set(id, tag);
   };
 
   // Leading task marker only (mid-caption `[ ]` / `☐` stay plain text).
@@ -271,7 +288,7 @@ function parseTitleAndMeta(
 
     m = rest.match(NOTE_LINK_SPAN);
     if (m) {
-      remember(leadingNotes, m[1]);
+      remember(leadingNotes, m[1], m[0]);
       rest = rest.slice(m[0].length);
       progressed = true;
       continue;
@@ -383,7 +400,7 @@ function parseTitleAndMeta(
 
     m = rest.match(NOTE_LINK_TRAILING);
     if (m) {
-      remember(trailingNotes, m[1]);
+      remember(trailingNotes, m[1], m[0]);
       rest = rest.slice(0, rest.length - m[0].length).trimEnd();
       progressed = true;
       continue;
@@ -416,16 +433,24 @@ function parseTitleAndMeta(
 
   // Mid-caption `<t: N>` (result-row allows the tag anywhere).
   rest = rest
-    .replace(NOTE_LINK_ANY, (_all, id: string) => {
-      remember(midNotes, id);
+    .replace(NOTE_LINK_ANY, (all: string, id: string) => {
+      remember(midNotes, id, all);
       return ' ';
     })
     .replace(/[ \t]{2,}/g, ' ')
     .trim();
   if (typedSuffix) rest = `${rest} ${typedSuffix}`.trim();
   const noteLinks: string[] = [];
-  for (const id of [...leadingNotes, ...midNotes, ...trailingNotes.reverse()]) {
-    if (!noteLinks.includes(id)) noteLinks.push(id);
+  const noteLinkTags: Record<string, string> = {};
+  const lists: string[][] = [leadingNotes, midNotes, trailingNotes];
+  trailingNotes.reverse();
+  for (const list of lists) {
+    for (const id of list) {
+      if (noteLinks.includes(id)) continue;
+      noteLinks.push(id);
+      const tag = spelled.get(list)!.get(id);
+      if (tag && tag !== NOTE_LINK_DEFAULT(id)) noteLinkTags[id] = tag;
+    }
   }
 
   // `<enc:>` without private/encrypted implies encrypted chrome.
@@ -449,6 +474,7 @@ function parseTitleAndMeta(
     action,
     thread,
     noteLinks: noteLinks.length ? noteLinks : undefined,
+    noteLinkTags: Object.keys(noteLinkTags).length ? noteLinkTags : undefined,
   };
 }
 
@@ -508,6 +534,7 @@ export function parse(text: string): OutlineFoldDoc {
     if (meta.action) node.action = meta.action;
     if (meta.thread) node.thread = meta.thread;
     if (meta.noteLinks) node.noteLinks = meta.noteLinks;
+    if (meta.noteLinkTags) node.noteLinkTags = meta.noteLinkTags;
     if (meta.inlineCollapsed && meta.id) {
       inlineCollapsedIds.push(meta.id);
     }

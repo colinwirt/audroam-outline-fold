@@ -18,6 +18,7 @@
 - Esc closes it. Arrow keys move between items, and Enter / Space on an item no longer reach the map's fold keys.
 
 ### Outline text
+- A note link keeps the spelling it was written with. `<t:1002>` stays `<t:1002>` and `<t: 1002>` stays `<t: 1002>` through parse, serialize, a fold toggle and a task tick. Before this, serialize wrote every link as `<t: N>`, so a fold or a tick in the Map rewrote `<t:N>` tags across the whole body. Parse keeps the spelling in the new optional `node.noteLinkTags` (id → tag, only when it isn't `<t: N>`). A link the host adds, or a kept spelling that no longer names the id, is written as `<t: N>`. Leading and mid-caption links still move to the trailing slot, and a repeated id still writes one tag (spelled as its first occurrence).
 - A character typed right after a closing tag or fold marker (`<id:n>3`, `(+)3`) no longer hides the token. The id and fold state still parse, and the character stays on the caption. (Shipped in `7349c83` without an entry.)
 
 ### Tests

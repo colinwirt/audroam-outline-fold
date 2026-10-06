@@ -314,6 +314,41 @@ test.describe('react-live Map keyboard focus (0.2.16 gate)', () => {
     await expect(host.locator('tspan[font-weight="700"]')).toContainText('ok');
   });
 
+  test('Map fold and task tick keep each <t:N> / <t: N> as written', async ({ page }) => {
+    await page.goto('react-live/');
+    const source = page.getByLabel('Outline source');
+    await source.fill(
+      [
+        '- Garden club <id:root>',
+        '  - Seed Swap <id:swap>',
+        '    - [-] Tomato growers <t:1002> <id:tomato>',
+        '    - Bean count <id:beans>',
+        '  - Spring Show <t: 1003> <id:show>',
+        '    - Trellis <id:trellis>',
+        '',
+      ].join('\n'),
+    );
+    const host = page.locator(HOST);
+    await page.getByRole('button', { name: 'Map', exact: true }).click();
+    await expect(host).toBeVisible();
+    await clickNode(page, host, 'root');
+    await press(page, '*'); // everything open under root
+    await expect(host.locator('.map-node[data-id="tomato"]')).toHaveCount(1);
+    await settle(page);
+
+    await host.locator('.map-node[data-id="tomato"] .map-task-hit').click();
+    await expect(source).toHaveValue(/- \[x\] Tomato growers <t:1002> <id:tomato>/);
+    await host.locator('.map-node[data-id="show"] .map-fold-hit').click();
+    await expect(source).toHaveValue(/- Spring Show <t: 1003> <id:show> \(\+\)/);
+    await host.locator('.map-node[data-id="swap"] .map-fold-hit').click();
+    await expect(source).toHaveValue(/- Seed Swap <id:swap> \(\+\)/);
+    const text = await source.inputValue();
+    expect(text).toContain('    - [x] Tomato growers <t:1002> <id:tomato>');
+    expect(text).toContain('  - Spring Show <t: 1003> <id:show> (+)');
+    expect(text).not.toContain('<t: 1002>');
+    expect(text).not.toContain('<t:1003>');
+  });
+
   test('9: build stamp shows expected package version (+ git sha)', async ({ page }) => {
     await page.goto('react-live/');
     const stamp = page.getByTestId('pkg-stamp');
