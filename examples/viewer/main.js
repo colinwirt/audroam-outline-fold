@@ -466,7 +466,8 @@ async function boot() {
     if (li?.getAttribute('data-id')) focusId = li.getAttribute('data-id');
   });
 
-  setMode('outline');
+  // Keep a mode the reader picked while the outline was still loading.
+  setMode(mode);
 }
 
 boot();
