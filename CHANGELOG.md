@@ -27,6 +27,10 @@
 - A width (`assignPersistentId`, or a `layout.w` at serialize), a payload, or a fold+ entry writes the node's session id onto its line; it is already unique, so fold state and map keys keep pointing at it.
 - Serialize leaves out a `--- layout ---` block that would only hold defaults (fold- with no ids, `collapsedMarker: "(+)"`, no widths or other keys). Under fold- a session id stays off the `fold-:` list; the line's `(+)` carries it.
 
+### Clean
+- `cleanIds(text)` removes `<id:…>` tags nothing points at and returns `{ text, removed, kept }`. An id stays when a payloads or layout entry is keyed by it, a `#id:` link names it, or a fold+ list holds it. A fold- entry whose line already ends with `(+)` is redundant: the id and the entry both go. Everything else in the text, line endings included, is left as written.
+- `cleanMarkdown(text, { tasks? })` returns a plain markdown list (`- ` bullets, two spaces per level): captions and task boxes only, with no ids, note links, kind / flag / action / thread / enc tags, fold markers, or layout and payload blocks. Grammar tags a translation moved into a caption are dropped too.
+
 ### Examples
 - The cafe 2D and 3D maps load one outline, `examples/cafe-map.md`. Its two locked rows (Supplier accounts, Alarm monitoring contact) carry real payloads sealed by `npm run demo:seal` with the demo password. Both pages show **Unlock** and `Demo password: 123`, and a click on a locked node opens just that row.
 - The 3D map draws a caption label under every sphere (`CSS2DRenderer`). Locked rows show `🔒 locked`, then the opened text. The page never had label code; spheres were the only output. Leaves get their own x slot, so siblings from different branches no longer sit on top of each other, and the camera backs off until the tree fits.

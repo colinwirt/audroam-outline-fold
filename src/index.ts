@@ -224,3 +224,10 @@ export {
   type WorldRect,
   type FollowAction,
 } from './mapCamera.js';
+
+export {
+  cleanIds,
+  cleanMarkdown,
+  type CleanIdsResult,
+  type CleanMarkdownOptions,
+} from './clean.js';
