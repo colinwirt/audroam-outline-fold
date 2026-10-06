@@ -4,7 +4,7 @@
 
 | Module | Role |
 |--------|------|
-| `parseDoc.js` | `parse(md) → doc` (+ validate) |
+| `parseDoc.js` | `parse(md, { sessionIds: true }) → doc` (+ validate) |
 | `outlineView.js` | `createOutlineView` → `toHtml` + `attachOutlineTree` |
 | `mapView.js` | **Re-exports** package `createMapView` / `autoPackPositions` / `pillSize` / `FOLD_SLOT` / scrapbook seed+resume helpers |
 | `layoutSidecar.js` | frontmatter pointer / sibling `*.layout.json` / **auto-pack** flag (Pages-only) |

@@ -12,7 +12,8 @@ import { parse, validateDocument } from '../../dist/index.js';
 export function parseDoc(md, opts = {}) {
   const validate = opts.validate !== false;
   const validation = validate ? validateDocument(md) : null;
-  const doc = validation?.doc ?? parse(md);
+  // Session ids let lines without <id:…> fold, tick and take map focus.
+  const doc = parse(md, { sessionIds: true });
   return { doc, validation, raw: md };
 }
 

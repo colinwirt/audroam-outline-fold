@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.31 — Unreleased
+
+### Pages viewer
+- A click on **Map** while the outline is still loading is kept. Before this, the end of loading switched the viewer back to Outline.
+- The viewer parses with `sessionIds: true`. An outline written without `<id:…>` tags now gets fold handles and task boxes in Outline, the same as one with ids. Examples with an id on every line are unchanged.
+
 ## 0.2.30 — 2026-10-06
 
 ### Map: single-tap activation on touch

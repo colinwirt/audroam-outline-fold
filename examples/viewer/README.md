@@ -15,6 +15,8 @@ examples/viewer/?doc=../outline-demo.md
 
 Uses shared core (`../_shared/`): `parseDoc` → `createOutlineView` → `createMapView` (package Map, re-exported) → `resolveLayout` (Pages-only).
 
+An outline doesn't need `<id:…>` tags. Lines without one get session ids on load, so they fold, tick and take focus, and **Handoff text** writes them back without ids.
+
 ## Locked rows
 
 When the outline has sealed rows, the bar shows **Unlock** and `Demo password: …`. The password comes from
