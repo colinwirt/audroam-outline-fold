@@ -53,7 +53,7 @@ function formatTrailingSpans(node: OutlineNode): string {
       else parts.push(`<${f}>`);
     }
   }
-  if (node.id) parts.push(`<id:${node.id}>`);
+  if (node.id && !node.autoId) parts.push(`<id:${node.id}>`);
   return parts.length ? ' ' + parts.join(' ') : '';
 }
 
@@ -68,7 +68,9 @@ function serializeNode(
   const indent = '  '.repeat(node.depth);
   const lead = node.task ? taskMarker(node.task) : '';
   let line = `${indent}- ${lead}${node.title}${formatTrailingSpans(node)}`;
-  if (node.id && isCollapsed(doc, node.id)) {
+  // Under fold+ every line off the list is collapsed; a session-id leaf has no fold to mark.
+  const bareLeaf = node.autoId && doc.fold.mode === '+' && !node.children?.length;
+  if (node.id && isCollapsed(doc, node.id) && !bareLeaf) {
     line += ` ${collapsedMarker}`;
   } else if (node.id && expandedMarker) {
     line += ` ${expandedMarker}`;
@@ -79,8 +81,30 @@ function serializeNode(
   }
 }
 
+/**
+ * Fold ids for the layout block. Under fold- a session id is left out: the line's
+ * `(+)` carries it. Under fold+ the entry is a persistent link, so the id is written.
+ */
+function layoutFoldIds(doc: OutlineFoldDoc): string[] {
+  const auto = new Map<string, OutlineNode>();
+  const walk = (list: OutlineNode[]) => {
+    for (const n of list) {
+      if (n.id && n.autoId) auto.set(n.id, n);
+      if (n.children?.length) walk(n.children);
+    }
+  };
+  walk(doc.nodes);
+  if (!auto.size) return doc.fold.ids;
+  if (doc.fold.mode === '+') {
+    for (const id of doc.fold.ids) delete auto.get(id)?.autoId;
+    return doc.fold.ids;
+  }
+  return doc.fold.ids.filter((id) => !auto.has(id));
+}
+
 export function serialize(doc: OutlineFoldDoc): string {
   linkPayloadNodes(doc);
+  const foldIds = layoutFoldIds(doc);
   const lines: string[] = [];
   for (const n of doc.nodes) serializeNode(n, doc, lines);
   const payloads = collectPayloads(doc.nodes);
@@ -91,13 +115,24 @@ export function serialize(doc: OutlineFoldDoc): string {
   }
   // Document keys live in the layout trailer so a pilot_note summary is the
   // first outline line, not a leading `---` fence.
-  const layoutBlock = formatLayoutBlock(collectLayouts(doc.nodes), {
+  const layouts = collectLayouts(doc.nodes);
+  const fm = doc.frontmatter;
+  // Nothing but defaults (fold- with no ids, "(+)") says nothing: leave the block out.
+  const onlyDefaults =
+    !Object.keys(layouts).length &&
+    doc.fold.mode === '-' &&
+    !foldIds.length &&
+    (fm?.collapsedMarker ?? DEFAULT_COLLAPSED) === DEFAULT_COLLAPSED &&
+    !fm?.expandedMarker &&
+    fm?.fontSize == null &&
+    !fm?.noteUri;
+  const layoutBlock = onlyDefaults ? '' : formatLayoutBlock(layouts, {
     foldMode: doc.fold.mode,
-    foldIds: doc.fold.ids,
-    collapsedMarker: doc.frontmatter?.collapsedMarker ?? DEFAULT_COLLAPSED,
-    expandedMarker: doc.frontmatter?.expandedMarker,
-    fontSize: doc.frontmatter?.fontSize,
-    noteUri: doc.frontmatter?.noteUri,
+    foldIds,
+    collapsedMarker: fm?.collapsedMarker ?? DEFAULT_COLLAPSED,
+    expandedMarker: fm?.expandedMarker,
+    fontSize: fm?.fontSize,
+    noteUri: fm?.noteUri,
   });
   if (layoutBlock) {
     if (lines.length) lines.push('');

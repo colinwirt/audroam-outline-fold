@@ -70,7 +70,11 @@ export function assignPersistentId(
   node: OutlineNode,
   opts?: AutoIdOptions,
 ): string {
-  if (node.id) return node.id;
+  // A session id already came from nextAutoId over every id in the doc: write it.
+  if (node.id) {
+    delete node.autoId;
+    return node.id;
+  }
   const prefix = opts?.prefix ?? '';
   const used = collectNodeIds(doc.nodes);
   if (!prefix) {
@@ -85,7 +89,7 @@ export function assignPersistentId(
 }
 
 function needsPersistentId(node: OutlineNode): boolean {
-  if (node.id) return false;
+  if (node.id && !node.autoId) return false;
   if (typeof node.layout?.w === 'number') return true;
   if (node.sealed && (node.sealed.ciphertext || node.sealed.uri)) return true;
   return false;

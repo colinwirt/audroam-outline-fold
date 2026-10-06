@@ -21,6 +21,12 @@
 - A note link keeps the spelling it was written with. `<t:1002>` stays `<t:1002>` and `<t: 1002>` stays `<t: 1002>` through parse, serialize, a fold toggle and a task tick. Before this, serialize wrote every link as `<t: N>`, so a fold or a tick in the Map rewrote `<t:N>` tags across the whole body. Parse keeps the spelling in the new optional `node.noteLinkTags` (id → tag, only when it isn't `<t: N>`). A link the host adds, or a kept spelling that no longer names the id, is written as `<t: N>`. Leading and mid-caption links still move to the trailing slot, and a repeated id still writes one tag (spelled as its first occurrence).
 - A character typed right after a closing tag or fold marker (`<id:n>3`, `(+)3`) no longer hides the token. The id and fold state still parse, and the character stays on the caption. (Shipped in `7349c83` without an entry.)
 
+### Lazy ids
+- `parse(text, { sessionIds: true })` gives every line without `<id:…>` a session id (`node.autoId: true`) from `nextAutoId`, which skips ids already on lines and keys in the payloads and layout blocks, so sparse ids (`<id:2>`, `<id:5>`) never collide. A `(+)` on such a line folds it. Without the option parse is unchanged.
+- Serialize does not write a session id. A fold toggle on an id-less outline changes only the `(+)` marker: the text round-trips byte for byte otherwise.
+- A width (`assignPersistentId`, or a `layout.w` at serialize), a payload, or a fold+ entry writes the node's session id onto its line; it is already unique, so fold state and map keys keep pointing at it.
+- Serialize leaves out a `--- layout ---` block that would only hold defaults (fold- with no ids, `collapsedMarker: "(+)"`, no widths or other keys). Under fold- a session id stays off the `fold-:` list; the line's `(+)` carries it.
+
 ### Examples
 - The cafe 2D and 3D maps load one outline, `examples/cafe-map.md`. Its two locked rows (Supplier accounts, Alarm monitoring contact) carry real payloads sealed by `npm run demo:seal` with the demo password. Both pages show **Unlock** and `Demo password: 123`, and a click on a locked node opens just that row.
 - The 3D map draws a caption label under every sphere (`CSS2DRenderer`). Locked rows show `🔒 locked`, then the opened text. The page never had label code; spheres were the only output. Leaves get their own x slot, so siblings from different branches no longer sit on top of each other, and the camera backs off until the tree fits.

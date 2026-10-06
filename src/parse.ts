@@ -4,6 +4,7 @@ import {
   mergeFrontmatter,
   peelTrailingSections,
 } from './payloads.js';
+import { collectNodeIds, nextAutoId } from './nodeAddress.js';
 import { parseEncBody } from './sealed.js';
 import { parseLeadingTask } from './taskChrome.js';
 import type {
@@ -478,11 +479,20 @@ function parseTitleAndMeta(
   };
 }
 
+export interface ParseOptions {
+  /**
+   * Give every line without `<id:…>` a session id (`autoId: true`) from
+   * `nextAutoId`, which skips ids on lines and keys in the payloads and layout
+   * blocks. A `(+)` on such a line folds it. Serialize does not write session ids.
+   */
+  sessionIds?: boolean | { prefix?: string };
+}
+
 /**
  * Parse indented markdown-ish outline (2 spaces or 1 tab ≈ one depth unit;
  * optional leading `- ` / `* ` / `1. `).
  */
-export function parse(text: string): OutlineFoldDoc {
+export function parse(text: string, opts?: ParseOptions): OutlineFoldDoc {
   const head = parseFrontmatter(text);
   const peeled = peelTrailingSections(head.body);
   const fm = mergeFrontmatter(head.fm, peeled.trailingFm);
@@ -495,6 +505,7 @@ export function parse(text: string): OutlineFoldDoc {
   const stack: OutlineNode[] = [];
   const indentToDepth: number[] = [];
   const inlineCollapsedIds: string[] = [];
+  const inlineCollapsedBare: OutlineNode[] = [];
 
   for (const raw of lines) {
     if (!raw.trim()) continue;
@@ -537,6 +548,8 @@ export function parse(text: string): OutlineFoldDoc {
     if (meta.noteLinkTags) node.noteLinkTags = meta.noteLinkTags;
     if (meta.inlineCollapsed && meta.id) {
       inlineCollapsedIds.push(meta.id);
+    } else if (meta.inlineCollapsed) {
+      inlineCollapsedBare.push(node);
     }
 
     while (stack.length && stack[stack.length - 1].depth >= depth) {
@@ -550,6 +563,29 @@ export function parse(text: string): OutlineFoldDoc {
       parent.children.push(node);
     }
     stack.push(node);
+  }
+
+  // Trailer payloads attach by id (overwrite any inline <enc:>).
+  attachPayloads(roots, peeled.payloads);
+  // Layout keys are ids, or a 1-based position when the line has no id.
+  attachLayouts(roots, peeled.layouts);
+
+  if (opts?.sessionIds) {
+    const prefix = typeof opts.sessionIds === 'object' ? opts.sessionIds.prefix ?? '' : '';
+    const used = collectNodeIds(roots);
+    for (const id of Object.keys(peeled.payloads)) used.add(id);
+    for (const id of Object.keys(peeled.layouts)) used.add(id);
+    const walk = (list: OutlineNode[]) => {
+      for (const n of list) {
+        if (!n.id) {
+          n.id = nextAutoId(used, prefix);
+          n.autoId = true;
+        }
+        if (n.children?.length) walk(n.children);
+      }
+    };
+    walk(roots);
+    for (const n of inlineCollapsedBare) inlineCollapsedIds.push(n.id!);
   }
 
   const mode: FoldMode = fm.foldMode ?? '-';
@@ -567,11 +603,6 @@ export function parse(text: string): OutlineFoldDoc {
   }
   frontmatter.foldMode = mode;
   frontmatter.foldIds = ids;
-
-  // Trailer payloads attach by id (overwrite any inline <enc:>).
-  attachPayloads(roots, peeled.payloads);
-  // Layout keys are ids, or a 1-based position when the line has no id.
-  attachLayouts(roots, peeled.layouts);
 
   return {
     frontmatter,
