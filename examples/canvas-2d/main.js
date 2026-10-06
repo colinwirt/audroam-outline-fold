@@ -22,7 +22,7 @@ collapsedMarker: "(+)"
     - [x] Post Fri SMS · approved:sms-bot · auto <id:staff-sms>
       - Bid A · local mason · ballpark only <id:bid-a>
       - Bid B · landscape crew · includes planters <id:bid-b>
-  - Secrets · manager only <id:secrets>
+  - Manager <id:secrets>
     - Payroll portal link + pay-run notes <private> <id:payroll> (+)
     - Alarm code / arming notes <encrypted> <id:alarm> (+)
 `;

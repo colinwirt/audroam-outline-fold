@@ -1,13 +1,8 @@
 ---
 collapsedMarker: "(+)"
 ---
-- 📋 SOC 2 · Trust Services Criteria study map · demo · not an attestation <id:root>
-  - ⚠️ FICTION / STUDY ONLY · public TSC theme names · no live auditor findings · no real tenant gaps <id:banner>
-  - How to use <id:howto>
-    - Cleartext = criteria families + study cues <id:howto-clear>
-    - Sealed later (optional) = evidence / exception packs — not in this fixture <id:howto-seal>
-    - Common Criteria (CC) apply to every report; A / C / PI / P are optional modules <id:howto-mod>
-  - CC · Common Criteria (security foundation) <id:cc>
+- 📋 SOC 2 · Trust Services Criteria · study map <id:root>
+  - CC · Common Criteria · in every report <id:cc>
     - CC1 Control environment · integrity · board oversight · accountability <id:cc1>
     - CC2 Communication and information · internal / external quality <id:cc2>
     - CC3 Risk assessment · identify · analyze · fraud · change <id:cc3>
@@ -19,21 +14,18 @@ collapsedMarker: "(+)"
     - CC8 Change management · authorize · design · test · implement <id:cc8>
     - CC9 Risk mitigation · business disruption · vendor / business-partner risk <id:cc9>
     - Cue: which CC family owns access vs change vs vendor risk? <id:cc-cue>
-  - A · Availability <id:avail>
-    - A1 · capacity · backups · recovery · environmental protections (theme) <id:a1>
+  - A · Availability · optional <id:avail>
+    - A1 · capacity · backups · recovery · environmental protections <id:a1>
     - Cue: availability ≠ disaster marketing — what evidence would an auditor ask for? <id:a-cue>
-  - C · Confidentiality <id:conf>
-    - C1 · identify confidential info · protect · dispose (theme) <id:c1>
+  - C · Confidentiality · optional <id:conf>
+    - C1 · identify confidential info · protect · dispose <id:c1>
     - Cue: confidentiality vs privacy — overlapping but not identical <id:c-cue>
-  - PI · Processing integrity <id:pi>
-    - PI1 · complete · valid · accurate · timely · authorized processing (theme) <id:pi1>
-  - P · Privacy (optional deep branch) <id:priv>
+  - PI · Processing integrity · optional <id:pi>
+    - PI1 · complete · valid · accurate · timely · authorized processing <id:pi1>
+  - P · Privacy <id:priv>
     - P1–P8 themes · notice · choice · collection · use · access · disclosure · quality · monitoring <id:p-themes>
-    - Study note: map to Privacy Act / APPs when AU personal info is in scope — names only here <id:p-au>
-  - Report types (caption only) <id:rpt>
+    - AU overlap · Privacy Act / APPs <id:p-au>
+  - Report types <id:rpt>
     - Type 1 · design at a point in time <id:rpt-1>
     - Type 2 · design + operating effectiveness over a period <id:rpt-2>
-    - Cue: why Type 2 needs a period — and why exceptions stay sealed in demos <id:rpt-cue>
-  - Study hygiene <id:hyg>
-    - No real control exceptions · no customer names · no production configs in captions <id:hyg-1>
-    - Framework map in the clear · proof packs locked later <id:hyg-2>
+    - Cue: why does Type 2 need a period? <id:rpt-cue>

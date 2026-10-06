@@ -2,7 +2,6 @@
 collapsedMarker: "(+)"
 ---
 - 🪨 Cedarvale Field Unit · earth science day log · 28 Sep · outcrop CV-EF-07 <id:root>
-  - ⚠️ FICTION · teaching outline · no real survey marks or sample custody secrets <id:banner>
   - Site <id:site>
     - Grid · -33.7124, 150.8940 · sandstone bench · strike/dip sketch on file <id:site-grid>
     - Weather · clear · light SE wind · good photo light until 15:30 <id:site-wx>

@@ -1,10 +1,11 @@
 /**
  * DEMO-ONLY sealed payload helpers (AES-GCM + PBKDF2).
- * Not production MFA / key release. Cafe fixtures use passphrase `northside-demo`.
+ * Not production MFA / key release. The example outlines are sealed with the
+ * demo password in examples/demo-values.json (random salt per payload).
  */
 import type { SealedPayload } from './types.js';
 
-/** Documented cafe demo passphrase — fictional fixtures only. */
+/** Sample passphrase for tests and quick trials. */
 export const DEMO_PASSPHRASE = 'northside-demo';
 
 /** Algorithm label written into `<enc:… alg=…>`. */

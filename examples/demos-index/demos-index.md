@@ -1,28 +1,27 @@
 ---
 collapsedMarker: "(+)"
 ---
-- 🗺️ Outline-fold demos · index map · pick a board · open in shared viewer <kind:globe> <id:root>
-  - ⚠️ FICTION / STUDY ONLY · demo boards · no live secrets · no real org findings <id:banner>
+- 🗺️ Outline-fold demos <kind:globe> <id:root>
   - 🚀 Start here <kind:feature> <id:start>
-    - 🗺️ Index · this map · [Open](?doc=../demos-index/demos-index.md) <id:start-index>
-    - 🖥️ Viewer · pass ?doc= (+ optional &layout=) <id:start-viewer>
-    - 🪐 Solar System · dual view + layout sidecar · [Open](?doc=../solar-system/solar-system.md&layout=../solar-system/solar-system.layout.json) <id:start-solar>
-    - ☕ Cafe ops · real demo seal · [Open](?doc=../outline-demo.md) <id:start-cafe>
-  - 🛣️ Field / asset maps · transport-style boards (streetlamps · potholes) <kind:globe> <id:field>
-    - 💡 Streetlamps · pole lon/lat + CMMS-class URLs · [Open](?doc=../streetlamps/streetlamps.md) <id:field-lamps>
-    - 🕳️ Potholes · SSS-style ↔ CMMS loop · [Open](?doc=../potholes/potholes.md) <id:field-potholes>
-  - 🤝 Wave-1 handoffs <kind:doc> <id:wave1>
-    - 👩‍🏫 Teacher ↔ parent · Vic need-to-know fiction · [Open](?doc=../teacher-parent/teacher-parent.md) <id:w1-teacher>
-    - 📚 Student study · Cornell/outline tutor cues · [Open](?doc=../student-study/student-study.md) <id:w1-student>
-    - 📝 Work notes · async squad handoff + URLs · [Open](?doc=../work-notes/work-notes.md) <id:w1-work>
-  - 📋 Compliance / study <kind:lock> <id:compliance>
-    - 🛡️ ISO/IEC 27001 · clauses 4–10 + Annex A 2022 controls · [Open](?doc=../iso27001/iso27001.md) <id:comp-iso>
-    - 📑 SOC 2 · TSC CC1–CC9 + modules · [Open](?doc=../soc2/soc2.md) <id:comp-soc2>
-    - 💳 PCI DSS · Req 1–12 families · [Open](?doc=../pci-dss/pci-dss.md) <id:comp-pci>
-    - 🏛️ NIST CSF · core functions + 800-53 pointer · [Open](?doc=../nist/nist.md) <id:comp-nist>
-    - 🇦🇺 AU gov cyber · ISM / Essential Eight / PSPF-shaped · [Open](?doc=../aust-gov-cyber/aust-gov-cyber.md) <id:comp-au>
+    - 🗺️ This index · [Open](?doc=../demos-index/demos-index.md) <id:start-index>
+    - 🖥️ Viewer · open any outline with ?doc= <id:start-viewer>
+    - 🪐 Solar System · with saved layout · [Open](?doc=../solar-system/solar-system.md&layout=../solar-system/solar-system.layout.json) <id:start-solar>
+    - ☕ Northside Corner Cafe · ops handoff · [Open](?doc=../outline-demo.md) <id:start-cafe>
+  - 🛣️ Shire of Cedarvale · field crews <kind:globe> <id:field>
+    - 💡 Streetlamp night run · [Open](?doc=../streetlamps/streetlamps.md) <id:field-lamps>
+    - 🕳️ Road faults board · [Open](?doc=../potholes/potholes.md) <id:field-potholes>
+  - 🤝 Handoffs <kind:doc> <id:wave1>
+    - 👩‍🏫 Teacher ↔ parent · Yr 7 weekly note · [Open](?doc=../teacher-parent/teacher-parent.md) <id:w1-teacher>
+    - 📚 Student study board · Cornell notes · [Open](?doc=../student-study/student-study.md) <id:w1-student>
+    - 📝 Work notes · end-of-shift handoff · [Open](?doc=../work-notes/work-notes.md) <id:w1-work>
+  - 📋 Compliance study maps <kind:lock> <id:compliance>
+    - 🛡️ ISO/IEC 27001 · clauses 4–10 + Annex A · [Open](?doc=../iso27001/iso27001.md) <id:comp-iso>
+    - 📑 SOC 2 · Trust Services Criteria · [Open](?doc=../soc2/soc2.md) <id:comp-soc2>
+    - 💳 PCI DSS · requirements 1–12 · [Open](?doc=../pci-dss/pci-dss.md) <id:comp-pci>
+    - 🏛️ NIST CSF · core functions + SP 800-53 · [Open](?doc=../nist/nist.md) <id:comp-nist>
+    - 🇦🇺 AU gov cyber · ISM · Essential Eight · PSPF · [Open](?doc=../aust-gov-cyber/aust-gov-cyber.md) <id:comp-au>
   - 📦 Also <kind:feature> <id:also>
-    - ⚛️ React live · textarea → parse / toHtml / Map · [Open](../../react-live/) <id:also-react>
-    - 📂 Fixtures · md paste + viewer links · [Open](../fixtures/) <id:also-fix>
+    - ⚛️ React live editor · [Open](../../react-live/) <id:also-react>
+    - 📂 All outline files · [Open](../fixtures/) <id:also-fix>
     - 🗺️ Cafe 2D map · [Open](../canvas-2d/) <id:also-2d>
-    - 🌐 Cafe 3D map · three.js CDN · [Open](../3d/) <id:also-3d>
+    - 🌐 Cafe 3D map · [Open](../3d/) <id:also-3d>

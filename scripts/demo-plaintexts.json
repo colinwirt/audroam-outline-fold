@@ -1,42 +1,81 @@
 {
-  "passphrase": "northside-demo",
-  "note": "Fictional cafe demo plaintexts only. Regenerated into examples/outline-demo.md via npm run demo:seal.",
+  "note": "Plaintexts for the sealed example rows. npm run demo:seal seals each one with the demo password from examples/demo-values.json and rewrites the payload trailers.",
   "payloads": [
     {
       "id": "sup-private",
       "kid": "cafe-sup-1",
       "flag": "private",
       "caption": "Order codes / account notes",
-      "plaintext": "Account code NC-DEMO-9"
+      "plaintext": "Altitude Roasters account NC-4471 · Yarra Valley co-op order code BERRY-Q4"
     },
     {
       "id": "staff-private",
       "kid": "cafe-staff-1",
       "flag": "private",
       "caption": "Full staff list + emergency contacts",
-      "plaintext": "Jess mobile +61 400 000 001 (fiction) / Omar emergency +61 400 000 002 (fiction)"
+      "plaintext": "Jess 0491 570 156 · Omar 0491 570 157 · Priya 0491 570 158 · Sam 0491 570 159"
     },
     {
       "id": "payroll",
       "kid": "cafe-payroll-1",
       "flag": "private",
       "caption": "Payroll portal link + pay-run notes",
-      "plaintext": "Portal: https://example.invalid/payroll \u00b7 run Wed"
+      "plaintext": "Portal: https://example.invalid/payroll · pay run Wed · Omar's hours up from next week"
     },
     {
       "id": "alarm",
       "kid": "cafe-alarm-1",
       "flag": "encrypted",
       "caption": "Alarm code / arming notes",
-      "plaintext": "Arm code 0000 (fiction) \u00b7 exit delay 60s"
+      "plaintext": "Arm code 4821 · exit delay 60s · back door sensor sticks, push it shut"
     }
   ],
-  "remoteStub": {
-    "id": "ins-remote",
-    "kid": "cafe-ins-1",
-    "flag": "encrypted",
-    "caption": "Vendor insurance cert (remote blob)",
-    "uri": "https://example.invalid/sealed/cafe-ins-1.bin",
-    "alg": "demo-aes-gcm"
+  "examples": {
+    "examples/student-study/student-study.md": [
+      { "id": "portal-pack", "kid": "study-portal-1", "plaintext": "Willow Creek portal · mvale07 · tide-lantern-42" },
+      { "id": "recovery-pack", "kid": "study-recovery-1", "plaintext": "Bayshore Uni recovery codes · 4821-0937 · 5530-1186 · 7702-6649" },
+      { "id": "assessment-pack", "kid": "study-assess-1", "plaintext": "Bio quiz access code BQ-7731 · opens Mon 8:55" }
+    ],
+    "examples/teacher-parent/teacher-parent.md": [
+      { "id": "contacts-pack", "kid": "tp-contacts-1", "plaintext": "Dana Hale (mum) 0491 570 006 · Ray Hale (grandad) 0491 570 110 · pickup word: kookaburra" },
+      { "id": "excursion-pack", "kid": "tp-excursion-1", "plaintext": "Mild asthma · Ventolin in front pocket of bag · no allergies" },
+      { "id": "conference-pack", "kid": "tp-conf-1", "plaintext": "Interview Thu 16:20 · reading goal + maths confidence · Dana prefers a phone follow-up" },
+      { "id": "care-pack", "kid": "tp-care-1", "plaintext": "Settling in after the move · weekly check-in with Mr Osei" }
+    ],
+    "examples/work-notes/work-notes.md": [
+      { "id": "deploy-pack", "kid": "work-deploy-1", "plaintext": "Deploy token lmn_dep_7Qx2-91aa · expires 31 Oct · rotate in CI settings" },
+      { "id": "secrets-store", "kid": "work-store-1", "plaintext": "staging-admin / harbour-velvet-19 · MFA on Priya's phone" }
+    ],
+    "examples/streetlamps/streetlamps.md": [
+      { "id": "depot-pack", "kid": "lamp-depot-1", "plaintext": "Depot gate 4417# · alarm panel left of the roller door" },
+      { "id": "cmms-pack", "kid": "lamp-cmms-1", "plaintext": "CMMS night login crewc / lamp-night-2209" },
+      { "id": "cabinet-pack", "kid": "lamp-cab-1", "plaintext": "Cabinet C2 key 88 · BP-N key 61 · keys in van 3 glovebox" }
+    ],
+    "examples/potholes/potholes.md": [
+      { "id": "contractor-pack", "kid": "pot-contractor-1", "plaintext": "Contractor portal · cv-roads / gravel-moth-63" },
+      { "id": "integration-pack", "kid": "pot-api-1", "plaintext": "CMMS API key cmms_K4p9-ZZ21 · read/write work orders" },
+      { "id": "depot-pack", "kid": "pot-depot-1", "plaintext": "After-hours gate 7031 · ring Kev 0491 570 313 if locked out" }
+    ],
+    "examples/fixtures/municipal-nz.md": [
+      { "id": "contractor-pack", "kid": "nz-contractor-1", "plaintext": "Contractor portal · kd-roads / tui-gravel-48" },
+      { "id": "integration-pack", "kid": "nz-api-1", "plaintext": "RAMM API key ramm_8Hq2-LL07" },
+      { "id": "depot-pack", "kid": "nz-depot-1", "plaintext": "After-hours gate 2290" }
+    ],
+    "examples/fixtures/municipal-paris.md": [
+      { "id": "contractor-pack", "kid": "fr-contractor-1", "plaintext": "Portail prestataire · vn-voirie / tilleul-62" },
+      { "id": "integration-pack", "kid": "fr-api-1", "plaintext": "Clé API GMAO gmao_V7n3-QP45" }
+    ],
+    "examples/fixtures/municipal-thailand.md": [
+      { "id": "contractor-pack", "kid": "th-contractor-1", "plaintext": "Contractor portal · af-roads / mango-lamp-31" },
+      { "id": "integration-pack", "kid": "th-api-1", "plaintext": "CMMS API key cmms_T5r8-MM90" },
+      { "id": "depot-pack", "kid": "th-depot-1", "plaintext": "After-hours gate 5512" }
+    ],
+    "examples/fixtures/municipal-us.md": [
+      { "id": "contractor-pack", "kid": "us-contractor-1", "plaintext": "Contractor portal · ns-pw / maple-cone-27" },
+      { "id": "integration-pack", "kid": "us-api-1", "plaintext": "CMMS API key cmms_U2w6-RR14" }
+    ],
+    "examples/fixtures/starship-lineage.md": [
+      { "id": "ops-pack", "kid": "st-ops-1", "plaintext": "Range safety officer Dee Marsh · 0491 570 737 · radio channel 4" }
+    ]
   }
 }

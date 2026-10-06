@@ -2,9 +2,8 @@
 fold-: contractor-pack, integration-pack, depot-pack
 collapsedMarker: "(+)"
 ---
-- 🛣️ Kāinga District Council · road + lamp board · 29 Sep AM NZST <id:root>
-  - ⚠️ FICTION DEMO · NZ twin · no real council assets · ct=PLACEHOLDER until demo:seal <id:banner>
-  - Channels · citizen-report (SSS-style) · RAMM/CMMS-class WOs · status back to reporter <id:flow>
+- 🛣️ Kāinga District Council · roads + lamps · 29 Sep AM <id:root>
+  - Reports come in from the council app · work orders in RAMM · reporter gets status updates <id:flow>
   - Roads · reported <id:roads>
     - Tōtara Straight · mid-block · -41.2865, 174.7762 <id:nz-r1>
       - Citizen · https://example.invalid/citizen/KD-12044 · P2 · cycle lane edge <id:nz-r1-url>
@@ -19,23 +18,22 @@ collapsedMarker: "(+)"
       - [ ] Relamp LED · night run Tue <id:nz-l1-open>
     - Pole KD-SL-458 · -41.2881, 174.7795 · dayburner · PE cell <id:nz-l2>
       - [x] PE cell swapped · closed 21:10 <id:nz-l2-done>
-  - Lead unlock only <id:secrets>
-    - Contractor access pack <private> <id:contractor-pack> (+)
-    - Integration unlock pack <encrypted> <id:integration-pack> (+)
-    - Depot after-hours pack <encrypted> <id:depot-pack> (+)
+  - Access <id:secrets>
+    - Contractor portal login <private> <id:contractor-pack> (+)
+    - RAMM API key <encrypted> <id:integration-pack> (+)
+    - Depot after-hours code <encrypted> <id:depot-pack> (+)
 
 --- payloads ---
-# PLACEHOLDER = not real ciphertext; host replaces via demo:seal
 contractor-pack:
   kid: nz-contractor-1
   alg: demo-aes-gcm
-  ct: PLACEHOLDER
+  ct: Kk-6VvRt_jZuP4ksNUkq8ibROmdSXYeGVtt6lJQ9XYfQzNvd64DtHsiH_N36ZKih18fEBKTKsF87ixFjMJ6yfG8sCzcnuE07gYL5nDgSgdi6U4dM_YpnbLw
 integration-pack:
   kid: nz-api-1
   alg: demo-aes-gcm
-  ct: PLACEHOLDER
+  ct: JaCkRmMfxzRm8YCg9TDJGXzMTjuY_SDR3HPFHivPYrWKZr1H0dmAgUJYgXHcnrS7a4_ZwWAuQAYxV9CpbbpZDUSQyxsYEHc
 depot-pack:
   kid: nz-depot-1
   alg: demo-aes-gcm
-  ct: PLACEHOLDER
+  ct: eDIT-NxUZK1_U8K7cP9Xi--4OmXjqaepM6EJy53AfNsy5bhe5ptz0PJtBq37MiQt9tbdYOSHlKi9jQV_dO-a2IE
 ---

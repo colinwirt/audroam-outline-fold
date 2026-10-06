@@ -1,12 +1,7 @@
 ---
 collapsedMarker: "(+)"
 ---
-- 💳 PCI DSS · requirement families study map · demo · not a ROC / SAQ <id:root>
-  - ⚠️ FICTION / STUDY ONLY · public requirement-family titles · no live CHD · no real merchant gaps <id:banner>
-  - How to use <id:howto>
-    - Cleartext = Req 1–12 family captions + study cues <id:howto-clear>
-    - Cardholder data / account data never in captions — even fictional PANs <id:howto-no-pan>
-    - Sealed later (optional) = evidence / ASV / pentest packs — not in this fixture <id:howto-seal>
+- 💳 PCI DSS v4.0 · requirement families · study map <id:root>
   - Build and maintain secure networks and systems <id:net>
     - Req 1 · Install and maintain network security controls <id:r1>
     - Req 2 · Apply secure configurations to all system components <id:r2>
@@ -22,16 +17,13 @@ collapsedMarker: "(+)"
     - Req 7 · Restrict access to system components and cardholder data by business need to know <id:r7>
     - Req 8 · Identify users and authenticate access to system components <id:r8>
     - Req 9 · Restrict physical access to cardholder data <id:r9>
-    - Cue: need-to-know vs identity vs physical — three layers, one goal <id:access-cue>
+    - Cue: Req 7 vs 8 vs 9 — role, identity, physical · three layers, one goal <id:access-cue>
   - Regularly monitor and test networks <id:mon>
     - Req 10 · Log and monitor all access to system components and cardholder data <id:r10>
     - Req 11 · Test security of systems and networks regularly <id:r11>
   - Maintain an information security policy <id:policy>
     - Req 12 · Support information security with organizational policies and programs <id:r12>
-  - Scope reminder (study) <id:scope>
+  - Scope <id:scope>
     - CDE · people · processes · technologies that store / process / transmit account data or are connected <id:scope-cde>
-    - Segmentation · reduce scope — caption only; no live network diagrams here <id:scope-seg>
-    - SAQ vs ROC · self-assessment vs assessor report — pick by merchant level (study) <id:scope-saq>
-  - Study hygiene <id:hyg>
-    - Never paste PANs · track data · auth codes · or real ASV findings in cleartext demos <id:hyg-1>
-    - Family map in the clear · evidence packs locked later <id:hyg-2>
+    - Segmentation · isolate the CDE to reduce scope <id:scope-seg>
+    - SAQ vs ROC · self-assessment vs assessor report · depends on merchant level <id:scope-saq>

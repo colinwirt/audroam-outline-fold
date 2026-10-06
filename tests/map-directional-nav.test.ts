@@ -66,6 +66,6 @@ describe('resolveMapFocus (Map L→R orientation)', () => {
       resolveMapFocus(doc, 'e8-1', 'end', opts),
     );
     // Forest / under root: siblings of e8
-    expect(resolveMapFocus(doc, 'e8', 'home', opts)).toBe('banner');
+    expect(resolveMapFocus(doc, 'e8', 'home', opts)).toBe('ism');
   });
 });

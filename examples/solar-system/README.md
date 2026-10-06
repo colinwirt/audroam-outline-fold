@@ -8,4 +8,4 @@ Pages demo for `@audroam/outline-fold`.
 
 Cleartext spatial demo — layout sidecar via `?layout=`.
 
-Fiction / study banners stay in the markdown. Do not invent secrets.
+Planets use emoji in place of images.

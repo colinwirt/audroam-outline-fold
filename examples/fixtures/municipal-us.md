@@ -2,10 +2,8 @@
 fold-: contractor-pack, integration-pack
 collapsedMarker: "(+)"
 ---
-- 🛣️ Northside Borough · public works board · 28 Sep AM ET <id:root>
-  - ⚠️ FICTION DEMO · US twin of Cedarvale roads · no real 311/city assets · ct=PLACEHOLDER <id:banner>
-  - Channels · 311-style portal + SeeClickFix-class citizen app · CMMS work orders <id:flow>
-    - Cleartext OK: lon/lat · public request URLs · priority · asphalt notes <id:flow-clear>
+- 🛣️ Northside Borough · public works board · 28 Sep AM <id:root>
+  - Requests via 311 portal + citizen app · CMMS work orders <id:flow>
   - Open · intake <id:open>
     - Maple Ave · mid-block bike lane · 45.5122, -122.6587 <id:us-r1>
       - Citizen · https://example.invalid/311/NS-44021 · Pri 2 · photo on file <id:us-r1-url>
@@ -22,18 +20,17 @@ collapsedMarker: "(+)"
     - Pine Court shoulder · 45.5180, -122.6701 <id:us-d1>
       - Citizen · https://example.invalid/311/NS-43990 · closed · reporter emailed <id:us-d1-url>
       - [x] Cold patch temp · 14-day monitor <id:us-d1-done>
-  - Lead unlock only <id:secrets>
-    - Contractor access pack <private> <id:contractor-pack> (+)
-    - Integration unlock pack <encrypted> <id:integration-pack> (+)
+  - Access <id:secrets>
+    - Contractor portal login <private> <id:contractor-pack> (+)
+    - CMMS API key <encrypted> <id:integration-pack> (+)
 
 --- payloads ---
-# PLACEHOLDER = not real ciphertext; host replaces via demo:seal
 contractor-pack:
   kid: us-contractor-1
   alg: demo-aes-gcm
-  ct: PLACEHOLDER
+  ct: 8aSkah5dXCqsfwcBiOJglVVMEmu2C3MlFzvBoV55frHmo5mXwxcC2ouxYU5BC6pN_e55IJi1Mjihmb0gtDjXRsstAKc6lgryOKxA_HXaWNs1CKeTefM
 integration-pack:
   kid: us-api-1
   alg: demo-aes-gcm
-  ct: PLACEHOLDER
+  ct: _nzyrrKkaHv_UPOGSROf3CjOC-OmwIPNUwMg5CdawXoh-8WlFzig9avY5iMcK7xS-DClhPlJIeovSCv-8e9Ou2RQQM0csW0
 ---

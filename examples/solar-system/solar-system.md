@@ -3,8 +3,7 @@ collapsedMarker: "(+)"
 fold-: earth, mars, jupiter, saturn, neptune
 layoutSidecar: solar-system.layout.json
 ---
-- 🌌 Solar System · textbook fact tree · cleartext only <id:root>
-  - ⚠️ FICTION-FREE FACTS · emoji stand-ins (outline-fold has no image grammar yet) <id:banner>
+- 🌌 Solar System · planets and major moons <id:root>
   - ☀️ Sun · star · ~1.99e30 kg · ~696000 km radius <id:sun>
   - ☿️ Mercury · ~0.39 AU · 0 moons <id:mercury>
   - ♀️ Venus · ~0.72 AU · 0 moons <id:venus>

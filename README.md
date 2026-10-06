@@ -8,7 +8,7 @@ Pure TypeScript **outline language** for structured operational handoffs: parse 
 npm i   # from this repo
 npm test
 npm run build
-npm run demo:seal   # regenerate cafe trailer payloads from fictional plaintexts
+npm run demo:seal   # re-seal the example payloads with the demo password
 npx serve -l 4173 .   # then open the live demos below
 ```
 
@@ -44,7 +44,7 @@ Shared Pages helpers: [`examples/_shared/`](./examples/_shared/) — `parseDoc` 
 
 The viewer chrome shows **Package** / **Viewer** / **Git** build stamps (injected at site build). Hard-refresh (`Ctrl+Shift+R` / `Cmd+Shift+R`) or use a private window to bypass cache and confirm you have the latest Pages build.
 
-Wave-1 sealed demos ship `ct: PLACEHOLDER` (stub unlock N/A until `demo:seal`). Fiction / study banners stay in sources.
+Locked rows in the examples hold real demo ciphertext. When an outline has them, the viewer shows **Unlock** and `Demo password: 123`. The password comes from [`examples/demo-values.json`](./examples/demo-values.json), never from the outline text. See [Demo crypto](#demo-crypto-not-production-mfa). All example names, places and numbers are made up.
 
 Source outlines: [examples/outline-demo.md](./examples/outline-demo.md) · [examples/solar-system/solar-system.md](./examples/solar-system/solar-system.md) (+ [layout sidecar](./examples/solar-system/solar-system.layout.json)) · [examples/fixtures/](./examples/fixtures/).
 
@@ -56,13 +56,13 @@ Source outlines: [examples/outline-demo.md](./examples/outline-demo.md) · [exam
 
 ```text
 ---
-fold-: alarm, staff-private, payroll, ins-remote
+fold-: alarm, staff-private, ins-remote
 collapsedMarker: "(+)"
 ---
 - ☕ Northside Corner Cafe — ops handoff <id:root>
   - Alarm code / arming notes <encrypted> <id:alarm> (+)
   - Full staff list + emergency contacts <private> <id:staff-private> (+)
-  - Vendor insurance cert (remote blob) <encrypted> <id:ins-remote> (+)
+  - Vendor insurance certificate <encrypted> <id:ins-remote> (+)
 
 --- payloads ---
 alarm:
@@ -118,26 +118,30 @@ import {
   DEMO_ALG,
 } from '@audroam/outline-fold';
 
-const sealed = await demoSeal('Arm code 0000 (fiction)', DEMO_PASSPHRASE, 'cafe-alarm-1');
+const sealed = await demoSeal('Arm code 4821', DEMO_PASSPHRASE, 'cafe-alarm-1');
 const plain = await demoOpen(sealed, DEMO_PASSPHRASE);
 ```
 
 | | |
 |--|--|
-| **Sample passphrase** | `northside-demo` (fictional cafe fixtures only) |
+| **Example password** | `123`, from `examples/demo-values.json` (the demo values provider the viewer reads) |
+| **`DEMO_PASSPHRASE`** | `northside-demo`, a sample constant for your own tests |
+| **Key per payload** | PBKDF2-SHA-256 (100k) from the password + a random 16-byte salt stored in the ciphertext (`salt ‖ iv ‖ ct+tag`) |
 | **Alg label** | `demo-aes-gcm` (AES-GCM + PBKDF2 via Web Crypto) |
-| **Regenerate fixtures** | `npm run demo:seal` ← reads `scripts/demo-plaintexts.json` |
+| **Regenerate fixtures** | `npm run demo:seal` ← plaintexts in `scripts/demo-plaintexts.json`, password in `examples/demo-values.json` |
 
 Remote `uri` entries **cannot** be opened by `demoOpen` — the host must fetch after key release.
 
-### Key sources (BYO ladder — demos stub all four)
+### Key sources (host's choice)
 
 The **key is never in the outline string**. Session / user supplies it:
 
 1. **Browser session** — passphrase or DEK in memory after unlock (`sessionStorage` OK for demo; avoid `localStorage` for demo DEKs)
 2. **Password manager** — paste field labeled “from password manager” (future: Web Credentials / 1Password)
-3. **Pageant / OS agent** — stub “Use agent” (not wired in browser demos)
-4. **Server after MFA** — stub `onDecrypt(id, kid)` → host returns DEK; demo can fake “MFA OK” then use the sample key
+3. **Pageant / OS agent** — not wired in the browser examples
+4. **Server after MFA** — `onDecrypt(id, kid)` → host returns the DEK
+
+The Pages examples use a password prompt prefilled with the demo password.
 
 Unlock reveals **session-only** plaintext under the node (default: do **not** write plaintext back into the editor).
 
@@ -151,7 +155,7 @@ Unlock reveals **session-only** plaintext under the node (default: do **not** wr
 | `onUnlock` / `onDecrypt` **types** | Real key release callbacks |
 | `db` flag + `dbRef` string | Connection pools, credentials |
 
-**Demo ≠ production MFA.** Pages cafe unlock uses the documented sample passphrase so the fiction works offline.
+**Demo ≠ production MFA.** The Pages examples unlock with the demo password so they work offline.
 
 Link `dist/outline-fold.css` before any host stylesheet. The export is `@audroam/outline-fold/outline-fold.css`. It paints `toHtml` rows and the map. A collapsed fold circle is solid gold. Override only chrome that belongs to the host.
 

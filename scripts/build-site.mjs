@@ -28,6 +28,7 @@ cpSync(join(root, 'dist'), join(site, 'dist'), { recursive: true });
 cpSync(join(root, 'examples', 'outline-demo.html'), join(site, 'examples', 'outline-demo.html'));
 cpSync(join(root, 'examples', 'outline-demo.md'), join(site, 'examples', 'outline-demo.md'));
 cpSync(join(root, 'examples', 'outline-viewer.js'), join(site, 'examples', 'outline-viewer.js'));
+cpSync(join(root, 'examples', 'demo-values.json'), join(site, 'examples', 'demo-values.json'));
 // examples/_shared + demo folders copied in the directory loop below
 
 // Copy every examples/* directory except react-live (built separately) and node_modules
@@ -63,51 +64,46 @@ code{font-size:.9em;background:#1a2330;padding:.1em .35em;border-radius:4px}
 </head>
 <body>
 <h1>@audroam/outline-fold</h1>
-<p class="meta">Pure TS outline language demos (fiction + study maps). <strong>One shared viewer</strong>: parse → outlineView → mapView. <a href="https://github.com/colinwirt/audroam-outline-fold">Source</a> · MIT</p>
-<p class="note">Field maps (streetlamps · potholes) live under Wave-1 / Index map.</p>
+<p class="meta">Example outlines in one shared Outline | Map viewer. <a href="https://github.com/colinwirt/audroam-outline-fold">Source</a> · MIT</p>
 
-<h2>Demos index (Map)</h2>
+<h2>Start here</h2>
 <ul>
-  <li><a href="examples/viewer/?doc=../demos-index/demos-index.md"><strong>Demos index</strong></a> — emoji map of all boards · open any demo from one outline</li>
+  <li><a href="examples/viewer/?doc=../demos-index/demos-index.md"><strong>Demos index</strong></a> — every example as one map</li>
+  <li><a href="examples/viewer/?doc=../outline-demo.md">Northside Corner Cafe</a> — ops handoff with locked rows</li>
+  <li><a href="examples/viewer/?doc=../solar-system/solar-system.md&amp;layout=../solar-system/solar-system.layout.json">Solar System</a> — with a saved layout</li>
+  <li><a href="examples/viewer/">Viewer</a> — open any outline with <code>?doc=</code> (+ optional <code>&amp;layout=</code>)</li>
 </ul>
 
-<h2>Shared Outline | Map viewer</h2>
+<h2>Shire of Cedarvale field crews</h2>
 <ul>
-  <li><a href="examples/viewer/?doc=../solar-system/solar-system.md&amp;layout=../solar-system/solar-system.layout.json">Solar System</a> — dual view + layout sidecar</li>
-  <li><a href="examples/viewer/?doc=../outline-demo.md">Cafe ops</a> — real demo seal</li>
-  <li><a href="examples/viewer/">Viewer</a> — pass <code>?doc=</code> (+ optional <code>&amp;layout=</code>); auto-pack when no sidecar</li>
+  <li><a href="examples/viewer/?doc=../streetlamps/streetlamps.md">Streetlamp night run</a></li>
+  <li><a href="examples/viewer/?doc=../potholes/potholes.md">Road faults board</a></li>
 </ul>
 
-<h2>Wave-1 handoffs (PLACEHOLDER sealed stub · unlock N/A)</h2>
-<h3>Field / asset maps (transport-style)</h3>
+<h2>Handoffs</h2>
 <ul>
-  <li><a href="examples/viewer/?doc=../streetlamps/streetlamps.md">Streetlamps</a> — pole lon/lat + CMMS-class URLs</li>
-  <li><a href="examples/viewer/?doc=../potholes/potholes.md">Potholes</a> — SSS-style ↔ CMMS loop</li>
-</ul>
-<h3>People / study handoffs</h3>
-<ul>
-  <li><a href="examples/viewer/?doc=../teacher-parent/teacher-parent.md">Teacher ↔ parent</a> — Vic need-to-know fiction</li>
-  <li><a href="examples/viewer/?doc=../student-study/student-study.md">Student study</a> — Cornell/outline tutor cues</li>
-  <li><a href="examples/viewer/?doc=../work-notes/work-notes.md">Work notes</a> — async squad handoff + URLs</li>
+  <li><a href="examples/viewer/?doc=../teacher-parent/teacher-parent.md">Teacher ↔ parent</a> — Yr 7 weekly note</li>
+  <li><a href="examples/viewer/?doc=../student-study/student-study.md">Student study board</a> — Cornell notes</li>
+  <li><a href="examples/viewer/?doc=../work-notes/work-notes.md">Work notes</a> — end-of-shift handoff</li>
 </ul>
 
-<h2>Compliance / study maps (cleartext-first)</h2>
+<h2>Compliance study maps</h2>
 <ul>
-  <li><a href="examples/viewer/?doc=../iso27001/iso27001.md">ISO/IEC 27001</a> — clauses 4–10 + Annex A 2022 (all 93 controls)</li>
-  <li><a href="examples/viewer/?doc=../soc2/soc2.md">SOC 2</a> — TSC CC1–CC9 + modules</li>
-  <li><a href="examples/viewer/?doc=../pci-dss/pci-dss.md">PCI DSS</a> — Req 1–12 families</li>
-  <li><a href="examples/viewer/?doc=../nist/nist.md">NIST CSF</a> — core functions + 800-53 pointer</li>
-  <li><a href="examples/viewer/?doc=../aust-gov-cyber/aust-gov-cyber.md">AU gov cyber</a> — ISM / Essential Eight / PSPF-shaped</li>
+  <li><a href="examples/viewer/?doc=../iso27001/iso27001.md">ISO/IEC 27001</a> — clauses 4–10 + all 93 Annex A controls</li>
+  <li><a href="examples/viewer/?doc=../soc2/soc2.md">SOC 2</a> — Trust Services Criteria</li>
+  <li><a href="examples/viewer/?doc=../pci-dss/pci-dss.md">PCI DSS</a> — requirements 1–12</li>
+  <li><a href="examples/viewer/?doc=../nist/nist.md">NIST CSF</a> — core functions + SP 800-53 families</li>
+  <li><a href="examples/viewer/?doc=../aust-gov-cyber/aust-gov-cyber.md">AU gov cyber</a> — ISM · Essential Eight · PSPF</li>
 </ul>
 
 <h2>Also</h2>
 <ul>
-  <li><a href="react-live/">React live parser</a> — textarea → parse / toHtml / toggleFold</li>
-  <li><a href="examples/fixtures/">Fixture index</a> — md paste + viewer links</li>
-  <li><a href="examples/canvas-2d/">Cafe ops 2D map</a></li>
-  <li><a href="examples/3d/">Cafe ops 3D map</a> (loads three.js from CDN)</li>
+  <li><a href="react-live/">React live editor</a></li>
+  <li><a href="examples/fixtures/">All outline files</a></li>
+  <li><a href="examples/canvas-2d/">Cafe 2D map</a></li>
+  <li><a href="examples/3d/">Cafe 3D map</a> (loads three.js from a CDN)</li>
 </ul>
-<p class="note">Old per-demo paths (e.g. <code>examples/pci-dss/</code>) redirect to the shared viewer. Fiction banners stay in sources. Sealed demos with <code>ct: PLACEHOLDER</code> label stub unlock N/A. Not legal advice; no live secrets.</p>
+<p class="note">Locked rows open with the demo password shown in the viewer.</p>
 </body>
 </html>
 `;

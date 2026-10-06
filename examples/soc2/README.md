@@ -6,4 +6,4 @@ Pages demo for `@audroam/outline-fold`.
 - Viewer: shared [`../viewer/`](../viewer/)?doc=../soc2/soc2.md
 - Old `index.html` redirects here (stable Pages URL).
 
-Fiction / study banners stay in the markdown. Do not invent secrets.
+A study map built from public framework titles. Not an assessment or attestation.

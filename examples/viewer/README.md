@@ -15,6 +15,13 @@ examples/viewer/?doc=../outline-demo.md
 
 Uses shared core (`../_shared/`): `parseDoc` → `createOutlineView` → `createMapView` (package Map, re-exported) → `resolveLayout` (Pages-only).
 
+## Locked rows
+
+When the outline has sealed rows, the bar shows **Unlock** and `Demo password: …`. The password comes from
+[`../demo-values.json`](../demo-values.json) (the demo values provider), never from the outline text.
+**Unlock** opens every row with it; a row's own lock asks for the password, prefilled. Delete the file and
+the viewer just prompts.
+
 ## Versions on the page
 
 When JS loads, the title row shows three build stamps:

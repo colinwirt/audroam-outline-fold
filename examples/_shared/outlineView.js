@@ -7,7 +7,7 @@ import {
   attachOutlineTree,
   serialize,
 } from '../../dist/index.js';
-import { injectReveals } from './unlockStub.js';
+import { injectReveals } from './unlock.js';
 
 /**
  * @typedef {object} OutlineViewOptions

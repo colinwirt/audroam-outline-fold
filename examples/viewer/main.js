@@ -21,9 +21,11 @@ import {
 import { resolveLayout } from '../_shared/layoutSidecar.js';
 import {
   tryUnlock,
+  openAll,
   findNode,
-  isPlaceholderSealed,
-} from '../_shared/unlockStub.js';
+  listSealed,
+  loadDemoPassword,
+} from '../_shared/unlock.js';
 import { packageVersion, viewerBuild, gitShort } from './build-info.js';
 
 const params = new URLSearchParams(window.location.search);
@@ -41,11 +43,14 @@ const validationEl = document.getElementById('validation');
 const foldOut = document.getElementById('foldOut');
 const pageTitle = document.getElementById('pageTitle');
 const pageSub = document.getElementById('pageSub');
-const banner = document.getElementById('banner');
 const btnZoomIn = document.getElementById('btnZoomIn');
 const btnZoomOut = document.getElementById('btnZoomOut');
 const btnResetView = document.getElementById('btnResetView');
 const buildMeta = document.getElementById('buildMeta');
+const demoUnlock = document.getElementById('demoUnlock');
+const btnUnlockAll = document.getElementById('btnUnlockAll');
+const demoPwEl = document.getElementById('demoPw');
+const unlockHelp = document.getElementById('unlockHelp');
 
 function renderBuildMeta(version) {
   if (!buildMeta) return;
@@ -156,29 +161,6 @@ function resolveSafeUrl(raw, label) {
     }
   }
   return url;
-}
-
-function walkSealed(nodes, fn) {
-  for (const n of nodes) {
-    if (n.sealed) fn(n);
-    if (n.children?.length) walkSealed(n.children, fn);
-  }
-}
-
-function detectStubUnlock(d) {
-  let stub = false;
-  walkSealed(d.nodes, (n) => {
-    if (isPlaceholderSealed(n.sealed)) stub = true;
-  });
-  return stub;
-}
-
-function hasAnySealed(d) {
-  let hit = false;
-  walkSealed(d.nodes, () => {
-    hit = true;
-  });
-  return hit;
 }
 
 function paint() {
@@ -322,18 +304,16 @@ async function boot() {
     focusId = root.id;
   }
 
-  const stubUnlock = detectStubUnlock(doc);
-  const sealed = hasAnySealed(doc);
-
-  if (stubUnlock) {
-    banner.hidden = false;
-    banner.textContent = 'Sealed stub. Unlock is not available.';
-  } else if (sealed) {
-    banner.hidden = false;
-    banner.textContent = 'Sealed demo. Unlock stays in this tab.';
-  } else {
-    banner.hidden = true;
-    banner.textContent = '';
+  // Demo values provider: password comes from examples/demo-values.json,
+  // never from the outline text.
+  const sealedIds = listSealed(doc.nodes).map((n) => n.id).filter(Boolean);
+  const demoPassword = sealedIds.length ? await loadDemoPassword() : null;
+  if (sealedIds.length) {
+    unlockHelp.hidden = false;
+    if (demoPassword) {
+      demoPwEl.textContent = demoPassword;
+      demoUnlock.hidden = false;
+    }
   }
 
   const layoutSrc = layout._source || 'auto-pack';
@@ -378,7 +358,7 @@ async function boot() {
           outline?.refresh(id);
           if (mode === 'map') map?.paint();
         },
-        stubUnlock,
+        demoPassword,
       });
     },
     onDecrypt: (id) => {
@@ -393,7 +373,7 @@ async function boot() {
           outline?.refresh(id);
           if (mode === 'map') map?.paint();
         },
-        stubUnlock,
+        demoPassword,
       });
     },
   });
@@ -463,6 +443,23 @@ async function boot() {
   // Persist camera after pan/zoom settles
   mapHost.addEventListener('pointerup', () => persistMapResume());
   mapHost.addEventListener('wheel', () => persistMapResume(), { passive: true });
+
+  btnUnlockAll.addEventListener('click', () => {
+    void openAll({
+      getDoc: () => doc,
+      setDoc: (d) => {
+        doc = d;
+      },
+      ids: sealedIds,
+      revealed,
+      refresh: () => {
+        outline?.refresh(focusId);
+        if (mode === 'map') map?.paint();
+        persistMapResume();
+      },
+      password: demoPassword,
+    });
+  });
 
   outlineHost.addEventListener('click', (e) => {
     const li = e.target.closest?.('[role="treeitem"]');

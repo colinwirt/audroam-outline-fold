@@ -3,11 +3,10 @@ fold-: contractor-pack, integration-pack, depot-pack
 collapsedMarker: "(+)"
 ---
 - 🕳️ Shire of Cedarvale · road faults board · 29 Sep AM <id:root>
-  - ⚠️ FICTION DEMO · no real LGA assets · no live tickets · ct=PLACEHOLDER until demo:seal <id:banner>
   - Workflow · report → inspect → schedule → close · status back to reporter <id:flow>
-    - Citizen-report app (SSS-style) · photo + geotag · triage into CMMS (BEIMS-class) WO <id:flow-sss>
-    - Cleartext OK: lon/lat · public ticket URLs · P1/P2 · material · never integration secrets <id:flow-clear>
-    - Risk fiction: depth · road hierarchy · traffic · water pooling bumps priority <id:flow-risk>
+    - Snap Send Solve report · photo + location · triaged into a CMMS work order <id:flow-sss>
+    - P1 = make safe today · P2 = this week · P3 = next patch run <id:flow-clear>
+    - Depth · road hierarchy · traffic · water pooling raise priority <id:flow-risk>
   - Reported · awaiting inspect <id:reported>
     - Ironbark Way · mid-block · collector · -33.7012, 150.9124 <id:ph-r1>
       - Citizen ticket · https://example.invalid/citizen/CV-88421 · P2 · photo · bike lane edge <id:ph-r1-url>
@@ -33,23 +32,22 @@ collapsedMarker: "(+)"
       - [x] Cold-mix temp · monitor 14 days · re-open if failure · before/after photo on file <id:ph-d1-done>
       - CMMS close · https://example.invalid/cmms/WO-CV-1871 · Closed · monitor child open <id:ph-d1-cmms>
   - Board summary · 2 reported · 1 inspected · 1 scheduled · 1 closed · P1 oval + Ridgeway <id:board-sum>
-  - Lead unlock only <id:secrets>
-    - Contractor access pack <private> <id:contractor-pack> (+)
-    - Integration unlock pack <encrypted> <id:integration-pack> (+)
-    - Depot after-hours pack <encrypted> <id:depot-pack> (+)
+  - Access <id:secrets>
+    - Contractor portal login <private> <id:contractor-pack> (+)
+    - CMMS API key <encrypted> <id:integration-pack> (+)
+    - Depot after-hours code <encrypted> <id:depot-pack> (+)
 
 --- payloads ---
-# PLACEHOLDER = not real ciphertext; host replaces via demo:seal
 contractor-pack:
   kid: pot-contractor-1
   alg: demo-aes-gcm
-  ct: PLACEHOLDER
+  ct: ORJwJ22c-cyqOqU6_-RKXbag4RScV40QJXgiWyhgr5EarxHIjvnQtP8bPeMXcwRq3tDhzX27NXG3rEQU5P3p-JhNKciXFY1CObbySoX9VV-fF3FEnAe3KYuN
 integration-pack:
   kid: pot-api-1
   alg: demo-aes-gcm
-  ct: PLACEHOLDER
+  ct: bfJ-skpYyOYhE5ldhraJibStA4IZbxiDPwxB5KPhaha-TuUHN4WFRL-gAoTtBs25BI8ALfd3GoKXy7s6t9mW31EZv9Sf3aMzEO8xWlcWEKJhobLOGnTyAuT7DATCNaOw_w
 depot-pack:
   kid: pot-depot-1
   alg: demo-aes-gcm
-  ct: PLACEHOLDER
+  ct: 7Yij5sABxkNoVskB1Q2jL-GnejPpMzgrsBg9GAdfbtEyR6ZxQOOHJZ-yOja9vm4xaNh1Ao88KCxiPcN8cdiRv9x9WIsitsBia2v-HJ-05O5AgjmTMUIG9AYRVn8zcKeqZPyJHTuXp58
 ---

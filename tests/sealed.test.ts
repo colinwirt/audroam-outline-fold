@@ -22,10 +22,13 @@ const cafeMd = readFileSync(
 const fixtures = JSON.parse(
   readFileSync(join(__dirname, '../scripts/demo-plaintexts.json'), 'utf8'),
 ) as {
-  passphrase: string;
   payloads: { id: string; plaintext: string }[];
-  remoteStub: { id: string; uri: string; kid: string };
 };
+const demoPassword = (
+  JSON.parse(
+    readFileSync(join(__dirname, '../examples/demo-values.json'), 'utf8'),
+  ) as { password: string }
+).password;
 
 function findById(nodes: OutlineNode[], id: string): OutlineNode | undefined {
   for (const n of nodes) {
@@ -191,25 +194,24 @@ describe('cafe fixture (lean + trailer)', () => {
     expect(body).not.toMatch(/<enc:/);
   });
 
-  it('each inline sealed id opens with demo passphrase', async () => {
-    expect(fixtures.passphrase).toBe(DEMO_PASSPHRASE);
+  it('each inline sealed id opens with the demo password', async () => {
     const doc = parse(cafeMd);
     for (const p of fixtures.payloads) {
       const node = findById(doc.nodes, p.id);
       expect(node, p.id).toBeTruthy();
       expect(hasSealed(node!), p.id).toBe(true);
       expect(isRemoteSealed(node!), p.id).toBe(false);
-      expect(await demoOpen(node!.sealed!, DEMO_PASSPHRASE)).toBe(p.plaintext);
+      expect(await demoOpen(node!.sealed!, demoPassword)).toBe(p.plaintext);
     }
   });
 
-  it('remote stub parses uri only (no live fetch)', () => {
+  it('has no remote-only payloads (every sealed row opens offline)', () => {
     const doc = parse(cafeMd);
-    const node = findById(doc.nodes, fixtures.remoteStub.id);
-    expect(node).toBeTruthy();
-    expect(isRemoteSealed(node!)).toBe(true);
-    expect(node!.sealed?.uri).toBe(fixtures.remoteStub.uri);
-    expect(node!.sealed?.ciphertext).toBeUndefined();
+    const walk = (nodes: OutlineNode[]): OutlineNode[] =>
+      nodes.flatMap((n) => [n, ...walk(n.children ?? [])]);
+    const sealed = walk(doc.nodes).filter((n) => hasSealed(n));
+    expect(sealed.length).toBe(fixtures.payloads.length);
+    for (const n of sealed) expect(isRemoteSealed(n), n.id).toBe(false);
   });
 
   it('serialize round-trip keeps trailer, lean titles', () => {

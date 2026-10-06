@@ -149,7 +149,7 @@ function findTitle(d, id) {
   };
   return walk(d.nodes);
 }
-for (const id of ['howto', 'ism', 'e8']) {
+for (const id of ['relate', 'ism', 'e8']) {
   const label = shortLabel(findTitle(doc, id));
   const base = pillSize(label);
   const withFold = pillSize(label, { reserveFold: true });
@@ -223,15 +223,15 @@ function walkParents(nodes) {
 walkParents(doc.nodes);
 assert(siblingGroupsChecked >= 2, 'expected multiple sibling groups checked for M13');
 
-// e8 kids (variable widths) share one left; howto kids share another — may differ
+// e8 kids (variable widths) share one left; relate kids share another — may differ
 const e8Left = leftEdge(expanded, doc, e8Kids[0]);
-const howtoKids = childIds(doc, 'howto').filter((id) => expanded.nodes[id]);
-assert(howtoKids.length >= 2, 'howto should have kids');
-const howtoLeft = leftEdge(expanded, doc, howtoKids[0]);
+const relateKids = childIds(doc, 'relate').filter((id) => expanded.nodes[id]);
+assert(relateKids.length >= 2, 'relate should have kids');
+const relateLeft = leftEdge(expanded, doc, relateKids[0]);
 // Both groups are depth-2 under different L1 parents with different widths, so
 // kidLeft = parentLeft + parentW + gapX can differ — that is correct M13.
 assert(
-  Number.isFinite(e8Left) && Number.isFinite(howtoLeft),
+  Number.isFinite(e8Left) && Number.isFinite(relateLeft),
   'sibling group lefts computed',
 );
 
@@ -244,5 +244,5 @@ console.log('smoke-autopack OK', {
   foldSlot: FOLD_SLOT,
   siblingGroupsChecked,
   e8Left,
-  howtoLeft,
+  relateLeft,
 });

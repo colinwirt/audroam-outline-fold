@@ -1,17 +1,12 @@
 ---
 collapsedMarker: "(+)"
 ---
-- 🇦🇺 Australian Government cyber · ISM / Essential Eight / PSPF-shaped study map · demo <id:root>
-  - ⚠️ FICTION / STUDY ONLY · public framework names · not an ISM assessment · not IRAP · not a PSPF attestation <id:banner>
-  - How to use <id:howto>
-    - Cleartext = framework pillars + maturity / policy theme captions <id:howto-clear>
-    - No live agency gaps · no PROTECTED marking content · no real system classifications <id:howto-no>
-    - Sealed later (optional) = evidence / IRAP working papers — not in this fixture <id:howto-seal>
-  - ACSC ISM · Information Security Manual (pointer map) <id:ism>
-    - Principles · guidelines · controls — catalogue shape (study) <id:ism-shape>
-    - Themes (high level) · governance · physical · personnel · ICT · cyber security principles <id:ism-themes>
+- 🇦🇺 Australian Government cyber · ISM · Essential Eight · PSPF · study map <id:root>
+  - ACSC ISM · Information Security Manual <id:ism>
+    - Principles · guidelines · controls <id:ism-shape>
+    - Themes · governance · physical · personnel · ICT · cyber security principles <id:ism-themes>
     - Cue: ISM is a control catalogue — not a substitute for risk-based scoping <id:ism-cue>
-    - Study note: deeper control text lives in the published ISM — link out; don’t paste classified derivations <id:ism-link>
+    - Full control text is in the published ISM · read it there <id:ism-link>
   - ASD Essential Eight · maturity themes <id:e8>
     - Application control <id:e8-1>
     - Patch applications <id:e8-2>
@@ -21,19 +16,19 @@ collapsedMarker: "(+)"
     - Patch operating systems <id:e8-6>
     - Multi-factor authentication <id:e8-7>
     - Regular backups <id:e8-8>
-    - Maturity levels · 0–3 (labels only · no live self-score) <id:e8-ml>
+    - Maturity levels 0–3 <id:e8-ml>
     - Cue: which two patch themes pair with restrict-admin and MFA as a starter set? <id:e8-cue>
-  - PSPF · Protective Security Policy Framework (shaped) <id:pspf>
-    - Governance · security planning · risk · accountability (theme) <id:pspf-gov>
-    - Personnel security · clearances · ongoing suitability (theme) <id:pspf-per>
-    - Information security · classify · handle · share · dispose (theme) <id:pspf-info>
-    - Physical security · facilities · zones · access (theme) <id:pspf-phys>
+  - PSPF · Protective Security Policy Framework <id:pspf>
+    - Governance · security planning · risk · accountability <id:pspf-gov>
+    - Personnel security · clearances · ongoing suitability <id:pspf-per>
+    - Information security · classify · handle · share · dispose <id:pspf-info>
+    - Physical security · facilities · zones · access <id:pspf-phys>
     - Cue: PSPF is whole-of-government protective security — ICT is one slice <id:pspf-cue>
-  - How the three relate (tutor map) <id:relate>
-    - E8 · prioritized mitigation strategies for cyber intrusions <id:rel-e8>
+  - How the three relate <id:relate>
+    - E8 · prioritised mitigation strategies for cyber intrusions <id:rel-e8>
     - ISM · detailed technical / procedural controls to draw from <id:rel-ism>
     - PSPF · policy framework for protective security outcomes across domains <id:rel-pspf>
-    - Optional companions · Privacy Act / APPs · SOCI (caption only if scoped) <id:rel-opt>
-  - Study hygiene <id:hyg>
-    - Do not imply an entity is IRAP-assessed · ISM-compliant · or SOCI-regulated unless separately true <id:hyg-1>
-    - Framework names + themes in the clear · evidence / findings locked later <id:hyg-2>
+    - Related · Privacy Act / APPs · SOCI Act <id:rel-opt>
+  - Exam traps <id:hyg>
+    - IRAP assessed ≠ ISM compliant ≠ SOCI regulated · three different claims <id:hyg-1>
+    - E8 maturity is per strategy · not one overall score <id:hyg-2>

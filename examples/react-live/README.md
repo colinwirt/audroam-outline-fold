@@ -29,7 +29,7 @@ npm --prefix examples/react-live run dev
 
 Production build of the demo: `npm run demo:react:build` (output under `examples/react-live/dist/`).
 
-Seed content: `../outline-demo.md` (cafe fiction). Unlock/Decrypt buttons are stubs.
+Seed content: `../outline-demo.md`. Unlock asks for the password, prefilled with the demo password from `../demo-values.json`.
 
 ## Map FLIP (host wiring)
 

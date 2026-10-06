@@ -26,7 +26,9 @@ export {
 export {
   tryUnlock,
   findNode,
-  isPlaceholderSealed,
+  loadDemoPassword,
+  listSealed,
+  openAll,
   injectReveals,
   escHtml,
-} from './unlockStub.js';
+} from './unlock.js';

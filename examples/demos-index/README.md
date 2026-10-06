@@ -6,4 +6,4 @@ Outline-fold index of all demo boards (emoji shortLabels + markdown links into t
 - Viewer: [`../viewer/`](../viewer/)?doc=../demos-index/demos-index.md
 - `index.html` redirects here (stable Pages URL).
 
-Field / asset maps (streetlamps · potholes) are the transport-style boards. Fiction / study banner stays in the markdown.
+Every example as one map, with links into the shared viewer.

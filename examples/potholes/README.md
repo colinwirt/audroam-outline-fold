@@ -6,6 +6,6 @@ Pages demo for `@audroam/outline-fold`.
 - Viewer: shared [`../viewer/`](../viewer/)?doc=../potholes/potholes.md
 - Old `index.html` redirects here (stable Pages URL).
 
-Sealed: PLACEHOLDER stub (unlock N/A until demo:seal).
+Locked rows are real demo ciphertext. They open with the demo password from [`../demo-values.json`](../demo-values.json) (shown next to **Unlock** in the viewer). Plaintexts live in `scripts/demo-plaintexts.json`; `npm run demo:seal` re-seals them.
 
-Fiction / study banners stay in the markdown. Do not invent secrets.
+All names, places and numbers are made up.

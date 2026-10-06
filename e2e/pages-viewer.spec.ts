@@ -97,3 +97,24 @@ test.describe('Pages viewer Map keyboard focus (0.2.16 gate)', () => {
     if (sha) await expect(meta).toContainText(sha);
   });
 });
+
+test.describe('Pages viewer demo unlock', () => {
+  test('shows the demo password and Unlock opens every locked row', async ({ page }) => {
+    await page.goto('examples/viewer/?doc=../student-study/student-study.md');
+    const bar = page.locator('#demoUnlock');
+    await expect(bar).toBeVisible();
+    await expect(bar).toContainText('Demo password: 123');
+    await page.locator('#btnUnlockAll').click();
+    const reveals = page.locator('#outlineHost .of-reveal');
+    await expect(reveals).toHaveCount(3);
+    await expect(page.locator('#outlineHost .of-node[data-id="assessment-pack"] .of-reveal')).toHaveText(
+      'Bio quiz access code BQ-7731 · opens Mon 8:55',
+    );
+  });
+
+  test('no Unlock control on an outline without locked rows', async ({ page }) => {
+    await page.goto('examples/viewer/?doc=../aust-gov-cyber/aust-gov-cyber.md');
+    await expect(page.locator('#outlineHost .of-node[data-id="root"]')).toHaveCount(1);
+    await expect(page.locator('#demoUnlock')).toBeHidden();
+  });
+});

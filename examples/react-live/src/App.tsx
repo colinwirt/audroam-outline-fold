@@ -16,7 +16,6 @@ import {
   hasSealed,
   isRemoteSealed,
   demoOpen,
-  DEMO_PASSPHRASE,
   validateDocument,
   createMapView,
   seedColdStartFold,
@@ -36,6 +35,8 @@ import {
   type MapResumeState,
 } from '@audroam/outline-fold';
 import seedMd from '../../outline-demo.md?raw';
+// Demo values provider: the demo password lives beside the examples, not in the outline text.
+import demoValues from '../../demo-values.json';
 import {
   type DocLibrary,
   downloadActiveDoc,
@@ -490,69 +491,19 @@ export default function App() {
       const current = docRef.current;
       if (!current) return;
       const node = findNode(current.nodes, id);
-      if (!node || !hasSealed(node)) {
-        window.alert(
-          `No sealed payload on “${id}”. Host MFA/crypto is out of this package.`,
-        );
-        return;
-      }
+      if (!node || !hasSealed(node)) return;
       if (isRemoteSealed(node)) {
-        window.alert(
-          `Remote sealed blob (kid=${node.sealed?.kid}).\nURI: ${node.sealed?.uri}\n\nDemo does not fetch — host would fetch after key release.`,
-        );
+        window.alert(`Stored remotely: ${node.sealed?.uri}`);
         return;
       }
-      const source = window.prompt(
-        [
-          'Key source for cafe demo:',
-          '1 = browser session (sample passphrase)',
-          '2 = paste from password manager',
-          '3 = pageant / OS agent (stub)',
-          '4 = server after MFA (stub → sample key)',
-          '',
-          'Enter 1–4:',
-        ].join('\n'),
-        '1',
-      );
-      if (source == null) return;
-      let pass: string | null = null;
-      switch (source.trim()) {
-        case '1':
-          pass = window.prompt(
-            `Session passphrase (hint: ${DEMO_PASSPHRASE})`,
-            DEMO_PASSPHRASE,
-          );
-          break;
-        case '2':
-          pass = window.prompt(
-            'Paste passphrase from password manager (demo field):',
-            '',
-          );
-          break;
-        case '3':
-          window.alert(
-            'Pageant / OS agent is not wired in this browser demo. Use 1 or 2, or see README.',
-          );
-          return;
-        case '4':
-          window.alert(
-            'Stub: MFA OK → host would release DEK. Demo falls through to sample passphrase.',
-          );
-          pass = DEMO_PASSPHRASE;
-          break;
-        default:
-          window.alert('Unknown key source — use 1–4.');
-          return;
-      }
+      const pass = window.prompt('Password', demoValues.password ?? '');
       if (pass == null) return;
       try {
         const plaintext = await demoOpen(node.sealed!, pass);
         setRevealed((r) => ({ ...r, [id]: plaintext }));
         if (isCollapsed(current, id)) onToggleFold(id);
-      } catch (err) {
-        window.alert(
-          err instanceof Error ? err.message : 'Decrypt failed (wrong key?)',
-        );
+      } catch {
+        window.alert('Wrong password');
       }
     },
     [onToggleFold],
@@ -601,17 +552,12 @@ export default function App() {
         panel = document.createElement('div');
         panel.className = 'of-reveal';
         panel.setAttribute('role', 'region');
-        panel.setAttribute('aria-label', 'Session reveal');
+        panel.setAttribute('aria-label', 'Unlocked');
         const row = li.querySelector(':scope > .of-row');
         if (row) row.insertAdjacentElement('afterend', panel);
         else li.prepend(panel);
       }
-      panel.innerHTML =
-        '<span class="of-reveal-label">Session reveal (demo) · not written to editor</span>' +
-        plaintext
-          .replace(/&/g, '&amp;')
-          .replace(/</g, '&lt;')
-          .replace(/>/g, '&gt;');
+      panel.textContent = plaintext;
     }
   }, [revealed, html]);
 
