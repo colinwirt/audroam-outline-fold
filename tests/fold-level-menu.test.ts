@@ -6,6 +6,7 @@ import {
   currentWholeMapLevel,
   foldLevelPicker,
   levelConfirmLabel,
+  levelContextAction,
   levelHoldAt,
   levelHoldCancel,
   levelHoldMoved,
@@ -83,6 +84,56 @@ describe('hold timing and slop (L4)', () => {
     expect(levelHoldRelease(open)).toBe('consume');
     expect(levelHoldMoved(open, 300, 300).phase).toBe('open');
     expect(levelHoldCancel(open).phase).toBe('open');
+  });
+});
+
+describe('right-click opens it from the fold handle only (L9 amended, node menu M1)', () => {
+  const at = (over: Partial<Parameters<typeof levelContextAction>[0]> = {}) =>
+    levelContextAction({
+      inMenu: false,
+      onHandle: false,
+      foldable: false,
+      menuOpen: false,
+      holding: false,
+      pointerType: 'mouse',
+      ...over,
+    });
+
+  it('a mouse right-click on a foldable handle opens it', () => {
+    expect(at({ onHandle: true, foldable: true })).toBe('open');
+    // Engines without pointerType on contextmenu count as a mouse.
+    expect(at({ onHandle: true, foldable: true, pointerType: '' })).toBe('open');
+  });
+
+  it('a right-click elsewhere on the node, the label or the canvas is left to the host', () => {
+    expect(at()).toBe('pass');
+    expect(at({ pointerType: 'touch' })).toBe('pass');
+    expect(at({ pointerType: 'pen' })).toBe('pass');
+  });
+
+  it('a right-click elsewhere closes an open menu and still goes to the host', () => {
+    expect(at({ menuOpen: true })).toBe('close');
+    expect(at({ menuOpen: true, holding: true })).toBe('close');
+  });
+
+  it('touch and pen long-press on a handle: the hold opens it, the platform menu is swallowed', () => {
+    expect(at({ onHandle: true, foldable: true, pointerType: 'touch' })).toBe('own');
+    expect(at({ onHandle: true, foldable: true, pointerType: 'pen' })).toBe('own');
+    expect(at({ onHandle: true, foldable: true, holding: true })).toBe('own');
+    expect(at({ onHandle: true, foldable: true, menuOpen: true, pointerType: 'touch' })).toBe('own');
+  });
+
+  it('inside the open menu the package keeps the event', () => {
+    expect(at({ inMenu: true, menuOpen: true })).toBe('own');
+  });
+
+  it('inside the link or width popover or the map controls the event is left alone', () => {
+    expect(at({ inOverlay: true })).toBe('pass');
+    expect(at({ inOverlay: true, menuOpen: true })).toBe('pass');
+  });
+
+  it('a handle without a picker opens nothing and is left to the host', () => {
+    expect(at({ onHandle: true, foldable: false })).toBe('pass');
   });
 });
 
@@ -238,9 +289,51 @@ describe('mapView wiring (source checks)', () => {
     expect(src).toContain('labelTextHold = true;');
   });
 
-  it('right-click, ContextMenu and Shift+F10 open the menu; treeitems say aria-haspopup', () => {
+  it('contextmenu: capture phase on the host, handle-only hit, the kept event never reaches the host', () => {
+    const start = src.indexOf("host.addEventListener('contextmenu'");
+    const body = src.slice(start, src.indexOf("window.addEventListener('blur'", start));
+    expect(body).toContain('}, { capture: true, signal });');
+    expect(body).toContain('levelContextAction(');
+    // The hit is the fold handle; the node is only found through it.
+    expect(body).toContain("t?.closest?.('.map-fold-hit, .map-fold-indicator')");
+    expect(body).toContain("handle?.closest?.('.map-node')");
+    expect(body).not.toContain("t?.closest?.('.map-node')");
+    // Pass and close return before preventDefault, so the host still sees them.
+    const pass = body.indexOf("if (act === 'pass') return;");
+    const close = body.indexOf('closeMenus();');
+    const pd = body.indexOf('e.preventDefault();');
+    expect(pass).toBeGreaterThan(0);
+    expect(close).toBeGreaterThan(pass);
+    expect(pd).toBeGreaterThan(close);
+    expect(body).toContain('e.stopPropagation();');
+    expect(body).toContain('e.stopImmediatePropagation();');
+    expect(body.match(/openLevelMenu\(/g)?.length).toBe(1);
+  });
+
+  it('a host can open the picker for a node and close every package menu', () => {
+    expect(src).toContain('openLevelMenu: (id?: string) => boolean;');
+    expect(src).toContain('closeLevelMenu: () => closeLevelMenu(false),');
+    expect(src).toContain('closeMenus: () => void;');
+    const close = src.slice(src.indexOf('function closeMenus('), src.indexOf('function nodeEl('));
+    expect(close).toContain('closeLevelMenu(false)');
+    expect(close).toContain('dismissLinkPop(false)');
+    expect(close).toContain('dismissWidthPopHook?.()');
+    expect(src).toContain('dismissWidthPopHook = dismissWidthPop;');
+  });
+
+  it('one menu at a time: opening the picker closes the link and width popovers', () => {
+    const open = src.slice(src.indexOf('function openLevelMenu('), src.indexOf('function pickLevelItem('));
+    expect(open).toContain('dismissLinkPop(false)');
+    expect(open).toContain('dismissWidthPopHook?.()');
+    const cm = src.slice(src.indexOf("host.addEventListener('contextmenu'"));
+    expect(cm.slice(0, cm.indexOf("window.addEventListener('blur'"))).toContain('menuOpen: packageMenuOpen(),');
+  });
+
+  it('ContextMenu and Shift+F10 are left to the host (L9 amended); treeitems say aria-haspopup', () => {
     expect(src).toContain("host.addEventListener('contextmenu'");
-    expect(src).toContain("e.key === 'ContextMenu' || (e.key === 'F10' && e.shiftKey)");
+    expect(src).toContain("if (e.key === 'ContextMenu' || (e.key === 'F10' && e.shiftKey)) return;");
+    const kb = src.slice(src.indexOf('function bindKeyboard('));
+    expect(kb.slice(0, kb.indexOf('host.addEventListener(\'keydown\', onKey)'))).not.toMatch(/(?<!map\.)openLevelMenu\(/);
     expect(src).toContain('aria-haspopup="menu"');
   });
 

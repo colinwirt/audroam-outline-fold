@@ -202,6 +202,7 @@ export {
   levelHoldAt,
   levelHoldCancel,
   levelHoldRelease,
+  levelContextAction,
   placeLevelMenu,
   levelMenuKeyAction,
   levelMenuInitialIndex,
@@ -215,6 +216,7 @@ export {
   WHOLE_MAP_LEVELS,
   type LevelHold,
   type LevelHoldPhase,
+  type LevelContextAction,
   type LevelMenuKeyAction,
   type WholeMapLevel,
 } from './foldLevelMenu.js';

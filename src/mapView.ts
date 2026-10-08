@@ -135,6 +135,7 @@ import {
   levelHoldCancel,
   levelHoldMoved,
   levelKeepVisibleShift,
+  levelContextAction,
   levelMenuInitialIndex,
   levelMenuKeyAction,
   levelPickNeedsConfirm,
@@ -331,12 +332,20 @@ export interface MapViewHandle {
   /** Gentle ensure edit node / caret region visible (host may call while typing). */
   ensureEditVisible: () => void;
   /**
-   * Open the fold-to-level menu for a node (default: the selected node), as
-   * right-click / ContextMenu / Shift+F10 do. False when it has no children.
+   * Open the fold-to-level menu for a node (default: the selected node),
+   * anchored at its fold handle, as a right-click or hold on the handle does.
+   * For a host node menu's `Levels…` item. Closes the package's other menus
+   * first. False when the node has no children.
    */
   openLevelMenu: (id?: string) => boolean;
   /** Close the fold-to-level menu if it is open. */
   closeLevelMenu: () => void;
+  /**
+   * Close every menu the package has open: the level picker, the link popover
+   * and the width popover. A host calls it before opening its own menu, so
+   * only one menu is ever open.
+   */
+  closeMenus: () => void;
   /** Apply a level under a node, as a menu pick does (anchors the handle, announces). */
   applyFoldLevel: (id: string, level: FoldLevelKey) => void;
   /** Every root to a level (toolbar Levels, L8). */
@@ -1871,6 +1880,20 @@ export function createMapView(
   const paintListeners = new Set<() => void>();
   /** bindGestures installs this so a menu tap's trailing click is swallowed. */
   let armClickSwallow: ((x: number, y: number) => void) | null = null;
+  /** bindGestures installs this so closeMenus() can drop the width popover. */
+  let dismissWidthPopHook: (() => void) | null = null;
+
+  /** Any package menu open: level picker, link popover, width popover. */
+  function packageMenuOpen(): boolean {
+    return !!levelMenu || !!linkPop || !!host.querySelector('.map-width-pop');
+  }
+
+  /** One menu at a time (node menu M1): close every package menu. */
+  function closeMenus(): void {
+    closeLevelMenu(false);
+    dismissLinkPop(false);
+    dismissWidthPopHook?.();
+  }
 
   function nodeEl(id: string): Element | null {
     return host.querySelector(`.map-node[data-id="${CSS.escape(id)}"]`);
@@ -2033,6 +2056,9 @@ export function createMapView(
     const doc = getDoc();
     const picker = foldLevelPicker(doc, id);
     if (!picker || !nodeEl(id)) return false;
+    // One menu at a time: the link and width popovers close first.
+    dismissLinkPop(false);
+    dismissWidthPopHook?.();
     if (getFocusId() !== id) {
       setFocusId(id);
       userCamGesture = true;
@@ -3056,6 +3082,7 @@ export function createMapView(
       widthPopAbort = null;
       host.querySelector('.map-width-pop')?.remove();
     }
+    dismissWidthPopHook = dismissWidthPop;
 
     /**
      * Above-left of the corner the finger released on, so the finger does not
@@ -4065,37 +4092,39 @@ export function createMapView(
       if (releasing) return;
     }, { signal });
 
-    // Right-click on a handle or a pill opens the level menu (L9). A touch
-    // long-press is the hold above, so the platform menu is suppressed there.
+    // Right-click on a fold handle opens the level menu (L9); nowhere else
+    // does (Colin, 2026-10-08). A touch or pen long-press on a handle is the
+    // hold above, so only its platform menu is swallowed. Capture phase on the
+    // host: it runs before any bubble listener a host put on the same element,
+    // and an event the package keeps never reaches the host's own node menu.
+    // A right-click elsewhere (pill, label, canvas, ContextMenu / Shift+F10)
+    // is left untouched for the host and closes any open package menu.
     host.addEventListener('contextmenu', (e) => {
       if (!isActive()) return;
       const t = e.target as Element | null;
-      if (t?.closest?.('.map-level-menu')) {
-        e.preventDefault();
-        return;
-      }
-      const g = t?.closest?.('.map-node');
-      const onHandle = !!t?.closest?.('.map-fold-hit, .map-fold-indicator');
+      const handle = t?.closest?.('.map-fold-hit, .map-fold-indicator') ?? null;
+      const g = handle?.closest?.('.map-node') ?? null;
+      const id = g?.getAttribute('data-id') || '';
       const pt = (e as PointerEvent).pointerType || '';
-      if (levelHold || levelMenu) {
-        if (onHandle || levelMenu) e.preventDefault();
+      const act = levelContextAction({
+        inMenu: !!t?.closest?.('.map-level-menu'),
+        inOverlay: !!t?.closest?.('.map-link-pop, .map-width-pop, .of-map-controls'),
+        onHandle: !!g,
+        foldable: !!id && !!foldLevelPicker(getDoc(), id),
+        menuOpen: packageMenuOpen(),
+        holding: !!levelHold,
+        pointerType: pt,
+      });
+      if (act === 'pass') return;
+      if (act === 'close') {
+        closeMenus();
         return;
       }
-      if (!g) return;
-      if (pt === 'touch' || pt === 'pen') {
-        if (onHandle) e.preventDefault();
-        return;
-      }
-      if (!onHandle && t?.closest?.('.map-label')) {
-        // Label with a text selection: keep the browser menu (Copy).
-        const sel = window.getSelection?.();
-        if (sel && !sel.isCollapsed && mapNodeKeepsTextSelection(g, sel)) return;
-      }
-      const id = g.getAttribute('data-id') || '';
-      if (!id || !foldLevelPicker(getDoc(), id)) return;
       e.preventDefault();
-      openLevelMenu(id, { fine: !coarsePointer() || pt === 'mouse' });
-    }, { signal });
+      e.stopPropagation();
+      e.stopImmediatePropagation();
+      if (act === 'open') openLevelMenu(id, { fine: !coarsePointer() || pt === 'mouse' });
+    }, { capture: true, signal });
     window.addEventListener('blur', () => resetPointers(), { signal });
     document.addEventListener('visibilitychange', () => {
       if (document.hidden) resetPointers();
@@ -4195,14 +4224,11 @@ export function createMapView(
       const n = focusId ? findNode(doc.nodes, focusId) : null;
       const selected = !!(n && n.id);
 
-      if (e.key === 'ContextMenu' || (e.key === 'F10' && e.shiftKey)) {
-        // L9: the level menu for the selected node.
-        if (selected && hasKids(n!)) {
-          e.preventDefault();
-          openLevelMenu(n!.id!, { fine: !coarsePointer() });
-        }
-        return;
-      }
+      // ContextMenu / Shift+F10 belong to the host's node menu (L9 amended,
+      // node menu M1, 2026-10-08): no preventDefault, so the platform
+      // contextmenu event reaches the host. A host reaches the level picker
+      // with map.openLevelMenu(id) (its `Levels…` item).
+      if (e.key === 'ContextMenu' || (e.key === 'F10' && e.shiftKey)) return;
       if (e.shiftKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight' || e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
         e.preventDefault();
         stopMotion();
@@ -4303,6 +4329,7 @@ export function createMapView(
       return target ? openLevelMenu(target) : false;
     },
     closeLevelMenu: () => closeLevelMenu(false),
+    closeMenus,
     applyFoldLevel,
     setWholeMapLevel,
     currentWholeMapLevel: () => currentWholeMapLevel(getDoc()),

@@ -145,3 +145,42 @@ test.describe('fold to level: touch', () => {
     expect(await page.evaluate(() => window.getSelection()?.toString() ?? '')).toContain('Programs');
   });
 });
+
+test.describe('fold to level: touch long-press goes to the handle or the host (D4 amended, node menu M1)', () => {
+  /** What a touch long-press dispatches: a contextmenu PointerEvent with pointerType touch. */
+  async function longPressMenu(page: Page, sel: string, dx = 0) {
+    return page.evaluate(
+      ({ sel, dx }) => {
+        const w = window as any;
+        const seen: string[] = [];
+        const host = document.getElementById('mapHost')!;
+        const rec = (e: Event) => seen.push((e.target as Element).closest('.map-node')?.getAttribute('data-id') ?? '');
+        host.addEventListener('contextmenu', rec);
+        const el = document.querySelector(sel)!;
+        const r = el.getBoundingClientRect();
+        const ev = new PointerEvent('contextmenu', {
+          bubbles: true,
+          cancelable: true,
+          pointerType: 'touch',
+          clientX: r.left + 6 + dx,
+          clientY: r.top + r.height / 2,
+        });
+        el.dispatchEvent(ev);
+        host.removeEventListener('contextmenu', rec);
+        w.__lastSeen = seen;
+        return { prevented: ev.defaultPrevented, host: seen };
+      },
+      { sel, dx },
+    );
+  }
+
+  test('a long-press on the pill chrome reaches the host; on the handle the package keeps it', async ({ page }) => {
+    await open(page);
+    const pill = await longPressMenu(page, '.map-node[data-id="branches"] .map-pill');
+    expect(pill).toEqual({ prevented: false, host: ['branches'] });
+    await expect(page.locator(MENU)).toHaveCount(0);
+    const onHandle = await longPressMenu(page, handle('branches'));
+    // The hold opens the picker; its long-press menu is swallowed and the host never sees it.
+    expect(onHandle).toEqual({ prevented: true, host: [] });
+  });
+});

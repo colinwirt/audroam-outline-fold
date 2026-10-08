@@ -435,6 +435,13 @@ async function boot() {
   map.ensurePositions();
   map.bindGestures();
   map.bindKeyboard({ panel, modeButton: btnMap });
+  // This viewer has no node menu of its own, so ContextMenu / Shift+F10 open
+  // the level picker for the selected node (the package leaves the key to hosts).
+  mapHost.addEventListener('keydown', (e) => {
+    if (mode !== 'map' || !(e.key === 'ContextMenu' || (e.key === 'F10' && e.shiftKey))) return;
+    if (e.target instanceof Element && e.target.closest('.map-level-menu')) return;
+    if (map.openLevelMenu()) e.preventDefault();
+  });
   // Whole-map Levels 1 2 3 All (fold to level P3), after Fit.
   mountMapLevels(map, mapTools);
   if (resume?.camera && typeof resume.camera.k === 'number') {

@@ -1,9 +1,11 @@
 import { test, expect, type Page } from '@playwright/test';
 
 /**
- * Fold to level, desktop (Design UX 2026-10-06, L1–L16): mouse hold on a
- * fold handle, right-click, ContextMenu / Shift+F10, keyboard in the menu,
- * the handle anchor, the live region, the confirm step and the toolbar.
+ * Fold to level, desktop (Design UX 2026-10-06, L1–L16; L9 amended
+ * 2026-10-08 by the node menu M1): mouse hold or right-click on a fold handle
+ * only, map.openLevelMenu (a host's Levels…), keyboard in the menu, the
+ * handle anchor, the live region, the confirm step and the toolbar.
+ * ContextMenu / Shift+F10 and a right-click on the pill are the host's.
  * Host: examples/e2e-touch with levels.md.
  */
 
@@ -127,11 +129,15 @@ test.describe('fold to level: mouse and keyboard', () => {
     expect(await page.evaluate(() => (window as any).__doc().nodes[0].children[0].title)).toBe('Branches');
   });
 
-  test('ContextMenu and Shift+F10 open it for the selected node; arrows, Home/End, Enter apply; digits apply', async ({ page }) => {
+  test('Shift+F10 is left to the host; map.openLevelMenu opens it; arrows, Home/End, Enter apply; digits apply', async ({ page }) => {
     await open(page);
     await page.evaluate(() => (window as any).__setFocus('root'));
     await page.locator('#mapHost').focus();
     await page.keyboard.press('Shift+F10');
+    await page.waitForTimeout(150);
+    await expect(page.locator(MENU)).toHaveCount(0);
+    // A host's Levels… item: the picker for the node, anchored at its handle.
+    expect(await page.evaluate(() => (window as any).__map.openLevelMenu('root'))).toBe(true);
     await expect(page.locator(MENU)).toHaveCount(1);
     await expect(page.locator(MENU)).toHaveAttribute('aria-label', 'Fold Hillcrest library network to level');
     await page.keyboard.press('Home');
@@ -153,6 +159,9 @@ test.describe('fold to level: mouse and keyboard', () => {
     expect(await page.evaluate(() => document.activeElement?.id)).toBe('mapHost');
 
     await page.keyboard.press('ContextMenu');
+    await page.waitForTimeout(150);
+    await expect(page.locator(MENU)).toHaveCount(0);
+    expect(await page.evaluate(() => (window as any).__map.openLevelMenu())).toBe(true);
     await expect(page.locator(MENU)).toHaveCount(1);
     expect(await checked(page)).toBe('2');
     await page.keyboard.press('1');
@@ -202,5 +211,94 @@ test.describe('fold to level: mouse and keyboard', () => {
     await page.locator(`${MENU} [data-level="confirm"]`).click();
     await expect(page.locator(MENU)).toHaveCount(0);
     await expect.poll(async () => (await visible(page)).length, { timeout: 15_000 }).toBe(1641);
+  });
+});
+
+/** Records every contextmenu that reaches a host-style bubble listener on #mapHost. */
+async function hostRecorder(page: Page) {
+  await page.evaluate(() => {
+    const w = window as any;
+    w.__hostMenus = [];
+    document.getElementById('mapHost')!.addEventListener('contextmenu', (e) => {
+      const t = e.target as Element;
+      w.__hostMenus.push({
+        node: t.closest('.map-node')?.getAttribute('data-id') ?? '',
+        prevented: e.defaultPrevented,
+        levelOpen: !!document.querySelector('.map-level-menu'),
+      });
+      // A host opens its own node menu here: no browser menu either.
+      e.preventDefault();
+    });
+  });
+}
+const hostMenus = (page: Page) => page.evaluate(() => (window as any).__hostMenus as { node: string; prevented: boolean; levelOpen: boolean }[]);
+
+/** A point on the pill well left of the handle and away from the caption text. */
+async function pillPoint(page: Page, id: string) {
+  const r = (await page.locator(`.map-node[data-id="${id}"] .map-pill`).boundingBox())!;
+  return { x: r.x + 6, y: r.y + r.height / 2 };
+}
+
+test.describe('fold to level: the handle only, one menu at a time (L9 amended, node menu M1)', () => {
+  test('right-click on the handle opens only the picker; the host never sees the event', async ({ page }) => {
+    await open(page);
+    await hostRecorder(page);
+    await hit(page, 'branches').click({ button: 'right' });
+    await expect(page.locator(MENU)).toHaveCount(1);
+    await expect(page.locator(MENU)).toHaveAttribute('aria-label', 'Fold Branches to level');
+    expect(await hostMenus(page)).toEqual([]);
+    // A right-click inside the picker stays there too.
+    await page.locator(`${MENU} [data-level="1"]`).click({ button: 'right' });
+    await expect(page.locator(MENU)).toHaveCount(1);
+    expect(await hostMenus(page)).toEqual([]);
+  });
+
+  test('right-click on the pill opens no picker and reaches the host untouched', async ({ page }) => {
+    await open(page);
+    await hostRecorder(page);
+    for (const id of ['branches', 'riverside', 'roof']) {
+      const p = await pillPoint(page, id);
+      await page.mouse.click(p.x, p.y, { button: 'right' });
+    }
+    await page.waitForTimeout(150);
+    await expect(page.locator(MENU)).toHaveCount(0);
+    expect(await hostMenus(page)).toEqual([
+      { node: 'branches', prevented: false, levelOpen: false },
+      { node: 'riverside', prevented: false, levelOpen: false },
+      { node: 'roof', prevented: false, levelOpen: false },
+    ]);
+  });
+
+  test('an open picker closes on a right-click elsewhere, before the host sees it', async ({ page }) => {
+    await open(page);
+    await hostRecorder(page);
+    await hit(page, 'branches').click({ button: 'right' });
+    await expect(page.locator(MENU)).toHaveCount(1);
+    const p = await pillPoint(page, 'programs');
+    await page.mouse.click(p.x, p.y, { button: 'right' });
+    await expect(page.locator(MENU)).toHaveCount(0);
+    expect(await hostMenus(page)).toEqual([{ node: 'programs', prevented: false, levelOpen: false }]);
+    // A contextmenu that skips the pointerdown (keyboard, synthetic) closes it too.
+    expect(await page.evaluate(() => (window as any).__map.openLevelMenu('branches'))).toBe(true);
+    await expect(page.locator(MENU)).toHaveCount(1);
+    await page.evaluate(() => {
+      const pill = document.querySelector('.map-node[data-id="fac"] .map-pill')!;
+      pill.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, button: 2 }));
+    });
+    await expect(page.locator(MENU)).toHaveCount(0);
+    expect((await hostMenus(page)).at(-1)).toEqual({ node: 'fac', prevented: false, levelOpen: false });
+  });
+
+  test('map.closeMenus closes the picker; map.openLevelMenu opens it at the handle and not on a leaf', async ({ page }) => {
+    await open(page);
+    expect(await page.evaluate(() => (window as any).__map.openLevelMenu('riverside'))).toBe(true);
+    await expect(page.locator(MENU)).toHaveCount(1);
+    const m = (await page.locator(MENU).boundingBox())!;
+    const h = (await hit(page, 'riverside').boundingBox())!;
+    expect(Math.abs(m.x + m.width / 2 - (h.x + h.width / 2))).toBeLessThanOrEqual(2);
+    await page.evaluate(() => (window as any).__map.closeMenus());
+    await expect(page.locator(MENU)).toHaveCount(0);
+    expect(await page.evaluate(() => (window as any).__map.openLevelMenu('roof'))).toBe(false);
+    await expect(page.locator(MENU)).toHaveCount(0);
   });
 });

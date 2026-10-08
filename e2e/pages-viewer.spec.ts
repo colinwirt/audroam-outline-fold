@@ -305,3 +305,17 @@ test.describe('Map handle hooks, halo, casing and light tokens (0.2.32)', () => 
     expect(light).toEqual({ bg: '#f3f6f9', gold: '#9a7400', glyph: 'rgb(255, 255, 255)' });
   });
 });
+
+test.describe('Pages viewer: Shift+F10 is the host\'s (L9 amended 2026-10-08)', () => {
+  test('the viewer, which has no node menu, opens the level picker itself; Esc closes it', async ({ page }) => {
+    const host = await openMap(page);
+    await clickNode(page, host, 'root');
+    await expectSelected(page, HOST, 'root');
+    await page.keyboard.press('Shift+F10');
+    await expect(page.locator('.map-level-menu')).toHaveCount(1);
+    await page.keyboard.press('Escape');
+    await expect(page.locator('.map-level-menu')).toHaveCount(0);
+    await page.keyboard.press('ContextMenu');
+    await expect(page.locator('.map-level-menu')).toHaveCount(1);
+  });
+});

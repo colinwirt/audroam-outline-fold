@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+### Map: the level picker opens from the fold handle only; one menu at a time (L9 amended, node menu M1)
+- A right-click or hold on the fold handle (±) opens only the level picker. The package calls `preventDefault` and `stopPropagation` (and `stopImmediatePropagation`) on that `contextmenu`, in the capture phase on the map host, so a host's own `contextmenu` listener never sees it. Before, the listener ran in the bubble phase on any `.map-node` and only called `preventDefault`, so a host menu on the same element opened as well: one right-click, two menus.
+- A right-click on the pill, label or canvas, and a touch long-press on the pill, are left untouched for the host (its node menu). The package no longer special-cases a label with a text selection: keeping the browser menu there (Copy) is the host's call, as node menu M1 asks.
+- `ContextMenu` and `Shift+F10` are left to the host too: the package no longer opens the picker for the selected node, and no longer calls `preventDefault` on them.
+- A `contextmenu` anywhere outside the handle and the picker closes every open package menu (picker, link popover, width popover) and still reaches the host. A right-click inside the link or width popover or the map controls is left alone.
+- Opening the picker closes the link and width popovers first.
+- New `map.closeMenus()`: closes the picker, the link popover and the width popover. A host calls it before it opens its own menu. `map.openLevelMenu(id)` (already public) is the route for a host node menu's `Levels…` item: it opens the picker anchored at that node's handle and returns false on a leaf.
+- New export `levelContextAction` (type `LevelContextAction`): the pure decision behind the `contextmenu` listener (`open`, `own`, `close`, `pass`).
+- Viewer example: it has no node menu, so it binds `ContextMenu` / `Shift+F10` itself and opens the picker for the selected node with `map.openLevelMenu()`.
+- Tests: `tests/fold-level-menu.test.ts` (decision table, capture-phase and handle-only wiring, `closeMenus`); `e2e/fold-level.spec.ts` (handle right-click never reaches a host listener, pill right-click reaches it untouched, an open picker closes on a right-click elsewhere, `Shift+F10` / `ContextMenu` open nothing, `openLevelMenu` / `closeMenus`); `e2e/touch-fold-level.spec.ts` (touch long-press `contextmenu` on the pill reaches the host, on the handle it is kept); `e2e/pages-viewer.spec.ts` (the viewer's own `Shift+F10`).
+
 ## 0.2.34 — 2026-10-08
 
 ### Map: #N and thread chips open the link popover

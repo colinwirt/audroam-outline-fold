@@ -2,8 +2,8 @@
  * Fold-to-level menu: gesture, placement, keys and markup (Design UX
  * 2026-10-06, L1, L4–L6, L8–L10, L13, L14). The pure parts (hold timing,
  * placement, key handling, labels, camera keep-visible) are exported for tests;
- * `renderLevelMenu` builds the overlay. `createMapView` wires them to the fold
- * handle, right-click, ContextMenu and Shift+F10.
+ * `renderLevelMenu` builds the overlay. `createMapView` wires them to a hold
+ * or right-click on the fold handle and to `map.openLevelMenu(id)`.
  */
 
 import { isCollapsed, setExpandLevel } from './fold.js';
@@ -93,6 +93,46 @@ export function levelHoldRelease(h: LevelHold): 'toggle' | 'consume' | 'none' {
   if (h.phase === 'open') return 'consume';
   if (h.phase === 'cancelled') return 'none';
   return 'toggle';
+}
+
+/**
+ * What a `contextmenu` event on the map does with the fold-level menu
+ * (Colin, 2026-10-08: the menu opens only from the fold handle itself):
+ * - `open`: a right-click on the fold handle of a node with children opens
+ *   the menu; the event is the package's (preventDefault + stopPropagation);
+ * - `own`: inside the open menu, or on a handle whose hold runs the menu
+ *   (touch and pen long-press, a hold in progress, the menu already open):
+ *   the package keeps the event, so the platform and host menus stay shut;
+ * - `close`: anywhere else while a package menu is open: close it and leave
+ *   the event to the host (its own node menu may open);
+ * - `pass`: anywhere else, or inside the link or width popover or the map
+ *   controls: the event is left untouched for the host.
+ */
+export type LevelContextAction = 'open' | 'own' | 'close' | 'pass';
+
+export function levelContextAction(p: {
+  /** Target is inside `.map-level-menu`. */
+  inMenu: boolean;
+  /** Target is inside another package overlay (link or width popover, map controls). */
+  inOverlay?: boolean;
+  /** Target is inside a fold handle (`.map-fold-hit` / `.map-fold-indicator`) of a node. */
+  onHandle: boolean;
+  /** That node has children, so a picker exists. */
+  foldable: boolean;
+  menuOpen: boolean;
+  holding: boolean;
+  /** `PointerEvent.pointerType` of the contextmenu, `''` when the engine gives none. */
+  pointerType: string;
+}): LevelContextAction {
+  if (p.inMenu) return 'own';
+  if (p.inOverlay) return 'pass';
+  if (p.onHandle && p.foldable) {
+    if (p.holding || p.menuOpen) return 'own';
+    // Touch and pen open it with the hold (L4); the long-press menu is swallowed.
+    if (p.pointerType === 'touch' || p.pointerType === 'pen') return 'own';
+    return 'open';
+  }
+  return p.menuOpen ? 'close' : 'pass';
 }
 
 export interface Rect {
