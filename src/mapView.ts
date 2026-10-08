@@ -62,7 +62,10 @@ import {
   LINE_H,
   PILL_PAD_X,
   lineWidth,
-  noteChipPieces,
+  mapChipPieces,
+  THREAD_CHIP_H,
+  type MapChipPiece,
+  type MapChipSpec,
   PILL_PAD_Y,
   MORE_AFFORDANCE_H,
   DEFAULT_FONT_PX,
@@ -206,6 +209,10 @@ export interface PillSizeOptions {
   widthPx?: number;
   /** `<t:N>` ids drawn after the caption. */
   noteLinks?: string[];
+  /** Thread pill in the chip row after the caption (0.2.34). */
+  thread?: boolean;
+  /** `<r:x>` jump chips after the `#N` chips (0.2.34). */
+  jumps?: { id: string; label: string }[];
 }
 
 export interface PillSize {
@@ -597,6 +604,8 @@ export function pillSize(label: string, opts: PillSizeOptions = {}): PillSize {
     foldSlot: FOLD_SLOT,
     taskLead: TASK_LEAD,
     noteLinks: opts.noteLinks,
+    thread: opts.thread,
+    jumps: opts.jumps,
   });
   return measured;
 }
@@ -625,8 +634,13 @@ function nodePillOpts(
     maxLines,
     bodyExpanded: !!lay?.bodyExpanded,
     fontSize: lay?.fontSize ?? defaults?.fontSize,
-    noteLinks: resolveNoteLinks(n),
+    ...nodeChips(n),
   };
+}
+
+/** Chips after the caption: thread pill, `#N` notes (0.2.34: the thread pill joined the row). */
+function nodeChips(n: OutlineNode): MapChipSpec {
+  return { thread: !!resolveThread(n), noteLinks: resolveNoteLinks(n) };
 }
 
 function connectorPath(x1: number, y1: number, x2: number, y2: number): string {
@@ -1174,6 +1188,7 @@ export function createMapView(
         maxLines: pos.maxLines,
         bodyExpanded: !!pos.bodyExpanded,
         fontSize: resolveFontPx(pos.fontSize, layout.fontSize, doc.frontmatter?.fontSize),
+        ...nodeChips(n),
       });
       const r = pillWorldRect(pos.x, pos.y, size.w, size.h);
       rects.push(r);
@@ -2488,7 +2503,7 @@ export function createMapView(
       cue: boolean;
       task: TaskState | null;
       thread: string | null;
-      noteLinks: string[];
+      chips: MapChipPiece[];
       showMore: boolean;
       showLess: boolean;
       bodyExpanded: boolean;
@@ -2512,11 +2527,11 @@ export function createMapView(
         maxLines: pos.maxLines,
         bodyExpanded: !!pos.bodyExpanded,
         fontSize: resolveFontPx(pos.fontSize, layout.fontSize, doc.frontmatter?.fontSize),
-        noteLinks: resolveNoteLinks(n),
+        ...nodeChips(n),
       });
       const cue = isCue(n);
       const thread = resolveThread(n);
-      const noteLinks = resolveNoteLinks(n);
+      const chips = mapChipPieces(nodeChips(n));
       nodes.push({
         n,
         key,
@@ -2536,7 +2551,7 @@ export function createMapView(
         cue,
         task: taskParsed ?? null,
         thread,
-        noteLinks,
+        chips,
         showMore: size.showMore,
         showLess: size.showLess,
         bodyExpanded: size.bodyExpanded,
@@ -2557,7 +2572,7 @@ export function createMapView(
             maxLines: cpos.maxLines,
             bodyExpanded: !!cpos.bodyExpanded,
             fontSize: resolveFontPx(cpos.fontSize, layout.fontSize, doc.frontmatter?.fontSize),
-            noteLinks: resolveNoteLinks(c),
+            ...nodeChips(c),
           });
           // Starts past the fold handle, not under it.
           edges.push({
@@ -2598,7 +2613,7 @@ export function createMapView(
           cue,
           task,
           thread,
-          noteLinks,
+          chips,
           showMore,
           showLess,
           bodyExpanded,
@@ -2651,28 +2666,34 @@ export function createMapView(
             links.length > 0
               ? globeGlyphSvg(boxRight - 2, y + 8)
               : '';
-          const threadChip = thread
-            ? `<g class="map-thread-hit" data-thread="${esc(thread)}" transform="translate(${textX} ${y + h - (affordance ? affordance + 4 : 6)})" cursor="pointer">
-            <rect x="-36" y="-10" width="72" height="18" rx="9" fill="rgba(201,162,39,0.12)" stroke="#C9A227" stroke-width="1"/>
-            <text text-anchor="middle" y="3" fill="#C9A227" font-size="10">Thread</text>
-          </g>`
-            : '';
           const captionX = task != null ? textLeft : x + PILL_PAD_X;
           const widest = richLines.reduce(
             (max, line) => Math.max(max, lineWidth(line, fontPx)),
             0,
           );
+          // Chip row after the widest line, centred on the caption: thread pill,
+          // `#N` notes. pillSize reserved its width, so it sits inside the node.
           let chipCursor = captionX + widest + 6;
           const notePattern = doc.frontmatter?.noteUri || noteUriFallback;
-          const noteChips = noteChipPieces(noteLinks)
-            .map((piece, pieceIndex) => {
+          let noteIndex = 0;
+          const chipSvg = chips
+            .map((piece) => {
+              const at = chipCursor;
+              chipCursor += piece.w + 8;
+              if (piece.kind === 'thread') {
+                return `<g class="map-thread-hit" data-thread="${esc(thread || '')}" transform="translate(${at} ${textCentreY})" cursor="pointer">
+            <rect x="0" y="-11" width="${piece.w}" height="22" fill="transparent"/>
+            <rect class="map-thread-pill" x="0.5" y="${-THREAD_CHIP_H / 2}" width="${piece.w - 1}" height="${THREAD_CHIP_H}" rx="${THREAD_CHIP_H / 2}"/>
+            <text class="map-thread-label" x="${piece.w / 2}" text-anchor="middle" y="4">${esc(piece.label)}</text>
+          </g>`;
+              }
+              const pieceIndex = noteIndex++;
               const href = noteLinkHref(notePattern, piece.id);
-              const chip = `<g class="map-note-link-hit" data-note-link="${esc(piece.id)}" data-note-index="${pieceIndex}" transform="translate(${chipCursor} ${textCentreY})" cursor="pointer">
+              const chip = `<g class="map-note-link-hit" data-note-link="${esc(piece.id)}" data-note-index="${pieceIndex}" transform="translate(${at} ${textCentreY})" cursor="pointer">
             <title>${href ? esc(href) : `Note ${esc(piece.id)}`}</title>
             <rect x="0" y="-11" width="${piece.w}" height="20" fill="transparent"/>
             <text class="map-note-link" text-anchor="start" y="4">${esc(piece.label)}</text>
           </g>`;
-              chipCursor += piece.w + 8;
               const wrapped = href
                 ? `<a href="${esc(href)}" target="_blank" rel="noopener noreferrer">${chip}</a>`
                 : chip;
@@ -2688,8 +2709,7 @@ export function createMapView(
       ${globe}
       ${multiLineText(lines, captionX, textCentreY, textW, richLines, fontPx)}
       ${moreChrome}
-      ${threadChip}
-      ${noteChips}
+      ${chipSvg}
       ${foldChrome}
       ${taskHit}
       ${foldHit}

@@ -67,11 +67,62 @@ export function noteChipPieces(ids: string[]): NoteChipPiece[] {
 
 /** Width after the caption: gap, chips, and a little air before the border. */
 export function noteChipSpan(ids: string[]): number {
-  const pieces = noteChipPieces(ids);
+  return mapChipSpan({ noteLinks: ids });
+}
+
+/** Thread pill (0.2.34): drawn in the chip row after the caption, inside the node. */
+export const THREAD_CHIP_LABEL = 'Thread';
+export const THREAD_CHIP_H = 18;
+const THREAD_CHIP_PAD = 8;
+const THREAD_CHIP_FONT = 11;
+/** Jump chips (`<r:x>`) at the `#N` chip size. */
+const JUMP_CHIP_FONT = 12;
+const CHIP_SPACE = 8;
+
+/** Chips drawn after the caption, in this order: thread pill, `#N` notes, `<r:x>` jumps. */
+export interface MapChipSpec {
+  thread?: boolean;
+  noteLinks?: string[];
+  /** `<r:x>` jumps with the label to draw (the target's caption, or the id when it is not in the map). */
+  jumps?: { id: string; label: string }[];
+}
+
+export interface MapChipPiece {
+  kind: 'thread' | 'note' | 'jump';
+  id: string;
+  label: string;
+  w: number;
+}
+
+function textW(text: string, px: number, bold: boolean, perChar: number): number {
+  const measured = measureRunWidth({ text, bold }, px);
+  return Math.ceil(measured ?? text.length * perChar);
+}
+
+export function mapChipPieces(spec: MapChipSpec): MapChipPiece[] {
+  const out: MapChipPiece[] = [];
+  if (spec.thread) {
+    out.push({
+      kind: 'thread',
+      id: '',
+      label: THREAD_CHIP_LABEL,
+      w: textW(THREAD_CHIP_LABEL, THREAD_CHIP_FONT, false, 6.2) + THREAD_CHIP_PAD * 2,
+    });
+  }
+  for (const p of noteChipPieces(spec.noteLinks || [])) out.push({ kind: 'note', ...p });
+  for (const j of spec.jumps || []) {
+    out.push({ kind: 'jump', id: j.id, label: j.label, w: textW(j.label, JUMP_CHIP_FONT, true, NOTE_CHIP_CHAR) });
+  }
+  return out;
+}
+
+/** Width the chip row adds after the caption: gap, chips, air before the border. */
+export function mapChipSpan(spec: MapChipSpec): number {
+  const pieces = mapChipPieces(spec);
   if (!pieces.length) return 0;
   let inner = 0;
   for (let i = 0; i < pieces.length; i++) {
-    if (i) inner += 8;
+    if (i) inner += CHIP_SPACE;
     inner += pieces[i]!.w;
   }
   return NOTE_CHIP_GAP + inner + NOTE_CHIP_TRAIL;
@@ -351,6 +402,10 @@ export interface MeasurePillOpts {
   taskLead?: number;
   /** `<t:N>` ids drawn after the caption. They widen the pill; they do not wrap the caption. */
   noteLinks?: string[];
+  /** Thread pill in the chip row (0.2.34). Widens the pill like a `#N` chip. */
+  thread?: boolean;
+  /** `<r:x>` jump chips after the `#N` chips (0.2.34). */
+  jumps?: { id: string; label: string }[];
   /** Reserve height for more/less chrome when truncated or expanded-from-clip. */
   reserveMoreAffordance?: boolean;
   fontSize?: number;
@@ -699,6 +754,8 @@ export function measurePill(
     opts.foldSlot ?? '',
     opts.taskLead ?? '',
     (opts.noteLinks || []).join(','),
+    opts.thread ? 1 : 0,
+    (opts.jumps || []).map((j) => `${j.id}\u0002${j.label}`).join('\u0003'),
     opts.reserveMoreAffordance === false ? 0 : 1,
     opts.fontSize ?? '',
   ].join('\u0001');
@@ -727,7 +784,8 @@ export function measurePill(
     ? Math.round(widthPx)
     : Math.max(MIN_TEXT_W, Math.round(widest + padLeft + padRight));
   const roomAfter = Math.max(0, textW - padLeft - widest);
-  const noteExtra = Math.ceil(Math.max(0, noteChipSpan(opts.noteLinks || []) - roomAfter));
+  const chipSpan = mapChipSpan({ thread: opts.thread, noteLinks: opts.noteLinks, jumps: opts.jumps });
+  const noteExtra = Math.ceil(Math.max(0, chipSpan - roomAfter));
   const lineCount = Math.max(1, wrapped.lines.length);
   const box = lineBox(fontPx);
 

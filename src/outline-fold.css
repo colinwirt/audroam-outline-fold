@@ -278,6 +278,21 @@
   font-size: 12px;
   font-weight: 600;
 }
+/* Thread pill (0.2.34): in the chip row after the caption, inside the node,
+   on the menu surface with a muted label. */
+.map-thread-pill {
+  fill: var(--map-menu-bg);
+  stroke: var(--map-menu-stroke);
+  stroke-width: 1;
+}
+.map-thread-label {
+  fill: var(--muted, var(--of-muted));
+  font-family: var(--of-font);
+  font-size: 11px;
+}
+.map-thread-hit:hover .map-thread-pill {
+  fill: var(--map-menu-hover);
+}
 .map-node.cue .map-label {
   fill: var(--cue-text);
 }
