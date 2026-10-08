@@ -1,6 +1,8 @@
 # Changelog
 
-## 0.2.31 — Unreleased
+## 0.2.31 — 2026-10-08
+
+**Breaking:** the short `<word>` id form is removed (see Parse). Use `<id:N>`.
 
 ### Pages viewer
 - A click on **Map** while the outline is still loading is kept. Before this, the end of loading switched the viewer back to Outline.
@@ -12,6 +14,14 @@
 - **Breaking: the short id form is removed.** A bare `<word>` (`<design>`, `<script>`, `<br>`) is never an id, at the start, middle or end of a line; it stays in the caption and round-trips byte for byte. Use `<id:N>`. Ids are lazy integers, written only when a link needs one, so a bare-word id had no use and only caused misreads. There is no option to turn it back on. An outline that used `- Title <design>` now shows `<design>` in the caption, and a `fold-:`/`fold+:` or layout entry keyed `design` no longer matches a line: change the line to `- Title <id:design>` to keep the link.
 - Inline code is literal. Nothing between backticks is read as a tag, id, note link, flag or fold marker (`` `<script>` ``, `` `<id:7>` ``, `` `(+)` ``), and `captionToHtml` does not turn a URL or markdown link inside backticks into a link.
 - Display was already safe: `captionToHtml` escapes an unknown tag as text. Tests now pin that `<script>` renders as `&lt;script&gt;`, is never an element and is never dropped.
+
+### Fold marker on a line without an id
+- `- Plain caption (+)` now round-trips byte for byte with or without session ids. Before, `parse` without `sessionIds` read the `(+)` and `serialize` dropped it, because it only wrote a marker for a node with an id. Folding is the inline marker; it never writes an id.
+- New `OutlineNode.foldMark` (`'collapsed'` | `'expanded'`): set by parse only on a node left without an id, written back by serialize. With session ids the fold stays in `doc.fold` as before. `assignPersistentId` moves a `foldMark` into `doc.fold` when it gives the node an id.
+- The document's expanded marker on an id-less line round-trips the same way.
+
+### Clean
+- `cleanIds` and `cleanMarkdown` leave anything inside backticks alone, as parse does: `` `<id:9>` `` is not stripped, and a `#id:` inside code does not keep an id.
 
 ### Map pill: only a lone link line is hoisted
 - `captionWithoutLinks` (the Map pill text) removed every bare URL and every markdown link, label included, and left them to the globe popover. `Slides at https://… before Friday` showed as `Slides at before Friday`.
@@ -34,6 +44,11 @@ Design UX spec `20261007-map-fold-handle-connector-polish-ux.md`, locked 2026-10
 - New outline, `examples/lighthouse/lighthouse.md`: a lighthouse keeper's week, with task boxes, two done, and Tuesday folded with `(+)`. It has no `<id:…>` tags or layout block. Linked from the README, the landing page, the demos index and the fixtures page, with a twin in `examples/fixtures/`.
 
 ### Tests
+- `tests/literal-text.test.ts`: `<script>`, `<em>`, `<br>` and backticked tags stay literal through parse, serialize, fold, tick and render; a real `<id:…>` is never replaced; outline-view's minted-id chain keeps a leading or trailing `<script>`.
+- `tests/outline-fold.test.ts`: `<design>`, `<script>`, `<br>` at the start, middle and end of a line, before `(+)` and next to `<id:7>`, round-trip byte for byte.
+- `tests/fold-mark.test.ts`: an inline `(+)` (and custom collapsed / expanded markers) on an id-less line round-trips with and without session ids, under fold- and fold+.
+- `tests/pill-url-hoist.test.ts`: a URL in a sentence stays on the pill; a lone URL line is hoisted.
+- `tests/clean.test.ts`: tags inside backticks survive `cleanIds` and `cleanMarkdown`.
 - `tests/examples.test.ts`: every example outline validates with no errors, and an outline without ids round-trips byte for byte through `parse(text, { sessionIds: true })` and `serialize`.
 - `e2e/pages-viewer.spec.ts`: the lighthouse outline gets a session id, task box and fold handle on every row in the viewer, and **Handoff text** stays free of ids. A **Map** click made while the outline is still loading is kept.
 - `tests/map-fold-handle.test.ts`: a node with children starts every connector at the handle's outer rim; a node without a handle starts at its pill edge; the stem is the same for folded and expanded, runs 8 px to the inner rim and paints before the handle; no `#000` in the handle markup or css; no opacity on connectors or stems; `FOLD_RING_W` matches the css ring stroke. `tests/outline-fold-css.test.ts` now expects the expanded circle to be `fill: none`.
