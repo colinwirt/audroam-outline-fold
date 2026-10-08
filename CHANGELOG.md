@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.2.34 — unreleased
+## 0.2.34 — 2026-10-08
 
 ### Map: #N and thread chips open the link popover
 - A click, tap, `Enter` or `Space` on a `#N` note chip or a thread chip now opens the same popover as the globe (same classes, right of the chip, camera pans to fit, open through pan and zoom, same ways to close). Before, a `#N` chip opened a new tab straight away and a thread chip called `onThread` straight away.
