@@ -115,10 +115,17 @@ describe('captionToHtml', () => {
     ]);
   });
 
-  it('drops markdown links from map pill text and keeps the caption', () => {
+  it('keeps a markdown link label in map pill text when the link is part of the caption', () => {
+    // 0.2.31: only a line that is nothing but a link is hoisted off the pill.
     expect(
       captionWithoutLinks('Index · this map · [Open](?doc=../demos-index/demos-index.md)'),
-    ).toBe('Index · this map ·');
+    ).toBe('Index · this map · Open');
+  });
+
+  it('hoists a line that is only a markdown link off the map pill', () => {
+    expect(
+      captionWithoutLinks('Index · this map\n[Open](?doc=../demos-index/demos-index.md)'),
+    ).toBe('Index · this map');
   });
 });
 

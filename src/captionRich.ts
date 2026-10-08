@@ -369,18 +369,36 @@ export function tinyHtmlToSafeHtml(segment: string): string {
  */
 export type CaptionLink = { label: string; href: string; hopId: string | null };
 
-/** Map pill text: same caption with markdown links and bare URLs removed. */
+/**
+ * True when a caption line is nothing but one link: a bare http(s) URL or a
+ * markdown `[label](url)`. Only such a line is hoisted off the Map pill.
+ */
+export function isLoneLinkLine(line: string): boolean {
+  const toks = tokenize(line).filter((t) => !(t.kind === 'text' && !t.value.trim()));
+  return toks.length === 1 && toks[0]!.kind === 'link';
+}
+
+/**
+ * Map pill text. A line that is only a link (a lone bare URL or a lone
+ * `[label](url)`) is hoisted: it leaves the pill and is reached from the globe
+ * (captionLinks). A link inside a sentence stays where it is: a bare URL keeps
+ * its text, a markdown link keeps its label. Images show their alt text.
+ */
 export function captionWithoutLinks(title: string): string {
-  const parts: string[] = [];
-  for (const t of tokenize(normalizeCaptionBreaks(title))) {
-    if (t.kind === 'text') parts.push(t.value);
-    else if (t.kind === 'img') parts.push(t.alt);
-  }
-  return parts
-    .join('')
+  return normalizeCaptionBreaks(title)
     .split('\n')
-    .map((line) => line.replace(/[ \t]{2,}/g, ' ').trim())
+    .map((line) => {
+      if (isLoneLinkLine(line)) return '';
+      const parts: string[] = [];
+      for (const t of tokenize(line)) {
+        if (t.kind === 'text') parts.push(t.value);
+        else if (t.kind === 'img') parts.push(t.alt);
+        else parts.push(t.label);
+      }
+      return parts.join('').replace(/[ \t]{2,}/g, ' ').trim();
+    })
     .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
     .replace(/^\n+|\n+$/g, '');
 }
 

@@ -13,6 +13,12 @@
 - Inline code is literal. Nothing between backticks is read as a tag, id, note link, flag or fold marker (`` `<script>` ``, `` `<id:7>` ``, `` `(+)` ``), and `captionToHtml` does not turn a URL or markdown link inside backticks into a link.
 - Display was already safe: `captionToHtml` escapes an unknown tag as text. Tests now pin that `<script>` renders as `&lt;script&gt;`, is never an element and is never dropped.
 
+### Map pill: only a lone link line is hoisted
+- `captionWithoutLinks` (the Map pill text) removed every bare URL and every markdown link, label included, and left them to the globe popover. `Slides at https://… before Friday` showed as `Slides at before Friday`.
+- Now only a line that is nothing but one link (a lone bare URL or a lone `[label](url)`) leaves the pill. A URL inside a sentence stays in the pill text; a markdown link inside a sentence keeps its label. The globe still lists every link (`captionLinks` is unchanged), so they stay one tap away.
+- New export from `captionRich`: `isLoneLinkLine(line)`.
+- `tests/caption-rich.test.ts`: `Index · this map · [Open](…)` now keeps `Open` in the pill (it used to expect the label dropped).
+
 ### Map: fold handle and connectors (phase 1)
 Design UX spec `20261007-map-fold-handle-connector-polish-ux.md`, locked 2026-10-07 with defaults H1–H10. Phase 1 is H1, H2, H3 (a), H5 and H7.
 - Child connectors start at the outer edge of the fold handle's ring (`foldCx + r + ring stroke / 2`, which is pill edge + 26.8 px with the default slot) instead of the pill edge. No line runs under the handle any more, so seven children no longer bunch up behind the −. A node without a handle still starts at its pill edge.
