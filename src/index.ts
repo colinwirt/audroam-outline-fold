@@ -154,8 +154,12 @@ export {
 
 export {
   seedColdStartFold,
+  seedDefaultFold,
+  hasSavedFold,
   measureLineageHeight,
   DEFAULT_LINEAGE_HEIGHT_CAP,
+  type DefaultFoldRule,
+  type SeedDefaultFoldOptions,
 } from './mapSeed.js';
 
 export {

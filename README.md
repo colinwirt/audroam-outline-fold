@@ -286,6 +286,7 @@ const packed = autoPackPositions(doc, {
 |--------|------|
 | `wrapLines` / `pillSize` / `DEFAULT_WRAP_CH` / `DEFAULT_MAX_LINES` | Multi-line measure; default maxLines **30** + more/less (`bodyExpanded`); soft safety 500/50k; sidecar `wrapCh` / `maxLines` / `bodyExpanded` |
 | `seedColdStartFold` / `measureLineageHeight` | Cold-start: try depth 3 → depth 2 → trim root children so visible lineage height ≤10 |
+| `seedDefaultFold(doc, { rule? })` / `hasSavedFold(doc)` | First view with no saved fold state (0.2.32). Default `level1`: each root and its children. `cold-start` = `seedColdStartFold`, `all` = no change. A doc with `(+)` markers or a `fold-`/`fold+` list comes back untouched. Call once on load, after resume and before the first paint. |
 | `mapResumeStorageKey` / `loadMapResume` / `createDebouncedResumeSave` | localStorage resume of fold + camera + nudges (`of-map:{origin}:{docKey}` / `of-map:pnid:{pnid}`) |
 | `overlayResumeOnLayout` / `isResumeStale` / `softResetResume` | Resume overlays authored sidecar; stale soft-reset |
 | `toggleTask` / `onTaskToggle` / `resolveTask` | Task SVG lead; host owns persist; `<action:…>` on open→done; `<thread:…>` chip |
