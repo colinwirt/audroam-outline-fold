@@ -22,3 +22,5 @@ Playwright touch harness for the Map (0.2.30+). Not a demo.
   `e2e/jumps.spec.ts` and `e2e/touch-jumps.spec.ts`. `?view=outline` renders
   the same document with `toHtml` + `attachOutlineTree` instead of the Map.
   `window.__hops` records `onHop` calls from either view.
+- `?theme=light` puts `of-theme-light` on the page (Map and Outline);
+  `jumps.spec.ts` checks the Outline chips in both themes.

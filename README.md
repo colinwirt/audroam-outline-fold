@@ -365,7 +365,7 @@ Set these on the map host or an ancestor. Defaults are the dark theme.
 | `--map-halo` | `--map-bg` at 85% | Thin casing under the − ring and dash, so it reads on a pattern or image |
 | `--connector-casing` | `transparent` | When set, every edge and stem gets a 3.2 px casing underneath. Doubles the edge DOM; leave unset above ~2,000 edges. |
 
-`class="of-theme-light"` on the host (or an ancestor) switches to the light tokens: `--map-bg #f3f6f9`, `--connector #62778f`, `--gold #9a7400`, `--map-handle-glyph-on-gold #ffffff`. Pill and text colours are not part of the light set yet.
+`class="of-theme-light"` on the host (or an ancestor) switches to the light tokens: `--map-bg #f3f6f9`, `--connector #62778f`, `--gold #9a7400`, `--map-handle-glyph-on-gold #ffffff`. Map pill and text colours are not part of the light set yet. The Outline (`toHtml`) under it gets light text, muted, accent, stroke and link colours (`--of-text #1d2a36`, `--of-muted #566676`, `--of-accent #0b5cad`, `--of-stroke #c9d3dd`, `--of-hop #0b5cad`). Its `#N`, `→ caption` and Thread chips are small bold labels in `--of-accent`, `--of-hop` and `--of-muted`.
 
 **Click vs fold:** text/label (and non-handle chrome) → select only; circle-+ → fold; task SVG → `onTaskToggle`. Space stays fold.
 

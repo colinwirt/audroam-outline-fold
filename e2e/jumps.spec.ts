@@ -168,4 +168,49 @@ test.describe('Outline', () => {
     expect(await page.evaluate(() => location.hash)).toBe('');
     expect(await page.evaluate(() => (window as any).__hops)).toEqual([]);
   });
+
+  for (const theme of ['dark', 'light'] as const) {
+    test(`thread chip is styled like the #N and jump chips (${theme} theme)`, async ({ page }) => {
+      await open(page, theme === 'light' ? `${OUTLINE}&theme=light` : OUTLINE);
+      const look = await page.evaluate(() => {
+        const css = (sel: string) => getComputedStyle(document.querySelector(sel)!);
+        const rgb = (c: string) => c.match(/[\d.]+/g)!.slice(0, 3).map(Number);
+        const lum = ([r, g, b]: number[]) => {
+          const f = (v: number) => ((v /= 255) <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4);
+          return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b);
+        };
+        const contrast = (a: string, b: string) => {
+          const [x, y] = [lum(rgb(a)), lum(rgb(b))].sort((p, q) => q - p);
+          return (x + 0.05) / (y + 0.05);
+        };
+        const bg = css('#panel').backgroundColor;
+        const t = css('button.of-thread');
+        const n = css('.of-note-link');
+        const j = css('.of-jump');
+        const muted = getComputedStyle(document.querySelector('.of-outline')!).getPropertyValue('--of-muted').trim();
+        return {
+          background: t.backgroundColor,
+          border: t.borderTopStyle,
+          appearance: t.appearance,
+          font: [t.fontSize, t.fontWeight, t.lineHeight, t.fontFamily],
+          noteFont: [n.fontSize, n.fontWeight, n.lineHeight, n.fontFamily],
+          jumpFont: [j.fontSize, j.fontWeight],
+          color: t.color,
+          muted,
+          contrast: { thread: contrast(t.color, bg), note: contrast(n.color, bg), jump: contrast(j.color, bg) },
+        };
+      });
+      expect(look.background).toBe('rgba(0, 0, 0, 0)');
+      expect(look.border).toBe('none');
+      expect(look.appearance).toBe('none');
+      expect(look.font).toEqual(look.noteFont);
+      expect(look.font.slice(0, 2)).toEqual(look.jumpFont);
+      expect(look.muted).toBe(theme === 'light' ? '#566676' : '#8b9bab');
+      for (const c of Object.values(look.contrast)) expect(c).toBeGreaterThanOrEqual(4.5);
+      // Still a button: Enter opens the thread.
+      await page.locator('button.of-thread').focus();
+      await page.keyboard.press('Enter');
+      await expect.poll(() => page.evaluate(() => (window as any).__threads.length)).toBeGreaterThan(0);
+    });
+  }
 });

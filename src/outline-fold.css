@@ -24,6 +24,9 @@
   --map-menu-stroke: #3d5a73;
   --map-menu-hover: #1b3044;
   --map-menu-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  /* Outline hop links and jump chips (0.2.34). */
+  --of-hop: #9ecbff;
+  --of-hop-hover: #cfe0ef;
 }
 
 /* Light theme tokens, opt-in: class="of-theme-light" on the map host or an
@@ -35,6 +38,18 @@
   --map-handle-glyph-on-gold: #ffffff;
   --map-handle-bg: transparent;
   --connector-casing: transparent;
+}
+/* The Outline under the light theme (0.2.34): text, chip and link colours. Scoped to
+   the Outline, because map labels sit on dark pills. */
+.of-theme-light .of-outline,
+.of-outline.of-theme-light {
+  --of-text: #1d2a36;
+  --of-muted: #566676;
+  --of-accent: #0b5cad;
+  --of-stroke: #c9d3dd;
+  --of-hop: #0b5cad;
+  --of-hop-hover: #083f78;
+  color: var(--text, var(--of-text));
 }
 
 .of-outline,
@@ -110,16 +125,16 @@
   color: var(--accent, var(--of-accent));
 }
 .of-title a.of-hop {
-  color: #9ecbff;
+  color: var(--of-hop);
   text-decoration: underline dotted;
 }
 .of-title a.of-hop:hover {
-  color: #cfe0ef;
+  color: var(--of-hop-hover);
 }
 /* `<r:x>` jump chip (0.2.34), after the #N chips. */
 .of-jump {
   flex: none;
-  color: #9ecbff;
+  color: var(--of-hop);
   font-size: 0.75rem;
   font-weight: 600;
   line-height: 1;
@@ -128,7 +143,7 @@
   white-space: nowrap;
 }
 .of-jump:hover {
-  color: #cfe0ef;
+  color: var(--of-hop-hover);
   text-decoration: underline dotted;
 }
 /* A hop or jump to an id not in this outline: muted, still shown, inert. */
@@ -187,6 +202,43 @@
 }
 .of-note-link:hover {
   text-decoration: underline;
+}
+/* `[label](#pnid:N)` in a caption reads as a caption link, not a chip. */
+.of-title .of-note-link.of-note-md {
+  font-size: inherit;
+  font-weight: inherit;
+  line-height: inherit;
+  padding: 0;
+  text-decoration: underline;
+}
+/* Thread chip (0.2.34): a label like the #N and jump chips, muted like the Map's
+   thread pill; no browser button look. */
+.of-thread {
+  flex: none;
+  appearance: none;
+  -webkit-appearance: none;
+  margin: 0;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--muted, var(--of-muted));
+  font: inherit;
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1;
+  padding: 0 0.1rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.of-thread:hover {
+  color: var(--text, var(--of-text));
+  text-decoration: underline;
+}
+.of-thread:focus-visible,
+.of-note-link:focus-visible,
+.of-jump:focus-visible {
+  outline: 2px solid var(--accent, var(--of-accent));
+  outline-offset: 2px;
 }
 .of-code {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;

@@ -22,6 +22,11 @@
 import { parse, createMapView, mountMapControls, seedDefaultFold, toHtml, attachOutlineTree } from '../../dist/index.js';
 
 const params = new URLSearchParams(location.search);
+// ?theme=light: the package's light theme on the page (Map and Outline).
+if (params.get('theme') === 'light') {
+  document.documentElement.classList.add('of-theme-light');
+  Object.assign(document.body.style, { background: '#e9eef3', color: '#1d2a36' });
+}
 const md = await (await fetch(params.get('doc') || 'fixture.md')).text();
 let doc = parse(md);
 if (params.get('seed') === 'level1') doc = seedDefaultFold(doc);
@@ -51,6 +56,7 @@ if (params.get('view') === 'outline') {
     render,
     onNoteLinkClick: (pnid, node) => window.__notes.push({ id: node?.id ?? '', pnid }),
     onHop: (id, node, from) => window.__hops.push({ id, from: from?.id ?? null }),
+    onThreadClick: (thread, node) => window.__threads.push({ id: node?.id ?? '', thread }),
   });
   tree.refresh(null);
   window.__doc = () => doc;
