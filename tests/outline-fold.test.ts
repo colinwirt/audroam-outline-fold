@@ -636,7 +636,7 @@ noteUri: ${pattern}
   });
 });
 
-describe('<t: N> spelling round-trip', () => {
+describe('<t:N> / legacy <t: N> spelling round-trip', () => {
   // Two-link note shape: one tag with a space, one without, folds in the layout block.
   const BODY = [
     '- 12 Mar - Agenda <id:1>',
@@ -697,13 +697,16 @@ describe('<t: N> spelling round-trip', () => {
   it('keeps <t:N> and <t: N> on the node as noteLinks, with the spelling beside them', () => {
     const doc = parse('- Row <t: 1> <t:2> <id:r>\n');
     expect(doc.nodes[0].noteLinks).toEqual(['1', '2']);
-    expect(doc.nodes[0].noteLinkTags).toEqual({ 2: '<t:2>' });
+    expect(doc.nodes[0].noteLinkTags).toEqual({ 1: '<t: 1>' });
     expect(doc.nodes[0].title).toBe('Row');
   });
 
   it('keeps leading, mid-caption and odd spellings', () => {
     expect(firstLine(parse('- Row <t:5> <id:a>\n'))).toBe('- Row <t:5> <id:a>');
-    expect(firstLine(parse('- Row <T:5 > <id:a>\n'))).toBe('- Row <T:5 > <id:a>');
+    expect(firstLine(parse('- Row <T:5> <id:a>\n'))).toBe('- Row <T:5> <id:a>');
+    // A space before the > is not the legacy form: the text stays a caption.
+    expect(parse('- Row <t:5 > <id:a>\n').nodes[0].noteLinks).toBeUndefined();
+    expect(firstLine(parse('- Row <t:5 > <id:a>\n'))).toBe('- Row <t:5 > <id:a>');
     expect(firstLine(parse('- Row <t:  5> <id:a>\n'))).toBe('- Row <t:  5> <id:a>');
     // Leading and mid-caption tags still move to the trailing slot, with their spelling.
     expect(firstLine(parse('- <t:5> Row <id:a>\n'))).toBe('- Row <t:5> <id:a>');
@@ -713,11 +716,11 @@ describe('<t: N> spelling round-trip', () => {
     expect(firstLine(parse('- plain <t:9> <t: 9> <id:a>\n'))).toBe('- plain <t:9> <id:a>');
   });
 
-  it('writes <t: N> for a link the host adds, and ignores a spelling that names another id', () => {
-    const doc = parse('- Row <t:5> <id:a>\n');
+  it('writes <t:N> for a link the host adds, and ignores a spelling that names another id', () => {
+    const doc = parse('- Row <t: 5> <id:a>\n');
     doc.nodes[0].noteLinks!.push('6');
-    expect(firstLine(doc)).toBe('- Row <t:5> <t: 6> <id:a>');
+    expect(firstLine(doc)).toBe('- Row <t: 5> <t:6> <id:a>');
     doc.nodes[0].noteLinkTags = { 5: '<t:7>', 6: 'not a tag' };
-    expect(firstLine(doc)).toBe('- Row <t: 5> <t: 6> <id:a>');
+    expect(firstLine(doc)).toBe('- Row <t:5> <t:6> <id:a>');
   });
 });

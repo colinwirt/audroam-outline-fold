@@ -6,8 +6,12 @@ const ID_TAG = /[ \t]*<id:([A-Za-z0-9][A-Za-z0-9_-]*)>/g;
 const HOP_REF = /#id:([A-Za-z0-9_.:-]+)/g;
 const FOLD_LINE = /^(\s*fold([-+])\s*:)[ \t]*(.*?)(\r?)$/im;
 const DEFAULT_LAYOUT_BLOCK = /\n*--- layout ---\r?\nfold-:[ \t]*\r?\ncollapsedMarker: "\(\+\)"\r?\n---\s*$/;
-/** Tags the grammar reads, wherever a translation left them in a caption. */
-const STRAY_TAG = /[ \t]*<(?:(?:id|t|action|thread|kind|enc|db)\s*:[^>\n]*|private|encrypted)>/gi;
+/**
+ * Tags the grammar reads, wherever a translation left them in a caption. Strict like
+ * parse: `<id : x>` or `<kind: doc>` is text; only `<t:` reads a space after the colon.
+ */
+const STRAY_TAG =
+  /[ \t]*<(?:(?:id|action|thread|kind|enc|db):[^\s>](?:[^>\n]*[^\s>])?|t:\s*\d+|private|encrypted)>/gi;
 
 /** Inline code (`…`) is literal, as in parse: no tag or `#id:` inside it is touched. */
 const CODE_SPAN = /`[^`\n]+`/g;

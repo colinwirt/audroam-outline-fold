@@ -25,29 +25,39 @@ const KIND_SPAN =
   /^<(?:kind:)?(doc|ticket|globe|db|feature|form|bug|risk|lock|encrypted|system-link|pending-approve)>\s*/i;
 const FLAG_SPAN =
   /^<(private|encrypted|db)(?::([^\s>]+))?>\s*/i;
+/**
+ * Tags are strict: no space around the colon or just inside the brackets, so
+ * `<id : x>`, `<action: x>` or `<enc:x >` stay caption text. A value may hold inner
+ * spaces but cannot start or end with one. `<t:N>` is the one exception (below).
+ */
+const VALUE = '([^\\s>](?:[^>]*[^\\s>])?)';
 /** `<enc:kid=…;alg=…;ct=…>` — body may not contain `>`. */
-const ENC_SPAN = /^<enc:([^>]+)>\s*/i;
+const ENC_SPAN = new RegExp(`^<enc:${VALUE}>\\s*`, 'i');
 
 const ID_TRAILING = /\s*<id:([A-Za-z0-9][A-Za-z0-9_-]*)>\s*$/;
 const KIND_TRAILING =
   /\s*<(?:kind:)?(doc|ticket|globe|db|feature|form|bug|risk|lock|encrypted|system-link|pending-approve)>\s*$/i;
 const FLAG_TRAILING =
   /\s*<(private|encrypted|db)(?::([^\s>]+))?>\s*$/i;
-const ENC_TRAILING = /\s*<enc:([^>]+)>\s*$/i;
+const ENC_TRAILING = new RegExp(`\\s*<enc:${VALUE}>\\s*$`, 'i');
 /** `<action:https://…>` or `<action:event:…>` — body must not contain `>`. */
-const ACTION_SPAN = /^<action:([^>]+)>\s*/i;
-const ACTION_TRAILING = /\s*<action:([^>]+)>\s*$/i;
+const ACTION_SPAN = new RegExp(`^<action:${VALUE}>\\s*`, 'i');
+const ACTION_TRAILING = new RegExp(`\\s*<action:${VALUE}>\\s*$`, 'i');
 /** `<thread:pnid:…>` or `<thread:/path>` */
-const THREAD_SPAN = /^<thread:([^>]+)>\s*/i;
-const THREAD_TRAILING = /\s*<thread:([^>]+)>\s*$/i;
-/** Audroam result-row note link: `<t: 101>` or `<t:101>`. Digits only. */
-const NOTE_LINK_SPAN = /^<t:\s*(\d+)\s*>\s*/i;
-const NOTE_LINK_TRAILING = /\s*<t:\s*(\d+)\s*>\s*$/i;
-const NOTE_LINK_ANY = /<t:\s*(\d+)\s*>/gi;
+const THREAD_SPAN = new RegExp(`^<thread:${VALUE}>\\s*`, 'i');
+const THREAD_TRAILING = new RegExp(`\\s*<thread:${VALUE}>\\s*$`, 'i');
+/**
+ * Audroam result-row note link: `<t:101>`. Digits only. The one tag that still reads
+ * whitespace after the colon (`<t: 101>`, the legacy spelling in live notes); nothing
+ * before the `>`, so `<t:101 >` is text.
+ */
+const NOTE_LINK_SPAN = /^<t:\s*(\d+)>\s*/i;
+const NOTE_LINK_TRAILING = /\s*<t:\s*(\d+)>\s*$/i;
+const NOTE_LINK_ANY = /<t:\s*(\d+)>/gi;
 /** The bare `<t:…>` token inside a span match (drops surrounding whitespace). */
-const NOTE_LINK_TOKEN = /<t:\s*\d+\s*>/i;
+const NOTE_LINK_TOKEN = /<t:\s*\d+>/i;
 /** How serialize writes a note link when the text gave no spelling. */
-const NOTE_LINK_DEFAULT = (id: string) => `<t: ${id}>`;
+const NOTE_LINK_DEFAULT = (id: string) => `<t:${id}>`;
 
 function parseFrontmatter(text: string): {
   fm: OutlineFrontmatter;

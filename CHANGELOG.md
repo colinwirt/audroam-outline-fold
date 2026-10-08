@@ -16,6 +16,11 @@
 ### Saved view (package side)
 - New `savedView` helpers: capture, exact restore, anchored fit, slot pick, focus choice, anchor when the focus is folded away or gone, start source, live text, and the v2 localStorage record (a v1 record loads with its folds and without its camera).
 
+### Strict tags
+- **Breaking:** every tag is strict: no space around the colon or just inside the brackets. `<id : x>`, `<id: x>`, `<kind: doc>`, `<action: …>`, `<thread:… >`, `<enc: …>`, `<db: …>` are caption text now and round-trip byte for byte (parse, `taskChrome` helpers, `cleanIds`, `cleanMarkdown`). Inner spaces in a value still read.
+- `<t:` is the one exception: the legacy `<t: N>` (whitespace after the colon) still reads and keeps its spelling. A link with no stored spelling is written `<t:N>` (was `<t: N>`). `<t:N >` (space before `>`) is text.
+- `tests/strict-tags.test.ts`.
+
 ### Tests
 - `tests/map-handle-tokens.test.ts`, `tests/map-default-fold.test.ts`, `tests/fold-level.test.ts`, `tests/saved-view.test.ts`; `e2e/pages-viewer.spec.ts` checks the halo, casing and light tokens in the viewer.
 

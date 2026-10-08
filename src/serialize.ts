@@ -18,23 +18,23 @@ function taskMarker(task: TaskState): string {
 }
 
 /**
- * `<t: N>` by default. A spelling kept by parse (`<t:N>`, `<T: N >`) is written
+ * `<t:N>` by default. A spelling kept by parse (`<t: N>`, `<T:N>`) is written
  * back as long as it still names this id, so the author's tag round-trips.
  */
 function noteLinkTag(node: OutlineNode, id: string): string {
   const kept = node.noteLinkTags?.[id];
   if (
     typeof kept === 'string' &&
-    /^<t:[ \t]*(\d+)[ \t]*>$/i.exec(kept)?.[1] === id
+    /^<t:[ \t]*(\d+)>$/i.exec(kept)?.[1] === id
   ) {
     return kept;
   }
-  return `<t: ${id}>`;
+  return `<t:${id}>`;
 }
 
 /**
  * Caption-first trailing tags (v0.2 lean):
- * `[ ]? title <action:…>? <thread:…>? <t: N>* <kind:…>? <flag>* <id:…>? (+)?`
+ * `[ ]? title <action:…>? <thread:…>? <t:N>* <kind:…>? <flag>* <id:…>? (+)?`
  * Sealed material lives in the trailing `--- payloads ---` block, not on the line.
  */
 function formatTrailingSpans(node: OutlineNode): string {
