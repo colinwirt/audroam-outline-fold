@@ -13,6 +13,22 @@
 - `foldLevelPicker(doc, id)`: the picker model (items, key hints, counts, current level, sameAsAll / disabled), `foldLevelNeedsConfirm` (All above 1,500 nodes), `foldLevelSkipsAnimation` (above 300 changes), live-region text.
 - Tests pin L16: a level folds every node at and below the boundary, so the next + shows one level.
 
+### Map: fold-to-level picker (spec 20261006 L1–L16, backlog P2 + P3)
+- Hold a fold handle 450 ms to open Fold · 1 · 2 · 3 · All. A ring fills from 150 ms. Movement past 10 px (touch) or 4 px (mouse) before then, a second finger, or a pan or pinch cancels the hold, so drag-to-pan and the label text hold work as before. A short tap or click still toggles once; the lift that opens the menu never toggles.
+- Touch: keep the finger down and slide onto an item, lift to apply. Lifting anywhere else keeps the menu open for a tap. Tiles are at least 44 px; the phone gets a 10 ms buzz where supported.
+- Right-click a fold handle or a foldable pill opens the same menu (rows: Fold, Level 1, Level 2, Level 3, All, with counts and key hints). A label with selected text keeps the browser menu. `ContextMenu` or `Shift+F10` opens it for the selected node.
+- In the menu: arrows (wrap, skip disabled), `Home` / `End`, `Enter` / `Space`, the hint key (`0` `1` `2` `3` `*`), `Esc` / `Tab` close and focus goes back to the map. The current level is checked; levels deeper than the branch are disabled.
+- All above 1,500 nodes asks first: `Show all 1,641` / `Cancel`.
+- Apply uses `setExpandLevel(doc, level, { under })` in one `setDoc`, fold state only (no id written into a caption). The handle stays in place (L10): the camera follows it, zoom does not change, and an expand pans only enough to keep the shown branch in view. FLIP is skipped above 300 changes. The result is read out in a polite `.map-live` region, e.g. "Branches folded to level 1. 11 items hidden."
+- Foldable nodes carry `aria-haspopup="menu"`.
+- Levels toolbar (P3, opt-in): `mountMapLevels(map, el)` or `mountMapControls(map, el, { levels: true })` adds `Levels 1 2 3 All` for the whole map, with the current level pressed. The Pages viewer shows it.
+- Handle methods: `openLevelMenu`, `closeLevelMenu`, `applyFoldLevel`, `setWholeMapLevel`, `currentWholeMapLevel`, `onPaint`. Pure helpers in `foldLevelMenu` are exported.
+- The menu's levels row is a `role="group"` with `data-row="levels"`; a second row (hold-to-fit Child widths) can sit beside it later.
+- Not yet: the "Whole map to level ▸" menu entry (L8), an edit-menu entry (D4), undo (host).
+
+### Map gestures
+- Fix: a mouse press in the first 700 ms after page load was ignored as a touch ghost (`lastFingerDown` started at 0).
+
 ### Saved view (package side)
 - New `savedView` helpers: capture, exact restore, anchored fit, slot pick, focus choice, anchor when the focus is folded away or gone, start source, live text, and the v2 localStorage record (a v1 record loads with its folds and without its camera).
 
@@ -24,7 +40,7 @@
 - `tests/tag-spacing.test.ts`.
 
 ### Tests
-- `tests/map-handle-tokens.test.ts`, `tests/map-default-fold.test.ts`, `tests/fold-level.test.ts`, `tests/saved-view.test.ts`; `e2e/pages-viewer.spec.ts` checks the halo, casing and light tokens in the viewer.
+- `tests/map-handle-tokens.test.ts`, `tests/map-default-fold.test.ts`, `tests/fold-level.test.ts`, `tests/fold-level-menu.test.ts`, `tests/saved-view.test.ts`; `e2e/fold-level.spec.ts` (mouse, right-click, keyboard, toolbar, confirm) and `e2e/touch-fold-level.spec.ts` (hold, drag-to-level, slop, second finger, tap, label hold) on the `examples/e2e-touch/levels.md` fixture; `e2e/pages-viewer.spec.ts` checks the halo, casing and light tokens in the viewer.
 
 ## 0.2.31 — 2026-10-08
 
