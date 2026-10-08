@@ -17,6 +17,7 @@ import {
   collectNodeIds,
   createDebouncedResumeSave,
   bindTap,
+  mountMapLevels,
 } from '../_shared/mapView.js';
 import { resolveLayout } from '../_shared/layoutSidecar.js';
 import {
@@ -434,6 +435,8 @@ async function boot() {
   map.ensurePositions();
   map.bindGestures();
   map.bindKeyboard({ panel, modeButton: btnMap });
+  // Whole-map Levels 1 2 3 All (fold to level P3), after Fit.
+  mountMapLevels(map, mapTools);
   if (resume?.camera && typeof resume.camera.k === 'number') {
     map.cam.x = resume.camera.x;
     map.cam.y = resume.camera.y;

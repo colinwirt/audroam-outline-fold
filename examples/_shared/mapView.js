@@ -25,4 +25,5 @@ export {
   toggleTask,
   shouldFireAction,
   bindTap,
+  mountMapLevels,
 } from '../../dist/index.js';
