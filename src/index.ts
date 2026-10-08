@@ -229,6 +229,15 @@ export {
 } from './linkPop.js';
 
 export {
+  noteUriTemplate,
+  noteLinkHrefs,
+  DEFAULT_NOTE_MAP_URI,
+  DEFAULT_NOTE_DETAILS_URI,
+  type NoteUriKey,
+  type NoteUriOptions,
+} from './linkTemplates.js';
+
+export {
   savedViewStorageKey,
   viewPrefsStorageKey,
   viewSlotFor,

@@ -17,14 +17,19 @@ describe('noteLinkWhere', () => {
 });
 
 describe('popover rows', () => {
-  it('#N: Open #N (new tab, destination); Go to #N only when the node is in this map', () => {
+  it('#N: Open #N (new tab, destination), then Open map and Open details when they resolve; never Go to', () => {
     expect(noteLinkRows('1004', 'https://notes.example.org/n/1004', { base: BASE })).toEqual([
       { label: 'Open #1004', href: 'https://notes.example.org/n/1004', newTab: true, where: 'notes.example.org', kind: 'note-open' },
     ]);
-    expect(noteLinkRows('1005', '/notes/1005', { base: BASE, inMap: true })).toEqual([
+    expect(
+      noteLinkRows('1005', '/notes/1005', { base: BASE, mapHref: '/outline-view?id=1005&map=1', detailsHref: 'https://records.example.org/r/1005' }),
+    ).toEqual([
       { label: 'Open #1005', href: '/notes/1005', newTab: true, where: '/notes/1005', kind: 'note-open' },
-      { label: 'Go to #1005', hopId: '1005', kind: 'note-go' },
+      { label: 'Open map', href: '/outline-view?id=1005&map=1', newTab: true, where: '/outline-view?id=1005&map=1', kind: 'note-map' },
+      { label: 'Open details', href: 'https://records.example.org/r/1005', newTab: true, where: 'records.example.org', kind: 'note-details' },
     ]);
+    expect(noteLinkRows('1005', null, { detailsHref: null, mapHref: '/m/1005' }).map((r) => r.kind)).toEqual(['note-open', 'note-map']);
+    expect(mapSrc).not.toMatch(/Go to #/);
     // No noteUri: Open still fires onNoteLink, without a tab.
     expect(noteLinkRows('9', null)).toEqual([{ label: 'Open #9', kind: 'note-open' }]);
   });
@@ -38,6 +43,15 @@ describe('popover rows', () => {
     expect(rows).toEqual([
       { label: 'Open', href: 'https://www.example.org/a', newTab: true, where: 'example.org', kind: 'link' },
       { label: 'Plants', href: '#id:plants', hopId: 'plants', kind: 'hop' },
+    ]);
+  });
+
+  it('globe rows: a hop to a node not in the map is broken; #pnid: links are left to their #N chip', () => {
+    const links = captionLinks('[Plants](#id:plants) · [Old](#id:gone) · [Seeds](#pnid:1004)');
+    const has = (id: string) => id === 'plants';
+    expect(captionLinkRows(links, BASE, has)).toEqual([
+      { label: 'Plants', href: '#id:plants', hopId: 'plants', kind: 'hop' },
+      { label: 'Old', href: '#id:gone', hopId: 'gone', kind: 'hop', broken: true },
     ]);
   });
 });

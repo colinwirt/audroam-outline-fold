@@ -181,7 +181,9 @@ export function serialize(doc: OutlineFoldDoc): string {
     (fm?.collapsedMarker ?? DEFAULT_COLLAPSED) === DEFAULT_COLLAPSED &&
     !fm?.expandedMarker &&
     fm?.fontSize == null &&
-    !fm?.noteUri;
+    !fm?.noteUri &&
+    !fm?.noteMapUri &&
+    !fm?.noteDetailsUri;
   const layoutBlock = onlyDefaults ? '' : formatLayoutBlock(layouts, {
     foldMode: doc.fold.mode,
     foldIds,
@@ -189,6 +191,8 @@ export function serialize(doc: OutlineFoldDoc): string {
     expandedMarker: fm?.expandedMarker,
     fontSize: fm?.fontSize,
     noteUri: fm?.noteUri,
+    noteMapUri: fm?.noteMapUri,
+    noteDetailsUri: fm?.noteDetailsUri,
   });
   if (layoutBlock) {
     if (lines.length) lines.push('');

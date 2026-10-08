@@ -212,6 +212,12 @@ export function parseLayoutMap(block: string): LayoutMap {
   return parseLayoutBlock(block).layouts;
 }
 
+const URI_KEYS: Record<string, 'noteUri' | 'noteMapUri' | 'noteDetailsUri'> = {
+  noteuri: 'noteUri',
+  notemapuri: 'noteMapUri',
+  notedetailsuri: 'noteDetailsUri',
+};
+
 function unquote(s: string): string {
   if (
     (s.startsWith('"') && s.endsWith('"')) ||
@@ -264,10 +270,12 @@ function readFmLine(
     fm.fontSize = Number(fontSize[1]);
     return true;
   }
-  const noteUri = line.match(/^noteUri\s*:\s*(.+)$/i);
-  if (noteUri) {
-    const value = unquote(noteUri[1]!.trim());
-    if (value) fm.noteUri = value;
+  // URL templates: `noteUri` (Open #N), `noteMapUri`, `noteDetailsUri` (0.2.34).
+  const uri = line.match(/^(noteUri|noteMapUri|noteDetailsUri)\s*:\s*(.+)$/i);
+  if (uri) {
+    const key = URI_KEYS[uri[1]!.toLowerCase()]!;
+    const value = unquote(uri[2]!.trim());
+    if (value) fm[key] = value;
     return true;
   }
   return false;
@@ -305,6 +313,8 @@ export function mergeFrontmatter(
     out.expandedMarker = tail.expandedMarker;
   if (tail.fontSize !== undefined) out.fontSize = tail.fontSize;
   if (tail.noteUri !== undefined) out.noteUri = tail.noteUri;
+  if (tail.noteMapUri !== undefined) out.noteMapUri = tail.noteMapUri;
+  if (tail.noteDetailsUri !== undefined) out.noteDetailsUri = tail.noteDetailsUri;
   return out;
 }
 
@@ -377,10 +387,11 @@ export function formatLayoutBlock(
     ) {
       lines.push(`fontSize: ${frontmatter.fontSize}`);
     }
-    if (frontmatter.noteUri) {
-      const uri = frontmatter.noteUri;
-      const bare = /^(https?:\/\/\S+|\/\S+)$/.test(uri);
-      lines.push(bare ? `noteUri: ${uri}` : `noteUri: "${uri.replace(/"/g, '\\"')}"`);
+    for (const key of ['noteUri', 'noteMapUri', 'noteDetailsUri'] as const) {
+      const uri = frontmatter[key];
+      if (!uri) continue;
+      const bare = /^(https?:\/\/\S+|\/\S+|none)$/i.test(uri);
+      lines.push(bare ? `${key}: ${uri}` : `${key}: "${uri.replace(/"/g, '\\"')}"`);
     }
   }
   const keys = Object.keys(layouts).sort();

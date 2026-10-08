@@ -124,7 +124,8 @@ export function noteLinkWhere(href: string | null | undefined, base?: string): s
  * One popover row. `href` + `newTab` opens in a new tab with
  * `rel="noopener noreferrer"`; `hopId` selects a node in this map; `kind`
  * names the row for the host and for tests (`link`, `hop`, `note-open`,
- * `note-go`, `thread`).
+ * `note-map`, `note-details`, `thread`). `broken`: a hop whose node is not in
+ * this map, drawn muted and inert.
  */
 export type LinkPopRow = {
   label: string;
@@ -133,32 +134,58 @@ export type LinkPopRow = {
   newTab?: boolean;
   hopId?: string | null;
   kind: string;
+  broken?: boolean;
 };
 
-/** Globe rows: one per caption link. */
-export function captionLinkRows(links: readonly CaptionLink[], base?: string): LinkPopRow[] {
-  return links.map((link) =>
-    link.hopId
-      ? { label: link.label, href: link.href, hopId: link.hopId, kind: 'hop' }
-      : { label: link.label, href: link.href, newTab: true, where: linkPopWhere(link, base), kind: 'link' },
-  );
+/**
+ * Globe rows: one per caption link. A `#pnid:` link is left out (its `#N` chip
+ * opens it). `hasNode` marks a hop to a node not in this map `broken`.
+ */
+export function captionLinkRows(
+  links: readonly CaptionLink[],
+  base?: string,
+  hasNode?: (id: string) => boolean,
+): LinkPopRow[] {
+  return links
+    .filter((link) => !link.pnid)
+    .map((link): LinkPopRow => {
+      if (!link.hopId) {
+        return { label: link.label, href: link.href, newTab: true, where: linkPopWhere(link, base), kind: 'link' };
+      }
+      const row: LinkPopRow = { label: link.label, href: link.href, hopId: link.hopId, kind: 'hop' };
+      if (hasNode && !hasNode(link.hopId)) row.broken = true;
+      return row;
+    });
 }
 
 /**
- * `#N` chip rows: `Open #N` (new tab when the noteUri gives an href, muted
- * destination) and `Go to #N` when that pnid is a node in this map.
+ * `#N` chip rows (0.2.34): `Open #N` (new tab when the noteUri gives an href,
+ * muted destination), then `Open map` and `Open details` when their templates
+ * resolve (`noteLinkHrefs`). N is a note number, never a node id: there is no
+ * in-map row.
  */
 export function noteLinkRows(
   pnid: string,
   href: string | null | undefined,
-  opts: { base?: string; inMap?: boolean } = {},
+  opts: { base?: string; mapHref?: string | null; detailsHref?: string | null } = {},
 ): LinkPopRow[] {
   const rows: LinkPopRow[] = [
     href
       ? { label: `Open #${pnid}`, href, newTab: true, where: noteLinkWhere(href, opts.base), kind: 'note-open' }
       : { label: `Open #${pnid}`, kind: 'note-open' },
   ];
-  if (opts.inMap) rows.push({ label: `Go to #${pnid}`, hopId: pnid, kind: 'note-go' });
+  if (opts.mapHref) {
+    rows.push({ label: 'Open map', href: opts.mapHref, newTab: true, where: noteLinkWhere(opts.mapHref, opts.base), kind: 'note-map' });
+  }
+  if (opts.detailsHref) {
+    rows.push({
+      label: 'Open details',
+      href: opts.detailsHref,
+      newTab: true,
+      where: noteLinkWhere(opts.detailsHref, opts.base),
+      kind: 'note-details',
+    });
+  }
   return rows;
 }
 
@@ -206,6 +233,11 @@ export function renderLinkPopRows(
       w.textContent = row.where;
       a.appendChild(w);
     }
+    if (row.broken) {
+      a.dataset.broken = 'true';
+      a.setAttribute('aria-disabled', 'true');
+      a.classList.add('is-broken');
+    }
     if (row.hopId) {
       a.dataset.hopId = row.hopId;
     } else if (row.href && row.newTab) {
@@ -221,7 +253,7 @@ export function renderLinkPopRows(
 /** Globe popover from caption links (0.2.33 API). */
 export function renderLinkPop(
   links: readonly CaptionLink[],
-  opts: { fine: boolean; base?: string; nodeId?: string },
+  opts: { fine: boolean; base?: string; nodeId?: string; hasNode?: (id: string) => boolean },
 ): LinkPopView {
-  return renderLinkPopRows(captionLinkRows(links, opts.base), { ...opts, kind: 'links' });
+  return renderLinkPopRows(captionLinkRows(links, opts.base, opts.hasNode), { ...opts, kind: 'links' });
 }

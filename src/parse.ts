@@ -133,20 +133,23 @@ function parseFrontmatter(text: string): {
       fm.fontSize = Number(fontSize[1]);
       continue;
     }
-    const noteUri = line.match(/^noteUri\s*:\s*(.+)$/i);
-    if (noteUri) {
-      const raw = noteUri[1].trim();
-      const value =
-        (raw.startsWith('"') && raw.endsWith('"')) ||
-        (raw.startsWith("'") && raw.endsWith("'"))
-          ? raw.slice(1, -1)
-          : raw;
-      if (value) fm.noteUri = value;
+    // URL templates (`noteUri`, `noteMapUri`, `noteDetailsUri`).
+    const uri = line.match(/^(noteUri|noteMapUri|noteDetailsUri)\s*:\s*(.+)$/i);
+    if (uri) {
+      const key = URI_KEYS[uri[1]!.toLowerCase()]!;
+      const value = unquote(uri[2]!.trim());
+      if (value) fm[key] = value;
     }
   }
 
   return { fm, body };
 }
+
+const URI_KEYS: Record<string, 'noteUri' | 'noteMapUri' | 'noteDetailsUri'> = {
+  noteuri: 'noteUri',
+  notemapuri: 'noteMapUri',
+  notedetailsuri: 'noteDetailsUri',
+};
 
 function splitIds(s: string): string[] {
   return s

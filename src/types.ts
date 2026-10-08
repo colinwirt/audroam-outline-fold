@@ -142,6 +142,16 @@ export interface OutlineFrontmatter {
    * `{id}` is the note id. `https://b.audroam.com/view/pnid/{id}` or `/view/pnid/{id}`.
    */
   noteUri?: string;
+  /**
+   * Open map pattern for `<t:N>` popovers (0.2.34), `{id}` is the note number.
+   * `none` hides the row. Unset: the `noteMapUri` option, then `/notes/{id}/map`.
+   */
+  noteMapUri?: string;
+  /**
+   * Open details pattern for `<t:N>` popovers (0.2.34), `{id}` is the note number.
+   * `none` hides the row. Unset: the `noteDetailsUri` option, then `/notes/{id}/details`.
+   */
+  noteDetailsUri?: string;
 }
 
 export interface FoldState {

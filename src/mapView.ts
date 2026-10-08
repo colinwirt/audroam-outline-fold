@@ -17,6 +17,7 @@ import {
   threadRows,
   type LinkPopRow,
 } from './linkPop.js';
+import { noteLinkHrefs, type NoteUriOptions } from './linkTemplates.js';
 import {
   toggleFold,
   isCollapsed,
@@ -242,13 +243,26 @@ export interface MapViewOptions {
   onAction?: (ev: { id: string; action: string; node: OutlineNode }) => void;
   /** Optional: thread chip navigate (`<thread:…>`). */
   onThread?: (ev: { id: string; thread: string; node: OutlineNode }) => void;
-  /** Optional: `<t: N>` note-link chip. Host opens the note. */
-  onNoteLink?: (ev: { id: string; pnid: string; node: OutlineNode }) => void;
+  /**
+   * Optional: a `#N` popover row was picked (`open`: `note` = Open #N, `map`,
+   * `details`). The row's own link opens in a new tab when it has an href.
+   */
+  onNoteLink?: (ev: { id: string; pnid: string; node: OutlineNode; open?: 'note' | 'map' | 'details' }) => void;
   /**
    * Fallback when the layout block omits `noteUri`.
    * `{id}` is the note id. http(s) or a root-relative path.
    */
   noteUri?: string;
+  /**
+   * Open map row in `#N` popovers when the layout block omits `noteMapUri`
+   * (0.2.34). `{id}` is the note number. Unset: `/notes/{id}/map`; `null` or `''`: no row.
+   */
+  noteMapUri?: string | null;
+  /**
+   * Open details row in `#N` popovers when the layout block omits `noteDetailsUri`
+   * (0.2.34). `{id}` is the note number. Unset: `/notes/{id}/details`; `null` or `''`: no row.
+   */
+  noteDetailsUri?: string | null;
   /**
    * When true (default), expand/focus may recentre the group.
    * When false, only gentle ensure-visible runs (edit ensure still on).
@@ -1064,6 +1078,8 @@ export function createMapView(
     onThread,
     onNoteLink,
     noteUri: noteUriFallback,
+    noteMapUri,
+    noteDetailsUri,
     cameraRecentre: cameraRecentreOpt = true,
     isEditing = () => false,
     getEditRegion,
@@ -1072,6 +1088,10 @@ export function createMapView(
     onCameraSettle,
   } = opts;
   const wheelSetting = gestureOpts.wheel ?? wheelMode;
+  // Host fallbacks for the note-link templates; `'noteMapUri' in opts` keeps an explicit null.
+  const noteUriOpts: NoteUriOptions = { noteUri: noteUriFallback };
+  if ('noteMapUri' in opts) noteUriOpts.noteMapUri = noteMapUri;
+  if ('noteDetailsUri' in opts) noteUriOpts.noteDetailsUri = noteDetailsUri;
   const inertiaOn = gestureOpts.inertia !== false;
   const rubberOn = gestureOpts.rubberBand !== false;
   const doubleTapOn = gestureOpts.doubleTapZoom !== false;
@@ -1545,25 +1565,29 @@ export function createMapView(
     });
   }
 
-  /** `#N` chip: Open #N (new tab + onNoteLink), Go to #N when that node is here. */
+  /**
+   * `#N` chip: Open #N (new tab + onNoteLink), Open map, Open details. N is a
+   * note number, not a node id, so there is no in-map row (0.2.34).
+   */
   function showNotePop(id: string, hit: Element): void {
     const pnid = hit.getAttribute('data-note-link') || '';
     const index = hit.getAttribute('data-note-index') || '0';
     if (!pnid) return;
     const doc = getDoc();
-    const href = noteLinkHref(doc.frontmatter?.noteUri || noteUriFallback, pnid);
+    const hrefs = noteLinkHrefs(pnid, doc.frontmatter, noteUriOpts);
     openLinkPop({
       id,
       anchorSel: `.map-note-link-hit[data-note-index="${CSS.escape(index)}"]`,
-      rows: noteLinkRows(pnid, href, { base: pageBase(), inMap: !!findNode(doc.nodes, pnid) }),
+      rows: noteLinkRows(pnid, hrefs.note, { base: pageBase(), mapHref: hrefs.map, detailsHref: hrefs.details }),
       label: `#${pnid}`,
       kind: 'note',
-      onOpen: () => {
+      onOpen: (row) => {
         setFocusId(id);
         userCamGesture = false;
         pendingFollow = { kind: 'focus' };
         const n = findNode(getDoc().nodes, id);
-        if (n) onNoteLink?.({ id, pnid, node: n });
+        const open = row.kind === 'note-map' ? 'map' : row.kind === 'note-details' ? 'details' : 'note';
+        if (n) onNoteLink?.({ id, pnid, node: n, open });
         onChange?.();
       },
     });
