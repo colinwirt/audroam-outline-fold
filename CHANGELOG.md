@@ -4,12 +4,33 @@
 
 ### Map: #N and thread chips open the link popover
 - A click, tap, `Enter` or `Space` on a `#N` note chip or a thread chip now opens the same popover as the globe (same classes, right of the chip, camera pans to fit, open through pan and zoom, same ways to close). Before, a `#N` chip opened a new tab straight away and a thread chip called `onThread` straight away.
-- `#N` rows: `Open #N`, with the noteUri's host muted (or its path when same-site); it opens a new tab with `rel="noopener noreferrer"` and fires `onNoteLink`. `Go to #N` when that pnid is a node in this map; it selects that node like a hop link. Without a noteUri, `Open #N` only fires `onNoteLink`.
+- `#N` rows: `Open #N`, `Open map`, `Open details`, each with its destination's host muted (or its path when same-site); each opens a new tab with `rel="noopener noreferrer"` and fires `onNoteLink` with `open: 'note' | 'map' | 'details'`. Without a noteUri, `Open #N` only fires `onNoteLink`. No `Go to #N`: N is a note number, never a node id (removed during 0.2.34).
 - Thread row: `Open thread`, which fires `onThread`.
 - Each `#N` chip in a caption opens its own popover (`data-note-index`). The SVG anchor stays, so middle-click and Ctrl/Cmd/Shift-click still open the note in a new tab straight away (and fire `onNoteLink`).
 - One implementation for the globe, `#N` and thread chips. New exports: `renderLinkPopRows`, `captionLinkRows`, `noteLinkRows`, `noteLinkWhere`, `threadRows`, type `LinkPopRow`. The popover carries `data-kind` (`links`, `note`, `thread`) and each row `data-row`.
 - Link popover placement uses exact px (CI fonts put the globe at x.5, so the rounded gap read 8.5 px); the fitted edge is exactly 8 px inside.
 - Tests: `tests/note-pop.test.ts`, `e2e/note-pop.spec.ts`, `e2e/touch-note-pop.spec.ts` (fixture `examples/e2e-touch/notes.md`); `touch-map` and `map-controls` now expect the popover for these chips. Link popover e2e waits for the camera to settle instead of sleeping.
+
+### Links: `<r:id>` jumps, `[label](#pnid:N)` note links, typed `node.links`
+- New `<r:id>` tag: a jump to the node with `<id:id>`, the tag twin of `[label](#id:id)`. Same id characters as `<id:>`; read with spaces like every tag (`<r : x>`), written in the tag group after `<thread:…>` with its spelling kept (`<r:x>` when the software adds it).
+- New `[label](#pnid:N)`: a note link like `<t:N>` (digits). It stays in the caption as written; the Map gives it a `#N` chip with the same popover rows and keeps the label on the pill; `toHtml` draws it as an `of-note-link`.
+- `node.links`: every link on a line, typed `{ kind: 'note' | 'jump', target, form: 'tag' | 'markdown', source, label? }` (tags in source order, then markdown links). `noteLinks` and `noteLinkTags` are unchanged. Exports `NodeLink`, `resolveJumps`, `findNodeById`, `jumpChipLabel`, `parseNoteTarget`, `markdownLinkSpans`.
+- `#id:` hop targets take the `<id:>` characters only (`[A-Za-z0-9][A-Za-z0-9_-]*`; `.` and `:` used to be accepted, though no id can contain them). `clean` matches the same set and follows `<r:…>` too.
+- Ids stay lazy: the parser never writes one. Session ids skip ids a jump names; `serialize` writes a session id only when a jump points at it.
+- An unresolved jump or hop stays visible, muted and inert (`of-link-broken`, `.map-jump-hit.is-broken`, `data-broken` popover row).
+- Map: `<r:id>` draws a `→ caption` chip (target's first line, 24 chars; `→ id` when missing). The chip, `Enter`/`Space` on it, or a hop row selects the target, unfolds its ancestors and pans to it. New `createMapView` option `onHop(id, from)`.
+- Outline: `toHtml` draws `<r:id>` as `a.of-jump[data-hop-id]`; `attachOutlineTree` follows `a.of-hop` / `a.of-jump` on click, `Enter` or `Space` without a hash change (unfolds ancestors, focuses and scrolls the row) and calls the new `onHop(id, node, from)` option.
+
+### `#N` popover: Open map and Open details
+- URL templates `noteMapUri` (default `/notes/{id}/map`) and `noteDetailsUri` (default `/notes/{id}/details`), same shape as `noteUri` (`{id}` / `{pnid}`, http(s) or root-relative). Taken from the layout block or frontmatter first, then the `createMapView` option of the same name, then the default. `none` in the layout block, or `null` / `''` as an option, hides the row. `formatLayoutBlock` writes them back.
+- Exports `noteUriTemplate`, `noteLinkHrefs`, `DEFAULT_NOTE_MAP_URI`, `DEFAULT_NOTE_DETAILS_URI`, types `NoteUriKey`, `NoteUriOptions`.
+
+### Map: thread pill inside the node
+- The thread pill sits in the chip row after the caption's widest line (thread, `#N`, then jump chips), inside the node, and `pillSize` reserves its width (`thread`, `jumps` options; `mapChipPieces`, `mapChipSpan`, `THREAD_CHIP_LABEL`, `THREAD_CHIP_H`). It was drawn over the node's top-right edge. Fill `--map-menu-bg`, stroke `--map-menu-stroke`, muted 11 px label; same hit target.
+- A caption whose only links are `#pnid:` gets no globe badge.
+
+### Tests
+- `tests/links.test.ts`, `tests/link-templates.test.ts`, `tests/thread-pill.test.ts`, `tests/jumps-render.test.ts`; `e2e/jumps.spec.ts`, `e2e/touch-jumps.spec.ts` (fixture `examples/e2e-touch/jumps.md`, Outline via `?view=outline`); note-pop specs expect the three rows.
 
 ## 0.2.33 — 2026-10-08
 

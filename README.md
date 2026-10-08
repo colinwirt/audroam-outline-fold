@@ -84,7 +84,7 @@ ins-remote:
 | Rule | Meaning |
 |------|---------|
 | Caption-first tags | `title <flag>* <id:…> (+)?` — serialize always emits this shape |
-| Known tags only | `<id:N>`, `<t:N>`, `<kind:…>`, `<enc:…>`, `<action:…>`, `<thread:…>`, `<db:…>` and the flag/kind words (`<private>`, `<encrypted>`, `<doc>`, …). Any other bare `<word>` (`<design>`, `<script>`, `<br>`) is caption text and round-trips unchanged; there is no short id form (removed in 0.2.31) |
+| Known tags only | `<id:N>`, `<t:N>`, `<r:id>`, `<kind:…>`, `<enc:…>`, `<action:…>`, `<thread:…>`, `<db:…>` and the flag/kind words (`<private>`, `<encrypted>`, `<doc>`, …). Any other bare `<word>` (`<design>`, `<script>`, `<br>`) is caption text and round-trips unchanged; there is no short id form (removed in 0.2.31) |
 | Tag spacing (0.2.32) | Readers accept optional whitespace around the colon and just inside the brackets: `<id : craft-lab>`, `< t: 41609 >`, `<kind : doc>`, `<action: https://… >`. Serialize writes `<name:value>` (a new note link is `<t:N>`) and keeps a spaced tag as written while it still names the same value, so a fold or a tick does not respell it and a typed tag is stored exactly as typed. Display is clean: `toHtml` and Map pill text show `<name:value>` whatever the stored spelling (`displayTags(text)`, render only). Bare words stay exact: `< doc >` is caption text |
 | Inline code | Nothing between backticks is read as a tag, id, note link or fold marker |
 | `<private>` / `<encrypted>` | Lock chrome (Unlock vs Decrypt) |
@@ -93,9 +93,57 @@ ins-remote:
 | Inline `<enc:…>` | Still parsed (compat); **serialize writes trailer only** |
 | Exactly one of `ct` \| `uri` | Inline ciphertext **or** remote blob URI |
 | Trailing YAML `---` | Same fold-/marker keys as leading frontmatter |
-| `--- layout ---` | Per-node `w:` widths, and the same document keys (`fold-` / `fold+`, markers, `fontSize`, `noteUri`) |
+| `--- layout ---` | Per-node `w:` widths, and the same document keys (`fold-` / `fold+`, markers, `fontSize`, `noteUri`, `noteMapUri`, `noteDetailsUri`) |
 | Head + tail frontmatter | **Merged; tail wins** on conflicts. Keys in `--- layout ---` win over both |
 | Serialize | Writes those document keys in `--- layout ---`, not a leading `---` fence |
+
+### Links (0.2.34)
+
+Two kinds of link, each in a tag form and a markdown form:
+
+| Written | Kind | Means |
+|---------|------|-------|
+| `<t:N>` | note | A note outside this map, by number (digits). In Audroam N is a pnid. It is never a node id. |
+| `[label](#pnid:N)` | note | The same note link, with a label in the caption. |
+| `<r:id>` | jump | A node in this map, by its `<id:…>`. |
+| `[label](#id:id)` | jump | The same jump, with a label in the caption (the hop link, since 0.2.8). |
+
+```text
+- Water rota <t:1004> <r:plants> <id:rota>
+- Seeds: [swap list](#pnid:1006) and the [plant list](#id:plants)
+- Plant list <id:plants>
+  - Tomatoes
+```
+
+- **Tags.** `<t:…>` takes digits; `<r:…>` takes the `<id:>` characters (`[A-Za-z0-9][A-Za-z0-9_-]*`). Like every tag they read with optional spaces (`<r : plants>`, `<r: plants>`, `< R:plants >`), anywhere on the line, and are written back in the tag group after `<thread:…>` (`title <t:…|r:…>* <kind:…> <flag>* <id:…>`), in the order they were read, each with its spelling. A tag the software adds is written `<r:id>` / `<t:N>`. Mid-caption or leading tags move to the tag group, as `<t:N>` always has.
+- **Markdown.** `#pnid:` takes digits and `#id:` the `<id:>` characters (0.2.34: `#id:` used to accept `.` and `:`, which no id can contain). Both stay in the caption and round-trip as written. Inside backticks nothing is a link.
+- **Model.** `node.links` lists every link: the tags in source order, then the caption's markdown links, as `{ kind: 'note' | 'jump', target, form: 'tag' | 'markdown', source, label? }`. `node.noteLinks` / `noteLinkTags` are unchanged (the `<t:N>` numbers); taking a number out of `noteLinks` drops its tag. `resolveJumps(node)` gives the `<r:…>` targets.
+- **Ids stay lazy.** The parser never writes an id. A jump does not give its own line an id; the line it points at needs an explicit `<id:…>`. Session ids (`parse(text, { sessionIds: true })`) never take an id a jump names, and `serialize` writes a session id only when a jump points at it.
+- **Unresolved.** A jump to an id that is not in the document is kept and shown muted (`of-link-broken`, `.map-jump-hit.is-broken`, a muted globe row); it does nothing when clicked.
+- **Map.** `<t:N>` and `[label](#pnid:N)` draw a `#N` chip; `<r:id>` draws a `→ caption` chip (the target's first caption line, 24 characters; `→ id` when it is not in the map). A `[label](#pnid:N)` keeps its label on the pill. A jump chip, or a hop row in the globe popover, selects the node, unfolds its folded ancestors and pans to it (`onHop`).
+- **Outline.** `toHtml` draws `<r:id>` as `a.of-jump[data-hop-id]` after the `#N` chips, and `[label](#pnid:N)` as an `of-note-link` with the noteUri href. `attachOutlineTree` follows `a.of-hop` and `a.of-jump` without changing the location hash: it unfolds the ancestors, focuses the row, scrolls it into view and calls `onHop(id, node, from)`.
+
+#### `#N` popover and URL templates
+
+A `#N` chip opens the link popover with up to three rows:
+
+| Row | Template key | Default |
+|-----|--------------|---------|
+| `Open #N` | `noteUri` | none: the row only fires `onNoteLink` |
+| `Open map` | `noteMapUri` | `/notes/{id}/map` |
+| `Open details` | `noteDetailsUri` | `/notes/{id}/details` |
+
+Each template is a URL with `{id}` (or `{pnid}`) for the note number, http(s) or root-relative. It is taken from, in order: the document's `--- layout ---` block (or frontmatter), then the `createMapView` option of the same name, then the default. `Open #N` always shows (without a URL it only fires `onNoteLink`); `Open map` and `Open details` show only when their template gives a URL: `none` in the layout block, or `null` / `''` as the option, turns a row off, and a template without `{id}` gives none. Each row opens in a new tab and fires `onNoteLink({ id, pnid, node, open: 'note' | 'map' | 'details' })`. There is no in-map row: N is a note number, not a node id.
+
+```text
+--- layout ---
+noteUri: /view/pnid/{id}
+noteMapUri: /outline-view?id={id}&map=1
+noteDetailsUri: none
+---
+```
+
+`noteUriTemplate(key, frontmatter, options)` and `noteLinkHrefs(pnid, frontmatter, options)` resolve them for a host.
 
 **Key identity:** Every sealed node is expected to carry its own `kid`. The default is one key per node; sharing a `kid` across nodes is supported when the user deliberately judges their sensitivity the same. The trailer stays keyed by node id, with each entry carrying its own `kid`.
 
@@ -291,7 +339,9 @@ const packed = autoPackPositions(doc, {
 | `foldLevelPicker(doc, id)` / `currentFoldLevel` | Fold-to-level model (0.2.32): items Fold · 1 · 2 · 3 · All with key hints, shown/hidden counts, levels equal to or deeper than the subtree flagged, current level checked. Apply with `setExpandLevel(doc, key, { under: id })`, which resets the whole subtree. The Map picker below uses it. |
 | Map fold-to-level picker (0.2.32) | Built into `createMapView` after `bindGestures()` / `bindKeyboard()`. Open: hold a fold handle 450 ms (ring from 150 ms; 10 px touch / 4 px mouse slop, a second finger cancels), right-click a handle or a foldable pill, or `ContextMenu` / `Shift+F10` on the selected node. Touch: slide onto an item and lift to apply; lift elsewhere keeps it open. Keys in the menu: arrows, `Home` / `End`, `Enter` / `Space`, the hint key (`0` `1` `2` `3` `*`), `Esc`. All above 1,500 nodes asks `Show all N` / `Cancel` first. The handle stays put (L10); the result goes to a polite `.map-live` region. Fold state only: no id is written into a caption. A short tap or click on the handle still toggles once. |
 | Map link popover (0.2.33) | The globe badge opens `.map-link-pop` (`role=menu`): one `.map-link-item` row per caption link, label plus muted destination (`linkPopWhere`: host for external URLs, file or folder for same-site links, nothing for hops). Styled like the level menu through `--map-menu-bg`, `--map-menu-stroke`, `--map-menu-hover`, `--map-menu-shadow`. Opens right of the globe (`placeLinkPop`: 8 px gap, centred; the camera pans to fit it 8 px inside, zoom unchanged) and follows pan and zoom; closes on a tap outside without a drag, `Esc`, `Tab` or a followed link. Arrows, `Enter` / `Space`, `Esc` back to the map. `renderLinkPop(links, { fine, base })` builds it. |
-| Chip popovers (0.2.34) | `#N` note chips and thread chips open the same `.map-link-pop`: `Open #N` (noteUri host or path muted; new tab + `onNoteLink`), `Go to #N` when that node is in the map, or `Open thread` (`onThread`). Middle-click / Ctrl-click on a `#N` chip still opens the note directly. Rows: `noteLinkRows`, `threadRows`, `captionLinkRows`; `renderLinkPopRows` draws any of them. |
+| Chip popovers (0.2.34) | `#N` note chips and thread chips open the same `.map-link-pop`: `Open #N`, `Open map`, `Open details` (destination muted; new tab + `onNoteLink`; see [`#N` popover and URL templates](#n-popover-and-url-templates)), or `Open thread` (`onThread`). Middle-click / Ctrl-click on a `#N` chip still opens the note directly. Rows: `noteLinkRows`, `threadRows`, `captionLinkRows`; `renderLinkPopRows` draws any of them. |
+| Chip row (0.2.34) | After the caption's widest line, centred on it, inside the node: the thread pill, `#N` chips, then `→ caption` jump chips. `pillSize` reserves their width (`thread`, `noteLinks`, `jumps`; `mapChipPieces`, `mapChipSpan`). The thread pill uses `--map-menu-bg`, `--map-menu-stroke` and the muted text colour. |
+| `onHop` | `createMapView` option: a jump chip or hop row selected node `id` from node `from`. |
 | `map.openLevelMenu(id?)` / `closeLevelMenu()` / `applyFoldLevel(id, level)` | Open the picker on a node (default: the selected one), close it, or apply a level (`0` = Fold, `1`–`3`, `'*'`) with the same anchor and announcement. |
 | `map.setWholeMapLevel(level)` / `currentWholeMapLevel()` / `onPaint(fn)` | Whole-map level 1, 2, 3 or `'*'` (`setExpandLevel(doc, level + 1)`), the level the map is at now (or `null`), and a paint listener (returns an unsubscribe). |
 | `mountMapLevels(map, container)` / `mountMapControls(map, el, { levels: true })` | Levels toolbar: `Levels 1 2 3 All`, 44 px buttons, `aria-pressed` on the current level. Opt-in. |

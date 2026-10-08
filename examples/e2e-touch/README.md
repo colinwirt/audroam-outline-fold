@@ -14,3 +14,11 @@ Playwright touch harness for the Map (0.2.30+). Not a demo.
   specs (`e2e/fold-level.spec.ts`, `e2e/touch-fold-level.spec.ts`).
   `?seed=level1` runs `seedDefaultFold` before the first paint; `?levels=1`
   adds the toolbar Levels group (`mountMapControls(..., { levels: true })`).
+- `notes.md` (`?doc=notes.md`) has `#N` note chips and thread chips for the
+  chip popover specs; its layout block sets `noteMapUri`, and `noteDetailsUri`
+  falls back to the built-in default.
+- `jumps.md` (`?doc=jumps.md`) has `<r:id>` jumps (one unresolved), hop links
+  (one unresolved), a `[label](#pnid:N)` note link and a thread chip, for
+  `e2e/jumps.spec.ts` and `e2e/touch-jumps.spec.ts`. `?view=outline` renders
+  the same document with `toHtml` + `attachOutlineTree` instead of the Map.
+  `window.__hops` records `onHop` calls from either view.
