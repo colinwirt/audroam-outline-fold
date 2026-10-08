@@ -3,10 +3,15 @@
  * inside the brackets (`<id : craft-lab>`, `<t: 41609 >`). Writers emit `<name:value>`
  * (`<t:N>` for a new note link), and a spaced tag keeps its spelling through serialize,
  * fold and task tick while it still names the same value. Bare words stay exact.
+ * Display (toHtml, Map pill text) shows every tag clean, whatever the stored spelling.
  */
 import { describe, expect, it } from 'vitest';
 import {
+  canonTag,
+  captionToHtml,
+  captionVisibleText,
   cleanIds,
+  displayTags,
   cleanMarkdown,
   displayCaption,
   parse,
@@ -15,8 +20,10 @@ import {
   resolveNoteLinks,
   serialize,
   toggleFold,
+  toHtml,
   toggleTask,
 } from '../src/index.js';
+import { captionWithoutLinks } from '../src/captionRich.js';
 
 const first = (body: string) => parse(body).nodes[0]!;
 
@@ -111,5 +118,34 @@ describe('clean ids and Copy clean handle spaced tags', () => {
   it('cleanMarkdown strips spaced tags too', () => {
     const text = '- Row < t : 5 > <kind : doc> <action: https://a.example > <id : x>\n  - Child < db : orders > <private>\n';
     expect(cleanMarkdown(text)).toBe('- Row\n  - Child\n');
+  });
+});
+
+describe('display form', () => {
+  it('displayTags shows every colon tag clean and leaves code spans alone', () => {
+    expect(displayTags('Work <t: 41609 > < T : 7 > <Kind : doc> <id :craft-lab>')).toBe(
+      'Work <t:41609> <t:7> <kind:doc> <id:craft-lab>',
+    );
+    expect(displayTags('Code `<t: 5>` and <action: https://x.test/a >')).toBe(
+      'Code `<t: 5>` and <action:https://x.test/a>',
+    );
+    expect(displayTags('< doc > and <private> stay')).toBe('< doc > and <private> stay');
+    expect(canonTag('< id : craft-lab >')).toBe('<id:craft-lab>');
+  });
+
+  it('caption renderers show the clean form', () => {
+    const title = 'See <kind : doc> mid and `<id : x>`';
+    expect(captionToHtml(title)).toBe('See &lt;kind:doc&gt; mid and <code class="of-code">&lt;id : x&gt;</code>');
+    expect(captionVisibleText(title)).toBe('See <kind:doc> mid and <id : x>');
+    expect(captionWithoutLinks(title)).toBe('See <kind:doc> mid and `<id : x>`');
+  });
+
+  it('rendering never changes the stored spelling', () => {
+    const md = '- Row <kind : doc> mid <t: 41609 > <id : a>\n';
+    const doc = parse(md);
+    const html = toHtml(doc);
+    expect(html).toContain('&lt;kind:doc&gt;');
+    expect(html).not.toContain('&lt;kind : doc&gt;');
+    expect(serialize(doc)).toBe(md);
   });
 });

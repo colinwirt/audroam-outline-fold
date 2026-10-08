@@ -18,8 +18,9 @@
 
 ### Tag spacing
 - Readers are lenient for every colon tag (`<id:>`, `<t:>`, `<kind:>`, `<enc:>`, `<action:>`, `<thread:>`, `<db:>`): optional whitespace around the colon and just inside the brackets (`<id : craft-lab>`, `<t: 41609 >`). Parse, the `taskChrome` helpers, `cleanIds`, `cleanMarkdown` and `validateDocument` all read them. Bare words (`<doc>`, `<private>`) stay exact.
-- Writers emit no spaces. A note link with no stored spelling is written `<t:N>` (was `<t: N>`).
-- Edits keep a tag's spelling: new `OutlineNode.tagSpellings` (id, kind, action, thread, db) beside `noteLinkTags`; serialize writes it back while it still names the node's value.
+- Storage keeps every tag as the author typed it, spaces included. Only tags the software generates use the no-space form: a note link with no stored spelling is written `<t:N>` (was `<t: N>`), a host id `<id:x>`.
+- New `OutlineNode.tagSpellings` (id, kind, action, thread, db) beside `noteLinkTags`; serialize writes a kept spelling back while it still names the node's value, so fold and tick leave the line's tags as they were.
+- Display is clean: new `displayTags(text)` (render only) shows every colon tag as `<name:value>`; `captionToHtml`, `captionVisibleText`, `captionStyleRuns` and the Map pill text use it. Code spans stay literal. Also exported: `canonTag`.
 - `tests/tag-spacing.test.ts`.
 
 ### Tests

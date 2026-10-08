@@ -18,6 +18,7 @@ export { parse, type ParseOptions } from './parse.js';
 export { serialize } from './serialize.js';
 export { toggleFold, isCollapsed, setExpandLevel, type ExpandLevel, type SetExpandLevelOptions } from './fold.js';
 export { toHtml } from './toHtml.js';
+export { canonTag, displayTags } from './tagSpelling.js';
 export {
   captionToHtml,
   captionLinks,

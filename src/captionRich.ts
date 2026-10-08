@@ -5,6 +5,8 @@
  * Tiny HTML allowlist: <b>/<strong>, <i>/<em>, breaks (<br>/<nr> + real/literal \n/\r).
  */
 
+import { displayTags } from './tagSpelling.js';
+
 function esc(s: string): string {
   return String(s)
     .replace(/&/g, '&amp;')
@@ -190,7 +192,7 @@ export function parseTinyHtmlRuns(text: string): CaptionStyleRun[] {
 
 /** Visible plain text after break-normalize + tiny-HTML strip (for wrap/measure). */
 export function captionVisibleText(text: string): string {
-  const normalized = normalizeCaptionBreaks(text);
+  const normalized = normalizeCaptionBreaks(displayTags(text));
   return parseTinyHtmlRuns(normalized)
     .map((r) => r.text)
     .join('');
@@ -198,7 +200,7 @@ export function captionVisibleText(text: string): string {
 
 /** Style runs after break-normalize (Map paint). */
 export function captionStyleRuns(text: string): CaptionStyleRun[] {
-  return parseTinyHtmlRuns(normalizeCaptionBreaks(text));
+  return parseTinyHtmlRuns(normalizeCaptionBreaks(displayTags(text)));
 }
 
 type Token =
@@ -385,7 +387,7 @@ export function isLoneLinkLine(line: string): boolean {
  * its text, a markdown link keeps its label. Images show their alt text.
  */
 export function captionWithoutLinks(title: string): string {
-  return normalizeCaptionBreaks(title)
+  return normalizeCaptionBreaks(displayTags(title))
     .split('\n')
     .map((line) => {
       if (isLoneLinkLine(line)) return '';
@@ -421,7 +423,7 @@ export function captionLinks(title: string): CaptionLink[] {
 
 export function captionToHtml(title: string): string {
   if (!title) return '';
-  const normalized = normalizeCaptionBreaks(title);
+  const normalized = normalizeCaptionBreaks(displayTags(title));
   return tokenize(normalized)
     .map((t) => {
       if (t.kind === 'text') return tinyHtmlToSafeHtml(t.value);
