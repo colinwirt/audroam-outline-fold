@@ -1471,10 +1471,12 @@ export function createMapView(
       dismissLinkPop();
       return null;
     }
+    // Fractional size: offsetWidth rounds, which would put the edge 7.5–8.5 px in.
+    const size = m.el.getBoundingClientRect();
     const pos = placeLinkPop({
       anchor,
       panel: hostViewport(),
-      menu: { w: m.el.offsetWidth, h: m.el.offsetHeight },
+      menu: { w: size.width, h: size.height },
     });
     m.el.style.left = `${pos.left}px`;
     m.el.style.top = `${pos.top}px`;

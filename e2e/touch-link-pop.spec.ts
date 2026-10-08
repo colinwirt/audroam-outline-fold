@@ -22,12 +22,33 @@ test('touch: rows are 44 px and a tap on the hop row selects its node', async ({
     await page.waitForTimeout(16);
   }
   await t.end();
-  await page.waitForTimeout(700);
+  // Wait for the glide to stop: same camera across 3 frames.
+  await expect
+    .poll(
+      () =>
+        page.evaluate(
+          () =>
+            new Promise<boolean>((resolve) => {
+              const m = (window as any).__map;
+              const key = () => `${m.cam.x},${m.cam.y},${m.cam.k}`;
+              const k0 = key();
+              requestAnimationFrame(() =>
+                requestAnimationFrame(() => requestAnimationFrame(() => resolve(key() === k0))),
+              );
+            }),
+        ),
+      { intervals: [0] },
+    )
+    .toBe(true);
   await expect(page.locator('.map-link-pop')).toHaveCount(1);
-  const after = await box(page, '.map-link-pop');
-  const g2 = await box(page, '.map-node[data-id="multi"] .map-link-hit');
-  expect(Math.abs(after.x - before.x) + Math.abs(after.y - before.y)).toBeGreaterThan(10);
-  expect(Math.abs(after.x - (g2.x + g2.w) - 8)).toBeLessThanOrEqual(1); // left is whole px
+  const x = await page.evaluate(() => {
+    const p = document.querySelector('.map-link-pop')!.getBoundingClientRect();
+    const g = document.querySelector('.map-node[data-id="multi"] .map-link-hit')!.getBoundingClientRect();
+    return { px: p.left, py: p.top, gap: p.left - g.right, dy: p.top + p.height / 2 - (g.top + g.height / 2) };
+  });
+  expect(Math.abs(x.px - before.x) + Math.abs(x.py - before.y)).toBeGreaterThan(10);
+  expect(x.gap).toBeCloseTo(8, 1);
+  expect(x.dy).toBeCloseTo(0, 1);
   const row = centre(await box(page, '.map-link-item[data-hop-id="plants"]'));
   await t.tap(row.x, row.y);
   await expect(page.locator('.map-link-pop')).toHaveCount(0);

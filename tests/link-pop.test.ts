@@ -70,6 +70,14 @@ describe('placeLinkPop', () => {
     expect(placeLinkPop({ anchor, panel, menu })).toEqual({ left: 428, top: 187, shift: { x: 0, y: 0 } });
   });
 
+  it('not rounded: a globe at a fractional px keeps the gap exactly 8 (CI fonts)', () => {
+    const r = placeLinkPop({ anchor: { x: 400.5, y: 200.25, w: 20, h: 20 }, panel, menu });
+    expect(r.left - (400.5 + 20)).toBe(8);
+    expect(r.top + menu.h / 2).toBe(210.25);
+    const e = placeLinkPop({ anchor: { x: 700.5, y: 200, w: 20, h: 20 }, panel, menu });
+    expect(e.left + e.shift.x + menu.w).toBe(800 - 8);
+  });
+
   it('past the right edge: pans left just enough for an 8 px margin, never flips', () => {
     const r = placeLinkPop({ anchor: { ...anchor, x: 700 }, panel, menu });
     expect(r.left).toBe(728);

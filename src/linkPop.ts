@@ -96,11 +96,9 @@ export function placeLinkPop(opts: {
   };
   // Keep the globe in view too: the popover's left edge sits right of it.
   const shift = { x: fit(left, menu.w, panel.w), y: fit(top, menu.h, panel.h) };
-  return {
-    left: Math.round(left),
-    top: Math.round(top),
-    shift: { x: Math.round(shift.x), y: Math.round(shift.y) },
-  };
+  // Not rounded: the globe sits at fractional px (fonts, camera), and a
+  // rounded left would make the gap 7.5–8.5 px instead of 8.
+  return { left, top, shift };
 }
 
 export type LinkPopView = { el: HTMLElement; items: HTMLAnchorElement[] };
