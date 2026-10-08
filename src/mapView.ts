@@ -2718,7 +2718,7 @@ export function createMapView(
             <text text-anchor="middle" y="3" fill="#8b9bab" font-size="11">${bodyAction}</text>
           </g>`
             : '';
-          const links = captionLinks(n.title || '');
+          const links = captionLinks(n.title || '').filter((l) => !l.pnid);
           // In the top-right corner, top of the glyph flush with the pill
           // top so it does not sit in the gap above the node.
           const globe =
