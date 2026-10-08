@@ -201,6 +201,7 @@ function parseTitleAndMeta(
   dbRef?: string;
   sealed?: SealedPayload;
   inlineCollapsed?: boolean;
+  inlineExpanded?: boolean;
   task?: TaskState;
   action?: string;
   thread?: string;
@@ -345,10 +346,12 @@ function parseTitleAndMeta(
   }
 
   let inlineCollapsed = false;
+  let inlineExpanded = false;
   if (collapsedMarker && rest.endsWith(collapsedMarker)) {
     inlineCollapsed = true;
     rest = rest.slice(0, -collapsedMarker.length).trimEnd();
   } else if (expandedMarker && rest.endsWith(expandedMarker)) {
+    inlineExpanded = true;
     rest = rest.slice(0, -expandedMarker.length).trimEnd();
   }
 
@@ -460,6 +463,7 @@ function parseTitleAndMeta(
     dbRef,
     sealed,
     inlineCollapsed,
+    inlineExpanded,
     task,
     action,
     thread,
@@ -540,6 +544,10 @@ export function parse(text: string, opts?: ParseOptions): OutlineFoldDoc {
     } else if (meta.inlineCollapsed) {
       inlineCollapsedBare.push(node);
     }
+    if (!meta.id && (meta.inlineCollapsed || meta.inlineExpanded)) {
+      // Dropped again below if session ids give the node an id.
+      node.foldMark = meta.inlineCollapsed ? 'collapsed' : 'expanded';
+    }
 
     while (stack.length && stack[stack.length - 1].depth >= depth) {
       stack.pop();
@@ -569,6 +577,8 @@ export function parse(text: string, opts?: ParseOptions): OutlineFoldDoc {
         if (!n.id) {
           n.id = nextAutoId(used, prefix);
           n.autoId = true;
+          // The session id carries the fold state from here (doc.fold).
+          delete n.foldMark;
         }
         if (n.children?.length) walk(n.children);
       }

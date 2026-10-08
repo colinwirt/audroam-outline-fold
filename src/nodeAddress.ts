@@ -77,15 +77,26 @@ export function assignPersistentId(
   }
   const prefix = opts?.prefix ?? '';
   const used = collectNodeIds(doc.nodes);
+  let id: string | undefined;
   if (!prefix) {
     const pos = indexOutline(doc.nodes).get(node);
-    if (pos && !used.has(String(pos))) {
-      node.id = String(pos);
-      return node.id;
-    }
+    if (pos && !used.has(String(pos))) id = String(pos);
   }
-  node.id = nextAutoId(used, prefix);
+  node.id = id ?? nextAutoId(used, prefix);
+  moveFoldMarkToDoc(doc, node);
   return node.id;
+}
+
+/** A line's own `(+)` (no id) becomes fold state on `doc.fold` once it has an id. */
+function moveFoldMarkToDoc(doc: OutlineFoldDoc, node: OutlineNode): void {
+  if (!node.foldMark || !node.id) return;
+  const collapsed = node.foldMark === 'collapsed';
+  delete node.foldMark;
+  const listed = doc.fold.mode === '-' ? collapsed : !collapsed;
+  if (listed && !doc.fold.ids.includes(node.id)) {
+    doc.fold.ids.push(node.id);
+    if (doc.frontmatter) doc.frontmatter.foldIds = [...doc.fold.ids];
+  }
 }
 
 function needsPersistentId(node: OutlineNode): boolean {

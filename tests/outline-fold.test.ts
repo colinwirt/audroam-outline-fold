@@ -48,12 +48,7 @@ describe('parse sample line', () => {
       for (const shape of shapes) {
         const text = `${shape(w)}\n`;
         it(`keeps ${JSON.stringify(text)}`, () => {
-          // A `(+)` on an id-less line needs session ids to survive serialize (as for any
-          // caption since 0.2.30), so the fold shape is checked with sessionIds only.
-          const docs = text.includes('(+)')
-            ? [parse(text, { sessionIds: true })]
-            : [parse(text), parse(text, { sessionIds: true })];
-          for (const doc of docs) {
+          for (const doc of [parse(text), parse(text, { sessionIds: true })]) {
             const n = doc.nodes[0];
             expect(n.title).toContain(w);
             expect(n.id === undefined || n.id === '7' || n.autoId).toBe(true);

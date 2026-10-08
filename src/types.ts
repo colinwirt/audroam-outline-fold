@@ -80,6 +80,13 @@ export interface OutlineNode {
    */
   noteLinkTags?: Record<string, string>;
   /**
+   * The fold marker as written on a line that has no id (`(+)`, or the
+   * document's expanded marker). Parse sets it only when the node ends up with
+   * no id (no session ids); serialize writes it back so the line round-trips.
+   * Fold state for a node with an id lives in `doc.fold`, not here.
+   */
+  foldMark?: 'collapsed' | 'expanded';
+  /**
    * Layout stored in the outline text (`--- layout ---`), keyed by this node's id.
    * `w` is the caption column width in px. Absent until a custom width (or other
    * payload) needs a persistent id on the outline line.

@@ -74,6 +74,11 @@ function serializeNode(
     line += ` ${collapsedMarker}`;
   } else if (node.id && expandedMarker) {
     line += ` ${expandedMarker}`;
+  } else if (!node.id && node.foldMark === 'collapsed') {
+    // Lazy ids: a fold on a line without an id is the inline marker, never an id.
+    line += ` ${collapsedMarker}`;
+  } else if (!node.id && node.foldMark === 'expanded' && expandedMarker) {
+    line += ` ${expandedMarker}`;
   }
   lines.push(line);
   if (node.children) {
