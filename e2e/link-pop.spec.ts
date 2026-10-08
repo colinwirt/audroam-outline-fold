@@ -85,9 +85,11 @@ test.describe('link popover', () => {
     const pop = page.locator(POP);
     await expect(pop).toHaveCount(1);
     await expect(pop).toHaveAttribute('role', 'menu');
-    // No inline paint: only left/top are set on the element.
+    // No inline paint: only left/top are set on the element (exact px, so CI fonts
+    // can give a half pixel).
     const inline = await pop.evaluate((el) => (el as HTMLElement).style.cssText);
-    expect(inline.replace(/\s/g, '')).toMatch(/^(left:\d+px;top:\d+px;|top:\d+px;left:\d+px;)$/);
+    const px = '-?\\d+(?:\\.\\d+)?px';
+    expect(inline.replace(/\s/g, '')).toMatch(new RegExp(`^(left:${px};top:${px};|top:${px};left:${px};)$`));
     const item = page.locator(`${POP} .map-link-item`).first();
     expect(await item.getAttribute('style')).toBeNull();
     // Same surface as .map-level-menu, read from the stylesheet.
