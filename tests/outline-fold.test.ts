@@ -33,10 +33,16 @@ describe('parse sample line', () => {
     expect(isCollapsed(doc, 'design')).toBe(true);
   });
 
-  it('parses trailing short id', () => {
-    const doc = parse(`- Designing updates for Markmap <design> (+)\n`);
+  it('parses trailing short id when the legacy shortIds option is on', () => {
+    const doc = parse(`- Designing updates for Markmap <design> (+)\n`, { shortIds: true });
     expect(doc.nodes[0].id).toBe('design');
     expect(doc.nodes[0].title).toBe('Designing updates for Markmap');
+  });
+
+  it('keeps a bare <word> as caption text by default (0.2.31)', () => {
+    const doc = parse(`- Designing updates for Markmap <design> (+)\n`);
+    expect(doc.nodes[0].id).toBeUndefined();
+    expect(doc.nodes[0].title).toBe('Designing updates for Markmap <design>');
   });
 
   it('parses caption with priority/vote then trailing id', () => {

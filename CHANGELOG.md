@@ -6,6 +6,13 @@
 - A click on **Map** while the outline is still loading is kept. Before this, the end of loading switched the viewer back to Outline.
 - The viewer parses with `sessionIds: true`. An outline written without `<id:…>` tags now gets fold handles and task boxes in Outline, the same as one with ids. Examples with an id on every line are unchanged.
 
+### Parse: `<script>` and inline code stay text
+- A bare `<word>` is caption text, not a tag. Before, `tryShortId` / `tryShortIdTrailing` read any `<word>` at the start or end of a line as a short id, so `- inject <script>` parsed as id `script`, title `inject`, and serialize wrote `- inject <id:script>`. A `<script>` mid-line went too: the typed-suffix rule (for `<id:n>3`) peeled everything after the last `>` when the text before it ended in *any* `<…>`, so `the <script> tag` became id `script`, title `the tag`. A `<script>` after a real `<id:lab3>` replaced that id.
+- Only the known tags are read: `<id:…>`, `<t: N>`, `<kind:…>`, `<enc:…>`, `<action:…>`, `<thread:…>`, and the flag and kind words (`<private>`, `<encrypted>`, `<db>`, `<doc>`, …). The typed-suffix rule now needs one of those (or a fold marker) before the suffix.
+- The short `<design>` id form is opt-in: `parse(text, { shortIds: true })`. Even then it never replaces an explicit `<id:…>`.
+- Inline code is literal. Nothing between backticks is read as a tag, id, note link, flag or fold marker (`` `<script>` ``, `` `<id:7>` ``, `` `(+)` ``), and `captionToHtml` does not turn a URL or markdown link inside backticks into a link.
+- Display was already safe: `captionToHtml` escapes an unknown tag as text. Tests now pin that `<script>` renders as `&lt;script&gt;`, is never an element and is never dropped.
+
 ### Map: fold handle and connectors (phase 1)
 Design UX spec `20261007-map-fold-handle-connector-polish-ux.md`, locked 2026-10-07 with defaults H1–H10. Phase 1 is H1, H2, H3 (a), H5 and H7.
 - Child connectors start at the outer edge of the fold handle's ring (`foldCx + r + ring stroke / 2`, which is pill edge + 26.8 px with the default slot) instead of the pill edge. No line runs under the handle any more, so seven children no longer bunch up behind the −. A node without a handle still starts at its pill edge.

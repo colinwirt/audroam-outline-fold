@@ -261,6 +261,15 @@ function tokenize(title: string): Token[] {
     if (end > textStart) tokens.push({ kind: 'text', value: s.slice(textStart, end) });
   };
   while (i < s.length) {
+    // Inline code is literal: no link, image or bare URL inside backticks.
+    if (s[i] === '`') {
+      const close = s.indexOf('`', i + 1);
+      const nl = s.indexOf('\n', i + 1);
+      if (close > i + 1 && (nl < 0 || close < nl)) {
+        i = close + 1;
+        continue;
+      }
+    }
     if (s.startsWith('![', i)) {
       const altEnd = s.indexOf('](', i + 2);
       if (altEnd > i) {

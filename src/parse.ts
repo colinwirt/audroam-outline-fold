@@ -48,7 +48,7 @@ const NOTE_LINK_ANY = /<t:\s*(\d+)\s*>/gi;
 const NOTE_LINK_TOKEN = /<t:\s*\d+\s*>/i;
 /** How serialize writes a note link when the text gave no spelling. */
 const NOTE_LINK_DEFAULT = (id: string) => `<t: ${id}>`;
-/** Short `<design>` form — excluded reserved flag/kind/enc words. */
+/** Legacy short `<design>` form (opt-in `shortIds`) — excluded reserved flag/kind/enc words. */
 const RESERVED_SHORT = new Set([
   'private',
   'encrypted',
@@ -186,6 +186,42 @@ function tryShortIdTrailing(rest: string): { id: string; rest: string } | null {
 }
 
 /**
+ * Inline code (`…`) is literal: no tag, id, note link or fold marker inside it
+ * is read. Each span is swapped for a private-use placeholder (no `<`, `>`, or
+ * spaces) while the meta spans are peeled, then put back on the caption.
+ */
+const CODE_SPAN = /`[^`\n]+`/g;
+const CODE_MARK = /\uE000(\d+)\uE001/g;
+
+function maskCodeSpans(text: string): { text: string; spans: string[] } {
+  const spans: string[] = [];
+  const masked = text.replace(CODE_SPAN, (span) => {
+    spans.push(span);
+    return `\uE000${spans.length - 1}\uE001`;
+  });
+  return { text: masked, spans };
+}
+
+function unmaskCodeSpans(text: string, spans: string[]): string {
+  if (!spans.length) return text;
+  return text.replace(CODE_MARK, (all, i: string) => spans[Number(i)] ?? all);
+}
+
+/** True when `core` ends with a tag this grammar reads (not any `<word>`). */
+function endsWithKnownTag(core: string, shortIds: boolean): boolean {
+  return (
+    FLAG_TRAILING.test(core) ||
+    ENC_TRAILING.test(core) ||
+    ACTION_TRAILING.test(core) ||
+    THREAD_TRAILING.test(core) ||
+    NOTE_LINK_TRAILING.test(core) ||
+    KIND_TRAILING.test(core) ||
+    ID_TRAILING.test(core) ||
+    (shortIds && tryShortIdTrailing(core) !== null)
+  );
+}
+
+/**
  * Peel leading meta spans (backward compatible), then strip fold marker from
  * the end, then peel trailing meta spans so `(+)` stays outermost.
  * Trailing id overrides a leading id when both are present.
@@ -195,6 +231,7 @@ function parseTitleAndMeta(
   content: string,
   collapsedMarker: string,
   expandedMarker?: string,
+  shortIds = false,
 ): {
   id?: string;
   title: string;
@@ -209,8 +246,11 @@ function parseTitleAndMeta(
   noteLinks?: string[];
   noteLinkTags?: Record<string, string>;
 } {
-  let rest = content.trim();
+  const masked = maskCodeSpans(content.trim());
+  let rest = masked.text;
   let id: string | undefined;
+  // An explicit `<id:…>` is never replaced by a legacy short `<word>` id.
+  let explicitId = false;
   let kind: NodeKind | undefined;
   const flags: NodeFlag[] = [];
   let dbRef: string | undefined;
@@ -306,14 +346,15 @@ function parseTitleAndMeta(
     m = rest.match(ID_PREFIXED);
     if (m) {
       id = m[1];
+      explicitId = true;
       rest = rest.slice(m[0].length);
       progressed = true;
       continue;
     }
 
-    const short = tryShortId(rest);
+    const short = shortIds ? tryShortId(rest) : null;
     if (short) {
-      id = short.id;
+      if (!explicitId) id = short.id;
       rest = short.rest;
       progressed = true;
       continue;
@@ -341,8 +382,10 @@ function parseTitleAndMeta(
       if (i > 0 && i < rest.length) {
         const core = rest.slice(0, i).trimEnd();
         const suffix = rest.slice(i).trim();
+        // Only a tag this grammar reads (or a fold marker) counts: `the <script> tag`
+        // is a sentence, not `<script>` plus a typed suffix.
         const tokenEnd =
-          /<[^>\n]+>$/.test(core) || markers.some((m) => core.endsWith(m));
+          endsWithKnownTag(core, shortIds) || markers.some((m) => core.endsWith(m));
         if (suffix && tokenEnd) {
           rest = core;
           typedSuffix = suffix;
@@ -418,14 +461,15 @@ function parseTitleAndMeta(
     m = rest.match(ID_TRAILING);
     if (m) {
       id = m[1]; // trailing overrides leading
+      explicitId = true;
       rest = rest.slice(0, rest.length - m[0].length).trimEnd();
       progressed = true;
       continue;
     }
 
-    const short = tryShortIdTrailing(rest);
+    const short = shortIds ? tryShortIdTrailing(rest) : null;
     if (short) {
-      id = short.id; // trailing overrides leading
+      if (!explicitId) id = short.id; // trailing overrides leading
       rest = short.rest;
       progressed = true;
       continue;
@@ -441,6 +485,10 @@ function parseTitleAndMeta(
     .replace(/[ \t]{2,}/g, ' ')
     .trim();
   if (typedSuffix) rest = `${rest} ${typedSuffix}`.trim();
+  rest = unmaskCodeSpans(rest, masked.spans);
+  if (action) action = unmaskCodeSpans(action, masked.spans);
+  if (thread) thread = unmaskCodeSpans(thread, masked.spans);
+  if (dbRef) dbRef = unmaskCodeSpans(dbRef, masked.spans);
   const noteLinks: string[] = [];
   const noteLinkTags: Record<string, string> = {};
   const lists: string[][] = [leadingNotes, midNotes, trailingNotes];
@@ -486,6 +534,14 @@ export interface ParseOptions {
    * blocks. A `(+)` on such a line folds it. Serialize does not write session ids.
    */
   sessionIds?: boolean | { prefix?: string };
+  /**
+   * Legacy short id form: a bare `<word>` at the start or end of a line is read
+   * as `<id:word>`. Off by default (0.2.31): only the known tags (`<id:…>`,
+   * `<t: N>`, `<kind:…>`, `<enc:…>`, `<action:…>`, `<thread:…>` and the flag/kind
+   * words such as `<private>`) are tags, so `<script>` or `<br>` typed in a note
+   * stays text. Serialize writes a short id read this way as `<id:word>`.
+   */
+  shortIds?: boolean;
 }
 
 /**
@@ -531,7 +587,7 @@ export function parse(text: string, opts?: ParseOptions): OutlineFoldDoc {
       depth = indentToDepth.length - 1;
     }
 
-    const meta = parseTitleAndMeta(content, collapsedMarker, expandedMarker);
+    const meta = parseTitleAndMeta(content, collapsedMarker, expandedMarker, !!opts?.shortIds);
     const node: OutlineNode = {
       title: meta.title,
       depth,
