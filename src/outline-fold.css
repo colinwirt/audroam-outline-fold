@@ -19,6 +19,11 @@
   --map-handle-bg: transparent;
   --map-handle-glyph-on-gold: #0a1f28;
   --connector-casing: transparent;
+  /* Map menus: fold-level menu and link popover (0.2.33). */
+  --map-menu-bg: #13202b;
+  --map-menu-stroke: #3d5a73;
+  --map-menu-hover: #1b3044;
+  --map-menu-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
 }
 
 /* Light theme tokens, opt-in: class="of-theme-light" on the map host or an
@@ -389,15 +394,18 @@
 }
 
 /* Level menu: HTML overlay in the map host, anchored to the handle. */
-.map-level-menu {
+.map-level-menu,
+.map-link-pop {
   box-sizing: border-box;
   padding: 6px;
   border-radius: 10px;
-  background: #13202b;
-  border: 1px solid #3d5a73;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  background: var(--map-menu-bg);
+  border: 1px solid var(--map-menu-stroke);
+  box-shadow: var(--map-menu-shadow);
   color: var(--text, var(--of-text));
   font: 14px/1.2 var(--of-font);
+}
+.map-level-menu {
   touch-action: none;
   -webkit-user-select: none;
   user-select: none;
@@ -474,7 +482,7 @@
   text-align: left;
 }
 .map-level-menu[data-pointer="fine"] .map-level-item:hover,
-.map-level-menu[data-pointer="fine"] .map-level-item.is-hot { background: #1b3044; }
+.map-level-menu[data-pointer="fine"] .map-level-item.is-hot { background: var(--map-menu-hover); }
 .map-level-menu[data-pointer="fine"] .map-level-item[role="menuitemradio"]::before {
   content: "";
   flex: none;
@@ -508,4 +516,67 @@
 .of-map-levels button[aria-pressed="true"] {
   border-color: #8ec8ff;
   background: #24425e;
+}
+
+/* Link popover (globe badge), 0.2.33: the level menu's surface and rows.
+   Label in the text colour, destination muted; highlight on hover/focus. */
+.map-link-pop {
+  position: absolute;
+  z-index: 7;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 10rem;
+  max-width: min(22rem, calc(100% - 16px));
+  opacity: 1;
+  transition: opacity 180ms ease;
+}
+.map-link-pop.is-closing {
+  opacity: 0;
+  pointer-events: none;
+}
+.map-link-item {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 32px;
+  padding: 0 8px;
+  border-radius: 8px;
+  color: inherit;
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.map-link-item:hover,
+.map-link-item.is-hot {
+  background: var(--map-menu-hover);
+}
+.map-link-item:focus { outline: none; }
+.map-link-item:focus-visible {
+  background: var(--map-menu-hover);
+  outline: 2px solid var(--gold);
+  outline-offset: 1px;
+}
+.map-link-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.map-link-where {
+  flex: none;
+  max-width: 12rem;
+  margin-left: auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--muted, var(--of-muted));
+  font-size: 12px;
+}
+/* Touch: 44 px rows. */
+.map-link-pop[data-pointer="coarse"] .map-link-item {
+  min-height: 44px;
+  font-size: 16px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .map-link-pop { transition: none; }
 }

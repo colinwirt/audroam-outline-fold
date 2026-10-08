@@ -9,6 +9,7 @@
  * Sealed nodes: omitted until unlocked (no gray stubs) — caller filters doc if needed.
  */
 import { captionLinks, captionWithoutLinks } from './captionRich.js';
+import { renderLinkPop } from './linkPop.js';
 import {
   toggleFold,
   isCollapsed,
@@ -1441,74 +1442,170 @@ export function createMapView(
   }
 
 
+  // ── Link popover (globe badge), styled as the level menu (0.2.33) ──────
+  type LinkPopState = {
+    id: string;
+    el: HTMLElement;
+    items: HTMLAnchorElement[];
+    abort: AbortController;
+  };
+  let linkPop: LinkPopState | null = null;
+
+  /** Globe hit rect in host-local px. */
+  function linkHitRect(id: string): { x: number; y: number; w: number; h: number } | null {
+    const hit = host
+      .querySelector(`.map-node[data-id="${CSS.escape(id)}"]`)
+      ?.querySelector('.map-link-hit');
+    if (!hit) return null;
+    const r = hit.getBoundingClientRect();
+    const hr = host.getBoundingClientRect();
+    return { x: r.left - hr.left, y: r.top - hr.top, w: r.width, h: r.height };
+  }
+
+  /** Same placement as the level menu: centred above the globe, flip below, 8 px inside. */
+  function positionLinkPop(): void {
+    const m = linkPop;
+    if (!m) return;
+    const anchor = linkHitRect(m.id);
+    if (!anchor) {
+      dismissLinkPop();
+      return;
+    }
+    const pos = placeLevelMenu({
+      anchor,
+      panel: hostViewport(),
+      menu: { w: m.el.offsetWidth, h: m.el.offsetHeight },
+    });
+    m.el.style.left = `${pos.left}px`;
+    m.el.style.top = `${pos.top}px`;
+    m.el.dataset.below = pos.below ? 'true' : 'false';
+  }
+
+  function focusLinkItem(index: number): void {
+    const m = linkPop;
+    const a = m?.items[index];
+    if (!m || !a) return;
+    for (const it of m.items) it.tabIndex = -1;
+    a.tabIndex = 0;
+    try {
+      a.focus({ preventScroll: true });
+    } catch {
+      /* focus not available */
+    }
+  }
+
+  /** Fade out over 180 ms. `returnFocus` puts keys back on the map (Esc, Tab, hop). */
+  function dismissLinkPop(returnFocus = false): void {
+    const m = linkPop;
+    if (!m) return;
+    linkPop = null;
+    m.abort.abort();
+    const hadFocus = m.el.contains(document.activeElement);
+    m.el.dataset.closing = '1';
+    m.el.classList.add('is-closing');
+    for (const a of m.items) a.tabIndex = -1;
+    window.setTimeout(() => m.el.remove(), 180);
+    if (returnFocus || hadFocus) focusMapForKeys();
+  }
+
+  function showLinkPop(id: string, title: string): void {
+    if (linkPop) {
+      linkPop.abort.abort();
+      linkPop.el.remove();
+      linkPop = null;
+    }
+    host.querySelectorAll(':scope > .map-link-pop').forEach((el) => el.remove());
+    const links = captionLinks(title);
+    if (!links.length) return;
+    const view = renderLinkPop(links, {
+      fine: !coarsePointer(),
+      base: typeof location !== 'undefined' ? location.href : undefined,
+      nodeId: id,
+    });
+    const abort = new AbortController();
+    const sig = abort.signal;
+    const m: LinkPopState = { id, el: view.el, items: view.items, abort };
+    linkPop = m;
+    view.items.forEach((a, i) => {
+      const hop = a.dataset.hopId;
+      a.addEventListener(
+        'click',
+        (ev) => {
+          ev.stopPropagation();
+          if (!hop) {
+            // External: the browser opens it in a new tab; the menu closes.
+            dismissLinkPop(false);
+            return;
+          }
+          ev.preventDefault();
+          setFocusId(hop);
+          userCamGesture = false;
+          pendingFollow = { kind: 'focus' };
+          dismissLinkPop(true);
+          onChange?.();
+        },
+        { signal: sig },
+      );
+      a.addEventListener('pointerenter', () => a.classList.add('is-hot'), { signal: sig });
+      a.addEventListener('pointerleave', () => a.classList.remove('is-hot'), { signal: sig });
+      a.addEventListener('focus', () => focusLinkItem(i), { signal: sig });
+    });
+    view.el.addEventListener(
+      'keydown',
+      (e) => {
+        const i = m.items.indexOf(document.activeElement as HTMLAnchorElement);
+        const act = levelMenuKeyAction(
+          e.key,
+          i,
+          m.items.map(() => ({})),
+        );
+        // Keys stay in the menu: no fold, zoom or host shortcut.
+        e.stopPropagation();
+        if (!act) return;
+        if (act.type === 'move') {
+          e.preventDefault();
+          focusLinkItem(act.index);
+        } else if (act.type === 'close') {
+          e.preventDefault();
+          dismissLinkPop(true);
+        } else if (act.type === 'apply' && e.key === ' ') {
+          // Enter follows the link natively; Space does the same here.
+          e.preventDefault();
+          m.items[act.index]?.click();
+        }
+      },
+      { signal: sig },
+    );
+    if (getComputedStyle(host).position === 'static') host.style.position = 'relative';
+    host.appendChild(view.el);
+    positionLinkPop();
+    document.addEventListener(
+      'pointerdown',
+      (e) => {
+        const t = e.target as Node | null;
+        // Inside the host the map's own pointerdown decides.
+        if (t && host.contains(t)) return;
+        dismissLinkPop(false);
+      },
+      { capture: true, signal: sig },
+    );
+    document.addEventListener(
+      'keydown',
+      (e) => {
+        if (e.key !== 'Escape' || m.el.contains(e.target as Node)) return;
+        e.preventDefault();
+        e.stopPropagation();
+        dismissLinkPop(true);
+      },
+      { capture: true, signal: sig },
+    );
+    if (!m.el.contains(document.activeElement)) focusLinkItem(0);
+  }
+
   /** Move DOM focus to the stable map host so digits/arrows/fold keys work
    * after a node/canvas click. Only called from user gestures inside the map
    * (never from paint alone), so it cannot steal focus from an editor.
    */
-  function dismissLinkPop(): void {
-    const pop = document.querySelector('.map-link-pop') as HTMLElement | null;
-    if (!pop || pop.dataset.closing === '1') return;
-    pop.dataset.closing = '1';
-    pop.style.transition = 'opacity 180ms ease';
-    pop.style.opacity = '0';
-    window.setTimeout(() => pop.remove(), 180);
-  }
-
-  function showLinkPop(anchor: Element, title: string): void {
-    document.querySelector('.map-link-pop')?.remove();
-    const links = captionLinks(title);
-    if (!links.length) return;
-    const pop = document.createElement('div');
-    pop.className = 'map-link-pop';
-    pop.setAttribute('role', 'dialog');
-    pop.style.cssText = [
-      'position:absolute',
-      'z-index:5',
-      'min-width:8rem',
-      'max-width:calc(100vw - 16px)',
-      'padding:8px 10px',
-      'border-radius:10px',
-      'background:#13202b',
-      'border:1px solid #3d5a73',
-      'box-shadow:0 8px 24px rgba(0,0,0,.35)',
-      'display:flex',
-      'flex-direction:column',
-      'gap:6px',
-      'opacity:1',
-    ].join(';');
-    for (const link of links) {
-      const a = document.createElement('a');
-      a.href = link.href;
-      a.textContent = link.label;
-      a.style.cssText =
-        'color:#8ec8ff;font:13px/1.35 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;white-space:nowrap';
-      a.title = link.href;
-      if (link.hopId) {
-        a.addEventListener('click', (ev) => {
-          ev.preventDefault();
-          ev.stopPropagation();
-          const hop = link.hopId;
-          if (!hop) return;
-          setFocusId(hop);
-          focusMapForKeys();
-          userCamGesture = false;
-          pendingFollow = { kind: 'focus' };
-          pop.remove();
-          onChange?.();
-        });
-      } else {
-        a.target = '_blank';
-        a.rel = 'noopener noreferrer';
-      }
-      pop.appendChild(a);
-    }
-    document.body.appendChild(pop);
-    const r = anchor.getBoundingClientRect();
-    pop.style.position = 'fixed';
-    pop.style.left = `${Math.max(8, Math.min(r.left, window.innerWidth - 24))}px`;
-    pop.style.top = `${Math.max(8, r.bottom + 6)}px`;
-  }
-
   function focusMapForKeys(): void {
     try {
       ensureHostFocusable();
@@ -1854,6 +1951,7 @@ export function createMapView(
     );
     // L6: the menu follows its handle through pans and zooms.
     if (levelMenu) positionLevelMenu();
+    if (linkPop) positionLinkPop();
   }
 
   function resetCam(): void {
@@ -2146,7 +2244,7 @@ export function createMapView(
     }
     if (t?.closest?.('.map-link-hit')) {
       const n = findNode(getDoc().nodes, id);
-      showLinkPop(t.closest('.map-link-hit') as Element, n?.title || '');
+      showLinkPop(id, n?.title || '');
       return;
     }
     if (t?.closest?.('.map-note-link-hit')) {
@@ -2467,12 +2565,18 @@ export function createMapView(
     // Overlays that live inside the host (resize popover, controls a host put
     // in the map) survive the SVG rewrite (0.2.30).
     const overlays = Array.from(host.children).filter((el) =>
-      el.matches?.('.map-width-pop, .of-map-controls, .map-level-menu, .map-level-ring, .map-live'),
+      el.matches?.(
+        '.map-width-pop, .of-map-controls, .map-level-menu, .map-level-ring, .map-live, .map-link-pop',
+      ),
     );
     // A focused menu item is detached by the rewrite below; put focus back after.
     const levelFocus =
       levelMenu && typeof document !== 'undefined'
         ? levelMenu.items.indexOf(document.activeElement as HTMLElement)
+        : -1;
+    const linkFocus =
+      linkPop && typeof document !== 'undefined'
+        ? linkPop.items.indexOf(document.activeElement as HTMLAnchorElement)
         : -1;
     host.innerHTML = `<svg class="map-svg" viewBox="0 0 ${Math.max(1, host.clientWidth || 1180)} ${Math.max(1, host.clientHeight || 520)}"
       preserveAspectRatio="xMidYMid meet" role="none" focusable="false">
@@ -2484,6 +2588,13 @@ export function createMapView(
       </g>
     </svg>`;
     for (const el of overlays) host.appendChild(el);
+    if (linkPop && linkFocus >= 0) {
+      try {
+        linkPop.items[linkFocus]?.focus({ preventScroll: true });
+      } catch {
+        /* focus not available */
+      }
+    }
     if (levelMenu && levelFocus >= 0) {
       try {
         levelMenu.items[levelFocus]?.focus({ preventScroll: true });
@@ -2598,6 +2709,7 @@ export function createMapView(
     }
     if (anchored) settleCam();
     if (levelMenu) positionLevelMenu();
+    if (linkPop) positionLinkPop();
     for (const fn of [...paintListeners]) {
       try {
         fn();
@@ -3262,7 +3374,7 @@ export function createMapView(
         // in-map controls guard their own clicks.
         if (
           touchClickGuarded(e.detail, now, nodeTouchTapAt) &&
-          !target?.closest?.('.map-width-pop, .of-map-controls, .map-level-menu')
+          !target?.closest?.('.map-width-pop, .of-map-controls, .map-level-menu, .map-link-pop')
         ) {
           swallow = null;
           e.preventDefault();
@@ -3313,7 +3425,7 @@ export function createMapView(
       const target = e.target as Element | null;
       // The resize popover and in-map controls handle their own taps: no
       // preventDefault, capture or double-tap zoom on them.
-      if (target?.closest?.('.map-width-pop, .of-map-controls, .map-level-menu')) return;
+      if (target?.closest?.('.map-width-pop, .of-map-controls, .map-level-menu, .map-link-pop')) return;
       dismissWidthPop();
       closeLevelMenu(false);
       if (!target?.closest?.('.map-link-hit, .map-link-pop')) dismissLinkPop();
@@ -3827,7 +3939,7 @@ export function createMapView(
       // A button in the resize popover or in controls a host put inside the
       // map keeps its own Enter / Space (no fold toggle on the way).
       const kt = e.target as Element | null;
-      if (kt?.closest?.('.map-width-pop, .of-map-controls, .map-level-menu')) return;
+      if (kt?.closest?.('.map-width-pop, .of-map-controls, .map-level-menu, .map-link-pop')) return;
       if (
         !mapKeyboardShouldHandle({
           isActive: isActive(),

@@ -1,0 +1,5 @@
+- Riverside garden club <id:root>
+  - Shed rota · [Open](https://www.example.org/shed-rota) <id:ext>
+  - [Agenda](https://agenda.example.org/june) · [Minutes](levels.md) · [Plants](#id:plants) <id:multi>
+  - Plant list <id:plants>
+    - Tomatoes <id:tom>
