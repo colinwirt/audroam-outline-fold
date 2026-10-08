@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.2.35 — 2026-10-08
 
 ### Map: pill widths for reading (hold-to-fit P1)
 - The width popover (tap or click a selected pill's bottom-right corner) gains a **Fit** row above **Slim · Wider · Auto**: **Fit text**, **1 line**, **1 line siblings**. Two `role=group` rows (`Fit`, `Width`); this-node items are `menuitemradio` with `✓`, "1 line siblings" is a `menuitem`. Coarse items are at least 46×52 px, fine items 32 px rows.
