@@ -120,7 +120,7 @@ test.describe('link popover', () => {
     const pop = page.locator(POP);
     const p = (await pop.boundingBox())!;
     const h = (await page.locator('#mapHost').boundingBox())!;
-    expect(p.x - (g.x + g.width)).toBeCloseTo(8, 0);
+    expect(Math.abs(p.x - (g.x + g.width) - 8)).toBeLessThanOrEqual(1); // left is whole px
     expect(Math.abs(p.y + p.height / 2 - (g.y + g.height / 2))).toBeLessThanOrEqual(1);
     expect(p.y).toBeGreaterThanOrEqual(h.y + 8 - 0.5);
     expect(p.x + p.width).toBeLessThanOrEqual(h.x + h.width - 8 + 0.5);
@@ -138,7 +138,7 @@ test.describe('link popover', () => {
     const g2 = (await page.locator('.map-node[data-id="ext"] .map-link-hit').boundingBox())!;
     const p2 = (await pop.boundingBox())!;
     expect(Math.abs(g2.x - g.x)).toBeGreaterThan(5);
-    expect(p2.x - (g2.x + g2.width)).toBeCloseTo(8, 0);
+    expect(Math.abs(p2.x - (g2.x + g2.width) - 8)).toBeLessThanOrEqual(1); // left is whole px
     expect(Math.abs(p2.y + p2.height / 2 - (g2.y + g2.height / 2))).toBeLessThanOrEqual(1);
     // A click outside the map closes it.
     await page.mouse.click(5, 5);
@@ -167,7 +167,7 @@ test.describe('link popover', () => {
     await expect(pop).not.toHaveClass(/is-closing/);
     let g = (await page.locator('.map-node[data-id="ext"] .map-link-hit').boundingBox())!;
     let p = (await pop.boundingBox())!;
-    expect(p.x - (g.x + g.width)).toBeCloseTo(8, 0);
+    expect(Math.abs(p.x - (g.x + g.width) - 8)).toBeLessThanOrEqual(1); // left is whole px
     expect(Math.abs(p.y + p.height / 2 - (g.y + g.height / 2))).toBeLessThanOrEqual(1);
     // Pinch-style wheel zoom (Ctrl + wheel).
     await page.mouse.move(h.x + h.width / 2, h.y + h.height / 2);
@@ -179,7 +179,7 @@ test.describe('link popover', () => {
     expect(await page.evaluate(() => (window as any).__map.cam.k)).not.toBeCloseTo(k0, 3);
     g = (await page.locator('.map-node[data-id="ext"] .map-link-hit').boundingBox())!;
     p = (await pop.boundingBox())!;
-    expect(p.x - (g.x + g.width)).toBeCloseTo(8, 0);
+    expect(Math.abs(p.x - (g.x + g.width) - 8)).toBeLessThanOrEqual(1); // left is whole px
     // A drag that starts outside the map does not close it either.
     await page.mouse.move(5, 5);
     await page.mouse.down();
@@ -214,8 +214,8 @@ test.describe('link popover', () => {
     const g = (await page.locator('.map-node[data-id="ext"] .map-link-hit').boundingBox())!;
     const p = (await pop.boundingBox())!;
     // Still right of the globe, now exactly 8 px inside the right edge.
-    expect(p.x - (g.x + g.width)).toBeCloseTo(8, 0);
-    expect(h.x + h.width - (p.x + p.width)).toBeCloseTo(8, 0);
+    expect(Math.abs(p.x - (g.x + g.width) - 8)).toBeLessThanOrEqual(1); // left is whole px
+    expect(Math.abs(h.x + h.width - (p.x + p.width) - 8)).toBeLessThanOrEqual(1); // left is whole px
     expect(Math.abs(p.y + p.height / 2 - (g.y + g.height / 2))).toBeLessThanOrEqual(1);
   });
 
@@ -232,6 +232,6 @@ test.describe('link popover', () => {
     await clickGlobe(page, 'ext');
     // No animation frames needed: read straight away.
     const right = await page.evaluate(() => document.querySelector('.map-link-pop')!.getBoundingClientRect().right);
-    expect(h.x + h.width - right).toBeCloseTo(8, 0);
+    expect(Math.abs(h.x + h.width - right - 8)).toBeLessThanOrEqual(1); // left is whole px
   });
 });

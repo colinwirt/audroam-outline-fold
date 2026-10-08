@@ -27,7 +27,7 @@ test('touch: rows are 44 px and a tap on the hop row selects its node', async ({
   const after = await box(page, '.map-link-pop');
   const g2 = await box(page, '.map-node[data-id="multi"] .map-link-hit');
   expect(Math.abs(after.x - before.x) + Math.abs(after.y - before.y)).toBeGreaterThan(10);
-  expect(after.x - (g2.x + g2.w)).toBeCloseTo(8, 0);
+  expect(Math.abs(after.x - (g2.x + g2.w) - 8)).toBeLessThanOrEqual(1); // left is whole px
   const row = centre(await box(page, '.map-link-item[data-hop-id="plants"]'));
   await t.tap(row.x, row.y);
   await expect(page.locator('.map-link-pop')).toHaveCount(0);
