@@ -2,9 +2,11 @@ import { test, expect, type Page } from '@playwright/test';
 
 /**
  * #N note chips and thread chips open the shared link popover (0.2.34):
- * rows, destination, Go to, new tab + onNoteLink, onThread, placement right
- * of the chip, open through pan, modifier-click fallback, keyboard.
- * Host: examples/e2e-touch with notes.md (noteUri on notes.example.org).
+ * rows (Open #N, Open map, Open details; never Go to), destination, new tab +
+ * onNoteLink, onThread, placement right of the chip, open through pan,
+ * modifier-click fallback, keyboard.
+ * Host: examples/e2e-touch with notes.md (noteUri and noteMapUri on
+ * notes.example.org; noteDetailsUri left to the built-in /notes/{id}/details).
  */
 
 const HARNESS = 'examples/e2e-touch/index.html?doc=notes.md';
@@ -49,19 +51,15 @@ const geo = (page: Page, sel: string) =>
   }, sel);
 
 test.describe('#N and thread chips open the link popover', () => {
-  test('#N chip: Open #N with the noteUri host, Go to #N only for a node in this map', async ({ page }) => {
+  test('#N chip: Open #N, Open map (layout template), Open details (built-in default)', async ({ page }) => {
     await open(page);
     await clickSel(page, chip('1004'));
     await expect(page.locator(POP)).toHaveAttribute('data-kind', 'note');
+    const tab = { target: '_blank', rel: 'noopener noreferrer' };
     expect(await rows(page)).toEqual([
-      {
-        row: 'note-open',
-        label: 'Open #1004',
-        where: 'notes.example.org',
-        href: 'https://notes.example.org/n/1004',
-        target: '_blank',
-        rel: 'noopener noreferrer',
-      },
+      { row: 'note-open', label: 'Open #1004', where: 'notes.example.org', href: 'https://notes.example.org/n/1004', ...tab },
+      { row: 'note-map', label: 'Open map', where: 'notes.example.org', href: 'https://notes.example.org/map?id=1004', ...tab },
+      { row: 'note-details', label: 'Open details', where: '/notes/1004/details', href: '/notes/1004/details', ...tab },
     ]);
     expect(await page.evaluate(() => (window as any).__notes.length)).toBe(0);
     // Each chip opens its own popover. (The open one sits right of #1004,
@@ -70,16 +68,19 @@ test.describe('#N and thread chips open the link popover', () => {
     await expect(page.locator(POP)).toHaveCount(0);
     await clickSel(page, chip('1005'));
     await expect(page.locator(`${POP}:not(.is-closing)`)).toHaveCount(1);
+    // A node with id 1005 is in this map, but <t:1005> is a note number: no Go to.
     expect((await rows(page)).map((r) => [r.row, r.label])).toEqual([
       ['note-open', 'Open #1005'],
-      ['note-go', 'Go to #1005'],
+      ['note-map', 'Open map'],
+      ['note-details', 'Open details'],
     ]);
+    expect(await page.locator(`${POP} :text("Go to")`).count()).toBe(0);
     const x = await geo(page, chip('1005'));
     expect(Math.abs(x.gap - 8)).toBeLessThanOrEqual(1);
     expect(Math.abs(x.dy)).toBeLessThanOrEqual(1);
   });
 
-  test('Open #N opens a new tab and fires onNoteLink; Go to #N selects that node', async ({ page, context }) => {
+  test('Open #N and Open map open a new tab and fire onNoteLink; the selection stays', async ({ page, context }) => {
     await open(page);
     await clickSel(page, chip('1004'));
     const req = context.waitForEvent('request', (r) => r.url() === 'https://notes.example.org/n/1004');
@@ -88,12 +89,16 @@ test.describe('#N and thread chips open the link popover', () => {
     await req;
     expect((await popup) !== page).toBe(true);
     await expect(page.locator(POP)).toHaveCount(0);
-    expect(await page.evaluate(() => (window as any).__notes)).toEqual([{ id: 'rota', pnid: '1004' }]);
+    expect(await page.evaluate(() => (window as any).__notes)).toEqual([{ id: 'rota', pnid: '1004', open: 'note' }]);
     await clickSel(page, chip('1005'));
-    await page.locator(`${POP} [data-row="note-go"]`).click();
+    const req2 = context.waitForEvent('request', (r) => r.url() === 'https://notes.example.org/map?id=1005');
+    const popup2 = context.waitForEvent('page');
+    await page.locator(`${POP} [data-row="note-map"]`).click();
+    await req2;
+    expect((await popup2) !== page).toBe(true);
     await expect(page.locator(POP)).toHaveCount(0);
-    await expect.poll(() => page.evaluate(() => (window as any).__focus())).toBe('1005');
-    await expect(page.locator('#mapHost')).toBeFocused();
+    expect(await page.evaluate(() => (window as any).__notes.at(-1))).toEqual({ id: 'rota', pnid: '1005', open: 'map' });
+    expect(await page.evaluate(() => (window as any).__focus())).toBe('rota');
   });
 
   test('Ctrl/Cmd-click keeps the SVG anchor: new tab straight away, no popover', async ({ page, context }) => {

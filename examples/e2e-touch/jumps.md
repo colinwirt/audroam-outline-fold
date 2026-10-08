@@ -1,0 +1,7 @@
+- Garden club notes <id:root>
+  - Compost rota <t:1004> <r:tom> <r:gone> <id:jump>
+  - Shed meeting <thread:pnid:900> <id:disc>
+  - See the [plant list](#id:plants) or the [old list](#id:old) <id:hops>
+  - Seeds: [swap list](#pnid:1006) <id:seeds>
+  - Plant list <id:plants> (+)
+    - Tomatoes <id:tom>
