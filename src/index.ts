@@ -312,6 +312,8 @@ export {
   resolveThread,
   resolveNoteLinks,
   resolveJumps,
+  jumpChipLabel,
+  findNodeById,
   noteLinkHref,
   type ParsedTask,
 } from './taskChrome.js';

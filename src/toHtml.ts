@@ -1,7 +1,7 @@
 import { isCollapsed } from './fold.js';
 import { captionToHtml } from './captionRich.js';
 import { iconForNode, iconForTask } from './icons.js';
-import { noteLinkHref } from './taskChrome.js';
+import { jumpChipLabel, noteLinkHref, resolveJumps } from './taskChrome.js';
 import { hasSealed } from './sealed.js';
 import type { OutlineFoldDoc, OutlineNode, ToHtmlOptions } from './types.js';
 
@@ -17,7 +17,7 @@ function renderNode(
   node: OutlineNode,
   doc: OutlineFoldDoc,
   opts: Required<Pick<ToHtmlOptions, 'classPrefix' | 'lockedChrome'>> &
-    ToHtmlOptions,
+    ToHtmlOptions & { ids: Set<string> },
 ): string {
   const p = opts.classPrefix;
   const collapsed = node.id ? isCollapsed(doc, node.id) : false;
@@ -102,6 +102,21 @@ function renderNode(
     })
     .join('');
 
+  // `<r:x>` jumps (0.2.34): attachOutlineTree moves focus to the node. One whose
+  // id is not in the outline stays, muted and inert.
+  const jumpChips = resolveJumps(node)
+    .map((id) => {
+      const ok = opts.ids.has(id);
+      const cls = `${p}-jump${ok ? '' : ` ${p}-link-broken`}`;
+      return `<a class="${cls}" href="#id:${esc(id)}" data-hop-id="${esc(id)}" data-testid="of-jump-${esc(id)}"${ok ? '' : ' aria-disabled="true"'}>${esc(jumpChipLabel(doc, id))}</a>`;
+    })
+    .join('');
+  const caption = captionToHtml(node.title, {
+    hasNode: (id) => opts.ids.has(id),
+    noteHref: (pnid) => noteLinkHref(notePattern, pnid),
+    nodeId: node.id,
+  });
+
   const body = locked
     ? `<div class="${p}-locked-chrome" aria-hidden="true">•••• locked ••••</div>`
     : '';
@@ -116,9 +131,17 @@ function renderNode(
     : '';
 
   return `<li role="treeitem" class="${p}-node${collapsed ? ` ${p}-collapsed` : ''}${locked ? ` ${p}-locked` : ''}${node.task ? ` ${p}-has-task` : ''}" tabindex="-1" aria-level="${ariaLevel}"${ariaExpanded} ${dataAttrs}>
-  <div class="${p}-row">${foldBtn}${taskChrome}${icon}<span class="${p}-title">${captionToHtml(node.title)}</span>${threadChip}${noteChips}${unlockBtn}</div>
+  <div class="${p}-row">${foldBtn}${taskChrome}${icon}<span class="${p}-title">${caption}</span>${threadChip}${noteChips}${jumpChips}${unlockBtn}</div>
   ${body}${kids}
 </li>`;
+}
+
+function collectIds(nodes: OutlineNode[], out = new Set<string>()): Set<string> {
+  for (const n of nodes) {
+    if (n.id) out.add(n.id);
+    if (n.children?.length) collectIds(n.children, out);
+  }
+  return out;
 }
 
 /**
@@ -135,6 +158,7 @@ export function toHtml(doc: OutlineFoldDoc, options: ToHtmlOptions = {}): string
     ariaLabel: options.ariaLabel,
     interactiveTasks: options.interactiveTasks,
     noteUri: options.noteUri,
+    ids: collectIds(doc.nodes),
   };
   const p = opts.classPrefix;
   const label = esc(opts.ariaLabel ?? 'Outline');

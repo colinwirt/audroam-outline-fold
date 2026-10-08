@@ -5,7 +5,8 @@
  * Open: `[ ]`, `[]`, or `☐`. Done: `[x]` or `☑`. Pending: `[-]`.
  */
 
-import type { OutlineNode, TaskState } from './types.js';
+import { captionVisibleText, captionWithoutLinks } from './captionRich.js';
+import type { OutlineFoldDoc, OutlineNode, TaskState } from './types.js';
 export type { TaskState } from './types.js';
 
 export interface ParsedTask {
@@ -165,6 +166,31 @@ export function resolveJumps(node: OutlineNode): string[] {
     if (!ids.includes(m[1]!)) ids.push(m[1]!);
   }
   return ids;
+}
+
+/** Node with this id anywhere in the tree, or null. */
+export function findNodeById(nodes: readonly OutlineNode[], id: string): OutlineNode | null {
+  for (const n of nodes) {
+    if (n.id === id) return n;
+    if (n.children?.length) {
+      const hit = findNodeById(n.children, id);
+      if (hit) return hit;
+    }
+  }
+  return null;
+}
+
+/**
+ * Jump chip text (0.2.34): `→ ` and the target's first caption line (24 chars),
+ * or `→ id` when the id is not in the document.
+ */
+export function jumpChipLabel(doc: OutlineFoldDoc | undefined | null, id: string): string {
+  const target = doc ? findNodeById(doc.nodes, id) : null;
+  let text = target ? captionWithoutLinks(displayCaption(target.title)).split('\n')[0]!.trim() : '';
+  text = text ? captionVisibleText(text).trim() : '';
+  if (!text) text = id;
+  if (text.length > 24) text = `${text.slice(0, 23).trimEnd()}…`;
+  return `→ ${text}`;
 }
 
 /** Numeric `<t: N>` links. Structured field wins; otherwise scan the title. */

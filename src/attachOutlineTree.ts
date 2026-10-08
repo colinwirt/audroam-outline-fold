@@ -52,6 +52,12 @@ export interface AttachOutlineTreeOptions {
   onThreadClick?: (thread: string, node: OutlineNode) => void;
   /** `<t: N>` note-link chip click — host opens the note. */
   onNoteLinkClick?: (pnid: string, node: OutlineNode | null) => void;
+  /**
+   * A `[label](#id:x)` hop or `<r:x>` jump was followed (0.2.34). The helper has
+   * already unfolded its ancestors, focused the row and scrolled it into view;
+   * the location hash is left alone. `from` is the row the link sits on.
+   */
+  onHop?: (id: string, node: OutlineNode, from: OutlineNode | null) => void;
   /** When false, task clicks are ignored. Default true. */
   allowTaskToggle?: boolean;
 }
@@ -186,6 +192,23 @@ function findNodeById(
   return null;
 }
 
+/** Ancestors of `target`, nearest first. */
+function ancestorsOf(nodes: OutlineNode[], target: OutlineNode): OutlineNode[] {
+  const path: OutlineNode[] = [];
+  const walk = (list: OutlineNode[]): boolean => {
+    for (const n of list) {
+      if (n === target) return true;
+      if (n.children?.length && walk(n.children)) {
+        path.push(n);
+        return true;
+      }
+    }
+    return false;
+  };
+  walk(nodes);
+  return path;
+}
+
 /**
  * Bind click + keyboard fold/nav on a `toHtml` tree (or a container that
  * holds one). Session-local only — never persists fold. No MFA/crypto.
@@ -300,6 +323,16 @@ export function attachOutlineTree(
       return;
     }
 
+    const hop = target.closest<HTMLElement>('a[data-hop-id]');
+    if (hop && rootEl.contains(hop)) {
+      // In-outline link: never change the hash. A link to a missing id is inert.
+      e.preventDefault();
+      e.stopPropagation();
+      if (hop.getAttribute('aria-disabled') === 'true') return;
+      followHop(hop.getAttribute('data-hop-id') || '', hop);
+      return;
+    }
+
     const noteBtn = target.closest<HTMLElement>('[data-note-link]');
     if (noteBtn && rootEl.contains(noteBtn)) {
       const isLink = noteBtn.tagName === 'A' && noteBtn.hasAttribute('href');
@@ -350,6 +383,22 @@ export function attachOutlineTree(
     }
   };
 
+  /** Unfold the ancestors of `id`, focus its row and scroll it into view. */
+  const followHop = (id: string, link: HTMLElement) => {
+    let doc = opts.getDoc();
+    const node = id ? findNodeById(doc.nodes, id) : null;
+    if (!node) return;
+    const fromId = link.closest('[role="treeitem"]')?.getAttribute('data-id') ?? null;
+    const from = fromId ? findNodeById(doc.nodes, fromId) : null;
+    for (const a of ancestorsOf(doc.nodes, node)) {
+      if (a.id && isCollapsed(doc, a.id)) doc = toggleFold(doc, a.id);
+    }
+    commit(doc, id);
+    const li = findTree(rootEl, prefix)?.querySelector<HTMLElement>(`[data-id="${CSS.escape(id)}"]`);
+    li?.scrollIntoView?.({ block: 'nearest' });
+    opts.onHop?.(id, node, from);
+  };
+
   const onKeyDown = (e: KeyboardEvent) => {
     const tree = findTree(rootEl, prefix);
     if (!tree) return;
@@ -362,6 +411,16 @@ export function attachOutlineTree(
       active.matches('[data-unlock], [data-decrypt], [data-toggle-task], .of-unlock') ||
       active.closest('[data-unlock], [data-decrypt], [data-toggle-task]')
     ) {
+      return;
+    }
+
+    // A focused link in a row (hop, jump, note): Enter follows it, Space clicks it. No fold.
+    const rowLink = active.closest<HTMLElement>('a[data-hop-id], [data-note-link]');
+    if (rowLink && (e.key === 'Enter' || e.key === ' ')) {
+      if (e.key === ' ') {
+        e.preventDefault();
+        rowLink.click();
+      }
       return;
     }
 

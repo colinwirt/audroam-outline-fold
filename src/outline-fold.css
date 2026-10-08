@@ -116,6 +116,28 @@
 .of-title a.of-hop:hover {
   color: #cfe0ef;
 }
+/* `<r:x>` jump chip (0.2.34), after the #N chips. */
+.of-jump {
+  flex: none;
+  color: #9ecbff;
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1;
+  padding: 0 0.1rem;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.of-jump:hover {
+  color: #cfe0ef;
+  text-decoration: underline dotted;
+}
+/* A hop or jump to an id not in this outline: muted, still shown, inert. */
+.of-title a.of-hop.of-link-broken,
+.of-jump.of-link-broken {
+  color: var(--muted, var(--of-muted));
+  text-decoration: line-through;
+  cursor: default;
+}
 .of-node[data-id^="cue"] .of-title,
 .of-cue .of-title {
   color: #b8e0c8;
@@ -292,6 +314,20 @@
 }
 .map-thread-hit:hover .map-thread-pill {
   fill: var(--map-menu-hover);
+}
+/* `<r:x>` jump chip (0.2.34): selects and pans to that node. */
+.map-jump-link {
+  fill: #9ecbff;
+  font-family: var(--of-font);
+  font-size: 12px;
+  font-weight: 600;
+}
+.map-jump-hit:hover .map-jump-link {
+  fill: #cfe0ef;
+}
+.map-jump-hit.is-broken .map-jump-link {
+  fill: var(--muted, var(--of-muted));
+  font-weight: 400;
 }
 .map-node.cue .map-label {
   fill: var(--cue-text);
@@ -568,6 +604,12 @@
   background: var(--map-menu-hover);
 }
 .map-link-item:focus { outline: none; }
+/* Hop row to a node not in this map: muted, inert. */
+.map-link-item.is-broken {
+  color: var(--muted, var(--of-muted));
+  text-decoration: line-through;
+  cursor: default;
+}
 .map-link-item:focus-visible {
   background: var(--map-menu-hover);
   outline: 2px solid var(--gold);

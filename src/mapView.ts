@@ -87,6 +87,8 @@ import {
   resolveTask,
   resolveAction,
   resolveThread,
+  resolveJumps,
+  jumpChipLabel,
   resolveNoteLinks,
   noteLinkHref,
   toggleTaskMarker,
@@ -255,6 +257,11 @@ export interface MapViewOptions {
    * `details`). The row's own link opens in a new tab when it has an href.
    */
   onNoteLink?: (ev: { id: string; pnid: string; node: OutlineNode; open?: 'note' | 'map' | 'details' }) => void;
+  /**
+   * Optional: a hop row or `<r:x>` chip selected node `id` (from node `from`).
+   * The map has already selected it and unfolded its ancestors.
+   */
+  onHop?: (ev: { id: string; from: string; node: OutlineNode }) => void;
   /**
    * Fallback when the layout block omits `noteUri`.
    * `{id}` is the note id. http(s) or a root-relative path.
@@ -615,6 +622,7 @@ function nodePillOpts(
   nodeLayout?: Record<string, MapPoint>,
   defaults?: { wrapCh?: number; maxLines?: number | null; fontSize?: number },
   key?: string,
+  doc?: OutlineFoldDoc,
 ): PillSizeOptions {
   const lay =
     (key && nodeLayout ? nodeLayout[key] : undefined) ||
@@ -634,13 +642,19 @@ function nodePillOpts(
     maxLines,
     bodyExpanded: !!lay?.bodyExpanded,
     fontSize: lay?.fontSize ?? defaults?.fontSize,
-    ...nodeChips(n),
+    ...nodeChips(n, doc),
   };
 }
 
-/** Chips after the caption: thread pill, `#N` notes (0.2.34: the thread pill joined the row). */
-function nodeChips(n: OutlineNode): MapChipSpec {
-  return { thread: !!resolveThread(n), noteLinks: resolveNoteLinks(n) };
+/**
+ * Chips after the caption (0.2.34): thread pill, `#N` notes (`<t:N>`, then
+ * caption `[label](#pnid:N)`), `<r:x>` jumps labelled with the target's caption.
+ */
+function nodeChips(n: OutlineNode, doc?: OutlineFoldDoc): MapChipSpec {
+  const notes = resolveNoteLinks(n);
+  for (const l of captionLinks(n.title || '')) if (l.pnid && !notes.includes(l.pnid)) notes.push(l.pnid);
+  const jumps = resolveJumps(n).map((id) => ({ id, label: jumpChipLabel(doc, id) }));
+  return { thread: !!resolveThread(n), noteLinks: notes, jumps };
 }
 
 function connectorPath(x1: number, y1: number, x2: number, y2: number): string {
@@ -760,7 +774,7 @@ export function autoPackPositions(
   function layoutSubtree(n: OutlineNode, groupLeft: number, top: number): number {
     const key = nodeMapKey(n, order.get(n) || 0);
     const label = captionWithoutLinks(displayCaption(n.title));
-    const painted = pillSize(label, nodePillOpts(n, nodeLayout, defaults, key));
+    const painted = pillSize(label, nodePillOpts(n, nodeLayout, defaults, key, doc));
     paintedSize.set(key, { w: painted.w, h: painted.h });
     const x = groupLeft + painted.w / 2;
     const kids =
@@ -1091,6 +1105,7 @@ export function createMapView(
     onAction,
     onThread,
     onNoteLink,
+    onHop,
     noteUri: noteUriFallback,
     noteMapUri,
     noteDetailsUri,
@@ -1188,7 +1203,7 @@ export function createMapView(
         maxLines: pos.maxLines,
         bodyExpanded: !!pos.bodyExpanded,
         fontSize: resolveFontPx(pos.fontSize, layout.fontSize, doc.frontmatter?.fontSize),
-        ...nodeChips(n),
+        ...nodeChips(n, doc),
       });
       const r = pillWorldRect(pos.x, pos.y, size.w, size.h);
       rects.push(r);
@@ -1567,14 +1582,52 @@ export function createMapView(
     return typeof location !== 'undefined' ? location.href : undefined;
   }
 
+  /**
+   * Hop or `<r:x>` jump (0.2.34): select `target`, unfolding any folded
+   * ancestor so it shows, and let the camera follow. False when it is not here.
+   */
+  function jumpTo(target: string, from: string): boolean {
+    let doc = getDoc();
+    const node = target ? findNode(doc.nodes, target) : null;
+    if (!node) return false;
+    const path: OutlineNode[] = [];
+    const walk = (list: OutlineNode[]): boolean => {
+      for (const n of list) {
+        if (n === node) return true;
+        if (n.children?.length && walk(n.children)) {
+          path.push(n);
+          return true;
+        }
+      }
+      return false;
+    };
+    walk(doc.nodes);
+    let unfolded = false;
+    for (const a of path) {
+      if (a.id && isCollapsed(doc, a.id)) {
+        doc = toggleFold(doc, a.id);
+        unfolded = true;
+      }
+    }
+    if (unfolded) setDoc(doc);
+    setFocusId(target);
+    focusMapForKeys();
+    userCamGesture = false;
+    pendingFollow = { kind: 'focus' };
+    onHop?.({ id: target, from, node });
+    onChange?.();
+    return true;
+  }
+
   /** Globe badge: one row per caption link. */
   function showLinkPop(id: string, title: string): void {
-    const links = captionLinks(title);
+    const links = captionLinks(title).filter((l) => !l.pnid);
     if (!links.length) return;
+    const doc = getDoc();
     openLinkPop({
       id,
       anchorSel: '.map-link-hit',
-      rows: captionLinkRows(links, pageBase()),
+      rows: captionLinkRows(links, pageBase(), (hop) => !!findNode(doc.nodes, hop)),
       label: 'Links',
       kind: 'links',
     });
@@ -1656,11 +1709,10 @@ export function createMapView(
           ev.stopPropagation();
           if (row.hopId) {
             ev.preventDefault();
-            setFocusId(row.hopId);
-            userCamGesture = false;
-            pendingFollow = { kind: 'focus' };
+            // A hop to a node not in this map stays open and does nothing.
+            if (row.broken) return;
             dismissLinkPop(true);
-            onChange?.();
+            jumpTo(row.hopId, id);
             return;
           }
           if (row.href && row.newTab) {
@@ -2415,6 +2467,13 @@ export function createMapView(
       showLinkPop(id, n?.title || '');
       return;
     }
+    if (t?.closest?.('.map-jump-hit')) {
+      // `<r:x>`: select and pan to that node, as a hop row does. A broken one is inert.
+      e.preventDefault();
+      const target = (t.closest('.map-jump-hit') as Element).getAttribute('data-jump') || '';
+      jumpTo(target, id);
+      return;
+    }
     if (t?.closest?.('.map-note-link-hit')) {
       const hit = t.closest('.map-note-link-hit') as Element;
       const me = e as MouseEvent;
@@ -2527,11 +2586,11 @@ export function createMapView(
         maxLines: pos.maxLines,
         bodyExpanded: !!pos.bodyExpanded,
         fontSize: resolveFontPx(pos.fontSize, layout.fontSize, doc.frontmatter?.fontSize),
-        ...nodeChips(n),
+        ...nodeChips(n, doc),
       });
       const cue = isCue(n);
       const thread = resolveThread(n);
-      const chips = mapChipPieces(nodeChips(n));
+      const chips = mapChipPieces(nodeChips(n, doc));
       nodes.push({
         n,
         key,
@@ -2572,7 +2631,7 @@ export function createMapView(
             maxLines: cpos.maxLines,
             bodyExpanded: !!cpos.bodyExpanded,
             fontSize: resolveFontPx(cpos.fontSize, layout.fontSize, doc.frontmatter?.fontSize),
-            ...nodeChips(c),
+            ...nodeChips(c, doc),
           });
           // Starts past the fold handle, not under it.
           edges.push({
@@ -2686,6 +2745,16 @@ export function createMapView(
             <rect class="map-thread-pill" x="0.5" y="${-THREAD_CHIP_H / 2}" width="${piece.w - 1}" height="${THREAD_CHIP_H}" rx="${THREAD_CHIP_H / 2}"/>
             <text class="map-thread-label" x="${piece.w / 2}" text-anchor="middle" y="4">${esc(piece.label)}</text>
           </g>`;
+              }
+              if (piece.kind === 'jump') {
+                const ok = !!findNode(doc.nodes, piece.id);
+                const g = `<g class="map-jump-hit${ok ? '' : ' is-broken'}" data-jump="${esc(piece.id)}"${ok ? '' : ' aria-disabled="true"'} transform="translate(${at} ${textCentreY})" cursor="${ok ? 'pointer' : 'default'}">
+            <title>${esc(piece.id)}</title>
+            <rect x="0" y="-11" width="${piece.w}" height="20" fill="transparent"/>
+            <text class="map-jump-link" text-anchor="start" y="4">${esc(piece.label)}</text>
+          </g>`;
+                // The anchor makes it focusable (Enter / Space); the click never follows the hash.
+                return ok ? `<a href="#id:${esc(piece.id)}">${g}</a>` : g;
               }
               const pieceIndex = noteIndex++;
               const href = noteLinkHref(notePattern, piece.id);
@@ -3594,7 +3663,7 @@ export function createMapView(
       const coarse = window.matchMedia?.('(pointer: coarse)')?.matches ?? false;
       const finger = type === 'touch' || (coarse && type === 'mouse' && e.button === 0);
       const onControl = !!target?.closest?.(
-        '.map-fold-hit, .map-fold-indicator, .map-task-hit, .map-task-glyph, .map-body-more-hit, .map-thread-hit, .map-note-link-hit, .map-link-hit',
+        '.map-fold-hit, .map-fold-indicator, .map-task-hit, .map-task-glyph, .map-body-more-hit, .map-thread-hit, .map-note-link-hit, .map-jump-hit, .map-link-hit',
       );
       const edge = onControl ? null : rightEdgeKey(e.clientX, e.clientY, finger ? 28 : 18);
       if (!finger && edge && e.button === 0) {
@@ -3679,7 +3748,7 @@ export function createMapView(
       const role: Tracked['role'] = pointers.size >= 2 ? 'spare' : 'driver';
       const nodeEl = (target as Element | null)?.closest?.('.map-node');
       const control = (target as Element | null)?.closest?.(
-        '.map-fold-hit, .map-fold-indicator, .map-task-hit, .map-task-glyph, .map-body-more-hit, .map-thread-hit, .map-note-link-hit, .map-link-hit, .map-width-hit',
+        '.map-fold-hit, .map-fold-indicator, .map-task-hit, .map-task-glyph, .map-body-more-hit, .map-thread-hit, .map-note-link-hit, .map-jump-hit, .map-link-hit, .map-width-hit',
       );
       const selectId =
         finger && nodeEl && !control ? nodeEl.getAttribute('data-id') || '' : '';
@@ -4099,7 +4168,7 @@ export function createMapView(
       const kt = e.target as Element | null;
       if (kt?.closest?.('.map-width-pop, .of-map-controls, .map-level-menu, .map-link-pop')) return;
       // Enter / Space on a focused chip (the #N chip's SVG anchor) opens its popover.
-      const chipSel = '.map-note-link-hit, .map-thread-hit, .map-link-hit';
+      const chipSel = '.map-note-link-hit, .map-jump-hit, .map-thread-hit, .map-link-hit';
       const chip =
         kt?.closest?.(chipSel) ?? (kt?.tagName?.toLowerCase() === 'a' ? kt.querySelector?.(chipSel) : null);
       const chipNode = chip?.closest?.('.map-node');
