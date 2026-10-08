@@ -15,7 +15,7 @@ export function spelledTag(kept: string | undefined, plain: string): string {
   return typeof kept === 'string' && canonTag(kept) === plain ? kept : plain;
 }
 
-const DISPLAY_TAG = /<\s*(id|t|kind|enc|action|thread|db)\s*:\s*([^>\n]*?)\s*>/gi;
+const DISPLAY_TAG = /<\s*(id|t|r|kind|enc|action|thread|db)\s*:\s*([^>\n]*?)\s*>/gi;
 
 /**
  * Display form of caption text: every colon tag in the clean `<name:value>` spelling

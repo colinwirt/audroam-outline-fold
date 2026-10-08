@@ -52,6 +52,8 @@ const THREAD_TAG = /<\s*thread\s*:\s*([^>]*?[^\s>])\s*>/i;
 
 /** Result-row note link `<t:101>`, also `<t: 101>` / `< t : 101 >`. */
 const NOTE_LINK_TAG = /<\s*t\s*:\s*(\d+)\s*>/gi;
+/** Jump `<r:x>`, also `<r : x>` (0.2.34). Same id characters as `<id:>`. */
+const JUMP_TAG = /<\s*r\s*:\s*([A-Za-z0-9][A-Za-z0-9_-]*)\s*>/gi;
 
 export function parseLeadingTask(title: string): ParsedTask | null {
   const text = String(title);
@@ -77,7 +79,7 @@ export function parseLeadingTask(title: string): ParsedTask | null {
 export function displayCaption(title: string): string {
   const task = parseLeadingTask(title);
   let s = task ? task.label : String(title);
-  s = s.replace(ACTION_TAG, '').replace(THREAD_TAG, '').replace(NOTE_LINK_TAG, '');
+  s = s.replace(ACTION_TAG, '').replace(THREAD_TAG, '').replace(NOTE_LINK_TAG, '').replace(JUMP_TAG, '');
   // Per-line trim of horizontal ws; keep \n intact for normalizeCaptionBreaks.
   s = s
     .split(/\n/)
@@ -151,6 +153,18 @@ export function noteLinkHref(pattern: string | undefined, id: string): string | 
   } catch {
     return null;
   }
+}
+
+/** `<r:x>` jump targets. Structured `links` win; otherwise scan the title. */
+export function resolveJumps(node: OutlineNode): string[] {
+  if (node.links) {
+    return node.links.filter((l) => l.kind === 'jump' && l.form === 'tag').map((l) => l.target);
+  }
+  const ids: string[] = [];
+  for (const m of String(node.title).matchAll(new RegExp(JUMP_TAG.source, 'gi'))) {
+    if (!ids.includes(m[1]!)) ids.push(m[1]!);
+  }
+  return ids;
 }
 
 /** Numeric `<t: N>` links. Structured field wins; otherwise scan the title. */

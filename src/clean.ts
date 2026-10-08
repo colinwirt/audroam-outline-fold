@@ -4,7 +4,8 @@ import type { OutlineNode } from './types.js';
 
 /** `<id:N>`, also spaced (`<id : N>`, `< id:N >`), like parse. */
 const ID_TAG = /[ \t]*<\s*id\s*:\s*([A-Za-z0-9][A-Za-z0-9_-]*)\s*>/g;
-const HOP_REF = /#id:([A-Za-z0-9_.:-]+)/g;
+/** `#id:x` hops and `<r:x>` jumps (also spaced), with the `<id:>` characters. */
+const HOP_REF = /#id:([A-Za-z0-9][A-Za-z0-9_-]*)|<\s*r\s*:\s*([A-Za-z0-9][A-Za-z0-9_-]*)\s*>/gi;
 const FOLD_LINE = /^(\s*fold([-+])\s*:)[ \t]*(.*?)(\r?)$/im;
 const DEFAULT_LAYOUT_BLOCK = /\n*--- layout ---\r?\nfold-:[ \t]*\r?\ncollapsedMarker: "\(\+\)"\r?\n---\s*$/;
 /**
@@ -12,7 +13,7 @@ const DEFAULT_LAYOUT_BLOCK = /\n*--- layout ---\r?\nfold-:[ \t]*\r?\ncollapsedMa
  * parse: whitespace around the colon and just inside the brackets (`< kind : doc >`).
  */
 const STRAY_TAG =
-  /[ \t]*<(?:\s*(?:id|t|action|thread|kind|enc|db)\s*:[^>\n]*|private|encrypted)>/gi;
+  /[ \t]*<(?:\s*(?:id|t|r|action|thread|kind|enc|db)\s*:[^>\n]*|private|encrypted)>/gi;
 
 /** Inline code (`…`) is literal, as in parse: no tag or `#id:` inside it is touched. */
 const CODE_SPAN = /`[^`\n]+`/g;
@@ -32,11 +33,11 @@ function replaceOutsideCode(
   return out + text.slice(last).replace(re, fn as never);
 }
 
-/** `#id:` references outside code spans. */
+/** `#id:` and `<r:>` references outside code spans. */
 function hopRefs(text: string): string[] {
   const ids: string[] = [];
-  replaceOutsideCode(text, HOP_REF, (all, id: string) => {
-    ids.push(id);
+  replaceOutsideCode(text, HOP_REF, (all, hop: string, jump: string) => {
+    ids.push(hop || jump);
     return all;
   });
   return ids;
@@ -72,7 +73,7 @@ function dropFromFold(block: string, drop: Set<string>): string {
 
 /**
  * Remove `<id:…>` tags nothing points at. An id stays when a payloads or layout
- * entry is keyed by it, a `#id:` link names it, or a fold+ list holds it. A fold-
+ * entry is keyed by it, a `#id:` link or `<r:>` jump names it, or a fold+ list holds it. A fold-
  * entry whose line already ends with the collapsed marker is redundant: the id and
  * the entry both go, and the `(+)` keeps the fold. Other text is left byte for byte.
  */

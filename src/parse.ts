@@ -8,7 +8,9 @@ import { collectNodeIds, nextAutoId } from './nodeAddress.js';
 import { parseEncBody } from './sealed.js';
 import { parseLeadingTask } from './taskChrome.js';
 import { canonTag } from './tagSpelling.js';
+import { markdownLinkSpans, parseHopTarget, parseNoteTarget } from './captionRich.js';
 import type {
+  NodeLink,
   FoldMode,
   NodeFlag,
   NodeKind,
@@ -71,11 +73,17 @@ const THREAD_TRAILING = THREAD_RE.trailing;
 const NOTE_LINK_RE = tagRe('t', '\\d+');
 const NOTE_LINK_SPAN = NOTE_LINK_RE.span;
 const NOTE_LINK_TRAILING = NOTE_LINK_RE.trailing;
-const NOTE_LINK_ANY = /<\s*t\s*:\s*(\d+)\s*>/gi;
-/** The bare `<t:…>` token inside a span match (drops surrounding whitespace). */
-const NOTE_LINK_TOKEN = /<\s*t\s*:\s*\d+\s*>/i;
 /** How serialize writes a note link when the text gave no spelling. */
 const NOTE_LINK_DEFAULT = (id: string) => `<t:${id}>`;
+/**
+ * Jump to a node in this map: `<r:craft-lab>`, also `<r: craft-lab>`, `< r : craft-lab >`.
+ * Same id characters as `<id:>`. Read anywhere on the line, like `<t:N>`.
+ */
+const JUMP_RE = tagRe('r', ID_VALUE);
+const JUMP_SPAN = JUMP_RE.span;
+const JUMP_TRAILING = JUMP_RE.trailing;
+/** Mid-caption `<t:N>` or `<r:x>`, in source order. */
+const LINK_ANY = new RegExp(`<\\s*(?:t\\s*:\\s*(\\d+)|r\\s*:\\s*(${ID_VALUE}))\\s*>`, 'gi');
 
 function parseFrontmatter(text: string): {
   fm: OutlineFrontmatter;
@@ -206,6 +214,7 @@ function endsWithKnownTag(core: string): boolean {
     ACTION_TRAILING.test(core) ||
     THREAD_TRAILING.test(core) ||
     NOTE_LINK_TRAILING.test(core) ||
+    JUMP_TRAILING.test(core) ||
     KIND_TRAILING.test(core) ||
     ID_TRAILING.test(core)
   );
@@ -235,6 +244,7 @@ function parseTitleAndMeta(
   thread?: string;
   noteLinks?: string[];
   noteLinkTags?: Record<string, string>;
+  links?: NodeLink[];
   tagSpellings?: TagSpellings;
 } {
   const masked = maskCodeSpans(content.trim());
@@ -253,24 +263,15 @@ function parseTitleAndMeta(
   const spell = (key: keyof TagSpellings, token: string) => {
     spelling[key] = token.trim();
   };
-  const leadingNotes: string[] = [];
-  const trailingNotes: string[] = [];
-  const midNotes: string[] = [];
-  // The token as written (`<t:5>`, `<t: 5>`, `<T:5 >`), first spelling per id
-  // within each list. Serialize writes it back so the body round-trips.
-  const spelled = new Map<string[], Map<string, string>>([
-    [leadingNotes, new Map()],
-    [midNotes, new Map()],
-    [trailingNotes, new Map()],
-  ]);
-  const remember = (into: string[], rawId: string, token: string) => {
-    const id = rawId.trim();
-    if (!id) return;
-    if (!into.includes(id)) into.push(id);
-    const tag = (token.match(NOTE_LINK_TOKEN)?.[0] ?? '').trim();
-    const forms = spelled.get(into)!;
-    // Trailing tags peel from the end, so the later match is the earlier tag.
-    if (tag && (into === trailingNotes || !forms.has(id))) forms.set(id, tag);
+  // `<t:N>` and `<r:x>` as written (`<t: 5>`, `<R:x >`), in source order per list.
+  // Serialize writes each spelling back so the body round-trips.
+  type TagLink = { kind: 'note' | 'jump'; target: string; source: string };
+  const leadingTags: TagLink[] = [];
+  const midTags: TagLink[] = [];
+  const trailingTags: TagLink[] = [];
+  const remember = (into: TagLink[], kind: TagLink['kind'], raw: string, token: string) => {
+    const target = raw.trim();
+    if (target) into.push({ kind, target, source: token.trim() });
   };
 
   // Leading task marker only (mid-caption `[ ]` / `☐` stay plain text).
@@ -329,7 +330,15 @@ function parseTitleAndMeta(
 
     m = rest.match(NOTE_LINK_SPAN);
     if (m) {
-      remember(leadingNotes, m[1], m[0]);
+      remember(leadingTags, 'note', m[1], m[0]);
+      rest = rest.slice(m[0].length);
+      progressed = true;
+      continue;
+    }
+
+    m = rest.match(JUMP_SPAN);
+    if (m) {
+      remember(leadingTags, 'jump', m[1], m[0]);
       rest = rest.slice(m[0].length);
       progressed = true;
       continue;
@@ -445,7 +454,15 @@ function parseTitleAndMeta(
 
     m = rest.match(NOTE_LINK_TRAILING);
     if (m) {
-      remember(trailingNotes, m[1], m[0]);
+      remember(trailingTags, 'note', m[1], m[0]);
+      rest = rest.slice(0, rest.length - m[0].length).trimEnd();
+      progressed = true;
+      continue;
+    }
+
+    m = rest.match(JUMP_TRAILING);
+    if (m) {
+      remember(trailingTags, 'jump', m[1], m[0]);
       rest = rest.slice(0, rest.length - m[0].length).trimEnd();
       progressed = true;
       continue;
@@ -471,10 +488,11 @@ function parseTitleAndMeta(
     }
   }
 
-  // Mid-caption `<t: N>` (result-row allows the tag anywhere).
+  // Mid-caption `<t: N>` / `<r:x>` (result-row allows the tag anywhere).
   rest = rest
-    .replace(NOTE_LINK_ANY, (all: string, id: string) => {
-      remember(midNotes, id, all);
+    .replace(LINK_ANY, (all: string, pnid: string | undefined, jump: string | undefined) => {
+      if (pnid) remember(midTags, 'note', pnid, all);
+      else if (jump) remember(midTags, 'jump', jump, all);
       return ' ';
     })
     .replace(/[ \t]{2,}/g, ' ')
@@ -484,17 +502,30 @@ function parseTitleAndMeta(
   if (action) action = unmaskCodeSpans(action, masked.spans);
   if (thread) thread = unmaskCodeSpans(thread, masked.spans);
   if (dbRef) dbRef = unmaskCodeSpans(dbRef, masked.spans);
+  // Trailing tags peel from the end: reverse them back into source order.
+  trailingTags.reverse();
   const noteLinks: string[] = [];
   const noteLinkTags: Record<string, string> = {};
-  const lists: string[][] = [leadingNotes, midNotes, trailingNotes];
-  trailingNotes.reverse();
-  for (const list of lists) {
-    for (const id of list) {
-      if (noteLinks.includes(id)) continue;
-      noteLinks.push(id);
-      const tag = spelled.get(list)!.get(id);
-      if (tag && tag !== NOTE_LINK_DEFAULT(id)) noteLinkTags[id] = tag;
+  const links: NodeLink[] = [];
+  const seenJump = new Set<string>();
+  for (const t of [...leadingTags, ...midTags, ...trailingTags]) {
+    if (t.kind === 'note') {
+      // One link per note: the first one, as written.
+      if (noteLinks.includes(t.target)) continue;
+      noteLinks.push(t.target);
+      if (t.source !== NOTE_LINK_DEFAULT(t.target)) noteLinkTags[t.target] = t.source;
+    } else {
+      if (seenJump.has(t.target)) continue;
+      seenJump.add(t.target);
     }
+    links.push({ kind: t.kind, target: t.target, form: 'tag', source: t.source });
+  }
+  // Markdown links stay in the caption; they are listed after the tags.
+  for (const md of markdownLinkSpans(rest)) {
+    const note = parseNoteTarget(md.url);
+    const hop = note === null ? parseHopTarget(md.url) : null;
+    if (note !== null) links.push({ kind: 'note', target: note, form: 'markdown', source: md.source, label: md.label });
+    else if (hop !== null) links.push({ kind: 'jump', target: hop, form: 'markdown', source: md.source, label: md.label });
   }
 
   // `<enc:>` without private/encrypted implies encrypted chrome.
@@ -520,8 +551,18 @@ function parseTitleAndMeta(
     thread,
     noteLinks: noteLinks.length ? noteLinks : undefined,
     noteLinkTags: Object.keys(noteLinkTags).length ? noteLinkTags : undefined,
+    links: links.length ? links : undefined,
     tagSpellings: keptSpellings(spelling, { id, kind, action, thread, db: dbRef }),
   };
+}
+
+/** Every jump target (`<r:x>`, `[label](#id:x)`) on these lines. */
+function collectJumpTargets(nodes: OutlineNode[], out = new Set<string>()): Set<string> {
+  for (const n of nodes) {
+    for (const l of n.links ?? []) if (l.kind === 'jump') out.add(l.target);
+    if (n.children?.length) collectJumpTargets(n.children, out);
+  }
+  return out;
 }
 
 /** Only spellings that differ from what serialize would write, and still name the value. */
@@ -607,6 +648,7 @@ export function parse(text: string, opts?: ParseOptions): OutlineFoldDoc {
     if (meta.thread) node.thread = meta.thread;
     if (meta.noteLinks) node.noteLinks = meta.noteLinks;
     if (meta.noteLinkTags) node.noteLinkTags = meta.noteLinkTags;
+    if (meta.links) node.links = meta.links;
     if (meta.tagSpellings) node.tagSpellings = meta.tagSpellings;
     if (meta.inlineCollapsed && meta.id) {
       inlineCollapsedIds.push(meta.id);
@@ -641,6 +683,9 @@ export function parse(text: string, opts?: ParseOptions): OutlineFoldDoc {
     const used = collectNodeIds(roots);
     for (const id of Object.keys(peeled.payloads)) used.add(id);
     for (const id of Object.keys(peeled.layouts)) used.add(id);
+    // A jump names an id: a session id must never take it, or the jump would
+    // land on an unrelated line.
+    for (const id of collectJumpTargets(roots)) used.add(id);
     const walk = (list: OutlineNode[]) => {
       for (const n of list) {
         if (!n.id) {

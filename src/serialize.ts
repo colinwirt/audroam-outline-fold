@@ -1,6 +1,7 @@
 import { linkPayloadNodes } from './nodeAddress.js';
 import { collectLayouts, collectPayloads, formatLayoutBlock, formatPayloadsBlock } from './payloads.js';
 import { spelledTag } from './tagSpelling.js';
+import { markdownLinkSpans, parseHopTarget } from './captionRich.js';
 import type { OutlineFoldDoc, OutlineNode, TaskState } from './types.js';
 
 const DEFAULT_COLLAPSED = '(+)';
@@ -33,9 +34,37 @@ function noteLinkTag(node: OutlineNode, id: string): string {
   return `<t:${id}>`;
 }
 
+const JUMP_ID = /^[A-Za-z0-9][A-Za-z0-9_-]*$/;
+
+/**
+ * `<t:N>` and `<r:x>` tags in `links` order, each as written while it still names
+ * its target (`noteLinkTags` for a note, the link's `source` for a jump). A `<t:N>` is written only while N is in `noteLinks` (the public list);
+ * numbers in `noteLinks` that `links` does not have follow, as `<t:N>`.
+ */
+function linkTags(node: OutlineNode): string[] {
+  const notes = (node.noteLinks ?? []).filter((id) => /^\d+$/.test(id));
+  const out: string[] = [];
+  const wrote = new Set<string>();
+  const jumped = new Set<string>();
+  for (const l of node.links ?? []) {
+    if (l.form !== 'tag') continue;
+    if (l.kind === 'note') {
+      if (!notes.includes(l.target) || wrote.has(l.target)) continue;
+      wrote.add(l.target);
+      // `noteLinkTags` holds the spelling (parse fills it from the same tag).
+      out.push(noteLinkTag(node, l.target));
+    } else if (JUMP_ID.test(l.target) && !jumped.has(l.target)) {
+      jumped.add(l.target);
+      out.push(spelledTag(l.source, `<r:${l.target}>`));
+    }
+  }
+  for (const id of notes) if (!wrote.has(id)) out.push(noteLinkTag(node, id));
+  return out;
+}
+
 /**
  * Caption-first trailing tags (v0.2 lean):
- * `[ ]? title <action:…>? <thread:…>? <t:N>* <kind:…>? <flag>* <id:…>? (+)?`
+ * `[ ]? title <action:…>? <thread:…>? (<t:N>|<r:x>)* <kind:…>? <flag>* <id:…>? (+)?`
  * Sealed material lives in the trailing `--- payloads ---` block, not on the line.
  */
 function formatTrailingSpans(node: OutlineNode): string {
@@ -43,11 +72,7 @@ function formatTrailingSpans(node: OutlineNode): string {
   const kept = node.tagSpellings;
   if (node.action) parts.push(spelledTag(kept?.action, `<action:${node.action}>`));
   if (node.thread) parts.push(spelledTag(kept?.thread, `<thread:${node.thread}>`));
-  if (node.noteLinks) {
-    for (const id of node.noteLinks) {
-      if (/^\d+$/.test(id)) parts.push(noteLinkTag(node, id));
-    }
-  }
+  parts.push(...linkTags(node));
   if (node.kind) parts.push(spelledTag(kept?.kind, `<kind:${node.kind}>`));
   if (node.flags) {
     for (const f of node.flags) {
@@ -109,8 +134,32 @@ function layoutFoldIds(doc: OutlineFoldDoc): string[] {
   return doc.fold.ids.filter((id) => !auto.has(id));
 }
 
+/**
+ * Lazy ids: a session id that a jump names becomes a written id, so the jump
+ * still lands after a reload. Parse never gives a session id a jump's target.
+ */
+function linkJumpTargets(doc: OutlineFoldDoc): void {
+  const targets = new Set<string>();
+  const auto: OutlineNode[] = [];
+  const walk = (list: OutlineNode[]) => {
+    for (const n of list) {
+      for (const l of n.links ?? []) if (l.kind === 'jump' && l.form === 'tag') targets.add(l.target);
+      // Markdown hops are read from the caption as it is now.
+      for (const md of markdownLinkSpans(n.title)) {
+        const hop = parseHopTarget(md.url);
+        if (hop) targets.add(hop);
+      }
+      if (n.id && n.autoId) auto.push(n);
+      if (n.children?.length) walk(n.children);
+    }
+  };
+  walk(doc.nodes);
+  for (const n of auto) if (targets.has(n.id!)) delete n.autoId;
+}
+
 export function serialize(doc: OutlineFoldDoc): string {
   linkPayloadNodes(doc);
+  linkJumpTargets(doc);
   const foldIds = layoutFoldIds(doc);
   const lines: string[] = [];
   for (const n of doc.nodes) serializeNode(n, doc, lines);

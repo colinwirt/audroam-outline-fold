@@ -47,11 +47,30 @@ export function isAllowedCaptionUrl(
   return true;
 }
 
-/** In-board hop: #id:nodeId only (reject bare #fragment without id:). */
+/**
+ * In-board hop: `#id:nodeId` only (reject bare #fragment without id:). The id uses
+ * the `<id:>` characters (0.2.34; was `[A-Za-z0-9_.:-]+`, which no id can be).
+ */
 export function parseHopTarget(url: string): string | null {
   const u = String(url).trim();
-  const m = /^#id:([A-Za-z0-9_.:-]+)$/.exec(u);
+  const m = /^#id:([A-Za-z0-9][A-Za-z0-9_-]*)$/.exec(u);
   return m ? m[1] : null;
+}
+
+/** Note link: `#pnid:N` (digits), the markdown spelling of `<t:N>` (0.2.34). */
+export function parseNoteTarget(url: string): string | null {
+  const m = /^#pnid:(\d+)$/.exec(String(url).trim());
+  return m ? m[1]! : null;
+}
+
+/** Host hooks for caption links that depend on the document (0.2.34). */
+export interface CaptionHtmlOptions {
+  /** False for a hop or jump target that is not in this outline: drawn muted, still shown. */
+  hasNode?: (id: string) => boolean;
+  /** `#pnid:N` href (the noteUri pattern), or null for a button. */
+  noteHref?: (pnid: string) => string | null;
+  /** Owning node id, for `data-note-node` on `#pnid:` links. */
+  nodeId?: string;
 }
 
 /**
@@ -206,7 +225,7 @@ export function captionStyleRuns(text: string): CaptionStyleRun[] {
 type Token =
   | { kind: 'text'; value: string }
   | { kind: 'img'; alt: string; url: string }
-  | { kind: 'link'; label: string; url: string };
+  | { kind: 'link'; label: string; url: string; source?: string };
 
 /**
  * Bare http(s) URL at the start of `s`. Balanced parentheses stay in the URL
@@ -295,6 +314,7 @@ function tokenize(title: string): Token[] {
             kind: 'link',
             label: s.slice(i + 1, labelEnd),
             url: target.url,
+            source: s.slice(i, target.end + 1),
           });
           i = target.end + 1;
           textStart = i;
@@ -323,11 +343,21 @@ function renderImg(alt: string, url: string): string {
   return `<img class="of-caption-img" src="${esc(url)}" alt="${esc(alt)}" loading="lazy" decoding="async" referrerpolicy="no-referrer" />`;
 }
 
-function renderLink(label: string, url: string): string {
+function renderLink(label: string, url: string, opts: CaptionHtmlOptions = {}): string {
   const hopId = parseHopTarget(url);
   if (hopId !== null) {
     const href = `#id:${hopId}`;
+    if (opts.hasNode && !opts.hasNode(hopId)) {
+      return `<a href="${esc(href)}" class="of-hop of-link-broken" data-hop-id="${esc(hopId)}" aria-disabled="true">${esc(label)}</a>`;
+    }
     return `<a href="${esc(href)}" class="of-hop" data-hop-id="${esc(hopId)}">${esc(label)}</a>`;
+  }
+  const pnid = parseNoteTarget(url);
+  if (pnid !== null) {
+    const attrs = `class="of-note-link of-note-md" data-note-link="${esc(pnid)}" data-note-node="${esc(opts.nodeId ?? '')}"`;
+    const href = opts.noteHref?.(pnid) ?? null;
+    if (!href) return `<a ${attrs} role="button" tabindex="0">${esc(label)}</a>`;
+    return `<a ${attrs} href="${esc(href)}" target="_blank" rel="noopener noreferrer">${esc(label)}</a>`;
   }
   // Reject hops that look like # but lack id:
   if (url.trim().startsWith('#')) {
@@ -369,7 +399,25 @@ export function tinyHtmlToSafeHtml(segment: string): string {
  * Escapes by default; only allowlisted markdown img/a/bare-https and tiny HTML.
  * Inline SVG strings in captions are never emitted as markup.
  */
-export type CaptionLink = { label: string; href: string; hopId: string | null };
+export type CaptionLink = {
+  label: string;
+  href: string;
+  hopId: string | null;
+  /** Set on a `#pnid:N` note link (0.2.34). The Map shows it as a `#N` chip, not a globe row. */
+  pnid?: string;
+};
+
+/** A markdown `[label](url)` exactly as written in the caption (not inside code). */
+export type MarkdownLinkSpan = { label: string; url: string; source: string };
+
+/** Markdown links in caption order, with their source text (parse uses it for `links`). */
+export function markdownLinkSpans(title: string): MarkdownLinkSpan[] {
+  const out: MarkdownLinkSpan[] = [];
+  for (const t of tokenize(String(title ?? ''))) {
+    if (t.kind === 'link' && t.source) out.push({ label: t.label, url: t.url, source: t.source });
+  }
+  return out;
+}
 
 /**
  * True when a caption line is nothing but one link: a bare http(s) URL or a
@@ -377,7 +425,8 @@ export type CaptionLink = { label: string; href: string; hopId: string | null };
  */
 export function isLoneLinkLine(line: string): boolean {
   const toks = tokenize(line).filter((t) => !(t.kind === 'text' && !t.value.trim()));
-  return toks.length === 1 && toks[0]!.kind === 'link';
+  // A `#pnid:` link keeps its label on the pill; its `#N` chip opens it.
+  return toks.length === 1 && toks[0]!.kind === 'link' && parseNoteTarget(toks[0]!.url) === null;
 }
 
 /**
@@ -414,6 +463,11 @@ export function captionLinks(title: string): CaptionLink[] {
       out.push({ label: t.label, href: `#id:${hopId}`, hopId });
       continue;
     }
+    const pnid = parseNoteTarget(t.url);
+    if (pnid) {
+      out.push({ label: t.label, href: `#pnid:${pnid}`, hopId: null, pnid });
+      continue;
+    }
     if (t.url.trim().startsWith('#')) continue;
     if (!isAllowedCaptionUrl(t.url, { allowHttp: true })) continue;
     out.push({ label: t.label, href: t.url, hopId: null });
@@ -421,14 +475,14 @@ export function captionLinks(title: string): CaptionLink[] {
   return out;
 }
 
-export function captionToHtml(title: string): string {
+export function captionToHtml(title: string, opts: CaptionHtmlOptions = {}): string {
   if (!title) return '';
   const normalized = normalizeCaptionBreaks(displayTags(title));
   return tokenize(normalized)
     .map((t) => {
       if (t.kind === 'text') return tinyHtmlToSafeHtml(t.value);
       if (t.kind === 'img') return renderImg(t.alt, t.url);
-      return renderLink(t.label, t.url);
+      return renderLink(t.label, t.url, opts);
     })
     .join('');
 }

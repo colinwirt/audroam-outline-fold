@@ -80,6 +80,15 @@ export interface OutlineNode {
    */
   noteLinkTags?: Record<string, string>;
   /**
+   * Every link on the line (0.2.34), tags first in source order, then the caption's
+   * markdown links in caption order. A `note` is a note outside this map by number
+   * (`<t:N>`, `[label](#pnid:N)`); a `jump` goes to a node in this map by id
+   * (`<r:x>`, `[label](#id:x)`). Tag links are written back from here with their
+   * spelling; markdown links live in `title`. `noteLinks` stays the list of `<t:N>`
+   * numbers: a number taken out of it drops its tag here too.
+   */
+  links?: NodeLink[];
+  /**
    * Colon tags written with spaces (`<id : x>`, `<kind: doc>`, `<action: … >`), keyed by
    * tag name. Serialize writes the spelling back while it still names the node's value;
    * otherwise it writes `<name:value>`.
@@ -99,6 +108,20 @@ export interface OutlineNode {
    * The same block may also carry document keys (fold, markers, fontSize).
    */
   layout?: NodeLayout;
+}
+
+/** One link on a line. See `OutlineNode.links`. */
+export interface NodeLink {
+  /** `note`: a note outside this map, by number. `jump`: a node in this map, by id. */
+  kind: 'note' | 'jump';
+  /** The note number or the node id. */
+  target: string;
+  /** `tag`: `<t:N>` / `<r:x>`. `markdown`: `[label](#pnid:N)` / `[label](#id:x)`, kept in the caption. */
+  form: 'tag' | 'markdown';
+  /** Exactly as written (`<r : x>`, `[Seeds](#pnid:1004)`). A new tag link may leave it out. */
+  source?: string;
+  /** Markdown label. */
+  label?: string;
 }
 
 /** Per-node layout authored in the outline text, not the map sidecar. */
