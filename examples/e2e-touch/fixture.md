@@ -8,7 +8,7 @@ fold-: globe
     - [x] turn heap weekly <id:g1>
   - [x] gravel path along the hedge <id:line>
   - Shed key rota <id:share>
-    - [-] key 1004: https://garden-club.example/shed-rota?id=1004 <id:view>
+    - [-] key 1004\nhttps://garden-club.example/shed-rota?id=1004 <id:view>
   - Tasks <id:tasks>
     - [x] new: water seedlings <id:t1>
     - [ ] order more bark mulch? <id:t2>

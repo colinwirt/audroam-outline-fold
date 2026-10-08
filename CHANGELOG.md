@@ -53,6 +53,7 @@ Design UX spec `20261007-map-fold-handle-connector-polish-ux.md`, locked 2026-10
 - `e2e/pages-viewer.spec.ts`: the lighthouse outline gets a session id, task box and fold handle on every row in the viewer, and **Handoff text** stays free of ids. A **Map** click made while the outline is still loading is kept.
 - `tests/map-fold-handle.test.ts`: a node with children starts every connector at the handle's outer rim; a node without a handle starts at its pill edge; the stem is the same for folded and expanded, runs 8 px to the inner rim and paints before the handle; no `#000` in the handle markup or css; no opacity on connectors or stems; `FOLD_RING_W` matches the css ring stroke. `tests/outline-fold-css.test.ts` now expects the expanded circle to be `fill: none`.
 - `e2e/pages-viewer.spec.ts`: on the lighthouse Map, the root's seven connectors start at the handle's outer rim, the − and + have the same 8 px stub, the fold hit is still 32 × 32 on the handle centre, the − circle's computed fill is `none`, and edges and stems have computed opacity 1.
+- `examples/e2e-touch/fixture.md`: the globe pill's link is now a lone URL line under its caption (`key 1004\nhttps://…`). A URL inside a sentence stays on the pill since this release, which made the pill long enough to push its globe off screen after a pinch.
 
 ## 0.2.30 — 2026-10-06
 
