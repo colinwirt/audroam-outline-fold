@@ -85,7 +85,7 @@ ins-remote:
 |------|---------|
 | Caption-first tags | `title <flag>* <id:…> (+)?` — serialize always emits this shape |
 | Known tags only | `<id:N>`, `<t:N>`, `<kind:…>`, `<enc:…>`, `<action:…>`, `<thread:…>`, `<db:…>` and the flag/kind words (`<private>`, `<encrypted>`, `<doc>`, …). Any other bare `<word>` (`<design>`, `<script>`, `<br>`) is caption text and round-trips unchanged; there is no short id form (removed in 0.2.31) |
-| Strict tags (0.2.32) | No space around the colon or just inside the brackets: `<id : x>`, `<kind: doc>`, `<action:x >` are caption text and round-trip unchanged. A value may hold inner spaces (`<action:event:Start work>`). The one exception is `<t:`: the legacy `<t: N>` (whitespace after the colon) still reads and keeps its spelling; serialize writes a new link as `<t:N>`, and `<t:N >` is text |
+| Tag spacing (0.2.32) | Readers accept optional whitespace around the colon and just inside the brackets: `<id : craft-lab>`, `< t: 41609 >`, `<kind : doc>`, `<action: https://… >`. Serialize writes `<name:value>` (a new note link is `<t:N>`) and keeps a spaced tag as written while it still names the same value, so a fold or a tick does not respell it. Bare words stay exact: `< doc >` is caption text |
 | Inline code | Nothing between backticks is read as a tag, id, note link or fold marker |
 | `<private>` / `<encrypted>` | Lock chrome (Unlock vs Decrypt) |
 | `--- payloads ---` | Trailer map keyed by node **id** → `{ kid, ct? \| uri?, alg? }` |

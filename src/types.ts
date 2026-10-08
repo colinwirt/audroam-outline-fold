@@ -80,6 +80,12 @@ export interface OutlineNode {
    */
   noteLinkTags?: Record<string, string>;
   /**
+   * Colon tags written with spaces (`<id : x>`, `<kind: doc>`, `<action: … >`), keyed by
+   * tag name. Serialize writes the spelling back while it still names the node's value;
+   * otherwise it writes `<name:value>`.
+   */
+  tagSpellings?: TagSpellings;
+  /**
    * The fold marker as written on a line that has no id (`(+)`, or the
    * document's expanded marker). Parse sets it only when the node ends up with
    * no id (no session ids); serialize writes it back so the line round-trips.
@@ -159,3 +165,6 @@ export interface ToHtmlOptions {
    */
   noteUri?: string;
 }
+
+/** How colon tags were written when not `<name:value>`. See `OutlineNode.tagSpellings`. */
+export type TagSpellings = Partial<Record<'id' | 'kind' | 'action' | 'thread' | 'db', string>>;

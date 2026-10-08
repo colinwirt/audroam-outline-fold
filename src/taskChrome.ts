@@ -44,14 +44,14 @@ function taskStateFromMatch(done: string | undefined, pending: string | undefine
   return 'open';
 }
 
-/** `<action:https://…>` or `<action:event:…>`. Strict: no space after `:` or before `>`. */
-const ACTION_TAG = /<action:([^\s>](?:[^>]*[^\s>])?)>/i;
+/** `<action:https://…>` or `<action:event:…>`; spaces around `:` and inside `<>` read too. */
+const ACTION_TAG = /<\s*action\s*:\s*([^>]*?[^\s>])\s*>/i;
 
-/** `<thread:pnid:…>` or `<thread:/path>` etc. Strict, like every tag but `<t:`. */
-const THREAD_TAG = /<thread:([^\s>](?:[^>]*[^\s>])?)>/i;
+/** `<thread:pnid:…>` or `<thread:/path>` etc. (lenient like every tag). */
+const THREAD_TAG = /<\s*thread\s*:\s*([^>]*?[^\s>])\s*>/i;
 
-/** Result-row note link `<t:101>`; the legacy `<t: 101>` still reads. */
-const NOTE_LINK_TAG = /<t:\s*(\d+)>/gi;
+/** Result-row note link `<t:101>`, also `<t: 101>` / `< t : 101 >`. */
+const NOTE_LINK_TAG = /<\s*t\s*:\s*(\d+)\s*>/gi;
 
 export function parseLeadingTask(title: string): ParsedTask | null {
   const text = String(title);

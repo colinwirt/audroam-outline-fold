@@ -2,16 +2,17 @@ import { parse } from './parse.js';
 import { peelTrailingSections } from './payloads.js';
 import type { OutlineNode } from './types.js';
 
-const ID_TAG = /[ \t]*<id:([A-Za-z0-9][A-Za-z0-9_-]*)>/g;
+/** `<id:N>`, also spaced (`<id : N>`, `< id:N >`), like parse. */
+const ID_TAG = /[ \t]*<\s*id\s*:\s*([A-Za-z0-9][A-Za-z0-9_-]*)\s*>/g;
 const HOP_REF = /#id:([A-Za-z0-9_.:-]+)/g;
 const FOLD_LINE = /^(\s*fold([-+])\s*:)[ \t]*(.*?)(\r?)$/im;
 const DEFAULT_LAYOUT_BLOCK = /\n*--- layout ---\r?\nfold-:[ \t]*\r?\ncollapsedMarker: "\(\+\)"\r?\n---\s*$/;
 /**
- * Tags the grammar reads, wherever a translation left them in a caption. Strict like
- * parse: `<id : x>` or `<kind: doc>` is text; only `<t:` reads a space after the colon.
+ * Tags the grammar reads, wherever a translation left them in a caption. Lenient like
+ * parse: whitespace around the colon and just inside the brackets (`< kind : doc >`).
  */
 const STRAY_TAG =
-  /[ \t]*<(?:(?:id|action|thread|kind|enc|db):[^\s>](?:[^>\n]*[^\s>])?|t:\s*\d+|private|encrypted)>/gi;
+  /[ \t]*<(?:\s*(?:id|t|action|thread|kind|enc|db)\s*:[^>\n]*|private|encrypted)>/gi;
 
 /** Inline code (`…`) is literal, as in parse: no tag or `#id:` inside it is touched. */
 const CODE_SPAN = /`[^`\n]+`/g;

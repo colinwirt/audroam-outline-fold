@@ -213,11 +213,11 @@ function scanIgnoredEncTags(
   source: string,
   issues: ValidationIssue[],
 ): void {
-  const re = /<enc:([^>]*)>/gi;
+  const re = /<\s*enc\s*:([^>]*)>/gi;
   let m: RegExpExecArray | null;
   const lines = source.split(/\r?\n/);
   while ((m = re.exec(source)) !== null) {
-    const body = m[1]!;
+    const body = m[1]!.trim();
     if (parseEncBody(body)) continue;
     // Softened parse may still accept no-kid; check raw completeness.
     const parts = body.split(';').map((p) => p.trim()).filter(Boolean);

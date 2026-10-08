@@ -1,5 +1,6 @@
 import { linkPayloadNodes } from './nodeAddress.js';
 import { collectLayouts, collectPayloads, formatLayoutBlock, formatPayloadsBlock } from './payloads.js';
+import { spelledTag } from './tagSpelling.js';
 import type { OutlineFoldDoc, OutlineNode, TaskState } from './types.js';
 
 const DEFAULT_COLLAPSED = '(+)';
@@ -18,14 +19,14 @@ function taskMarker(task: TaskState): string {
 }
 
 /**
- * `<t:N>` by default. A spelling kept by parse (`<t: N>`, `<T:N>`) is written
+ * `<t:N>` by default. A spelling kept by parse (`<t: N>`, `<T: N >`) is written
  * back as long as it still names this id, so the author's tag round-trips.
  */
 function noteLinkTag(node: OutlineNode, id: string): string {
   const kept = node.noteLinkTags?.[id];
   if (
     typeof kept === 'string' &&
-    /^<t:[ \t]*(\d+)>$/i.exec(kept)?.[1] === id
+    /^<\s*t\s*:\s*(\d+)\s*>$/i.exec(kept)?.[1] === id
   ) {
     return kept;
   }
@@ -39,21 +40,22 @@ function noteLinkTag(node: OutlineNode, id: string): string {
  */
 function formatTrailingSpans(node: OutlineNode): string {
   const parts: string[] = [];
-  if (node.action) parts.push(`<action:${node.action}>`);
-  if (node.thread) parts.push(`<thread:${node.thread}>`);
+  const kept = node.tagSpellings;
+  if (node.action) parts.push(spelledTag(kept?.action, `<action:${node.action}>`));
+  if (node.thread) parts.push(spelledTag(kept?.thread, `<thread:${node.thread}>`));
   if (node.noteLinks) {
     for (const id of node.noteLinks) {
       if (/^\d+$/.test(id)) parts.push(noteLinkTag(node, id));
     }
   }
-  if (node.kind) parts.push(`<kind:${node.kind}>`);
+  if (node.kind) parts.push(spelledTag(kept?.kind, `<kind:${node.kind}>`));
   if (node.flags) {
     for (const f of node.flags) {
-      if (f === 'db' && node.dbRef) parts.push(`<db:${node.dbRef}>`);
+      if (f === 'db' && node.dbRef) parts.push(spelledTag(kept?.db, `<db:${node.dbRef}>`));
       else parts.push(`<${f}>`);
     }
   }
-  if (node.id && !node.autoId) parts.push(`<id:${node.id}>`);
+  if (node.id && !node.autoId) parts.push(spelledTag(kept?.id, `<id:${node.id}>`));
   return parts.length ? ' ' + parts.join(' ') : '';
 }
 

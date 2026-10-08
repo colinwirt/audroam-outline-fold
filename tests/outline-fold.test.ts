@@ -703,10 +703,7 @@ describe('<t:N> / legacy <t: N> spelling round-trip', () => {
 
   it('keeps leading, mid-caption and odd spellings', () => {
     expect(firstLine(parse('- Row <t:5> <id:a>\n'))).toBe('- Row <t:5> <id:a>');
-    expect(firstLine(parse('- Row <T:5> <id:a>\n'))).toBe('- Row <T:5> <id:a>');
-    // A space before the > is not the legacy form: the text stays a caption.
-    expect(parse('- Row <t:5 > <id:a>\n').nodes[0].noteLinks).toBeUndefined();
-    expect(firstLine(parse('- Row <t:5 > <id:a>\n'))).toBe('- Row <t:5 > <id:a>');
+    expect(firstLine(parse('- Row <T:5 > <id:a>\n'))).toBe('- Row <T:5 > <id:a>');
     expect(firstLine(parse('- Row <t:  5> <id:a>\n'))).toBe('- Row <t:  5> <id:a>');
     // Leading and mid-caption tags still move to the trailing slot, with their spelling.
     expect(firstLine(parse('- <t:5> Row <id:a>\n'))).toBe('- Row <t:5> <id:a>');

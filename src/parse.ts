@@ -7,6 +7,7 @@ import {
 import { collectNodeIds, nextAutoId } from './nodeAddress.js';
 import { parseEncBody } from './sealed.js';
 import { parseLeadingTask } from './taskChrome.js';
+import { canonTag } from './tagSpelling.js';
 import type {
   FoldMode,
   NodeFlag,
@@ -15,47 +16,64 @@ import type {
   OutlineFrontmatter,
   OutlineNode,
   SealedPayload,
+  TagSpellings,
   TaskState,
 } from './types.js';
 
 const DEFAULT_COLLAPSED = '(+)';
 
-const ID_PREFIXED = /^<id:([A-Za-z0-9][A-Za-z0-9_-]*)>\s*/;
-const KIND_SPAN =
-  /^<(?:kind:)?(doc|ticket|globe|db|feature|form|bug|risk|lock|encrypted|system-link|pending-approve)>\s*/i;
-const FLAG_SPAN =
-  /^<(private|encrypted|db)(?::([^\s>]+))?>\s*/i;
 /**
- * Tags are strict: no space around the colon or just inside the brackets, so
- * `<id : x>`, `<action: x>` or `<enc:x >` stay caption text. A value may hold inner
- * spaces but cannot start or end with one. `<t:N>` is the one exception (below).
+ * Tags are lenient on read: optional whitespace around the colon and just inside the
+ * brackets (`<id : craft-lab>`, `< t: 41609 >`, `<action: https://… >`). Serialize
+ * writes `<name:value>` and keeps a spaced spelling as written while it still names the
+ * same value (`tagSpellings`, `noteLinkTags`). Bare words (`<doc>`, `<private>`) stay
+ * exact: `< doc >` is caption text.
  */
-const VALUE = '([^\\s>](?:[^>]*[^\\s>])?)';
-/** `<enc:kid=…;alg=…;ct=…>` — body may not contain `>`. */
-const ENC_SPAN = new RegExp(`^<enc:${VALUE}>\\s*`, 'i');
+const KIND_WORDS =
+  'doc|ticket|globe|db|feature|form|bug|risk|lock|encrypted|system-link|pending-approve';
+/** `<name : value >`: value has no `>`, and its own edge spaces are not part of it. */
+const tagRe = (name: string, value: string, flags = 'i') =>
+  ({
+    span: new RegExp(`^<\\s*${name}\\s*:\\s*(${value})\\s*>\\s*`, flags),
+    trailing: new RegExp(`\\s*<\\s*${name}\\s*:\\s*(${value})\\s*>\\s*$`, flags),
+  });
+const ID_VALUE = '[A-Za-z0-9][A-Za-z0-9_-]*';
+/** Free value (enc / action / thread): inner spaces allowed, edge spaces trimmed. */
+const FREE_VALUE = '[^>]*?[^\\s>]';
 
-const ID_TRAILING = /\s*<id:([A-Za-z0-9][A-Za-z0-9_-]*)>\s*$/;
-const KIND_TRAILING =
-  /\s*<(?:kind:)?(doc|ticket|globe|db|feature|form|bug|risk|lock|encrypted|system-link|pending-approve)>\s*$/i;
-const FLAG_TRAILING =
-  /\s*<(private|encrypted|db)(?::([^\s>]+))?>\s*$/i;
-const ENC_TRAILING = new RegExp(`\\s*<enc:${VALUE}>\\s*$`, 'i');
+const ID_RE = tagRe('id', ID_VALUE, '');
+const ID_PREFIXED = ID_RE.span;
+const KIND_SPAN = new RegExp(
+  `^<(?:\\s*kind\\s*:\\s*(${KIND_WORDS})\\s*|(${KIND_WORDS}))>\\s*`,
+  'i',
+);
+const FLAG_SPAN = /^<(?:(private|encrypted|db)|\s*(db)\s*:\s*([^\s>]+)\s*)>\s*/i;
+/** `<enc:kid=…;alg=…;ct=…>` — body may not contain `>`. */
+const ENC_RE = tagRe('enc', FREE_VALUE);
+const ENC_SPAN = ENC_RE.span;
+
+const ID_TRAILING = ID_RE.trailing;
+const KIND_TRAILING = new RegExp(
+  `\\s*<(?:\\s*kind\\s*:\\s*(${KIND_WORDS})\\s*|(${KIND_WORDS}))>\\s*$`,
+  'i',
+);
+const FLAG_TRAILING = /\s*<(?:(private|encrypted|db)|\s*(db)\s*:\s*([^\s>]+)\s*)>\s*$/i;
+const ENC_TRAILING = ENC_RE.trailing;
 /** `<action:https://…>` or `<action:event:…>` — body must not contain `>`. */
-const ACTION_SPAN = new RegExp(`^<action:${VALUE}>\\s*`, 'i');
-const ACTION_TRAILING = new RegExp(`\\s*<action:${VALUE}>\\s*$`, 'i');
+const ACTION_RE = tagRe('action', FREE_VALUE);
+const ACTION_SPAN = ACTION_RE.span;
+const ACTION_TRAILING = ACTION_RE.trailing;
 /** `<thread:pnid:…>` or `<thread:/path>` */
-const THREAD_SPAN = new RegExp(`^<thread:${VALUE}>\\s*`, 'i');
-const THREAD_TRAILING = new RegExp(`\\s*<thread:${VALUE}>\\s*$`, 'i');
-/**
- * Audroam result-row note link: `<t:101>`. Digits only. The one tag that still reads
- * whitespace after the colon (`<t: 101>`, the legacy spelling in live notes); nothing
- * before the `>`, so `<t:101 >` is text.
- */
-const NOTE_LINK_SPAN = /^<t:\s*(\d+)>\s*/i;
-const NOTE_LINK_TRAILING = /\s*<t:\s*(\d+)>\s*$/i;
-const NOTE_LINK_ANY = /<t:\s*(\d+)>/gi;
+const THREAD_RE = tagRe('thread', FREE_VALUE);
+const THREAD_SPAN = THREAD_RE.span;
+const THREAD_TRAILING = THREAD_RE.trailing;
+/** Audroam result-row note link: `<t:101>`, also `<t: 101>`, `< t : 101 >`. Digits only. */
+const NOTE_LINK_RE = tagRe('t', '\\d+');
+const NOTE_LINK_SPAN = NOTE_LINK_RE.span;
+const NOTE_LINK_TRAILING = NOTE_LINK_RE.trailing;
+const NOTE_LINK_ANY = /<\s*t\s*:\s*(\d+)\s*>/gi;
 /** The bare `<t:…>` token inside a span match (drops surrounding whitespace). */
-const NOTE_LINK_TOKEN = /<t:\s*\d+>/i;
+const NOTE_LINK_TOKEN = /<\s*t\s*:\s*\d+\s*>/i;
 /** How serialize writes a note link when the text gave no spelling. */
 const NOTE_LINK_DEFAULT = (id: string) => `<t:${id}>`;
 
@@ -217,6 +235,7 @@ function parseTitleAndMeta(
   thread?: string;
   noteLinks?: string[];
   noteLinkTags?: Record<string, string>;
+  tagSpellings?: TagSpellings;
 } {
   const masked = maskCodeSpans(content.trim());
   let rest = masked.text;
@@ -228,6 +247,12 @@ function parseTitleAndMeta(
   let task: TaskState | undefined;
   let action: string | undefined;
   let thread: string | undefined;
+  // A colon tag as written, when it is not `<name:value>` (`<id : x>`). Last one read wins,
+  // like the value it spells (trailing overrides leading).
+  const spelling: TagSpellings = {};
+  const spell = (key: keyof TagSpellings, token: string) => {
+    spelling[key] = token.trim();
+  };
   const leadingNotes: string[] = [];
   const trailingNotes: string[] = [];
   const midNotes: string[] = [];
@@ -264,9 +289,12 @@ function parseTitleAndMeta(
 
     let m = rest.match(FLAG_SPAN);
     if (m) {
-      const flag = m[1].toLowerCase() as NodeFlag;
+      const flag = (m[1] ?? m[2]).toLowerCase() as NodeFlag;
       flags.push(flag);
-      if (flag === 'db' && m[2]) dbRef = m[2];
+      if (flag === 'db' && m[3]) {
+        dbRef = m[3];
+        spell('db', m[0]);
+      }
       rest = rest.slice(m[0].length);
       progressed = true;
       continue;
@@ -284,6 +312,7 @@ function parseTitleAndMeta(
     m = rest.match(ACTION_SPAN);
     if (m) {
       action = m[1].trim();
+      spell('action', m[0]);
       rest = rest.slice(m[0].length);
       progressed = true;
       continue;
@@ -292,6 +321,7 @@ function parseTitleAndMeta(
     m = rest.match(THREAD_SPAN);
     if (m) {
       thread = m[1].trim();
+      spell('thread', m[0]);
       rest = rest.slice(m[0].length);
       progressed = true;
       continue;
@@ -307,7 +337,9 @@ function parseTitleAndMeta(
 
     m = rest.match(KIND_SPAN);
     if (m) {
-      kind = m[1].toLowerCase() as NodeKind;
+      kind = (m[1] ?? m[2]).toLowerCase() as NodeKind;
+      if (m[1]) spell('kind', m[0]);
+      else delete spelling.kind;
       rest = rest.slice(m[0].length);
       progressed = true;
       continue;
@@ -316,6 +348,7 @@ function parseTitleAndMeta(
     m = rest.match(ID_PREFIXED);
     if (m) {
       id = m[1];
+      spell('id', m[0]);
       rest = rest.slice(m[0].length);
       progressed = true;
       continue;
@@ -372,9 +405,12 @@ function parseTitleAndMeta(
 
     let m = rest.match(FLAG_TRAILING);
     if (m) {
-      const flag = m[1].toLowerCase() as NodeFlag;
+      const flag = (m[1] ?? m[2]).toLowerCase() as NodeFlag;
       flags.push(flag);
-      if (flag === 'db' && m[2]) dbRef = m[2];
+      if (flag === 'db' && m[3]) {
+        dbRef = m[3];
+        spell('db', m[0]);
+      }
       rest = rest.slice(0, rest.length - m[0].length).trimEnd();
       progressed = true;
       continue;
@@ -392,6 +428,7 @@ function parseTitleAndMeta(
     m = rest.match(ACTION_TRAILING);
     if (m) {
       action = m[1].trim();
+      spell('action', m[0]);
       rest = rest.slice(0, rest.length - m[0].length).trimEnd();
       progressed = true;
       continue;
@@ -400,6 +437,7 @@ function parseTitleAndMeta(
     m = rest.match(THREAD_TRAILING);
     if (m) {
       thread = m[1].trim();
+      spell('thread', m[0]);
       rest = rest.slice(0, rest.length - m[0].length).trimEnd();
       progressed = true;
       continue;
@@ -415,7 +453,9 @@ function parseTitleAndMeta(
 
     m = rest.match(KIND_TRAILING);
     if (m) {
-      kind = m[1].toLowerCase() as NodeKind;
+      kind = (m[1] ?? m[2]).toLowerCase() as NodeKind;
+      if (m[1]) spell('kind', m[0]);
+      else delete spelling.kind;
       rest = rest.slice(0, rest.length - m[0].length).trimEnd();
       progressed = true;
       continue;
@@ -424,6 +464,7 @@ function parseTitleAndMeta(
     m = rest.match(ID_TRAILING);
     if (m) {
       id = m[1]; // trailing overrides leading
+      spell('id', m[0]);
       rest = rest.slice(0, rest.length - m[0].length).trimEnd();
       progressed = true;
       continue;
@@ -479,7 +520,24 @@ function parseTitleAndMeta(
     thread,
     noteLinks: noteLinks.length ? noteLinks : undefined,
     noteLinkTags: Object.keys(noteLinkTags).length ? noteLinkTags : undefined,
+    tagSpellings: keptSpellings(spelling, { id, kind, action, thread, db: dbRef }),
   };
+}
+
+/** Only spellings that differ from what serialize would write, and still name the value. */
+function keptSpellings(
+  spelling: TagSpellings,
+  values: Partial<Record<keyof TagSpellings, string | undefined>>,
+): TagSpellings | undefined {
+  const out: TagSpellings = {};
+  for (const key of Object.keys(spelling) as (keyof TagSpellings)[]) {
+    const value = values[key];
+    const token = spelling[key];
+    if (!value || !token) continue;
+    const plain = `<${key}:${value}>`;
+    if (token !== plain && canonTag(token) === plain) out[key] = token;
+  }
+  return Object.keys(out).length ? out : undefined;
 }
 
 export interface ParseOptions {
@@ -549,6 +607,7 @@ export function parse(text: string, opts?: ParseOptions): OutlineFoldDoc {
     if (meta.thread) node.thread = meta.thread;
     if (meta.noteLinks) node.noteLinks = meta.noteLinks;
     if (meta.noteLinkTags) node.noteLinkTags = meta.noteLinkTags;
+    if (meta.tagSpellings) node.tagSpellings = meta.tagSpellings;
     if (meta.inlineCollapsed && meta.id) {
       inlineCollapsedIds.push(meta.id);
     } else if (meta.inlineCollapsed) {
