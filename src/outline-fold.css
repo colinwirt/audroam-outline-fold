@@ -355,3 +355,157 @@
 .of-map-controls button:hover {
   border-color: var(--accent, var(--of-accent));
 }
+
+/* Fold to level (0.2.32, Design UX 2026-10-06). The handle is chrome: no
+   callout, no text selection, so a hold there never starts a native one. */
+.map-fold-hit {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* Hold ring: shows at 150 ms, fills by 450 ms. */
+.map-level-ring svg { display: block; }
+.map-level-ring circle { fill: none; stroke-width: 3; }
+.map-level-ring-track { stroke: rgba(142, 200, 255, 0.25); }
+.map-level-ring-fill {
+  stroke: var(--accent, var(--of-accent));
+  stroke-linecap: round;
+  stroke-dasharray: 100;
+  stroke-dashoffset: 100;
+}
+.map-level-ring.is-filling .map-level-ring-fill {
+  stroke-dashoffset: 0;
+  transition: stroke-dashoffset var(--map-level-ring-ms, 300ms) linear;
+}
+@media (prefers-reduced-motion: reduce) {
+  .map-level-ring .map-level-ring-track { stroke: none; }
+  .map-level-ring .map-level-ring-fill {
+    stroke: none;
+    fill: var(--accent, var(--of-accent));
+    r: 5px;
+    transition: none;
+  }
+}
+
+/* Level menu: HTML overlay in the map host, anchored to the handle. */
+.map-level-menu {
+  box-sizing: border-box;
+  padding: 6px;
+  border-radius: 10px;
+  background: #13202b;
+  border: 1px solid #3d5a73;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  color: var(--text, var(--of-text));
+  font: 14px/1.2 var(--of-font);
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+.map-level-title {
+  max-width: 16rem;
+  padding: 2px 6px 6px;
+  color: var(--muted, var(--of-muted));
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.map-level-group { display: flex; gap: 6px; }
+.map-level-item {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  border-radius: 8px;
+  border: 1px solid #3d5a73;
+  background: #1b3044;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  touch-action: none;
+}
+.map-level-item[aria-checked="true"] {
+  border-color: #8ec8ff;
+  background: #24425e;
+}
+.map-level-item[aria-disabled="true"] {
+  opacity: 0.4;
+  cursor: default;
+}
+.map-level-item:focus-visible,
+.map-level-item.is-hot {
+  outline: 2px solid var(--gold);
+  outline-offset: 1px;
+}
+.map-level-key {
+  font: 11px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  color: var(--muted, var(--of-muted));
+}
+.map-level-count {
+  margin-left: auto;
+  color: var(--muted, var(--of-muted));
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+/* Touch: one row of 46×52 tiles (>= 44 px), key hint under the label. */
+.map-level-menu[data-pointer="coarse"] .map-level-item {
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+  min-width: 46px;
+  min-height: 52px;
+  padding: 0 8px;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+/* Mouse and keyboard: 32 px rows with a radio mark, count and key hint. */
+.map-level-menu[data-pointer="fine"] .map-level-group { flex-direction: column; gap: 2px; }
+.map-level-menu[data-pointer="fine"] .map-level-item {
+  min-width: 12.5rem;
+  min-height: 32px;
+  padding: 0 8px;
+  border-color: transparent;
+  background: transparent;
+  text-align: left;
+}
+.map-level-menu[data-pointer="fine"] .map-level-item:hover,
+.map-level-menu[data-pointer="fine"] .map-level-item.is-hot { background: #1b3044; }
+.map-level-menu[data-pointer="fine"] .map-level-item[role="menuitemradio"]::before {
+  content: "";
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 1.5px solid var(--muted, var(--of-muted));
+}
+.map-level-menu[data-pointer="fine"] .map-level-item[aria-checked="true"] {
+  background: #24425e;
+  border-color: transparent;
+}
+.map-level-menu[data-pointer="fine"] .map-level-item[aria-checked="true"]::before {
+  border-color: #8ec8ff;
+  background: radial-gradient(#8ec8ff 0 3px, transparent 3.5px);
+}
+.map-level-menu[data-pointer="fine"] .map-level-count + .map-level-key { margin-left: 0; }
+.map-level-menu[data-pointer="fine"] .map-level-label + .map-level-key { margin-left: auto; }
+
+/* Toolbar Levels group (L8, optional). */
+.of-map-levels {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.of-map-levels-label {
+  padding: 0 4px;
+  color: var(--muted, var(--of-muted));
+  font-size: 13px;
+}
+.of-map-levels button[aria-pressed="true"] {
+  border-color: #8ec8ff;
+  background: #24425e;
+}

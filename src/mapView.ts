@@ -105,6 +105,34 @@ import {
 } from './mapCamera.js';
 import { assignPersistentId, indexOutline, nodeMapKey } from './nodeAddress.js';
 import { toggleTask, nextTaskState, shouldFireAction } from './task.js';
+import {
+  foldLevelAnnouncement,
+  foldLevelPicker,
+  foldLevelSkipsAnimation,
+  wholeMapAnnouncement,
+  type FoldLevelKey,
+  type FoldLevelPicker,
+} from './foldLevel.js';
+import {
+  LEVEL_HOLD_MS,
+  LEVEL_RING_MS,
+  currentWholeMapLevel,
+  levelHoldAt,
+  levelHoldCancel,
+  levelHoldMoved,
+  levelKeepVisibleShift,
+  levelMenuInitialIndex,
+  levelMenuKeyAction,
+  levelPickNeedsConfirm,
+  placeLevelMenu,
+  renderLevelMenu,
+  shownBelow,
+  startLevelHold,
+  wholeMapLevelDoc,
+  WHOLE_MAP_LEVELS,
+  type LevelHold,
+  type WholeMapLevel,
+} from './foldLevelMenu.js';
 
 export interface MapPoint {
   x: number;
@@ -266,6 +294,21 @@ export interface MapViewHandle {
   findNode: (nodes: OutlineNode[], id: string) => OutlineNode | null;
   /** Gentle ensure edit node / caret region visible (host may call while typing). */
   ensureEditVisible: () => void;
+  /**
+   * Open the fold-to-level menu for a node (default: the selected node), as
+   * right-click / ContextMenu / Shift+F10 do. False when it has no children.
+   */
+  openLevelMenu: (id?: string) => boolean;
+  /** Close the fold-to-level menu if it is open. */
+  closeLevelMenu: () => void;
+  /** Apply a level under a node, as a menu pick does (anchors the handle, announces). */
+  applyFoldLevel: (id: string, level: FoldLevelKey) => void;
+  /** Every root to a level (toolbar Levels, L8). */
+  setWholeMapLevel: (level: WholeMapLevel) => void;
+  /** The toolbar level the whole map is at, or null. */
+  currentWholeMapLevel: () => WholeMapLevel | null;
+  /** Called after every paint. Returns an unsubscribe function. */
+  onPaint: (fn: () => void) => () => void;
 }
 
 function walkNodes(
@@ -1487,6 +1530,321 @@ export function createMapView(
     }
   }
 
+  // ── Fold to level (Design UX 2026-10-06, L1–L16) ──────────────────────────
+  type LevelMenuState = {
+    id: string;
+    picker: FoldLevelPicker;
+    fine: boolean;
+    confirm: boolean;
+    el: HTMLElement;
+    items: HTMLElement[];
+    abort: AbortController;
+    /** Pointer still down from the hold that opened it (drag-to-level, L5). */
+    dragPointer: number | null;
+  };
+  let levelMenu: LevelMenuState | null = null;
+  /** Set by applyFoldLevel; paint() keeps the pressed handle at this screen point (L10). */
+  let pendingLevelAnchor: {
+    id: string;
+    sx: number;
+    sy: number;
+    expand: boolean;
+    noFlip: boolean;
+  } | null = null;
+  const paintListeners = new Set<() => void>();
+  /** bindGestures installs this so a menu tap's trailing click is swallowed. */
+  let armClickSwallow: ((x: number, y: number) => void) | null = null;
+
+  function nodeEl(id: string): Element | null {
+    return host.querySelector(`.map-node[data-id="${CSS.escape(id)}"]`);
+  }
+
+  /** Handle rect in host-local px (the 32×32 hit, scaled by the camera). */
+  function handleRect(id: string): { x: number; y: number; w: number; h: number } | null {
+    const hit = nodeEl(id)?.querySelector('.map-fold-hit');
+    if (!hit) return null;
+    const r = hit.getBoundingClientRect();
+    const hr = host.getBoundingClientRect();
+    return { x: r.left - hr.left, y: r.top - hr.top, w: r.width, h: r.height };
+  }
+
+  function liveRegion(): HTMLElement {
+    let el = host.querySelector(':scope > .map-live') as HTMLElement | null;
+    if (el) return el;
+    el = document.createElement('div');
+    el.className = 'map-live';
+    el.setAttribute('role', 'status');
+    el.setAttribute('aria-live', 'polite');
+    el.style.cssText =
+      'position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap;border:0';
+    host.appendChild(el);
+    return el;
+  }
+
+  /** Live-region text (L13). Cleared first so the same text is read again. */
+  function announce(text: string): void {
+    const el = liveRegion();
+    el.textContent = '';
+    requestAnimationFrame(() => {
+      el.textContent = text;
+    });
+  }
+
+  function coarsePointer(): boolean {
+    try {
+      return window.matchMedia?.('(pointer: coarse)')?.matches ?? false;
+    } catch {
+      return false;
+    }
+  }
+
+  function positionLevelMenu(): void {
+    const m = levelMenu;
+    if (!m) return;
+    const anchor = handleRect(m.id);
+    if (!anchor) {
+      closeLevelMenu(false);
+      return;
+    }
+    const vp = hostViewport();
+    const pos = placeLevelMenu({
+      anchor,
+      panel: vp,
+      menu: { w: m.el.offsetWidth, h: m.el.offsetHeight },
+    });
+    m.el.style.left = `${pos.left}px`;
+    m.el.style.top = `${pos.top}px`;
+    m.el.dataset.below = pos.below ? 'true' : 'false';
+  }
+
+  function levelItemsState(): { disabled: boolean; hint?: string }[] {
+    return (levelMenu?.items || []).map((b) => ({
+      disabled: b.getAttribute('aria-disabled') === 'true',
+      hint: b.getAttribute('aria-keyshortcuts') || undefined,
+    }));
+  }
+
+  function focusLevelItem(index: number): void {
+    const b = levelMenu?.items[index];
+    if (!b) return;
+    for (const it of levelMenu!.items) it.tabIndex = -1;
+    b.tabIndex = 0;
+    try {
+      b.focus({ preventScroll: true });
+    } catch {
+      /* focus not available */
+    }
+  }
+
+  function hotLevelItem(index: number): void {
+    levelMenu?.items.forEach((b, i) => b.classList.toggle('is-hot', i === index));
+  }
+
+  function closeLevelMenu(returnFocus = true): void {
+    const m = levelMenu;
+    if (!m) return;
+    levelMenu = null;
+    m.abort.abort();
+    const hadFocus = m.el.contains(document.activeElement);
+    m.el.remove();
+    for (const g of host.querySelectorAll('.map-node[aria-expanded]')) g.removeAttribute('data-level-open');
+    if (returnFocus || hadFocus) focusMapForKeys();
+  }
+
+  /** Build (or rebuild for the confirm step) the menu view inside the host. */
+  function mountLevelMenuView(m: LevelMenuState, confirm: boolean): void {
+    const view = renderLevelMenu(m.picker, { fine: m.fine, confirm });
+    const old = m.el;
+    m.el = view.el;
+    m.items = view.items;
+    m.confirm = confirm;
+    const sig = m.abort.signal;
+    view.items.forEach((b, i) => {
+      bindTap(
+        b,
+        (ev) => {
+          ev.preventDefault();
+          ev.stopPropagation();
+          if (ev.type === 'pointerup') {
+            const pe = ev as PointerEvent;
+            armClickSwallow?.(pe.clientX, pe.clientY);
+          }
+          pickLevelItem(i);
+        },
+        { signal: sig },
+      );
+      b.addEventListener('pointerenter', () => hotLevelItem(i), { signal: sig });
+      b.addEventListener('pointerleave', () => b.classList.remove('is-hot'), { signal: sig });
+    });
+    view.el.addEventListener(
+      'keydown',
+      (e) => {
+        const i = m.items.indexOf(document.activeElement as HTMLElement);
+        const act = levelMenuKeyAction(e.key, i, levelItemsState());
+        // Every key stays inside the menu: no fold, zoom or host shortcut.
+        e.stopPropagation();
+        if (!act) return;
+        if (act.type === 'move') {
+          e.preventDefault();
+          focusLevelItem(act.index);
+        } else if (act.type === 'close') {
+          e.preventDefault();
+          if (m.confirm && e.key === 'Escape') {
+            mountLevelMenuView(m, false);
+            focusLevelItem(levelMenuInitialIndex(m.picker.items));
+            return;
+          }
+          closeLevelMenu(true);
+        } else if (act.type === 'apply') {
+          // Enter / Space reach the button's own click (bindTap); a key hint applies here.
+          if (e.key === 'Enter' || e.key === ' ') return;
+          e.preventDefault();
+          pickLevelItem(act.index);
+        }
+      },
+      { signal: sig },
+    );
+    view.el.addEventListener('contextmenu', (e) => e.preventDefault(), { signal: sig });
+    if (old.isConnected) old.replaceWith(view.el);
+    else host.appendChild(view.el);
+    positionLevelMenu();
+  }
+
+  /** Open the menu for `id` (L1, L9). Returns false when the node has no children. */
+  function openLevelMenu(id: string, how: { fine?: boolean; dragPointer?: number | null } = {}): boolean {
+    closeLevelMenu(false);
+    const doc = getDoc();
+    const picker = foldLevelPicker(doc, id);
+    if (!picker || !nodeEl(id)) return false;
+    if (getFocusId() !== id) {
+      setFocusId(id);
+      userCamGesture = true;
+      pendingFollow = null;
+      onChange?.();
+    }
+    if (getComputedStyle(host).position === 'static') host.style.position = 'relative';
+    const abort = new AbortController();
+    const m: LevelMenuState = {
+      id,
+      picker,
+      fine: how.fine ?? !coarsePointer(),
+      confirm: false,
+      el: document.createElement('div'),
+      items: [],
+      abort,
+      dragPointer: how.dragPointer ?? null,
+    };
+    levelMenu = m;
+    mountLevelMenuView(m, false);
+    nodeEl(id)?.setAttribute('data-level-open', 'true');
+    document.addEventListener(
+      'pointerdown',
+      (e) => {
+        const t = e.target as Node | null;
+        if (t && (m.el.contains(t) || host.contains(t))) return;
+        closeLevelMenu(false);
+      },
+      { capture: true, signal: abort.signal },
+    );
+    document.addEventListener(
+      'keydown',
+      (e) => {
+        if (e.key !== 'Escape' || !levelMenu) return;
+        if (m.el.contains(e.target as Node)) return;
+        e.preventDefault();
+        e.stopPropagation();
+        closeLevelMenu(true);
+      },
+      { capture: true, signal: abort.signal },
+    );
+    focusLevelItem(levelMenuInitialIndex(picker.items));
+    return true;
+  }
+
+  function pickLevelItem(index: number): void {
+    const m = levelMenu;
+    if (!m) return;
+    const b = m.items[index];
+    if (!b || b.getAttribute('aria-disabled') === 'true') return;
+    const level = b.dataset.level || '';
+    if (m.confirm) {
+      if (level === 'confirm') {
+        closeLevelMenu(true);
+        applyFoldLevel(m.id, '*');
+      } else {
+        mountLevelMenuView(m, false);
+        focusLevelItem(levelMenuInitialIndex(m.picker.items));
+      }
+      return;
+    }
+    const key: FoldLevelKey = level === '*' ? '*' : (Number(level) as 0 | 1 | 2 | 3);
+    if (levelPickNeedsConfirm(m.picker, key)) {
+      mountLevelMenuView(m, true);
+      focusLevelItem(0);
+      return;
+    }
+    closeLevelMenu(true);
+    applyFoldLevel(m.id, key);
+  }
+
+  /**
+   * One pick: `setExpandLevel(doc, level, { under: id })` (resets the whole
+   * subtree, L16), one setDoc + onChange, the pressed handle kept at its
+   * screen point (L10), and the live-region text (L13). Fold state only.
+   */
+  function applyFoldLevel(id: string, level: FoldLevelKey): void {
+    const doc = getDoc();
+    const picker = foldLevelPicker(doc, id);
+    if (!picker) return;
+    const item = picker.items.find((it) => it.key === level);
+    if (!item || item.disabled) return;
+    const next = setExpandLevel(doc, level, { under: id });
+    const r = handleRect(id);
+    pendingLevelAnchor = r
+      ? {
+          id,
+          sx: r.x + r.w / 2,
+          sy: r.y + r.h / 2,
+          expand: item.shown > shownBelow(doc, id),
+          noFlip: foldLevelSkipsAnimation(doc, next),
+        }
+      : null;
+    stopMotion();
+    cancelFollowAnim();
+    if (getFocusId() !== id) setFocusId(id);
+    userCamGesture = true;
+    pendingFollow = null;
+    setDoc(next);
+    onChange?.();
+    announce(foldLevelAnnouncement(picker, level));
+  }
+
+  /** Toolbar Levels (L8): every root, counted from the root, first root's handle anchored. */
+  function setWholeMapLevel(level: WholeMapLevel): void {
+    const doc = getDoc();
+    const next = wholeMapLevelDoc(doc, level);
+    const root = (doc.nodes || []).find((n) => n.id && hasKids(n));
+    const r = root?.id ? handleRect(root.id) : null;
+    pendingLevelAnchor =
+      root?.id && r
+        ? {
+            id: root.id,
+            sx: r.x + r.w / 2,
+            sy: r.y + r.h / 2,
+            expand: false,
+            noFlip: foldLevelSkipsAnimation(doc, next),
+          }
+        : null;
+    stopMotion();
+    cancelFollowAnim();
+    userCamGesture = true;
+    pendingFollow = null;
+    closeLevelMenu(false);
+    setDoc(next);
+    onChange?.();
+    announce(wholeMapAnnouncement(next, level));
+  }
+
   function applyCam(): void {
     const g = host.querySelector('#mapViewport');
     if (!g) return;
@@ -1494,6 +1852,8 @@ export function createMapView(
       'transform',
       `translate(${cam.x} ${cam.y}) scale(${cam.k})`,
     );
+    // L6: the menu follows its handle through pans and zooms.
+    if (levelMenu) positionLevelMenu();
   }
 
   function resetCam(): void {
@@ -1629,7 +1989,8 @@ export function createMapView(
     return snap;
   }
 
-  function runFlipAnimation(prev: Record<string, MapPoint>): void {
+  /** `shift` (world px) is the camera move made in the same frame (L10). */
+  function runFlipAnimation(prev: Record<string, MapPoint>, shift = { x: 0, y: 0 }): void {
     if (!prev || prefersReducedMotion()) return;
     const layout = getLayout();
     const nodes = host.querySelectorAll<SVGGElement>('.map-node');
@@ -1639,8 +2000,8 @@ export function createMapView(
     nodes.forEach((g) => {
       const id = g.getAttribute('data-id');
       if (!id || !prev[id] || !layout.nodes?.[id]) return;
-      const dx = prev[id].x - layout.nodes[id].x;
-      const dy = prev[id].y - layout.nodes[id].y;
+      const dx = prev[id].x - layout.nodes[id].x + shift.x;
+      const dy = prev[id].y - layout.nodes[id].y + shift.y;
       if (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5) return;
       g.style.transition = 'none';
       g.style.transform = `translate(${dx}px, ${dy}px)`;
@@ -2082,7 +2443,7 @@ export function createMapView(
             .join('');
           return `<g class="${cls}" id="${esc(mapNodeDomId(domPrefix, key))}" data-id="${esc(key)}" data-text-w="${textW}"
       role="treeitem" aria-selected="${focused ? 'true' : 'false'}" aria-current="${focused ? 'true' : 'false'}" aria-label="${esc(label)}${task != null ? (task === 'done' ? ', task done' : task === 'pending' ? ', task pending' : ', task open') : ''}${foldable ? (col ? ', collapsed' : ', expanded') : ''}${showMore ? ', more text available' : ''}${showLess ? ', showing full body' : ''}"
-      ${foldable ? `aria-expanded="${col ? 'false' : 'true'}"` : ''}>
+      ${foldable ? `aria-expanded="${col ? 'false' : 'true'}" aria-haspopup="menu"` : ''}${levelMenu && levelMenu.id === key ? ' data-level-open="true"' : ''}>
       <title>${esc(tip)}</title>
       <rect class="map-pill" x="${x}" y="${y}" width="${boxW}" height="${h}" rx="18" ry="18"/>
       ${taskChrome}
@@ -2106,8 +2467,13 @@ export function createMapView(
     // Overlays that live inside the host (resize popover, controls a host put
     // in the map) survive the SVG rewrite (0.2.30).
     const overlays = Array.from(host.children).filter((el) =>
-      el.matches?.('.map-width-pop, .of-map-controls'),
+      el.matches?.('.map-width-pop, .of-map-controls, .map-level-menu, .map-level-ring, .map-live'),
     );
+    // A focused menu item is detached by the rewrite below; put focus back after.
+    const levelFocus =
+      levelMenu && typeof document !== 'undefined'
+        ? levelMenu.items.indexOf(document.activeElement as HTMLElement)
+        : -1;
     host.innerHTML = `<svg class="map-svg" viewBox="0 0 ${Math.max(1, host.clientWidth || 1180)} ${Math.max(1, host.clientHeight || 520)}"
       preserveAspectRatio="xMidYMid meet" role="none" focusable="false">
       <rect width="100%" height="100%" fill="var(--map-bg)"/>
@@ -2118,12 +2484,86 @@ export function createMapView(
       </g>
     </svg>`;
     for (const el of overlays) host.appendChild(el);
+    if (levelMenu && levelFocus >= 0) {
+      try {
+        levelMenu.items[levelFocus]?.focus({ preventScroll: true });
+      } catch {
+        /* focus not available */
+      }
+    }
+
+    // L10: a level pick keeps the pressed handle at its screen point, zoom
+    // unchanged; an expand may pan (never zoom) to keep the new subtree in
+    // view. The camera moves in this same frame and the FLIP offsets carry
+    // the move, so nothing jumps.
+    let flipShift = { x: 0, y: 0 };
+    let skipFlip = false;
+    let anchored = false;
+    const la = pendingLevelAnchor;
+    pendingLevelAnchor = null;
+    if (la && hadViewport) {
+      const np = nodes.find((p) => p.key === la.id);
+      if (np) {
+        const left = np.pos.x - np.w / 2;
+        const boxRight = left + Math.max(1, np.w - np.foldSlot);
+        const hx = foldHandleGeometry(boxRight, np.foldSlot).cx;
+        const old = { x: cam.x, y: cam.y };
+        cam.x = la.sx - hx * cam.k;
+        cam.y = la.sy - np.pos.y * cam.k;
+        if (la.expand) {
+          const below = new Set<string>();
+          const anchorNode = findNode(doc.nodes, la.id);
+          const walkBelow = (n: OutlineNode) => {
+            if (n.id && isCollapsed(doc, n.id)) return;
+            for (const c of n.children || []) {
+              below.add(nodeMapKey(c, order.get(c) || 0));
+              walkBelow(c);
+            }
+          };
+          if (anchorNode) walkBelow(anchorNode);
+          const toScreen = (p: (typeof nodes)[number]) => ({
+            x: (p.pos.x - p.w / 2) * cam.k + cam.x,
+            y: (p.pos.y - p.h / 2) * cam.k + cam.y,
+            w: p.w * cam.k,
+            h: p.h * cam.k,
+          });
+          let shown: { x: number; y: number; w: number; h: number } | null = null;
+          for (const p of nodes) {
+            if (!below.has(p.key)) continue;
+            const r = toScreen(p);
+            if (!shown) shown = r;
+            else {
+              const x = Math.min(shown.x, r.x);
+              const y = Math.min(shown.y, r.y);
+              shown = {
+                x,
+                y,
+                w: Math.max(shown.x + shown.w, r.x + r.w) - x,
+                h: Math.max(shown.y + shown.h, r.y + r.h) - y,
+              };
+            }
+          }
+          const shift = levelKeepVisibleShift({
+            viewport: hostViewport(),
+            anchor: toScreen(np),
+            shown,
+            paddingPx: DEFAULT_CAM_PADDING_PX,
+            keepFrac: DEFAULT_KEEP_VISIBLE_FRAC,
+          });
+          cam.x += shift.dx;
+          cam.y += shift.dy;
+        }
+        flipShift = { x: (old.x - cam.x) / cam.k, y: (old.y - cam.y) / cam.k };
+        skipFlip = la.noFlip;
+        anchored = true;
+      }
+    }
 
     if (!hadViewport) resetCam();
     else applyCam();
 
-    if (hadViewport && isAutoPack(layout)) {
-      runFlipAnimation(prev);
+    if (hadViewport && isAutoPack(layout) && !skipFlip) {
+      runFlipAnimation(prev, flipShift);
     }
 
     host.querySelectorAll<SVGGElement>('.map-node').forEach((g) => {
@@ -2151,9 +2591,18 @@ export function createMapView(
       }
       const hadFollow = !!pendingFollow;
       runPendingFollow();
-      if (!hadFollow) {
+      if (!hadFollow && !anchored) {
         clampCamNow();
         applyCam();
+      }
+    }
+    if (anchored) settleCam();
+    if (levelMenu) positionLevelMenu();
+    for (const fn of [...paintListeners]) {
+      try {
+        fn();
+      } catch {
+        /* a listener must not break paint */
       }
     }
   }
@@ -2464,7 +2913,8 @@ export function createMapView(
     let longPressTimer = 0;
     let touchSelectTimer = 0;
     let labelTextHold = false;
-    let lastFingerDown = 0;
+    // -Infinity, not 0: a mouse press in the first 700 ms of the page is not a finger echo.
+    let lastFingerDown = -Infinity;
     let samples: { t: number; x: number; y: number }[] = [];
     let lastTap = { t: 0, x: 0, y: 0 };
     let firstDownAt = 0;
@@ -2607,10 +3057,104 @@ export function createMapView(
       const rect = host.getBoundingClientRect();
       swallow = armSwallow(performance.now(), rect.left + p.x, rect.top + p.y);
     }
+    armClickSwallow = (x, y) => {
+      swallow = armSwallow(performance.now(), x, y);
+    };
+
+    // Fold-handle hold (L1, L4): ring at 150 ms, menu at 450 ms.
+    let levelHold: LevelHold | null = null;
+    let levelRingTimer = 0;
+    let levelOpenTimer = 0;
+
+    function levelRingEl(): HTMLElement | null {
+      return host.querySelector(':scope > .map-level-ring');
+    }
+
+    function clearLevelHold(): void {
+      if (levelRingTimer) window.clearTimeout(levelRingTimer);
+      if (levelOpenTimer) window.clearTimeout(levelOpenTimer);
+      levelRingTimer = 0;
+      levelOpenTimer = 0;
+      levelHold = null;
+      levelRingEl()?.remove();
+    }
+
+    function showLevelRing(id: string): void {
+      const r = handleRect(id);
+      if (!r) return;
+      levelRingEl()?.remove();
+      const ring = document.createElement('div');
+      ring.className = 'map-level-ring';
+      ring.setAttribute('aria-hidden', 'true');
+      const size = 44;
+      ring.style.cssText = `position:absolute;z-index:6;pointer-events:none;width:${size}px;height:${size}px;left:${Math.round(r.x + r.w / 2 - size / 2)}px;top:${Math.round(r.y + r.h / 2 - size / 2)}px`;
+      ring.innerHTML =
+        '<svg viewBox="0 0 44 44" width="44" height="44"><circle class="map-level-ring-track" cx="22" cy="22" r="19"/><circle class="map-level-ring-fill" cx="22" cy="22" r="19" pathLength="100" transform="rotate(-90 22 22)"/></svg>';
+      if (getComputedStyle(host).position === 'static') host.style.position = 'relative';
+      host.appendChild(ring);
+      // Fill runs from 150 ms to 450 ms; reduced motion shows a static dot (css).
+      ring.style.setProperty('--map-level-ring-ms', `${LEVEL_HOLD_MS - LEVEL_RING_MS}ms`);
+      requestAnimationFrame(() => ring.classList.add('is-filling'));
+    }
+
+    function beginLevelHold(e: PointerEvent, id: string): void {
+      clearLevelHold();
+      const hold = startLevelHold({
+        pointerId: e.pointerId,
+        pointerType: e.pointerType || 'mouse',
+        id,
+        x: e.clientX,
+        y: e.clientY,
+        t: performance.now(),
+      });
+      levelHold = hold;
+      levelRingTimer = window.setTimeout(() => {
+        levelRingTimer = 0;
+        if (levelHold !== hold) return;
+        levelHold = levelHoldAt(hold, Math.max(performance.now(), hold.t0 + LEVEL_RING_MS));
+        if (levelHold.phase === 'ring') showLevelRing(id);
+      }, LEVEL_RING_MS);
+      levelOpenTimer = window.setTimeout(() => {
+        levelOpenTimer = 0;
+        const h = levelHold;
+        if (!h || h.pointerId !== hold.pointerId || h.phase === 'cancelled') return;
+        const opened = levelHoldAt(h, Math.max(performance.now(), h.t0 + LEVEL_HOLD_MS));
+        const p = pointers.get(h.pointerId);
+        if (opened.phase !== 'open' || !p || mode !== 'pending' || drivers().length !== 1) {
+          clearLevelHold();
+          return;
+        }
+        levelRingEl()?.remove();
+        clearLongPress();
+        clearTouchSelect();
+        // The gesture machine forgets this pointer: from here it only slides (L5).
+        pointers.delete(h.pointerId);
+        mode = 'idle';
+        samples = [];
+        levelHold = null;
+        try {
+          if (h.pointerType === 'touch' && typeof navigator !== 'undefined') navigator.vibrate?.(10);
+        } catch {
+          /* vibrate not allowed */
+        }
+        const fine = h.pointerType === 'mouse' && !coarsePointer();
+        if (!openLevelMenu(h.id, { fine, dragPointer: h.pointerId })) return;
+      }, LEVEL_HOLD_MS);
+    }
+
+    function levelItemAt(clientX: number, clientY: number): number {
+      const m = levelMenu;
+      if (!m) return -1;
+      const el = document.elementFromPoint?.(clientX, clientY);
+      const item = el?.closest?.('.map-level-item') as HTMLElement | null;
+      return item ? m.items.indexOf(item) : -1;
+    }
 
     function recognise(kind: 'pan' | 'pinch'): void {
       const was = mode;
       mode = kind;
+      // A pan or pinch cancels a fold-handle hold (L4).
+      if (levelHold) clearLevelHold();
       if (was === 'pending' || was === 'idle') {
         userCamGesture = true;
         const ds = drivers();
@@ -2653,6 +3197,8 @@ export function createMapView(
     function resetPointers(): void {
       clearLongPress();
       clearTouchSelect();
+      clearLevelHold();
+      if (levelMenu) levelMenu.dragPointer = null;
       if (raf) cancelAnimationFrame(raf);
       raf = 0;
       releasing = true;
@@ -2716,7 +3262,7 @@ export function createMapView(
         // in-map controls guard their own clicks.
         if (
           touchClickGuarded(e.detail, now, nodeTouchTapAt) &&
-          !target?.closest?.('.map-width-pop, .of-map-controls')
+          !target?.closest?.('.map-width-pop, .of-map-controls, .map-level-menu')
         ) {
           swallow = null;
           e.preventDefault();
@@ -2767,8 +3313,9 @@ export function createMapView(
       const target = e.target as Element | null;
       // The resize popover and in-map controls handle their own taps: no
       // preventDefault, capture or double-tap zoom on them.
-      if (target?.closest?.('.map-width-pop, .of-map-controls')) return;
+      if (target?.closest?.('.map-width-pop, .of-map-controls, .map-level-menu')) return;
       dismissWidthPop();
+      closeLevelMenu(false);
       if (!target?.closest?.('.map-link-hit, .map-link-pop')) dismissLinkPop();
       const onLabel = !!target?.closest?.('.map-label');
       const type = e.pointerType || 'mouse';
@@ -2888,6 +3435,17 @@ export function createMapView(
         // one-finger samples now (0.2.30, gesture amendment 2026-10-05).
         gestureHadTwo = true;
         samples = [];
+        // A second pointer cancels a fold-handle hold (L4).
+        if (levelHold) clearLevelHold();
+      } else if (
+        count === 1 &&
+        nodeEl &&
+        control?.matches('.map-fold-hit, .map-fold-indicator') &&
+        e.button === 0 &&
+        !barrel
+      ) {
+        const id = nodeEl.getAttribute('data-id') || '';
+        if (id && foldLevelPicker(getDoc(), id)) beginLevelHold(e, id);
       }
       const next = nextGestureMode(mode, count, false);
       if (next === 'pinch' && mode !== 'pinch') {
@@ -2923,6 +3481,16 @@ export function createMapView(
     host.addEventListener(
       'pointermove',
       (e) => {
+        // Drag-to-level (L5): after the menu opens, the finger only slides.
+        if (levelMenu && levelMenu.dragPointer === e.pointerId) {
+          e.preventDefault();
+          hotLevelItem(levelItemAt(e.clientX, e.clientY));
+          return;
+        }
+        if (levelHold && e.pointerId === levelHold.pointerId) {
+          levelHold = levelHoldMoved(levelHold, e.clientX, e.clientY);
+          if (levelHold.phase === 'cancelled') clearLevelHold();
+        }
         if (widthDrag && e.pointerId === widthDrag.pointerId) {
           e.preventDefault();
           widthDrag.moved = true;
@@ -2990,6 +3558,23 @@ export function createMapView(
     );
 
     const endPointer = (e: PointerEvent): void => {
+      // The release of the hold that opened the menu: never a toggle (L4).
+      // Lifting on an item applies it; lifting anywhere else keeps the menu (L5).
+      if (levelMenu && levelMenu.dragPointer === e.pointerId) {
+        const m = levelMenu;
+        m.dragPointer = null;
+        swallow = armSwallow(performance.now(), e.clientX, e.clientY);
+        nodeTouchTapAt = performance.now();
+        if (pointers.size === 0) {
+          mode = 'idle';
+          endPanGuard();
+        }
+        const i = e.type === 'pointerup' ? levelItemAt(e.clientX, e.clientY) : -1;
+        hotLevelItem(-1);
+        if (i >= 0 && m.items[i]?.getAttribute('aria-disabled') !== 'true') pickLevelItem(i);
+        return;
+      }
+      if (levelHold && levelHold.pointerId === e.pointerId) clearLevelHold();
       if (widthDrag && e.pointerId === widthDrag.pointerId) {
         const drag = widthDrag;
         widthDrag = null;
@@ -3140,6 +3725,38 @@ export function createMapView(
     host.addEventListener('lostpointercapture', () => {
       if (releasing) return;
     }, { signal });
+
+    // Right-click on a handle or a pill opens the level menu (L9). A touch
+    // long-press is the hold above, so the platform menu is suppressed there.
+    host.addEventListener('contextmenu', (e) => {
+      if (!isActive()) return;
+      const t = e.target as Element | null;
+      if (t?.closest?.('.map-level-menu')) {
+        e.preventDefault();
+        return;
+      }
+      const g = t?.closest?.('.map-node');
+      const onHandle = !!t?.closest?.('.map-fold-hit, .map-fold-indicator');
+      const pt = (e as PointerEvent).pointerType || '';
+      if (levelHold || levelMenu) {
+        if (onHandle || levelMenu) e.preventDefault();
+        return;
+      }
+      if (!g) return;
+      if (pt === 'touch' || pt === 'pen') {
+        if (onHandle) e.preventDefault();
+        return;
+      }
+      if (!onHandle && t?.closest?.('.map-label')) {
+        // Label with a text selection: keep the browser menu (Copy).
+        const sel = window.getSelection?.();
+        if (sel && !sel.isCollapsed && mapNodeKeepsTextSelection(g, sel)) return;
+      }
+      const id = g.getAttribute('data-id') || '';
+      if (!id || !foldLevelPicker(getDoc(), id)) return;
+      e.preventDefault();
+      openLevelMenu(id, { fine: !coarsePointer() || pt === 'mouse' });
+    }, { signal });
     window.addEventListener('blur', () => resetPointers(), { signal });
     document.addEventListener('visibilitychange', () => {
       if (document.hidden) resetPointers();
@@ -3188,6 +3805,8 @@ export function createMapView(
   }
 
   function unbindGestures(): void {
+    closeLevelMenu(false);
+    armClickSwallow = null;
     gestureAbort?.abort();
     gestureAbort = null;
     host.style.touchAction = '';
@@ -3208,7 +3827,7 @@ export function createMapView(
       // A button in the resize popover or in controls a host put inside the
       // map keeps its own Enter / Space (no fold toggle on the way).
       const kt = e.target as Element | null;
-      if (kt?.closest?.('.map-width-pop, .of-map-controls')) return;
+      if (kt?.closest?.('.map-width-pop, .of-map-controls, .map-level-menu')) return;
       if (
         !mapKeyboardShouldHandle({
           isActive: isActive(),
@@ -3226,6 +3845,14 @@ export function createMapView(
       const n = focusId ? findNode(doc.nodes, focusId) : null;
       const selected = !!(n && n.id);
 
+      if (e.key === 'ContextMenu' || (e.key === 'F10' && e.shiftKey)) {
+        // L9: the level menu for the selected node.
+        if (selected && hasKids(n!)) {
+          e.preventDefault();
+          openLevelMenu(n!.id!, { fine: !coarsePointer() });
+        }
+        return;
+      }
       if (e.shiftKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight' || e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
         e.preventDefault();
         stopMotion();
@@ -3321,17 +3948,78 @@ export function createMapView(
     visibleList,
     findNode,
     ensureEditVisible,
+    openLevelMenu: (id?: string) => {
+      const target = id ?? getFocusId();
+      return target ? openLevelMenu(target) : false;
+    },
+    closeLevelMenu: () => closeLevelMenu(false),
+    applyFoldLevel,
+    setWholeMapLevel,
+    currentWholeMapLevel: () => currentWholeMapLevel(getDoc()),
+    onPaint: (fn: () => void) => {
+      paintListeners.add(fn);
+      return () => {
+        paintListeners.delete(fn);
+      };
+    },
   };
 }
 
 // Re-export shortLabel for tests that imported behaviour indirectly — not public API.
 export { shortLabel as _shortLabelForTests };
 
-/** Zoom − / + / Fit controls. Buttons are at least 44px. Pan arrows stay off unless asked. */
-export function mountMapControls(
-  map: Pick<MapViewHandle, 'zoomBy' | 'fit' | 'panBy' | 'cam'>,
+/**
+ * Toolbar Levels group (fold to level L8, optional): `Levels 1 2 3 All`, the
+ * whole map counted from each root, the current level pressed. Buttons are
+ * at least 44px. Returns the group.
+ */
+export function mountMapLevels(
+  map: Pick<MapViewHandle, 'setWholeMapLevel' | 'currentWholeMapLevel' | 'onPaint'>,
   container: HTMLElement,
-  opts: { panArrows?: boolean } = {},
+): HTMLElement {
+  const group = document.createElement('div');
+  group.className = 'of-map-levels';
+  group.setAttribute('role', 'group');
+  group.setAttribute('aria-label', 'Levels');
+  group.style.touchAction = 'manipulation';
+  const label = document.createElement('span');
+  label.className = 'of-map-levels-label';
+  label.textContent = 'Levels';
+  label.setAttribute('aria-hidden', 'true');
+  group.appendChild(label);
+  const buttons: { level: WholeMapLevel; el: HTMLButtonElement }[] = [];
+  for (const level of WHOLE_MAP_LEVELS) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.textContent = level === '*' ? 'All' : String(level);
+    b.setAttribute('aria-label', level === '*' ? 'All levels' : `Level ${level}`);
+    b.dataset.level = String(level);
+    b.style.minWidth = '44px';
+    b.style.minHeight = '44px';
+    b.style.touchAction = 'manipulation';
+    bindTap(b, () => map.setWholeMapLevel(level));
+    buttons.push({ level, el: b });
+    group.appendChild(b);
+  }
+  const sync = () => {
+    const now = map.currentWholeMapLevel();
+    for (const { level, el } of buttons) el.setAttribute('aria-pressed', now === level ? 'true' : 'false');
+  };
+  map.onPaint(sync);
+  sync();
+  container.appendChild(group);
+  return group;
+}
+
+/**
+ * Zoom − / + / Fit controls. Buttons are at least 44px. Pan arrows stay off
+ * unless asked. `levels: true` adds the Levels group (needs a full map handle).
+ */
+export function mountMapControls(
+  map: Pick<MapViewHandle, 'zoomBy' | 'fit' | 'panBy' | 'cam'> &
+    Partial<Pick<MapViewHandle, 'setWholeMapLevel' | 'currentWholeMapLevel' | 'onPaint'>>,
+  container: HTMLElement,
+  opts: { panArrows?: boolean; levels?: boolean } = {},
 ): HTMLElement {
   const bar = document.createElement('div');
   bar.className = 'of-map-controls';
@@ -3355,6 +4043,16 @@ export function mountMapControls(
   mk('Zoom out', () => map.zoomBy(1 / 1.2));
   mk('Zoom in', () => map.zoomBy(1.2));
   mk('Fit', () => map.fit());
+  if (opts.levels && map.setWholeMapLevel && map.currentWholeMapLevel && map.onPaint) {
+    mountMapLevels(
+      {
+        setWholeMapLevel: map.setWholeMapLevel,
+        currentWholeMapLevel: map.currentWholeMapLevel,
+        onPaint: map.onPaint,
+      },
+      bar,
+    );
+  }
   if (opts.panArrows) {
     mk('Pan left', () => map.panBy(40, 0));
     mk('Pan right', () => map.panBy(-40, 0));

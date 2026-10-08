@@ -82,6 +82,7 @@ export { validateDocument } from './validate.js';
 export {
   createMapView,
   mountMapControls,
+  mountMapLevels,
   autoPackPositions,
   pillSize,
   mapNodeClassNames,
@@ -178,6 +179,33 @@ export {
   type FoldLevelItem,
   type FoldLevelPicker,
 } from './foldLevel.js';
+
+export {
+  LEVEL_HOLD_MS,
+  LEVEL_RING_MS,
+  LEVEL_MENU_INSET,
+  levelHoldSlop,
+  startLevelHold,
+  levelHoldMoved,
+  levelHoldAt,
+  levelHoldCancel,
+  levelHoldRelease,
+  placeLevelMenu,
+  levelMenuKeyAction,
+  levelMenuInitialIndex,
+  levelItemLabel,
+  levelItemCount,
+  levelConfirmLabel,
+  levelKeepVisibleShift,
+  renderLevelMenu,
+  wholeMapLevelDoc,
+  currentWholeMapLevel,
+  WHOLE_MAP_LEVELS,
+  type LevelHold,
+  type LevelHoldPhase,
+  type LevelMenuKeyAction,
+  type WholeMapLevel,
+} from './foldLevelMenu.js';
 
 export {
   savedViewStorageKey,
