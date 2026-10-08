@@ -6,10 +6,10 @@
 - A click on **Map** while the outline is still loading is kept. Before this, the end of loading switched the viewer back to Outline.
 - The viewer parses with `sessionIds: true`. An outline written without `<id:…>` tags now gets fold handles and task boxes in Outline, the same as one with ids. Examples with an id on every line are unchanged.
 
-### Parse: `<script>` and inline code stay text
+### Parse: `<script>` and inline code stay text (breaking: short ids removed)
 - A bare `<word>` is caption text, not a tag. Before, `tryShortId` / `tryShortIdTrailing` read any `<word>` at the start or end of a line as a short id, so `- inject <script>` parsed as id `script`, title `inject`, and serialize wrote `- inject <id:script>`. A `<script>` mid-line went too: the typed-suffix rule (for `<id:n>3`) peeled everything after the last `>` when the text before it ended in *any* `<…>`, so `the <script> tag` became id `script`, title `the tag`. A `<script>` after a real `<id:lab3>` replaced that id.
 - Only the known tags are read: `<id:…>`, `<t: N>`, `<kind:…>`, `<enc:…>`, `<action:…>`, `<thread:…>`, and the flag and kind words (`<private>`, `<encrypted>`, `<db>`, `<doc>`, …). The typed-suffix rule now needs one of those (or a fold marker) before the suffix.
-- The short `<design>` id form is opt-in: `parse(text, { shortIds: true })`. Even then it never replaces an explicit `<id:…>`.
+- **Breaking: the short id form is removed.** A bare `<word>` (`<design>`, `<script>`, `<br>`) is never an id, at the start, middle or end of a line; it stays in the caption and round-trips byte for byte. Use `<id:N>`. Ids are lazy integers, written only when a link needs one, so a bare-word id had no use and only caused misreads. There is no option to turn it back on. An outline that used `- Title <design>` now shows `<design>` in the caption, and a `fold-:`/`fold+:` or layout entry keyed `design` no longer matches a line: change the line to `- Title <id:design>` to keep the link.
 - Inline code is literal. Nothing between backticks is read as a tag, id, note link, flag or fold marker (`` `<script>` ``, `` `<id:7>` ``, `` `(+)` ``), and `captionToHtml` does not turn a URL or markdown link inside backticks into a link.
 - Display was already safe: `captionToHtml` escapes an unknown tag as text. Tests now pin that `<script>` renders as `&lt;script&gt;`, is never an element and is never dropped.
 

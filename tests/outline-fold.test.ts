@@ -33,16 +33,47 @@ describe('parse sample line', () => {
     expect(isCollapsed(doc, 'design')).toBe(true);
   });
 
-  it('parses trailing short id when the legacy shortIds option is on', () => {
-    const doc = parse(`- Designing updates for Markmap <design> (+)\n`, { shortIds: true });
-    expect(doc.nodes[0].id).toBe('design');
-    expect(doc.nodes[0].title).toBe('Designing updates for Markmap');
-  });
+  // 0.2.31: the short `<design>` id form is removed. Ids are `<id:N>` only; a bare
+  // `<word>` that is not a known tag is caption text at the start, middle or end.
+  describe('a bare <word> is literal text (short id form removed)', () => {
+    const words = ['<design>', '<script>', '<br>'];
+    const shapes = [
+      (w: string) => `- ${w} Designing updates for Markmap`,
+      (w: string) => `- Designing ${w} updates for Markmap`,
+      (w: string) => `- Designing updates for Markmap ${w}`,
+      (w: string) => `- Designing updates for Markmap ${w} (+)\n  - child`,
+      (w: string) => `- [ ] Designing updates ${w} <id:7>`,
+    ];
+    for (const w of words) {
+      for (const shape of shapes) {
+        const text = `${shape(w)}\n`;
+        it(`keeps ${JSON.stringify(text)}`, () => {
+          // A `(+)` on an id-less line needs session ids to survive serialize (as for any
+          // caption since 0.2.30), so the fold shape is checked with sessionIds only.
+          const docs = text.includes('(+)')
+            ? [parse(text, { sessionIds: true })]
+            : [parse(text), parse(text, { sessionIds: true })];
+          for (const doc of docs) {
+            const n = doc.nodes[0];
+            expect(n.title).toContain(w);
+            expect(n.id === undefined || n.id === '7' || n.autoId).toBe(true);
+            expect(serialize(doc)).toBe(text);
+          }
+        });
+      }
+    }
 
-  it('keeps a bare <word> as caption text by default (0.2.31)', () => {
-    const doc = parse(`- Designing updates for Markmap <design> (+)\n`);
-    expect(doc.nodes[0].id).toBeUndefined();
-    expect(doc.nodes[0].title).toBe('Designing updates for Markmap <design>');
+    it('reads <design> as text, not id "design"', () => {
+      const doc = parse(`- Designing updates for Markmap <design> (+)\n`);
+      expect(doc.nodes[0].id).toBeUndefined();
+      expect(doc.nodes[0].title).toBe('Designing updates for Markmap <design>');
+    });
+
+    it('has no shortIds parse option', () => {
+      const doc = parse(`- Designing updates <design>\n`, { shortIds: true } as never);
+      expect(doc.nodes[0].id).toBeUndefined();
+      expect(doc.nodes[0].title).toBe('Designing updates <design>');
+    });
   });
 
   it('parses caption with priority/vote then trailing id', () => {

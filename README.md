@@ -84,6 +84,8 @@ ins-remote:
 | Rule | Meaning |
 |------|---------|
 | Caption-first tags | `title <flag>* <id:…> (+)?` — serialize always emits this shape |
+| Known tags only | `<id:N>`, `<t: N>`, `<kind:…>`, `<enc:…>`, `<action:…>`, `<thread:…>`, `<db:…>` and the flag/kind words (`<private>`, `<encrypted>`, `<doc>`, …). Any other bare `<word>` (`<design>`, `<script>`, `<br>`) is caption text and round-trips unchanged; there is no short id form (removed in 0.2.31) |
+| Inline code | Nothing between backticks is read as a tag, id, note link or fold marker |
 | `<private>` / `<encrypted>` | Lock chrome (Unlock vs Decrypt) |
 | `--- payloads ---` | Trailer map keyed by node **id** → `{ kid, ct? \| uri?, alg? }` |
 | Fence aliases | `payloads` / `sealed` / `enc` accepted on parse |
