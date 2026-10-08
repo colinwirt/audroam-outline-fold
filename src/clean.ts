@@ -9,6 +9,34 @@ const DEFAULT_LAYOUT_BLOCK = /\n*--- layout ---\r?\nfold-:[ \t]*\r?\ncollapsedMa
 /** Tags the grammar reads, wherever a translation left them in a caption. */
 const STRAY_TAG = /[ \t]*<(?:(?:id|t|action|thread|kind|enc|db)\s*:[^>\n]*|private|encrypted)>/gi;
 
+/** Inline code (`…`) is literal, as in parse: no tag or `#id:` inside it is touched. */
+const CODE_SPAN = /`[^`\n]+`/g;
+
+/** `text.replace(re, fn)` on the parts of `text` outside backtick code spans. */
+function replaceOutsideCode(
+  text: string,
+  re: RegExp,
+  fn: (match: string, ...groups: string[]) => string,
+): string {
+  let out = '';
+  let last = 0;
+  for (const m of text.matchAll(CODE_SPAN)) {
+    out += text.slice(last, m.index).replace(re, fn as never) + m[0];
+    last = m.index! + m[0].length;
+  }
+  return out + text.slice(last).replace(re, fn as never);
+}
+
+/** `#id:` references outside code spans. */
+function hopRefs(text: string): string[] {
+  const ids: string[] = [];
+  replaceOutsideCode(text, HOP_REF, (all, id: string) => {
+    ids.push(id);
+    return all;
+  });
+  return ids;
+}
+
 export interface CleanIdsResult {
   text: string;
   /** Ids taken off their lines. */
@@ -54,7 +82,7 @@ export function cleanIds(text: string): CleanIdsResult {
   const fold = foldOf(tail) ?? foldOf(head);
   const marker = peeled.trailingFm.collapsedMarker ?? '(+)';
   const refs = new Set<string>([...Object.keys(peeled.payloads), ...Object.keys(peeled.layouts)]);
-  for (const m of raw.matchAll(HOP_REF)) refs.add(m[1]!);
+  for (const id of hopRefs(raw)) refs.add(id);
   const foldIds = new Set(fold?.ids ?? []);
   const removed: string[] = [];
   const kept: string[] = [];
@@ -62,7 +90,7 @@ export function cleanIds(text: string): CleanIdsResult {
   for (let i = start; i < lines.length; i += 1) {
     const line = lines[i]!;
     const folded = line.trimEnd().endsWith(marker);
-    lines[i] = line.replace(ID_TAG, (tag, id: string) => {
+    lines[i] = replaceOutsideCode(line, ID_TAG, (tag, id: string) => {
       const keep = refs.has(id) || (foldIds.has(id) && (fold!.mode === '+' || !folded));
       if (keep) {
         kept.push(id);
@@ -101,7 +129,7 @@ export function cleanMarkdown(text: string, opts?: CleanMarkdownOptions): string
   const walk = (list: OutlineNode[]) => {
     for (const n of list) {
       const box = tasks && n.task ? (n.task === 'done' ? '[x] ' : n.task === 'pending' ? '[-] ' : '[ ] ') : '';
-      const title = n.title.replace(STRAY_TAG, '').replace(/[ \t]{2,}/g, ' ').trim();
+      const title = replaceOutsideCode(n.title, STRAY_TAG, () => '').replace(/[ \t]{2,}/g, ' ').trim();
       out.push(`${'  '.repeat(n.depth)}- ${box}${title}`);
       if (n.children?.length) walk(n.children);
     }

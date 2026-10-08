@@ -126,3 +126,24 @@ describe('cleanMarkdown', () => {
     });
   }
 });
+
+describe('clean leaves backtick code alone (0.2.31)', () => {
+  it('cleanIds does not strip an <id:…> inside backticks', () => {
+    const text = '- Tag syntax looks like `<id:9>` <id:2>\n- Inline `a <id:3> b` here\n';
+    expect(cleanIds(text)).toEqual({
+      text: '- Tag syntax looks like `<id:9>`\n- Inline `a <id:3> b` here\n',
+      removed: ['2'],
+      kept: [],
+    });
+  });
+
+  it('a #id: inside backticks is not a link that keeps an id', () => {
+    const text = '- Write `[x](#id:4)` to link <id:1>\n- Target <id:4>\n';
+    expect(cleanIds(text).removed).toEqual(['1', '4']);
+  });
+
+  it('cleanMarkdown keeps tags inside backticks and strips the real ones', () => {
+    const text = '- Tags look like `<id:9>` and `<t: 12>` <t: 5> <private> <id:7>\n- `<script>` stays\n';
+    expect(cleanMarkdown(text)).toBe('- Tags look like `<id:9>` and `<t: 12>`\n- `<script>` stays\n');
+  });
+});
