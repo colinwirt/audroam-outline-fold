@@ -12,7 +12,8 @@
 - Tests: `tests/note-pop.test.ts`, `e2e/note-pop.spec.ts`, `e2e/touch-note-pop.spec.ts` (fixture `examples/e2e-touch/notes.md`); `touch-map` and `map-controls` now expect the popover for these chips. Link popover e2e waits for the camera to settle instead of sleeping.
 
 ### Links: `<r:id>` jumps, `[label](#pnid:N)` note links, typed `node.links`
-- New `<r:id>` tag: a jump to the node with `<id:id>`, the tag twin of `[label](#id:id)`. Same id characters as `<id:>`; read with spaces like every tag (`<r : x>`), written in the tag group after `<thread:…>` with its spelling kept (`<r:x>` when the software adds it).
+- New `<r:id>` tag: a jump to the node with `<id:id>`, the tag twin of `[label](#id:id)`. Same id characters as `<id:>`; read with spaces like every tag (`<r : x>`), with its spelling kept (`<r:x>` when the software adds it).
+- `<t:N>` and `<r:id>` typed at the start or in the middle of a caption (`ask <t:41> about rota`) stay where they were typed, spelling and spaces included. Before, serialize moved them into the tag group. They are part of `node.title`, still read into `noteLinks` / `links`, and left out of the shown caption (`displayCaption`, new `stripLinkTags`, `toHtml`). Only tags after the caption form the tag group; tags the software adds go there. Taking N out of `noteLinks` still drops its tag wherever it was typed. Lines in standard order round-trip byte for byte as before.
 - New `[label](#pnid:N)`: a note link like `<t:N>` (digits). It stays in the caption as written; the Map gives it a `#N` chip with the same popover rows and keeps the label on the pill; `toHtml` draws it as an `of-note-link`.
 - `node.links`: every link on a line, typed `{ kind: 'note' | 'jump', target, form: 'tag' | 'markdown', source, label? }` (tags in source order, then markdown links). `noteLinks` and `noteLinkTags` are unchanged. Exports `NodeLink`, `resolveJumps`, `findNodeById`, `jumpChipLabel`, `parseNoteTarget`, `markdownLinkSpans`.
 - `#id:` hop targets take the `<id:>` characters only (`[A-Za-z0-9][A-Za-z0-9_-]*`; `.` and `:` used to be accepted, though no id can contain them). `clean` matches the same set and follows `<r:…>` too.
@@ -29,8 +30,13 @@
 - The thread pill sits in the chip row after the caption's widest line (thread, `#N`, then jump chips), inside the node, and `pillSize` reserves its width (`thread`, `jumps` options; `mapChipPieces`, `mapChipSpan`, `THREAD_CHIP_LABEL`, `THREAD_CHIP_H`). It was drawn over the node's top-right edge. Fill `--map-menu-bg`, stroke `--map-menu-stroke`, muted 11 px label; same hit target.
 - A caption whose only links are `#pnid:` gets no globe badge.
 
+### Outline: Thread chip and light theme
+- `button.of-thread` is styled like the `#N` and jump chips (0.75 rem, 600, no border or background, `--of-muted`, hover and focus from theme variables) instead of the browser's default button.
+- Under `.of-theme-light` the Outline gets light `--of-text`, `--of-muted`, `--of-accent`, `--of-stroke` and the new `--of-hop` / `--of-hop-hover` (hop links and jump chips; dark values unchanged). Map labels keep theirs.
+- A caption `[label](#pnid:N)` in the Outline reads as a caption link, not a chip.
+
 ### Tests
-- `tests/links.test.ts`, `tests/link-templates.test.ts`, `tests/thread-pill.test.ts`, `tests/jumps-render.test.ts`; `e2e/jumps.spec.ts`, `e2e/touch-jumps.spec.ts` (fixture `examples/e2e-touch/jumps.md`, Outline via `?view=outline`); note-pop specs expect the three rows.
+- `tests/links.test.ts`, `tests/link-templates.test.ts`, `tests/thread-pill.test.ts`, `tests/jumps-render.test.ts`; `e2e/jumps.spec.ts`, `e2e/touch-jumps.spec.ts` (fixture `examples/e2e-touch/jumps.md`, Outline via `?view=outline`); note-pop specs expect the three rows; `jumps.spec.ts` checks the Outline chips in dark and light (`?theme=light`).
 
 ## 0.2.33 — 2026-10-08
 
