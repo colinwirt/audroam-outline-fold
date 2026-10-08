@@ -9,7 +9,14 @@
  * Sealed nodes: omitted until unlocked (no gray stubs) — caller filters doc if needed.
  */
 import { captionLinks, captionWithoutLinks } from './captionRich.js';
-import { placeLinkPop, renderLinkPop } from './linkPop.js';
+import {
+  captionLinkRows,
+  noteLinkRows,
+  placeLinkPop,
+  renderLinkPopRows,
+  threadRows,
+  type LinkPopRow,
+} from './linkPop.js';
 import {
   toggleFold,
   isCollapsed,
@@ -1445,28 +1452,39 @@ export function createMapView(
   // ── Link popover (globe badge), styled as the level menu (0.2.33) ──────
   type LinkPopState = {
     id: string;
+    /** Selector of the chip inside the node: `.map-link-hit`, a `#N` chip, `.map-thread-hit`. */
+    anchorSel: string;
     el: HTMLElement;
     items: HTMLAnchorElement[];
     abort: AbortController;
   };
+  type LinkPopSpec = {
+    id: string;
+    anchorSel: string;
+    rows: LinkPopRow[];
+    label: string;
+    kind: string;
+    /** A row without `hopId` was picked (a new-tab row after the browser opens it). */
+    onOpen?: (row: LinkPopRow) => void;
+  };
   let linkPop: LinkPopState | null = null;
 
-  /** Globe hit rect in host-local px. */
-  function linkHitRect(id: string): { x: number; y: number; w: number; h: number } | null {
+  /** Chip rect (globe, `#N`, thread) in host-local px. */
+  function linkHitRect(id: string, anchorSel: string): { x: number; y: number; w: number; h: number } | null {
     const hit = host
       .querySelector(`.map-node[data-id="${CSS.escape(id)}"]`)
-      ?.querySelector('.map-link-hit');
+      ?.querySelector(anchorSel);
     if (!hit) return null;
     const r = hit.getBoundingClientRect();
     const hr = host.getBoundingClientRect();
     return { x: r.left - hr.left, y: r.top - hr.top, w: r.width, h: r.height };
   }
 
-  /** Right of the globe, centred on it; returns the pan that would fit it. */
+  /** Right of the chip, centred on it; returns the pan that would fit it. */
   function positionLinkPop(): { x: number; y: number } | null {
     const m = linkPop;
     if (!m) return null;
-    const anchor = linkHitRect(m.id);
+    const anchor = linkHitRect(m.id, m.anchorSel);
     if (!anchor) {
       dismissLinkPop();
       return null;
@@ -1510,41 +1528,111 @@ export function createMapView(
     if (returnFocus || hadFocus) focusMapForKeys();
   }
 
+  function pageBase(): string | undefined {
+    return typeof location !== 'undefined' ? location.href : undefined;
+  }
+
+  /** Globe badge: one row per caption link. */
   function showLinkPop(id: string, title: string): void {
+    const links = captionLinks(title);
+    if (!links.length) return;
+    openLinkPop({
+      id,
+      anchorSel: '.map-link-hit',
+      rows: captionLinkRows(links, pageBase()),
+      label: 'Links',
+      kind: 'links',
+    });
+  }
+
+  /** `#N` chip: Open #N (new tab + onNoteLink), Go to #N when that node is here. */
+  function showNotePop(id: string, hit: Element): void {
+    const pnid = hit.getAttribute('data-note-link') || '';
+    const index = hit.getAttribute('data-note-index') || '0';
+    if (!pnid) return;
+    const doc = getDoc();
+    const href = noteLinkHref(doc.frontmatter?.noteUri || noteUriFallback, pnid);
+    openLinkPop({
+      id,
+      anchorSel: `.map-note-link-hit[data-note-index="${CSS.escape(index)}"]`,
+      rows: noteLinkRows(pnid, href, { base: pageBase(), inMap: !!findNode(doc.nodes, pnid) }),
+      label: `#${pnid}`,
+      kind: 'note',
+      onOpen: () => {
+        setFocusId(id);
+        userCamGesture = false;
+        pendingFollow = { kind: 'focus' };
+        const n = findNode(getDoc().nodes, id);
+        if (n) onNoteLink?.({ id, pnid, node: n });
+        onChange?.();
+      },
+    });
+  }
+
+  /** Thread chip: one row, Open thread (onThread). */
+  function showThreadPop(id: string): void {
+    openLinkPop({
+      id,
+      anchorSel: '.map-thread-hit',
+      rows: threadRows(),
+      label: 'Thread',
+      kind: 'thread',
+      onOpen: () => {
+        setFocusId(id);
+        userCamGesture = false;
+        pendingFollow = { kind: 'focus' };
+        const n = findNode(getDoc().nodes, id);
+        const thread = n ? resolveThread(n) : null;
+        if (n && thread) onThread?.({ id, thread, node: n });
+        onChange?.();
+      },
+    });
+  }
+
+  /** The one popover for the globe, `#N` and thread chips (0.2.34). */
+  function openLinkPop(spec: LinkPopSpec): void {
     if (linkPop) {
       linkPop.abort.abort();
       linkPop.el.remove();
       linkPop = null;
     }
     host.querySelectorAll(':scope > .map-link-pop').forEach((el) => el.remove());
-    const links = captionLinks(title);
-    if (!links.length) return;
-    const view = renderLinkPop(links, {
+    const { id, rows } = spec;
+    if (!rows.length) return;
+    const view = renderLinkPopRows(rows, {
       fine: !coarsePointer(),
-      base: typeof location !== 'undefined' ? location.href : undefined,
       nodeId: id,
+      label: spec.label,
+      kind: spec.kind,
     });
     const abort = new AbortController();
     const sig = abort.signal;
-    const m: LinkPopState = { id, el: view.el, items: view.items, abort };
+    const m: LinkPopState = { id, anchorSel: spec.anchorSel, el: view.el, items: view.items, abort };
     linkPop = m;
     view.items.forEach((a, i) => {
-      const hop = a.dataset.hopId;
+      const row = rows[i]!;
       a.addEventListener(
         'click',
         (ev) => {
           ev.stopPropagation();
-          if (!hop) {
-            // External: the browser opens it in a new tab; the menu closes.
+          if (row.hopId) {
+            ev.preventDefault();
+            setFocusId(row.hopId);
+            userCamGesture = false;
+            pendingFollow = { kind: 'focus' };
+            dismissLinkPop(true);
+            onChange?.();
+            return;
+          }
+          if (row.href && row.newTab) {
+            // The browser opens it in a new tab (noopener); the menu closes.
             dismissLinkPop(false);
+            spec.onOpen?.(row);
             return;
           }
           ev.preventDefault();
-          setFocusId(hop);
-          userCamGesture = false;
-          pendingFollow = { kind: 'focus' };
           dismissLinkPop(true);
-          onChange?.();
+          spec.onOpen?.(row);
         },
         { signal: sig },
       );
@@ -1570,10 +1658,13 @@ export function createMapView(
         } else if (act.type === 'close') {
           e.preventDefault();
           dismissLinkPop(true);
-        } else if (act.type === 'apply' && e.key === ' ') {
-          // Enter follows the link natively; Space does the same here.
+        } else if (act.type === 'apply') {
+          // Enter follows a link natively; Space, and Enter on a row
+          // without an href, click it here.
+          const it = m.items[act.index];
+          if (e.key === 'Enter' && it?.hasAttribute('href')) return;
           e.preventDefault();
-          m.items[act.index]?.click();
+          it?.click();
         }
       },
       { signal: sig },
@@ -1591,7 +1682,9 @@ export function createMapView(
     // globe through applyCam.
     const downs = new Map<number, { x: number; y: number; slop: number; moved: boolean }>();
     const inPop = (t: EventTarget | null) =>
-      !!(t as Element | null)?.closest?.('.map-link-pop, .map-link-hit');
+      !!(t as Element | null)?.closest?.(
+        '.map-link-pop, .map-link-hit, .map-note-link-hit, .map-thread-hit',
+      );
     document.addEventListener(
       'pointerdown',
       (e) => {
@@ -2284,34 +2377,21 @@ export function createMapView(
       return;
     }
     if (t?.closest?.('.map-note-link-hit')) {
-      setFocusId(id);
-      focusMapForKeys();
-      userCamGesture = false;
-      pendingFollow = { kind: 'focus' };
       const hit = t.closest('.map-note-link-hit') as Element;
-      const pnid = hit.getAttribute('data-note-link') || '';
-      const n = findNode(getDoc().nodes, id);
-      const href = noteLinkHref(
-        getDoc().frontmatter?.noteUri || noteUriFallback,
-        pnid,
-      );
-      if (href) {
-        e.preventDefault();
-        window.open(href, '_blank', 'noopener,noreferrer');
+      const me = e as MouseEvent;
+      if (e.type === 'click' && (me.ctrlKey || me.metaKey || me.shiftKey)) {
+        // Modifier click: the SVG anchor opens its own tab, as before.
+        const pnid = hit.getAttribute('data-note-link') || '';
+        const n = findNode(getDoc().nodes, id);
+        if (n && pnid) onNoteLink?.({ id, pnid, node: n });
+        return;
       }
-      if (n && pnid) onNoteLink?.({ id, pnid, node: n });
-      onChange?.();
+      e.preventDefault();
+      showNotePop(id, hit);
       return;
     }
     if (t?.closest?.('.map-thread-hit')) {
-      setFocusId(id);
-      focusMapForKeys();
-      userCamGesture = false;
-      pendingFollow = { kind: 'focus' };
-      const n = findNode(getDoc().nodes, id);
-      const thread = n ? resolveThread(n) : null;
-      if (n && thread) onThread?.({ id, thread, node: n });
-      onChange?.();
+      showThreadPop(id);
       return;
     }
     // Text / pill chrome: select + focus only — never fold.
@@ -2561,9 +2641,9 @@ export function createMapView(
           let chipCursor = captionX + widest + 6;
           const notePattern = doc.frontmatter?.noteUri || noteUriFallback;
           const noteChips = noteChipPieces(noteLinks)
-            .map((piece) => {
+            .map((piece, pieceIndex) => {
               const href = noteLinkHref(notePattern, piece.id);
-              const chip = `<g class="map-note-link-hit" data-note-link="${esc(piece.id)}" transform="translate(${chipCursor} ${textCentreY})" cursor="pointer">
+              const chip = `<g class="map-note-link-hit" data-note-link="${esc(piece.id)}" data-note-index="${pieceIndex}" transform="translate(${chipCursor} ${textCentreY})" cursor="pointer">
             <title>${href ? esc(href) : `Note ${esc(piece.id)}`}</title>
             <rect x="0" y="-11" width="${piece.w}" height="20" fill="transparent"/>
             <text class="map-note-link" text-anchor="start" y="4">${esc(piece.label)}</text>
@@ -3974,6 +4054,17 @@ export function createMapView(
       // map keeps its own Enter / Space (no fold toggle on the way).
       const kt = e.target as Element | null;
       if (kt?.closest?.('.map-width-pop, .of-map-controls, .map-level-menu, .map-link-pop')) return;
+      // Enter / Space on a focused chip (the #N chip's SVG anchor) opens its popover.
+      const chipSel = '.map-note-link-hit, .map-thread-hit, .map-link-hit';
+      const chip =
+        kt?.closest?.(chipSel) ?? (kt?.tagName?.toLowerCase() === 'a' ? kt.querySelector?.(chipSel) : null);
+      const chipNode = chip?.closest?.('.map-node');
+      if (chip && chipNode && (e.key === 'Enter' || e.key === ' ') && isActive()) {
+        e.preventDefault();
+        e.stopPropagation();
+        activateNodeHit(chipNode, chip, e);
+        return;
+      }
       if (
         !mapKeyboardShouldHandle({
           isActive: isActive(),

@@ -269,6 +269,9 @@ test.describe('next single tap after a pan or pinch activates', () => {
       const c = await open(page);
       await pre(c, kind);
       await tapSel(c, '.map-node[data-id="note"] .map-note-link-hit');
+      // 0.2.34: the chip opens the link popover; its row fires onNoteLink.
+      await expect(page.locator('.map-link-pop[data-kind="note"]')).toHaveCount(1);
+      await tapSel(c, '.map-link-pop .map-link-item[data-row="note-open"]');
       await expect.poll(() => page.evaluate(() => (window as any).__notes.map((n: any) => n.pnid))).toEqual(['1004']);
     });
   }
@@ -300,12 +303,13 @@ const HANDLES: Handle[] = [
   {
     name: '#N chip',
     sel: '.map-node[data-id="note"] .map-note-link-hit',
-    count: (page) => page.evaluate(() => (window as any).__notes.length),
+    // 0.2.34: opens the link popover (onNoteLink fires from its row).
+    count: (page) => page.locator('.map-link-pop[data-kind="note"]:not(.is-closing)').count(),
   },
   {
     name: 'thread chip',
     sel: '.map-node[data-id="disc"] .map-thread-hit',
-    count: (page) => page.evaluate(() => (window as any).__threads.length),
+    count: (page) => page.locator('.map-link-pop[data-kind="thread"]:not(.is-closing)').count(),
   },
 ];
 

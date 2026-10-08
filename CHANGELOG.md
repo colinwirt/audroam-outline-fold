@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.2.34 — unreleased
+
+### Map: #N and thread chips open the link popover
+- A click, tap, `Enter` or `Space` on a `#N` note chip or a thread chip now opens the same popover as the globe (same classes, right of the chip, camera pans to fit, open through pan and zoom, same ways to close). Before, a `#N` chip opened a new tab straight away and a thread chip called `onThread` straight away.
+- `#N` rows: `Open #N`, with the noteUri's host muted (or its path when same-site); it opens a new tab with `rel="noopener noreferrer"` and fires `onNoteLink`. `Go to #N` when that pnid is a node in this map; it selects that node like a hop link. Without a noteUri, `Open #N` only fires `onNoteLink`.
+- Thread row: `Open thread`, which fires `onThread`.
+- Each `#N` chip in a caption opens its own popover (`data-note-index`). The SVG anchor stays, so middle-click and Ctrl/Cmd/Shift-click still open the note in a new tab straight away (and fire `onNoteLink`).
+- One implementation for the globe, `#N` and thread chips. New exports: `renderLinkPopRows`, `captionLinkRows`, `noteLinkRows`, `noteLinkWhere`, `threadRows`, type `LinkPopRow`. The popover carries `data-kind` (`links`, `note`, `thread`) and each row `data-row`.
+- Link popover placement uses exact px (CI fonts put the globe at x.5, so the rounded gap read 8.5 px); the fitted edge is exactly 8 px inside.
+- Tests: `tests/note-pop.test.ts`, `e2e/note-pop.spec.ts`, `e2e/touch-note-pop.spec.ts` (fixture `examples/e2e-touch/notes.md`); `touch-map` and `map-controls` now expect the popover for these chips. Link popover e2e waits for the camera to settle instead of sleeping.
+
 ## 0.2.33 — 2026-10-08
 
 ### Map link popover (globe badge): restyle

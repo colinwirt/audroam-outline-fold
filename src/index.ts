@@ -210,6 +210,12 @@ export {
 export {
   linkPopWhere,
   renderLinkPop,
+  renderLinkPopRows,
+  captionLinkRows,
+  noteLinkRows,
+  noteLinkWhere,
+  threadRows,
+  type LinkPopRow,
   placeLinkPop,
   LINK_POP_GAP,
   LINK_POP_INSET,

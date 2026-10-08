@@ -103,7 +103,10 @@ test.describe('controls: mouse and keyboard activate exactly once', () => {
     await expect.poll(exp).toBe('false');
     await page.waitForTimeout(300);
     expect(await exp()).toBe('false');
+    // 0.2.34: the thread chip opens the link popover; Open thread fires onThread once.
     await page.locator('.map-node[data-id="disc"] .map-thread-hit').click();
+    await expect(page.locator('.map-link-pop[data-kind="thread"]')).toHaveCount(1);
+    await page.locator('.map-link-item[data-row="thread"]').click();
     await page.waitForTimeout(300);
     expect(await page.evaluate(() => (window as any).__threads.length)).toBe(1);
   });

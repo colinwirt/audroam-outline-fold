@@ -97,7 +97,7 @@ describe('placeLinkPop', () => {
 
 describe('link popover source', () => {
   it('no inline paint: classes from outline-fold.css, only left/top set', () => {
-    const show = block('showLinkPop');
+    const show = block('openLinkPop');
     const dismiss = block('dismissLinkPop');
     for (const b of [show, dismiss, popSrc]) {
       expect(b).not.toMatch(/cssText/);
@@ -114,7 +114,7 @@ describe('link popover source', () => {
   it('a pan keeps it open: no dismiss on pan start or map pointerdown; taps without a drag close it', () => {
     expect(block('startPan')).not.toMatch(/dismissLinkPop/);
     expect(mapSrc).not.toMatch(/closest\?\.\('\.map-link-hit, \.map-link-pop'\)\) dismissLinkPop/);
-    const show = block('showLinkPop');
+    const show = block('openLinkPop');
     expect(show).toMatch(/'pointerup'[\s\S]*d\.moved[\s\S]*dismissLinkPop\(false\)/);
   });
 
@@ -122,7 +122,7 @@ describe('link popover source', () => {
     expect(popSrc).toMatch(/setAttribute\('role', 'menu'\)/);
     expect(popSrc).toMatch(/setAttribute\('role', 'menuitem'\)/);
     expect(popSrc).toMatch(/a\.target = '_blank';\s*a\.rel = 'noopener noreferrer';/);
-    const show = block('showLinkPop');
+    const show = block('openLinkPop');
     expect(show).toMatch(/levelMenuKeyAction\(/);
     expect(show).toMatch(/dismissLinkPop\(true\)/);
     expect(show).toMatch(/focusLinkItem\(0\)/);

@@ -101,45 +101,114 @@ export function placeLinkPop(opts: {
   return { left, top, shift };
 }
 
+/**
+ * Muted destination for a `#N` note link (0.2.34): the host when the
+ * noteUri points off-site, else the path (`/notes/1004`).
+ */
+export function noteLinkWhere(href: string | null | undefined, base?: string): string {
+  if (!href) return '';
+  let u: URL;
+  try {
+    u = new URL(href, base || 'https://same-site.invalid/');
+  } catch {
+    return '';
+  }
+  if (u.protocol !== 'https:' && u.protocol !== 'http:') return '';
+  const absolute = /^https?:\/\//i.test(href.trim());
+  const baseOrigin = base ? originOf(base) : null;
+  if (absolute && u.origin !== baseOrigin) return u.hostname.replace(/^www\./i, '');
+  return u.pathname + u.search;
+}
+
+/**
+ * One popover row. `href` + `newTab` opens in a new tab with
+ * `rel="noopener noreferrer"`; `hopId` selects a node in this map; `kind`
+ * names the row for the host and for tests (`link`, `hop`, `note-open`,
+ * `note-go`, `thread`).
+ */
+export type LinkPopRow = {
+  label: string;
+  where?: string;
+  href?: string | null;
+  newTab?: boolean;
+  hopId?: string | null;
+  kind: string;
+};
+
+/** Globe rows: one per caption link. */
+export function captionLinkRows(links: readonly CaptionLink[], base?: string): LinkPopRow[] {
+  return links.map((link) =>
+    link.hopId
+      ? { label: link.label, href: link.href, hopId: link.hopId, kind: 'hop' }
+      : { label: link.label, href: link.href, newTab: true, where: linkPopWhere(link, base), kind: 'link' },
+  );
+}
+
+/**
+ * `#N` chip rows: `Open #N` (new tab when the noteUri gives an href, muted
+ * destination) and `Go to #N` when that pnid is a node in this map.
+ */
+export function noteLinkRows(
+  pnid: string,
+  href: string | null | undefined,
+  opts: { base?: string; inMap?: boolean } = {},
+): LinkPopRow[] {
+  const rows: LinkPopRow[] = [
+    href
+      ? { label: `Open #${pnid}`, href, newTab: true, where: noteLinkWhere(href, opts.base), kind: 'note-open' }
+      : { label: `Open #${pnid}`, kind: 'note-open' },
+  ];
+  if (opts.inMap) rows.push({ label: `Go to #${pnid}`, hopId: pnid, kind: 'note-go' });
+  return rows;
+}
+
+/** Thread chip: one row. */
+export function threadRows(): LinkPopRow[] {
+  return [{ label: 'Open thread', kind: 'thread' }];
+}
+
 export type LinkPopView = { el: HTMLElement; items: HTMLAnchorElement[] };
 
 /**
  * `div.map-link-pop[role=menu]` with one `a.map-link-item[role=menuitem]`
- * row per link: label, then the muted destination. External links open in a
- * new tab with `rel="noopener noreferrer"`; a hop link carries `data-hop-id`.
+ * per row: label, then the muted destination. Shared by the globe, `#N` and
+ * thread chips (0.2.34).
  */
-export function renderLinkPop(
-  links: readonly CaptionLink[],
-  opts: { fine: boolean; base?: string; nodeId?: string },
+export function renderLinkPopRows(
+  rows: readonly LinkPopRow[],
+  opts: { fine: boolean; nodeId?: string; label?: string; kind?: string },
 ): LinkPopView {
   const el = document.createElement('div');
   el.className = 'map-link-pop';
   el.setAttribute('role', 'menu');
-  el.setAttribute('aria-label', 'Links');
+  el.setAttribute('aria-label', opts.label || 'Links');
   el.dataset.pointer = opts.fine ? 'fine' : 'coarse';
+  if (opts.kind) el.dataset.kind = opts.kind;
   if (opts.nodeId) el.dataset.nodeId = opts.nodeId;
   const items: HTMLAnchorElement[] = [];
-  for (const link of links) {
+  for (const row of rows) {
     const a = document.createElement('a');
     a.className = 'map-link-item';
     a.setAttribute('role', 'menuitem');
     a.tabIndex = -1;
-    a.href = link.href;
-    a.title = link.href;
+    a.dataset.row = row.kind;
+    if (row.href) {
+      a.href = row.href;
+      a.title = row.href;
+    }
     const label = document.createElement('span');
     label.className = 'map-link-label';
-    label.textContent = link.label;
+    label.textContent = row.label;
     a.appendChild(label);
-    const where = linkPopWhere(link, opts.base);
-    if (where) {
+    if (row.where) {
       const w = document.createElement('span');
       w.className = 'map-link-where';
-      w.textContent = where;
+      w.textContent = row.where;
       a.appendChild(w);
     }
-    if (link.hopId) {
-      a.dataset.hopId = link.hopId;
-    } else {
+    if (row.hopId) {
+      a.dataset.hopId = row.hopId;
+    } else if (row.href && row.newTab) {
       a.target = '_blank';
       a.rel = 'noopener noreferrer';
     }
@@ -147,4 +216,12 @@ export function renderLinkPop(
     items.push(a);
   }
   return { el, items };
+}
+
+/** Globe popover from caption links (0.2.33 API). */
+export function renderLinkPop(
+  links: readonly CaptionLink[],
+  opts: { fine: boolean; base?: string; nodeId?: string },
+): LinkPopView {
+  return renderLinkPopRows(captionLinkRows(links, opts.base), { ...opts, kind: 'links' });
 }
