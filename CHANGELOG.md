@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.2.36 — 2026-10-09
 
 ### Map: fixed spaces between words disappearing at some pill widths
 - At some pill widths (a stored `w`, a hold-to-fit pick such as Fit text, Slim / Wider, or Auto's orphan widening) the space after a carried-over word was dropped, so `ip addr # interface names` painted `ip addr #` / `interfacenames`. The pixel wrap now keeps a space that is not at the line break; spaces at the break still end the line, and the caption text is never changed.
