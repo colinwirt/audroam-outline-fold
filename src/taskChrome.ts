@@ -77,10 +77,38 @@ export function parseLeadingTask(title: string): ParsedTask | null {
  * Preserves newlines / break tokens for Map scrapbook wrap (0.2.13).
  * Collapses horizontal whitespace runs only (spaces/tabs), not newlines.
  */
+/** `<t:N>` or `<r:x>` typed in a caption (0.2.34), with the spaces around it. */
+const INLINE_LINK_TAG = /([ \t]*)<\s*(?:t\s*:\s*\d+|r\s*:\s*[A-Za-z0-9][A-Za-z0-9_-]*)\s*>([ \t]*)/gi;
+const CODE_SPAN = /`[^`\n]+`/g;
+
+/**
+ * The caption without the `<t:N>` / `<r:x>` tags typed in it (they draw as chips).
+ * Tags inside backtick code are text and stay.
+ */
+export function stripLinkTags(title: string): string {
+  const text = String(title ?? '');
+  const strip = (part: string) => part.replace(INLINE_LINK_TAG, (_all, before: string, after: string) => before || after);
+  let out = '';
+  let last = 0;
+  let hit = false;
+  for (const m of text.matchAll(CODE_SPAN)) {
+    const seg = text.slice(last, m.index);
+    const next = strip(seg);
+    hit ||= next !== seg;
+    out += next + m[0];
+    last = m.index! + m[0].length;
+  }
+  const tail = text.slice(last);
+  const next = strip(tail);
+  hit ||= next !== tail;
+  out += next;
+  return hit ? out.trim() : text;
+}
+
 export function displayCaption(title: string): string {
   const task = parseLeadingTask(title);
   let s = task ? task.label : String(title);
-  s = s.replace(ACTION_TAG, '').replace(THREAD_TAG, '').replace(NOTE_LINK_TAG, '').replace(JUMP_TAG, '');
+  s = stripLinkTags(s.replace(ACTION_TAG, '').replace(THREAD_TAG, ''));
   // Per-line trim of horizontal ws; keep \n intact for normalizeCaptionBreaks.
   s = s
     .split(/\n/)

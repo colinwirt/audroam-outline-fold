@@ -705,11 +705,11 @@ describe('<t:N> / legacy <t: N> spelling round-trip', () => {
     expect(firstLine(parse('- Row <t:5> <id:a>\n'))).toBe('- Row <t:5> <id:a>');
     expect(firstLine(parse('- Row <T:5 > <id:a>\n'))).toBe('- Row <T:5 > <id:a>');
     expect(firstLine(parse('- Row <t:  5> <id:a>\n'))).toBe('- Row <t:  5> <id:a>');
-    // Leading and mid-caption tags still move to the trailing slot, with their spelling.
-    expect(firstLine(parse('- <t:5> Row <id:a>\n'))).toBe('- Row <t:5> <id:a>');
-    expect(firstLine(parse('- Row <t:5> more <id:a>\n'))).toBe('- Row more <t:5> <id:a>');
-    // A repeated id keeps one tag, spelled as its first occurrence.
-    expect(firstLine(parse('- <t:9> plain <t: 9> <id:a>\n'))).toBe('- plain <t:9> <id:a>');
+    // Leading and mid-caption tags stay where they were typed (0.2.34).
+    expect(firstLine(parse('- <t:5> Row <id:a>\n'))).toBe('- <t:5> Row <id:a>');
+    expect(firstLine(parse('- Row <t:5> more <id:a>\n'))).toBe('- Row <t:5> more <id:a>');
+    // A repeated id keeps one tag, the first occurrence.
+    expect(firstLine(parse('- <t:9> plain <t: 9> <id:a>\n'))).toBe('- <t:9> plain <id:a>');
     expect(firstLine(parse('- plain <t:9> <t: 9> <id:a>\n'))).toBe('- plain <t:9> <id:a>');
   });
 

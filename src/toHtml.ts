@@ -1,7 +1,7 @@
 import { isCollapsed } from './fold.js';
 import { captionToHtml } from './captionRich.js';
 import { iconForNode, iconForTask } from './icons.js';
-import { jumpChipLabel, noteLinkHref, resolveJumps } from './taskChrome.js';
+import { jumpChipLabel, noteLinkHref, resolveJumps, stripLinkTags } from './taskChrome.js';
 import { hasSealed } from './sealed.js';
 import type { OutlineFoldDoc, OutlineNode, ToHtmlOptions } from './types.js';
 
@@ -111,7 +111,7 @@ function renderNode(
       return `<a class="${cls}" href="#id:${esc(id)}" data-hop-id="${esc(id)}" data-testid="of-jump-${esc(id)}"${ok ? '' : ' aria-disabled="true"'}>${esc(jumpChipLabel(doc, id))}</a>`;
     })
     .join('');
-  const caption = captionToHtml(node.title, {
+  const caption = captionToHtml(stripLinkTags(node.title), {
     hasNode: (id) => opts.ids.has(id),
     noteHref: (pnid) => noteLinkHref(notePattern, pnid),
     nodeId: node.id,

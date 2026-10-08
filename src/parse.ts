@@ -84,6 +84,8 @@ const JUMP_SPAN = JUMP_RE.span;
 const JUMP_TRAILING = JUMP_RE.trailing;
 /** Mid-caption `<t:N>` or `<r:x>`, in source order. */
 const LINK_ANY = new RegExp(`<\\s*(?:t\\s*:\\s*(\\d+)|r\\s*:\\s*(${ID_VALUE}))\\s*>`, 'gi');
+/** A `<t:N>` or `<r:x>` (spaced too) at the end, with the space before it. */
+const LINK_TRAILING = new RegExp(`\\s*<\\s*(?:t\\s*:\\s*\\d+|r\\s*:\\s*${ID_VALUE})\\s*>\\s*$`, 'i');
 
 function parseFrontmatter(text: string): {
   fm: OutlineFrontmatter;
@@ -270,6 +272,9 @@ function parseTitleAndMeta(
   // Serialize writes each spelling back so the body round-trips.
   type TagLink = { kind: 'note' | 'jump'; target: string; source: string };
   const leadingTags: TagLink[] = [];
+  // Leading `<t:N>` / `<r:x>` exactly as typed (with the space after each). They stay at
+  // the start of the caption when it has text; a line of tags only is a tag group.
+  let leadingRaw = '';
   const midTags: TagLink[] = [];
   const trailingTags: TagLink[] = [];
   const remember = (into: TagLink[], kind: TagLink['kind'], raw: string, token: string) => {
@@ -334,6 +339,7 @@ function parseTitleAndMeta(
     m = rest.match(NOTE_LINK_SPAN);
     if (m) {
       remember(leadingTags, 'note', m[1], m[0]);
+      leadingRaw += m[0];
       rest = rest.slice(m[0].length);
       progressed = true;
       continue;
@@ -342,6 +348,7 @@ function parseTitleAndMeta(
     m = rest.match(JUMP_SPAN);
     if (m) {
       remember(leadingTags, 'jump', m[1], m[0]);
+      leadingRaw += m[0];
       rest = rest.slice(m[0].length);
       progressed = true;
       continue;
@@ -390,8 +397,15 @@ function parseTitleAndMeta(
         const suffix = rest.slice(i).trim();
         // Only a tag this grammar reads (or a fold marker) counts: `the <script> tag`
         // is a sentence, not `<script>` plus a typed suffix.
+        // `<t:N>` / `<r:x>` followed by text are mid-caption tags, which stay where they
+        // are typed; they count only behind another tag or a fold marker.
+        let tagged = core;
+        for (let lm = tagged.match(LINK_TRAILING); lm; lm = tagged.match(LINK_TRAILING)) {
+          tagged = tagged.slice(0, tagged.length - lm[0].length);
+        }
         const tokenEnd =
-          endsWithKnownTag(core) || markers.some((m) => core.endsWith(m));
+          (tagged === core ? endsWithKnownTag(core) : endsWithKnownTag(tagged)) ||
+          markers.some((m) => tagged.endsWith(m));
         if (suffix && tokenEnd) {
           rest = core;
           typedSuffix = suffix;
@@ -491,16 +505,14 @@ function parseTitleAndMeta(
     }
   }
 
-  // Mid-caption `<t: N>` / `<r:x>` (result-row allows the tag anywhere).
-  rest = rest
-    .replace(LINK_ANY, (all: string, pnid: string | undefined, jump: string | undefined) => {
-      if (pnid) remember(midTags, 'note', pnid, all);
-      else if (jump) remember(midTags, 'jump', jump, all);
-      return ' ';
-    })
-    .replace(/[ \t]{2,}/g, ' ')
-    .trim();
+  // Mid-caption `<t: N>` / `<r:x>`: read, and left in the caption exactly as typed.
+  for (const m of rest.matchAll(LINK_ANY)) {
+    if (m[1]) remember(midTags, 'note', m[1], m[0]);
+    else if (m[2]) remember(midTags, 'jump', m[2], m[0]);
+  }
   if (typedSuffix) rest = `${rest} ${typedSuffix}`.trim();
+  // Leading tags stay in front of a caption that has text.
+  if (leadingRaw && rest) rest = leadingRaw + rest;
   rest = unmaskCodeSpans(rest, masked.spans);
   if (action) action = unmaskCodeSpans(action, masked.spans);
   if (thread) thread = unmaskCodeSpans(thread, masked.spans);

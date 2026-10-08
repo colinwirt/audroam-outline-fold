@@ -7,6 +7,7 @@
  */
 
 import { isCollapsed, setExpandLevel } from './fold.js';
+import { stripLinkTags } from './taskChrome.js';
 import type { OutlineFoldDoc, OutlineNode } from './types.js';
 
 /** Picker levels: Fold (0), 1, 2, 3, All. */
@@ -120,7 +121,7 @@ export function foldLevelPicker(doc: OutlineFoldDoc, id: string): FoldLevelPicke
     delete (it as Partial<FoldLevelItem & { _sig: string }>)._sig;
   }
 
-  return { id, title: anchor.title, total, height, items };
+  return { id, title: stripLinkTags(anchor.title), total, height, items };
 }
 
 /** The level the subtree is at now, or null when it matches none. */

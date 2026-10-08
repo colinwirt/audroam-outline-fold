@@ -13,6 +13,8 @@ import {
   parseNoteTarget,
   resolveJumps,
   serialize,
+  stripLinkTags,
+  toHtml,
   toggleFold,
 } from '../src/index.js';
 
@@ -34,11 +36,13 @@ describe('<r:x> jump tag', () => {
     });
   }
 
-  it('reads leading and mid-caption; serialize writes it with the other tags', () => {
+  it('reads leading and mid-caption tags and leaves them where they were typed', () => {
     expect(first('- <r: plants> Row\n').links?.[0]).toMatchObject({ target: 'plants', source: '<r: plants>' });
     const mid = first('- See <r : plants> today\n');
-    expect(mid.title).toBe('See today');
-    expect(serialize(parse('- See <r : plants> today\n'))).toBe('- See today <r : plants>\n');
+    expect(mid.title).toBe('See <r : plants> today');
+    expect(mid.links).toEqual([{ kind: 'jump', target: 'plants', form: 'tag', source: '<r : plants>' }]);
+    same('- See <r : plants> today\n');
+    same('- <r: plants> Row\n');
   });
 
   it('uses the <id:> characters: anything else stays caption text', () => {
@@ -153,5 +157,91 @@ describe('ids: lazy, never written by the parser', () => {
       removed: ['1'],
       kept: ['2'],
     });
+  });
+});
+
+describe('tags typed mid-caption or at the start stay where they were typed', () => {
+  it('ask <t:41> about rota: round-trips byte for byte, still a note link', () => {
+    const body = '- ask <t:41> about rota\n';
+    same(body);
+    const n = first(body);
+    expect(n.title).toBe('ask <t:41> about rota');
+    expect(n.noteLinks).toEqual(['41']);
+    expect(n.links).toEqual([{ kind: 'note', target: '41', form: 'tag', source: '<t:41>' }]);
+    expect(displayCaption(n.title)).toBe('ask about rota');
+  });
+
+  it('keeps spaced spellings and the spaces around them', () => {
+    for (const body of [
+      '- ask < T : 41 > about rota\n',
+      '- ask <t: 41>  about rota <id:a>\n',
+      '- see <r : tom> first\n',
+      '- <t : 41> ask about rota <id:a>\n',
+      '- <r: tom>  <t:7> ask <id:a>\n',
+      '- ask <t:41>about rota\n',
+      '- ask <t:41>3\n',
+    ]) {
+      same(body);
+    }
+    expect(first('- see <r : tom> first\n').links).toEqual([
+      { kind: 'jump', target: 'tom', form: 'tag', source: '<r : tom>' },
+    ]);
+  });
+
+  it('mixes typed-in-place tags with the tag group, each written back where it was', () => {
+    const body = '- [ ] <t:3> see <r : tom> before <t: 7> lunch <thread:pnid:9> <t:8> <r:x> <id:a>\n';
+    same(body);
+    const n = first(body);
+    expect(n.task).toBe('open');
+    expect(n.title).toBe('<t:3> see <r : tom> before <t: 7> lunch');
+    expect(n.noteLinks).toEqual(['3', '7', '8']);
+    expect(resolveJumps(n)).toEqual(['tom', 'x']);
+  });
+
+  it('a line in standard order still round-trips byte for byte', () => {
+    for (const body of [
+      '- Row <t:5> <id:a>\n',
+      '- Row <t: 5> <r : b> <kind:doc> <id:a>\n',
+      '- Row <thread:pnid:9> <r:b> <t:6> <id:a>\n',
+    ]) {
+      same(body);
+    }
+    expect(first('- Row <t:5> <id:a>\n').title).toBe('Row');
+  });
+
+  it('software-added tags go into the tag group', () => {
+    const doc = parse('- ask <t:41> about rota <id:a>\n');
+    doc.nodes[0]!.noteLinks!.push('42');
+    doc.nodes[0]!.links!.push({ kind: 'jump', target: 'tom', form: 'tag', source: '<r:tom>' });
+    expect(serialize(doc)).toBe('- ask <t:41> about rota <r:tom> <t:42> <id:a>\n');
+  });
+
+  it('taking N out of noteLinks drops its tag from where it was typed', () => {
+    const doc = parse('- ask <t:41> about rota <id:a>\n- <t:5> first\n- last <t:6>3\n');
+    for (const n of doc.nodes) n.noteLinks = [];
+    expect(serialize(doc)).toBe('- ask about rota <id:a>\n- first\n- last 3\n');
+  });
+
+  it('a tag a host types into the caption is kept, never duplicated in the group', () => {
+    const doc = parse('- Row <id:a>\n');
+    doc.nodes[0]!.title = 'Row <t:5> now';
+    expect(serialize(doc)).toBe('- Row <t:5> now <id:a>\n');
+    doc.nodes[0]!.noteLinks = ['5'];
+    expect(serialize(doc)).toBe('- Row <t:5> now <id:a>\n');
+  });
+
+  it('code spans stay text', () => {
+    const body = '- ask `<t:41>` about <t:42> rota\n';
+    same(body);
+    expect(first(body).noteLinks).toEqual(['42']);
+    expect(stripLinkTags('ask `<t:41>` about <t:42> rota')).toBe('ask `<t:41>` about rota');
+  });
+
+  it('the Outline shows the caption without the tags and draws the chips', () => {
+    const html = toHtml(parse('- ask <t:41> about <r:b> rota <id:a>\n- B <id:b>\n'));
+    expect(html).not.toMatch(/&lt;\s*[tr]\s*:/);
+    expect(html).toContain('ask about rota');
+    expect(html).toContain('#41');
+    expect(html).toContain('data-hop-id="b"');
   });
 });

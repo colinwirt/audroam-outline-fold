@@ -5,6 +5,7 @@ import {
   type ExpandLevel,
 } from './fold.js';
 import { shouldFireAction, toggleTask } from './task.js';
+import { stripLinkTags } from './taskChrome.js';
 import type { OutlineFoldDoc, OutlineNode, TaskToggleEvent } from './types.js';
 
 /** Live-region copy for expand-level keys (pure; unit-tested). */
@@ -296,7 +297,7 @@ export function attachOutlineTree(
         to: result.to,
         node: result.node,
       };
-      commit(result.doc, id, `Task ${result.to}: ${result.node.title}`);
+      commit(result.doc, id, `Task ${result.to}: ${stripLinkTags(result.node.title)}`);
       opts.onTaskToggle?.(ev);
       if (shouldFireAction(result.from, result.to) && result.node.action) {
         const action = result.node.action;

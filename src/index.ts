@@ -315,6 +315,7 @@ export {
   jumpChipLabel,
   findNodeById,
   noteLinkHref,
+  stripLinkTags,
   type ParsedTask,
 } from './taskChrome.js';
 
