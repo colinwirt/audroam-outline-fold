@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { Touch, box, centre } from './touch';
+import { Touch, box, centre, popSettled } from './touch';
 
 /** #N and thread chips on touch (0.2.34): a tap opens the popover, 44 px rows, a tap on a row picks it. */
 test.describe('chips open the link popover on touch', () => {
@@ -43,6 +43,7 @@ test.describe('chips open the link popover on touch', () => {
       r.fulfill({ contentType: 'text/html', body: '<title>note</title>' }),
     );
     const popup = page.context().waitForEvent('page');
+    await popSettled(page);
     const row = centre(await box(page, '.map-link-item[data-row="note-map"]'));
     await t.tap(row.x, row.y);
     expect((await popup).url()).toBe('https://notes.example.org/map?id=1005');
@@ -58,6 +59,8 @@ test.describe('chips open the link popover on touch', () => {
     await t.tap(c.x, c.y);
     await expect(page.locator('.map-link-pop')).toHaveAttribute('data-kind', 'thread');
     expect(await page.evaluate(() => (window as any).__threads.length)).toBe(0);
+    // Past the phone's right edge: measure the row once the fitting pan is done.
+    await popSettled(page);
     const row = centre(await box(page, '.map-link-item[data-row="thread"]'));
     await t.tap(row.x, row.y);
     await expect(page.locator('.map-link-pop')).toHaveCount(0);

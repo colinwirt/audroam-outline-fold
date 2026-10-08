@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { Touch, box, centre, cam, type Box } from './touch';
+import { Touch, box, centre, cam, popSettled, type Box } from './touch';
 
 /**
  * 0.2.30 single-tap activation on touch (brief item 1) + the pinch amendment
@@ -271,6 +271,7 @@ test.describe('next single tap after a pan or pinch activates', () => {
       await tapSel(c, '.map-node[data-id="note"] .map-note-link-hit');
       // 0.2.34: the chip opens the link popover; its row fires onNoteLink.
       await expect(page.locator('.map-link-pop[data-kind="note"]')).toHaveCount(1);
+      await popSettled(page);
       await tapSel(c, '.map-link-pop .map-link-item[data-row="note-open"]');
       await expect.poll(() => page.evaluate(() => (window as any).__notes.map((n: any) => n.pnid))).toEqual(['1004']);
     });

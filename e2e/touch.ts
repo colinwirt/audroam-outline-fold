@@ -102,3 +102,38 @@ export async function cam(page: Page): Promise<{ x: number; y: number; k: number
 export async function waitFrames(page: Page, ms: number): Promise<void> {
   await page.waitForTimeout(ms);
 }
+
+/**
+ * Wait until the open link popover has stopped moving: the camera pan that fits
+ * it inside the map (0.2.33) is animated, so a row measured during it is stale
+ * and a tap there lands outside the popover (which closes it).
+ */
+export async function popSettled(page: Page): Promise<void> {
+  await expect
+    .poll(
+      () =>
+        page.evaluate(
+          () =>
+            new Promise<boolean>((resolve) => {
+              const pop = document.querySelector('.map-link-pop');
+              if (!pop) return resolve(false);
+              const key = () => {
+                const r = pop.getBoundingClientRect();
+                return `${r.left},${r.top}`;
+              };
+              // Fitted: fully inside the map (the pan stops 8 px inside).
+              const host = (pop.closest('.map-wrap') ?? document.body).getBoundingClientRect();
+              const r = pop.getBoundingClientRect();
+              if (r.left < host.left || r.right > host.right || r.top < host.top || r.bottom > host.bottom) {
+                return requestAnimationFrame(() => resolve(false));
+              }
+              const k0 = key();
+              requestAnimationFrame(() =>
+                requestAnimationFrame(() => requestAnimationFrame(() => resolve(key() === k0))),
+              );
+            }),
+        ),
+      { intervals: [0], timeout: 3000 },
+    )
+    .toBe(true);
+}
