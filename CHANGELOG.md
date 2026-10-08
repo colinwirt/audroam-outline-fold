@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.2.32 — unreleased
+
+### Map handle and connectors (phases 2 and 3)
+- `--map-handle-bg` (default `transparent`) fills the − ring. The + glyph uses `--map-handle-glyph-on-gold` (`#0a1f28`), so it stays opaque when `--map-bg` has alpha.
+- A halo under the − ring and dash in `--map-halo`, default `--map-bg` at 85%, taken from the nearest `--map-bg`. It paints before the stem, so the stub stays 8 px.
+- `--connector-casing` (default `transparent`): when a host sets it, every edge and stem gets a 3.2 px casing underneath, all casings before any line.
+- `.of-theme-light`: light canvas, connector, gold and glyph tokens; connector and gold meet 3:1 in both themes.
+
+### Fold to level
+- `seedDefaultFold(doc, { rule })` and `hasSavedFold(doc)`: with no `(+)` and no `fold-` / `fold+` list, the first view is level 1 (each root and its children). `cold-start` keeps the older rule; `all` leaves it open.
+- `foldLevelPicker(doc, id)`: the picker model (items, key hints, counts, current level, sameAsAll / disabled), `foldLevelNeedsConfirm` (All above 1,500 nodes), `foldLevelSkipsAnimation` (above 300 changes), live-region text.
+- Tests pin L16: a level folds every node at and below the boundary, so the next + shows one level.
+
+### Saved view (package side)
+- New `savedView` helpers: capture, exact restore, anchored fit, slot pick, focus choice, anchor when the focus is folded away or gone, start source, live text, and the v2 localStorage record (a v1 record loads with its folds and without its camera).
+
+### Tests
+- `tests/map-handle-tokens.test.ts`, `tests/map-default-fold.test.ts`, `tests/fold-level.test.ts`, `tests/saved-view.test.ts`; `e2e/pages-viewer.spec.ts` checks the halo, casing and light tokens in the viewer.
+
 ## 0.2.31 — 2026-10-08
 
 **Breaking:** the short `<word>` id form is removed (see Parse). Use `<id:N>`.
