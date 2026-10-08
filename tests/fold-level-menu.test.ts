@@ -345,6 +345,6 @@ describe('mapView wiring (source checks)', () => {
   });
 
   it('the menu, ring and live region survive paint', () => {
-    expect(src).toContain("'.map-width-pop, .of-map-controls, .map-level-menu, .map-level-ring, .map-live, .map-link-pop'");
+    expect(src).toContain("'.map-width-pop, .of-map-controls, .map-level-menu, .map-level-ring, .map-live, .map-link-pop, .map-toast'");
   });
 });

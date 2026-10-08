@@ -832,3 +832,72 @@ export function measurePill(
   pillCache.set(cacheKey, measured);
   return measured;
 }
+
+// ── Hold-to-fit widths (Design UX 2026-10-08, F4, F5, F5a) ─────────────────
+
+/** F4: "Fit text" wraps at this many characters. */
+export const FIT_TEXT_CH = 60;
+
+export interface FitMeasureOpts {
+  fontSize?: number;
+  /** A task box replaces the left pad, as in measurePill. */
+  reserveTask?: boolean;
+  /** Auto width only: the node's own wrap and clip. */
+  wrapCh?: number;
+  maxLines?: number | null;
+  bodyExpanded?: boolean;
+}
+
+function trimTrailingSpaces(chars: StyledChar[]): StyledChar[] {
+  let end = chars.length;
+  while (end > 0 && chars[end - 1]!.c === ' ') end--;
+  return end === chars.length ? chars : chars.slice(0, end);
+}
+
+/**
+ * Widest of `lines` in px, measured the way the px wrap measures (one
+ * character at a time), so a pill this wide never soft-wraps them.
+ */
+function widestForWrap(lines: CaptionStyleRun[][], fontPx: number): number {
+  let widest = 0;
+  for (const line of lines) {
+    const chars = trimTrailingSpaces(runsToChars(line));
+    let sum = 0;
+    for (const ch of chars) sum += charWidth(ch, fontPx);
+    widest = Math.max(widest, sum, lineWidth(line, fontPx));
+  }
+  return widest;
+}
+
+function fitPads(opts: FitMeasureOpts): number {
+  return (opts.reserveTask ? 0 : PILL_PAD_X) + PILL_PAD_X;
+}
+
+/**
+ * F5: the caption's natural one-line width (the pill's caption column, as
+ * stored in `w`): the longest authored line, unwrapped, plus the pads. Each
+ * authored line (newline, `<br>`) keeps its own row. Not clamped.
+ */
+export function naturalLineWidth(label: string, opts: FitMeasureOpts = {}): number {
+  const fontPx = clampFontPx(opts.fontSize);
+  const loose = wrapLines(label, 100000, null);
+  return Math.ceil(widestForWrap(loose.richLines, fontPx) + fitPads(opts));
+}
+
+/** F4: the widest line after wrapping at 60ch, plus the pads. Not clamped. */
+export function fitTextWidth(label: string, opts: FitMeasureOpts = {}): number {
+  const fontPx = clampFontPx(opts.fontSize);
+  const wrapped = wrapLines(label, FIT_TEXT_CH, null);
+  return Math.ceil(widestForWrap(wrapped.richLines, fontPx) + fitPads(opts));
+}
+
+/** The caption column the pill has at Auto (no `w`). */
+export function autoTextWidth(label: string, opts: FitMeasureOpts = {}): number {
+  return measurePill(label, {
+    wrapCh: opts.wrapCh ?? DEFAULT_WRAP_CH,
+    maxLines: opts.maxLines,
+    bodyExpanded: opts.bodyExpanded,
+    reserveTask: opts.reserveTask,
+    fontSize: opts.fontSize,
+  }).textW;
+}

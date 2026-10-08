@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+### Map: pill widths for reading (hold-to-fit P1)
+- The width popover (tap or click a selected pill's bottom-right corner) gains a **Fit** row above **Slim · Wider · Auto**: **Fit text**, **1 line**, **1 line siblings**. Two `role=group` rows (`Fit`, `Width`); this-node items are `menuitemradio` with `✓`, "1 line siblings" is a `menuitem`. Coarse items are at least 46×52 px, fine items 32 px rows.
+- **Fit text**: the widest line after wrapping at 60 characters, plus the pads, floor 120. Within 4 px of Auto (or when Auto is already wider) the entry is deleted instead, so no id is minted.
+- **1 line**: the longest authored line unwrapped plus the pads, capped at min(1400, the map's width − 48). Authored line breaks keep their own rows; nothing is cut off with "…"; a line past the cap wraps there. It is saved as `w: N` plus the new `w-auto: single-line` layout key (F5a), and every paint re-measures it and refreshes `w`, so the same note is wider on a desktop and still wraps on a phone. The width holds while that caption is being edited. A caption already on one line at Auto is left at Auto.
+- **1 line siblings**: 1 line for the pressed pill and every other child of the same parent (forest roots count as siblings), each its own width. Descendants are untouched.
+- Slim, Wider, Fit text and a drag remove `w-auto` (a hand-set width wins); Auto removes both keys.
+- One pick = one batched `setDoc` + `onChange` and one undo step, however many pills changed. A drag is a step too. Ids stay lazy: only pills that get a `w` are given one, and an undo takes back ids its step minted.
+- Undo: a toast "N widths changed · Undo" (`role=status`, about 8 s, pauses on hover or focus, ✕ to dismiss, never takes focus). In view mode `Ctrl/⌘+Z` and `Shift+Ctrl/⌘+Z` undo and redo width steps; when the map is editing, or there is no width step, the keys are left alone.
+- Keyboard: `w` opens the width popover for the selected node, focused on its current item, with key hints; `t` Fit text, `l` 1 line, `s` 1 line siblings, `a` Auto; arrows, `Home` / `End`, `Enter` / `Space`, `Esc` as before.
+- Camera: a width pick keeps the pressed pill's left edge and vertical centre where they were, with zoom unchanged, and keeps that pill in view.
+- Announcements in the polite `.map-live` region, e.g. "Bring gloves… and 3 siblings on 1 line." or "Widths restored."
+- New `createMapView` options: `canPersistWidths` (false: session-only widths, no ids, no `setDoc` / `onChange`) and `onWidthStep(step)` (return true to keep width steps on the host's own undo stack). New handle methods: `openWidthMenu(id?)`, `applyWidthPick(id, kind)`, `undoWidth()`, `redoWidth()`. New exports: `naturalLineWidth`, `fitTextWidth`, `autoTextWidth`, `FIT_TEXT_CH`, the `mapFit` helpers (`oneLineEntry`, `fitTextEntry`, `singleLineCap`, `singleLineWidth`, `stepEntry`, `sameWidth`, `siblingScope`, `widthPickAnnouncement`, `widthToastText`, `widthMenuKeyItem`, `WIDTH_MENU_KEYS`, `WIDTH_HELP_LINES`, constants) and types `MapWidthStep`, `WidthEntry`, `WidthPickKind`. `NodeLayout` and `MapPoint` gain `wAuto`.
+- `parseLayoutBlock` / `formatLayoutBlock` read and write `w-auto:` after `w:` (an entry still needs `w`, which older parsers keep using).
+- Not in this release (P2): the grip hold that opens the popover in slide mode, and the fold-handle picker's Child widths row.
+- Viewer example: the Keys help lists the width lines.
+- Tests: `tests/map-fit.test.ts` (w-auto round trip, measures, decisions, words, wiring); `e2e/map-widths.spec.ts` and `e2e/touch-map-widths.spec.ts` (fixture `examples/e2e-touch/widths.md`); `e2e/touch-map.spec.ts` now expects six popover items at 46×52.
+
 ### Map: the level picker opens from the fold handle only; one menu at a time (L9 amended, node menu M1)
 - A right-click or hold on the fold handle (±) opens only the level picker. The package calls `preventDefault` and `stopPropagation` (and `stopImmediatePropagation`) on that `contextmenu`, in the capture phase on the map host, so a host's own `contextmenu` listener never sees it. Before, the listener ran in the bubble phase on any `.map-node` and only called `preventDefault`, so a host menu on the same element opened as well: one right-click, two menus.
 - A right-click on the pill, label or canvas, and a touch long-press on the pill, are left untouched for the host (its node menu). The package no longer special-cases a label with a text selection: keeping the browser menu there (Copy) is the host's call, as node menu M1 asks.

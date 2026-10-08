@@ -128,6 +128,13 @@ export interface NodeLink {
 export interface NodeLayout {
   /** Caption column width in px. The map wraps the pill to this width. */
   w?: number;
+  /**
+   * `w-auto` in the layout block (hold-to-fit F5a). `single-line`: the map
+   * re-measures the caption's natural one-line width on every render and uses
+   * it instead of `w` (capped). `w` stays as the fallback for older parsers.
+   * An unknown mode is kept as written and falls back to `w`.
+   */
+  wAuto?: string;
 }
 
 export interface OutlineFrontmatter {

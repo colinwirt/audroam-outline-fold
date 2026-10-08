@@ -71,8 +71,31 @@ import {
   DEFAULT_FONT_PX,
   lineBox,
   resolveFontPx,
+  naturalLineWidth,
+  fitTextWidth,
+  autoTextWidth,
 } from './mapLabel.js';
 import { LABEL_FONT_FAMILY } from './svgTextMeasure.js';
+import {
+  W_AUTO_SINGLE_LINE,
+  WIDTHS_REDONE,
+  WIDTHS_RESTORED,
+  WIDTH_MAX_COL,
+  WIDTH_TOAST_MS,
+  fitTextEntry,
+  oneLineEntry,
+  sameWidth,
+  siblingScope,
+  singleLineCap,
+  singleLineWidth,
+  stepEntry,
+  widthMenuKeyItem,
+  widthPickAnnouncement,
+  widthToastText,
+  WIDTH_MENU_KEYS,
+  type WidthEntry,
+  type WidthPickKind,
+} from './mapFit.js';
 import {
   armSwallow,
   bindTap,
@@ -161,6 +184,27 @@ export interface MapPoint {
   fontSize?: number;
   /** Caption column width in px. Set by the right-edge handle. */
   w?: number;
+  /**
+   * F5a `w-auto` mode (`single-line`): the map re-measures the natural
+   * one-line width on every paint and writes it to `w`. `''` (session-only
+   * widths) overrides a mode authored in the document.
+   */
+  wAuto?: string;
+}
+
+/**
+ * One width undo step (hold-to-fit F7): a popover pick, a `w`-menu pick or a
+ * drag, however many pills changed. A host with its own D5 stack can take it
+ * through `onWidthStep`.
+ */
+export interface MapWidthStep {
+  kind: WidthPickKind | 'drag';
+  /** Map keys of the pills that changed (ids once written). */
+  keys: string[];
+  /** Toast text, e.g. "4 widths changed". */
+  label: string;
+  undo: () => void;
+  redo: () => void;
 }
 
 export interface MapViewBox {
@@ -305,6 +349,19 @@ export interface MapViewOptions {
     twoFingerTapZoomOut?: boolean;
   };
   onCameraSettle?: (cam: { x: number; y: number; k: number }) => void;
+  /**
+   * Hold-to-fit F8: when false (a viewer without write rights), widths from
+   * the popover, `w` and drags are session-only: they go to the layout object
+   * only, no id is minted, `setDoc` / `onChange` are not called. Default true.
+   */
+  canPersistWidths?: boolean | (() => boolean);
+  /**
+   * Hold-to-fit F7: every width step. Return true to take it onto the host's
+   * own undo stack (D5); the package then keeps no stack of its own and leaves
+   * Ctrl/⌘+Z to the host. Otherwise the package keeps it (Ctrl/⌘+Z on the map,
+   * the toast's Undo, `map.undoWidth()`).
+   */
+  onWidthStep?: (step: MapWidthStep) => boolean | void;
 }
 
 export interface MapKeyboardWire {
@@ -346,6 +403,17 @@ export interface MapViewHandle {
    * only one menu is ever open.
    */
   closeMenus: () => void;
+  /**
+   * Hold-to-fit P1: open the width popover for a node (default: the selected
+   * one), as the `w` key does, with focus on its current item. False without
+   * bindGestures() or a node.
+   */
+  openWidthMenu: (id?: string) => boolean;
+  /** Apply a width pick (`fit`, `line`, `siblings`, `slim`, `wider`, `auto`) as the popover does. */
+  applyWidthPick: (id: string, kind: WidthPickKind) => boolean;
+  /** Undo / redo the last width step on the package's own stack. False when there is none. */
+  undoWidth: () => boolean;
+  redoWidth: () => boolean;
   /** Apply a level under a node, as a menu pick does (anchors the handle, announces). */
   applyFoldLevel: (id: string, level: FoldLevelKey) => void;
   /** Every root to a level (toolbar Levels, L8). */
@@ -1124,6 +1192,8 @@ export function createMapView(
     wheel: wheelMode = 'pan',
     gestures: gestureOpts = {},
     onCameraSettle,
+    canPersistWidths: canPersistWidthsOpt,
+    onWidthStep,
   } = opts;
   const wheelSetting = gestureOpts.wheel ?? wheelMode;
   // Host fallbacks for the note-link templates; `'noteMapUri' in opts` keeps an explicit null.
@@ -1876,6 +1946,8 @@ export function createMapView(
     sy: number;
     expand: boolean;
     noFlip: boolean;
+    /** F9: `pill-left` keeps the pill's left edge, vertical centre (width picks). Default the handle. */
+    at?: 'handle' | 'pill-left';
   } | null = null;
   const paintListeners = new Set<() => void>();
   /** bindGestures installs this so a menu tap's trailing click is swallowed. */
@@ -2188,6 +2260,496 @@ export function createMapView(
     announce(wholeMapAnnouncement(next, level));
   }
 
+
+  // ── Pill widths for reading (hold-to-fit P1, Design UX 2026-10-08) ────────
+  // F3 fit row on tap, F11 `w`, F8 batched persistence as ordinary `w`
+  // entries (+ F5a `w-auto: single-line`), F7 undo steps with a toast, F9
+  // camera, F12 announcements. The grip hold and the Child widths row are P2.
+
+  function widthsPersist(): boolean {
+    return typeof canPersistWidthsOpt === 'function' ? !!canPersistWidthsOpt() : canPersistWidthsOpt !== false;
+  }
+
+  type WidthIdState = 'none' | 'session' | 'kept';
+  function idStateOf(n: OutlineNode | null | undefined): WidthIdState {
+    return !n?.id ? 'none' : n.autoId ? 'session' : 'kept';
+  }
+  type WidthStepEntry = {
+    key: string;
+    before: WidthEntry;
+    after: WidthEntry;
+    /** The node's id before this step: none, session-only, or written (lazy ids, F8). */
+    idState: WidthIdState;
+  };
+  type WidthStepRec = {
+    kind: WidthPickKind | 'drag';
+    entries: WidthStepEntry[];
+    anchorKey: string;
+    persist: boolean;
+  };
+  const widthUndoStack: WidthStepRec[] = [];
+  const widthRedoStack: WidthStepRec[] = [];
+  /** Pill being dragged: its live width wins over `w-auto` until the drag commits. */
+  let resizingWidthKey: string | null = null;
+  /** Last single-line width per key, kept while that caption is being edited (F5a). */
+  const autoWidthCache = new Map<string, number>();
+  /** bindGestures installs this: open the width popover (P1 tap popover). */
+  let openWidthPopHook: ((key: string, how: { keyboard?: boolean }) => boolean) | null = null;
+  let widthToast: { el: HTMLElement; timer: number; abort: AbortController } | null = null;
+
+  function nodeByKey(key: string): OutlineNode | null {
+    const order = indexOutline(getDoc().nodes);
+    for (const [n, pos] of order) {
+      if (nodeMapKey(n, pos) === key) return n;
+    }
+    return null;
+  }
+
+  function keyOfNode(n: OutlineNode): string {
+    return nodeMapKey(n, indexOutline(getDoc().nodes).get(n) || 0);
+  }
+
+  /** Stored width of a pill: the layout object first (as paint reads it), then the node. */
+  function readWidth(key: string, n?: OutlineNode | null): WidthEntry {
+    const node = n ?? nodeByKey(key);
+    const lay = getLayout().nodes?.[key];
+    const rawW = lay && lay.w !== undefined ? lay.w : node?.layout?.w;
+    const rawMode = lay && lay.wAuto !== undefined ? lay.wAuto : node?.layout?.wAuto;
+    return {
+      w: typeof rawW === 'number' && rawW > 0 ? rawW : null,
+      wAuto: rawW && rawMode ? rawMode : null,
+    };
+  }
+
+  /**
+   * Write one pill's width. Persisted: like a drag (lazy id via
+   * assignPersistentId only when a `w` is written; Auto deletes both keys).
+   * Session-only: the layout object only (`w: 0` / `wAuto: ''` override an
+   * authored entry). Returns the pill's key afterwards (its id once written).
+   */
+  function writeWidth(key: string, next: WidthEntry, persist: boolean): string {
+    const doc = getDoc();
+    const node = nodeByKey(key);
+    const layout = getLayout();
+    if (!layout.nodes) layout.nodes = {};
+    if (!node) return key;
+    if (!persist) {
+      const entry = layout.nodes[key] || (layout.nodes[key] = { x: 100, y: 100 });
+      if (next.w == null) {
+        if (node.layout?.w) entry.w = 0;
+        else delete entry.w;
+        if (node.layout?.wAuto) entry.wAuto = '';
+        else delete entry.wAuto;
+      } else {
+        entry.w = next.w;
+        if (next.wAuto) entry.wAuto = next.wAuto;
+        else if (node.layout?.wAuto) entry.wAuto = '';
+        else delete entry.wAuto;
+      }
+      return key;
+    }
+    if (next.w == null) {
+      if (node.layout) {
+        delete node.layout.w;
+        delete node.layout.wAuto;
+        if (!Object.keys(node.layout).length) delete node.layout;
+      }
+      const entry = layout.nodes[key];
+      if (entry) {
+        delete entry.w;
+        delete entry.wAuto;
+      }
+      return key;
+    }
+    const id = assignPersistentId(doc, node);
+    const w = Math.round(next.w);
+    const nl: NonNullable<OutlineNode['layout']> = { ...(node.layout || {}), w };
+    if (next.wAuto) nl.wAuto = next.wAuto;
+    else delete nl.wAuto;
+    node.layout = nl;
+    const prev = layout.nodes[key] || layout.nodes[id] || { x: 100, y: 100 };
+    if (id !== key) delete layout.nodes[key];
+    const entry: MapPoint = { ...prev, w };
+    if (next.wAuto) entry.wAuto = next.wAuto;
+    else delete entry.wAuto;
+    layout.nodes[id] = entry;
+    if (getFocusId() === key) setFocusId(id);
+    return id;
+  }
+
+  /** The caption and measure options paint uses for this pill. */
+  function fitMeasure(n: OutlineNode, key: string) {
+    const layout = getLayout();
+    const pos = layout.nodes?.[key];
+    return {
+      label: captionWithoutLinks(displayCaption(n.title)),
+      opts: {
+        fontSize: resolveFontPx(pos?.fontSize, layout.fontSize, getDoc().frontmatter?.fontSize),
+        reserveTask: !!resolveTask(n),
+        wrapCh: pos?.wrapCh,
+        maxLines: pos?.maxLines,
+        bodyExpanded: !!pos?.bodyExpanded,
+      },
+    };
+  }
+
+  /** F5a cap: the map's visible width at 100% zoom − 48, at most 1400. */
+  function currentSingleLineCap(): number {
+    return singleLineCap(hostViewport().w);
+  }
+
+  /**
+   * F5a: every `w-auto: single-line` pill re-measures its natural one-line
+   * width on render and writes it to `w` (layout object and node), so the
+   * stored `w` is current whenever the host saves. While a caption is being
+   * edited its width holds until the edit commits (no shift under the caret).
+   */
+  function resolveAutoWidths(): void {
+    const doc = getDoc();
+    const layout = getLayout();
+    const cap = currentSingleLineCap();
+    const editingKey = isEditing() ? getFocusId() : '';
+    const order = indexOutline(doc.nodes || []);
+    for (const [n, pos] of order) {
+      const key = nodeMapKey(n, pos);
+      const lay = layout.nodes?.[key];
+      const mode = lay && lay.wAuto !== undefined ? lay.wAuto : n.layout?.wAuto;
+      if (mode !== W_AUTO_SINGLE_LINE || key === resizingWidthKey) continue;
+      let w: number;
+      const held = autoWidthCache.get(key);
+      if (editingKey && key === editingKey && held != null) {
+        w = held;
+      } else {
+        const m = fitMeasure(n, key);
+        w = singleLineWidth(naturalLineWidth(m.label, m.opts), cap);
+        autoWidthCache.set(key, w);
+      }
+      if (lay) lay.w = w;
+      if (n.layout?.wAuto === W_AUTO_SINGLE_LINE) n.layout.w = w;
+    }
+  }
+
+  function widthTitle(n: OutlineNode): string {
+    return captionWithoutLinks(displayCaption(n.title)).split('\n')[0] || 'Node';
+  }
+
+  function paintedTextW(key: string, n: OutlineNode): number {
+    const attr = Number(nodeEl(key)?.getAttribute('data-text-w'));
+    if (Number.isFinite(attr) && attr > 0) return attr;
+    const m = fitMeasure(n, key);
+    const cur = readWidth(key, n).w;
+    return cur ?? autoTextWidth(m.label, m.opts);
+  }
+
+  /** F9: remember where the pressed pill's left edge (vertical centre) is on screen. */
+  function anchorPillLeft(key: string): void {
+    const pill = nodeEl(key)?.querySelector('.map-pill');
+    if (!pill) return;
+    const r = pill.getBoundingClientRect();
+    const hr = host.getBoundingClientRect();
+    pendingLevelAnchor = {
+      id: key,
+      sx: r.left - hr.left,
+      sy: r.top + r.height / 2 - hr.top,
+      expand: false,
+      noFlip: false,
+      at: 'pill-left',
+    };
+  }
+
+  /** One batched write for a step: one setDoc + onChange (or one paint when session-only). */
+  function flushWidths(persist: boolean): void {
+    widthHotKey = null;
+    stopMotion();
+    cancelFollowAnim();
+    userCamGesture = true;
+    pendingFollow = null;
+    if (persist) {
+      setDoc(getDoc());
+      onChange?.();
+    } else {
+      paint();
+    }
+  }
+
+  function applyEntries(rec: WidthStepRec, side: 'before' | 'after'): void {
+    const doc = getDoc();
+    for (const e of rec.entries) {
+      const key = writeWidth(e.key, e[side], rec.persist);
+      if (key !== e.key) {
+        if (rec.anchorKey === e.key) rec.anchorKey = key;
+        e.key = key;
+      }
+      if (side === 'before' && rec.persist && e.idState !== 'kept' && e.before.w == null) {
+        // Undo takes back an id this step minted when nothing else needs it (F8).
+        const n = nodeByKey(e.key);
+        if (n?.id && !n.layout?.w && !n.sealed && !doc.fold.ids.includes(n.id)) {
+          if (e.idState === 'session') {
+            n.autoId = true;
+          } else {
+            const id = n.id;
+            delete n.id;
+            const key = keyOfNode(n);
+            const layout = getLayout();
+            if (key !== id && layout.nodes?.[id]) {
+              layout.nodes[key] = layout.nodes[id]!;
+              delete layout.nodes[id];
+            }
+            if (getFocusId() === id) setFocusId(key);
+            if (rec.anchorKey === e.key) rec.anchorKey = key;
+            e.key = key;
+          }
+        }
+      }
+    }
+  }
+
+  function stepFor(rec: WidthStepRec): MapWidthStep {
+    return {
+      kind: rec.kind,
+      keys: rec.entries.map((e) => e.key),
+      label: widthToastText(rec.entries.length),
+      undo: () => runWidthUndo(rec),
+      redo: () => runWidthRedo(rec),
+    };
+  }
+
+  function runWidthUndo(rec: WidthStepRec): void {
+    dismissWidthToast();
+    anchorPillLeft(rec.anchorKey);
+    applyEntries(rec, 'before');
+    if (pendingLevelAnchor?.at === 'pill-left') pendingLevelAnchor.id = rec.anchorKey;
+    flushWidths(rec.persist);
+    announce(WIDTHS_RESTORED);
+  }
+
+  function runWidthRedo(rec: WidthStepRec): void {
+    dismissWidthToast();
+    anchorPillLeft(rec.anchorKey);
+    applyEntries(rec, 'after');
+    if (pendingLevelAnchor?.at === 'pill-left') pendingLevelAnchor.id = rec.anchorKey;
+    flushWidths(rec.persist);
+    announce(WIDTHS_REDONE);
+  }
+
+  function undoWidth(): boolean {
+    const rec = widthUndoStack.pop();
+    if (!rec) return false;
+    runWidthUndo(rec);
+    widthRedoStack.push(rec);
+    return true;
+  }
+
+  function redoWidth(): boolean {
+    const rec = widthRedoStack.pop();
+    if (!rec) return false;
+    runWidthRedo(rec);
+    widthUndoStack.push(rec);
+    return true;
+  }
+
+  /**
+   * Commit a step: write every entry, one batched setDoc + onChange, push one
+   * undo step (F7), anchor the pressed pill (F9). Entries that change nothing
+   * are dropped; a step with none is not pushed.
+   */
+  function commitWidthStep(
+    kind: WidthPickKind | 'drag',
+    anchorKey: string,
+    entries: WidthStepEntry[],
+    how: { toast: boolean; announce?: string },
+  ): MapWidthStep | null {
+    const changed = entries.filter((e) => !sameWidth(e.before, e.after));
+    const rec: WidthStepRec = { kind, entries: changed, anchorKey, persist: widthsPersist() };
+    if (changed.length) {
+      anchorPillLeft(anchorKey);
+      applyEntries(rec, 'after');
+      if (pendingLevelAnchor?.at === 'pill-left') pendingLevelAnchor.id = rec.anchorKey;
+      for (const e of changed) autoWidthCache.delete(e.key);
+      flushWidths(rec.persist);
+    }
+    if (how.announce) announce(how.announce);
+    if (!changed.length) return null;
+    const step = stepFor(rec);
+    const hostTook = onWidthStep?.(step) === true;
+    if (!hostTook) {
+      widthUndoStack.push(rec);
+      widthRedoStack.length = 0;
+      if (how.toast) showWidthToast(rec);
+    }
+    return step;
+  }
+
+  /** The popover's and `w` menu's picks (F3–F6). */
+  function applyWidthPick(key: string, kind: WidthPickKind, explicitW?: number): MapWidthStep | null | false {
+    const n = nodeByKey(key);
+    if (!n) return false;
+    let scope: OutlineNode[] = [n];
+    if (kind === 'siblings') {
+      const parent = findParentOf(getDoc().nodes, n);
+      scope = siblingScope(n, parent ? parent.children : getDoc().nodes);
+    }
+    const cap = currentSingleLineCap();
+    let capped = 0;
+    const entries: WidthStepEntry[] = scope.map((node) => {
+      const k = keyOfNode(node);
+      const before = readWidth(k, node);
+      const m = fitMeasure(node, k);
+      let after: WidthEntry;
+      if (kind === 'fit') {
+        after = fitTextEntry({ fit: fitTextWidth(m.label, m.opts), auto: autoTextWidth(m.label, m.opts) });
+      } else if (kind === 'line' || kind === 'siblings') {
+        const one = oneLineEntry({
+          natural: naturalLineWidth(m.label, m.opts),
+          auto: autoTextWidth(m.label, m.opts),
+          cap,
+        });
+        if (one.capped) capped++;
+        after = { w: one.w, wAuto: one.wAuto };
+      } else if (kind === 'slim' || kind === 'wider') {
+        after =
+          explicitW != null
+            ? { w: Math.max(120, Math.min(WIDTH_MAX_COL, Math.round(explicitW))), wAuto: null }
+            : stepEntry(paintedTextW(k, node), kind === 'slim' ? -1 : 1);
+      } else {
+        after = { w: null, wAuto: null };
+      }
+      return { key: k, before, after, idState: idStateOf(node) };
+    });
+    const fitAuto = kind === 'fit' && entries[0]!.after.w == null;
+    return commitWidthStep(kind, key, entries, {
+      toast: true,
+      announce: widthPickAnnouncement(kind, {
+        title: widthTitle(n),
+        count: scope.length,
+        capped,
+        auto: fitAuto,
+      }),
+    });
+  }
+
+  function findParentOf(list: OutlineNode[], target: OutlineNode): OutlineNode | null {
+    for (const n of list) {
+      if (n.children?.includes(target)) return n;
+      const hit = n.children?.length ? findParentOf(n.children, target) : null;
+      if (hit) return hit;
+    }
+    return null;
+  }
+
+  function dismissWidthToast(): void {
+    const t = widthToast;
+    if (!t) return;
+    widthToast = null;
+    window.clearTimeout(t.timer);
+    t.abort.abort();
+    t.el.remove();
+  }
+
+  /**
+   * F7 toast (D5 pattern): "4 widths changed · Undo", role=status, about 8 s,
+   * pauses on hover or focus, ✕ dismisses, never takes focus. It lives in the
+   * host and survives paint().
+   */
+  function showWidthToast(rec: WidthStepRec): void {
+    dismissWidthToast();
+    if (typeof document === 'undefined') return;
+    const ac = new AbortController();
+    const el = document.createElement('div');
+    el.className = 'map-toast';
+    el.setAttribute('role', 'status');
+    const text = document.createElement('span');
+    text.className = 'map-toast-text';
+    text.textContent = widthToastText(rec.entries.length);
+    const undoBtn = document.createElement('button');
+    undoBtn.type = 'button';
+    undoBtn.className = 'map-toast-undo';
+    undoBtn.textContent = 'Undo';
+    const close = document.createElement('button');
+    close.type = 'button';
+    close.className = 'map-toast-close';
+    close.setAttribute('aria-label', 'Dismiss');
+    close.textContent = '✕';
+    el.style.cssText = [
+      'position:absolute',
+      'z-index:7',
+      'left:50%',
+      'bottom:12px',
+      'transform:translateX(-50%)',
+      'display:flex',
+      'align-items:center',
+      'gap:8px',
+      'padding:4px 4px 4px 14px',
+      'border-radius:10px',
+      'background:#13202b',
+      'border:1px solid #3d5a73',
+      'box-shadow:0 8px 24px rgba(0,0,0,.35)',
+      'color:#e7ecf1',
+      'font:14px/1.2 system-ui,sans-serif',
+      'max-width:calc(100% - 16px)',
+      'touch-action:manipulation',
+    ].join(';');
+    const btnCss = [
+      'min-height:44px',
+      'min-width:44px',
+      'padding:0 12px',
+      'border-radius:8px',
+      'border:1px solid #3d5a73',
+      'background:#1b3044',
+      'color:#e7ecf1',
+      'font:inherit',
+      'cursor:pointer',
+      'touch-action:manipulation',
+    ].join(';');
+    undoBtn.style.cssText = `${btnCss};font-weight:600`;
+    close.style.cssText = btnCss;
+    el.append(text, undoBtn, close);
+    const t = { el, timer: 0, abort: ac };
+    const arm = () => {
+      window.clearTimeout(t.timer);
+      t.timer = window.setTimeout(() => {
+        if (widthToast === t) dismissWidthToast();
+      }, WIDTH_TOAST_MS);
+    };
+    const pause = () => window.clearTimeout(t.timer);
+    bindTap(
+      undoBtn,
+      (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        // Undo the step this toast is for, if it is still the latest.
+        if (widthUndoStack[widthUndoStack.length - 1] === rec) undoWidth();
+        else dismissWidthToast();
+      },
+      { signal: ac.signal },
+    );
+    bindTap(
+      close,
+      (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        dismissWidthToast();
+      },
+      { signal: ac.signal },
+    );
+    for (const type of ['pointerenter', 'focusin'] as const) el.addEventListener(type, pause, { signal: ac.signal });
+    el.addEventListener('pointerleave', () => { if (!el.contains(document.activeElement)) arm(); }, { signal: ac.signal });
+    el.addEventListener('focusout', (e) => {
+      if (!el.contains((e as FocusEvent).relatedTarget as Node | null)) arm();
+    }, { signal: ac.signal });
+    if (getComputedStyle(host).position === 'static') host.style.position = 'relative';
+    host.appendChild(el);
+    widthToast = t;
+    arm();
+  }
+
+  /** F11: the width popover for a node, as the `w` key opens it. */
+  function openWidthMenu(id?: string): boolean {
+    const key = id ?? getFocusId();
+    if (!key || !nodeByKey(key) || !openWidthPopHook) return false;
+    return openWidthPopHook(key, { keyboard: true });
+  }
+
   function applyCam(): void {
     const g = host.querySelector('#mapViewport');
     if (!g) return;
@@ -2258,6 +2820,8 @@ export function createMapView(
     const layout = getLayout();
     const doc = getDoc();
     if (!layout.nodes) layout.nodes = {};
+    // F5a: single-line pills re-measure before anything is sized.
+    resolveAutoWidths();
 
     if (isAutoPack(layout)) {
       // Preserve wrapCh/maxLines nudges across recompute
@@ -2278,6 +2842,7 @@ export function createMapView(
           bodyExpanded: prev?.bodyExpanded,
           fontSize: prev?.fontSize,
           w: prev?.w ?? pos.w,
+          ...(prev?.wAuto !== undefined ? { wAuto: prev.wAuto } : {}),
         };
       }
       layout.nodes = merged;
@@ -2821,7 +3386,7 @@ export function createMapView(
     // in the map) survive the SVG rewrite (0.2.30).
     const overlays = Array.from(host.children).filter((el) =>
       el.matches?.(
-        '.map-width-pop, .of-map-controls, .map-level-menu, .map-level-ring, .map-live, .map-link-pop',
+        '.map-width-pop, .of-map-controls, .map-level-menu, .map-level-ring, .map-live, .map-link-pop, .map-toast',
       ),
     );
     // A focused menu item is detached by the rewrite below; put focus back after.
@@ -2872,7 +3437,7 @@ export function createMapView(
       if (np) {
         const left = np.pos.x - np.w / 2;
         const boxRight = left + Math.max(1, np.w - np.foldSlot);
-        const hx = foldHandleGeometry(boxRight, np.foldSlot).cx;
+        const hx = la.at === 'pill-left' ? left : foldHandleGeometry(boxRight, np.foldSlot).cx;
         const old = { x: cam.x, y: cam.y };
         cam.x = la.sx - hx * cam.k;
         cam.y = la.sy - np.pos.y * cam.k;
@@ -2913,6 +3478,23 @@ export function createMapView(
             viewport: hostViewport(),
             anchor: toScreen(np),
             shown,
+            paddingPx: DEFAULT_CAM_PADDING_PX,
+            keepFrac: DEFAULT_KEEP_VISIBLE_FRAC,
+          });
+          cam.x += shift.dx;
+          cam.y += shift.dy;
+        } else if (la.at === 'pill-left') {
+          // F9: keep-visible for the pressed pill only (L10 follow rules).
+          const pill = {
+            x: left * cam.k + cam.x,
+            y: (np.pos.y - np.h / 2) * cam.k + cam.y,
+            w: np.w * cam.k,
+            h: np.h * cam.k,
+          };
+          const shift = levelKeepVisibleShift({
+            viewport: hostViewport(),
+            anchor: { x: pill.x, y: pill.y, w: 1, h: pill.h },
+            shown: pill,
             paddingPx: DEFAULT_CAM_PADDING_PX,
             keepFrac: DEFAULT_KEEP_VISIBLE_FRAC,
           });
@@ -3017,63 +3599,44 @@ export function createMapView(
       startX: number;
       startW: number;
       moved: boolean;
+      /** Width before the drag, for its undo step (F7). */
+      before: WidthEntry;
+      idState: WidthIdState;
     } | null = null;
 
     const MIN_COL = 120;
     const MAX_COL = 1400;
 
+    function dragStart(key: string): { before: WidthEntry; idState: WidthIdState } {
+      const n = nodeByKey(key);
+      return { before: readWidth(key, n), idState: idStateOf(n) };
+    }
+
     function applyWidth(key: string, w: number): void {
       const layout = getLayout();
       if (!layout.nodes) layout.nodes = {};
+      resizingWidthKey = key;
       const prev = layout.nodes[key] || { x: 100, y: 100 };
       layout.nodes[key] = { ...prev, w: Math.max(MIN_COL, Math.min(MAX_COL, Math.round(w))) };
     }
 
-    function findNodeByKey(key: string): OutlineNode | null {
-      const order = indexOutline(getDoc().nodes);
-      for (const [n, pos] of order) {
-        if (nodeMapKey(n, pos) === key) return n;
-      }
-      return null;
-    }
-
-    /** `w` null returns the pill to auto width and drops the layout entry. */
-    function persistColumn(key: string, w: number | null): void {
-      const doc = getDoc();
-      const node = findNodeByKey(key);
-      const layout = getLayout();
-      if (!node) return;
-      if (w == null) {
-        if (node.layout) {
-          delete node.layout.w;
-          if (node.layout.w == null) delete node.layout;
-        }
-        if (layout.nodes?.[key]) delete layout.nodes[key].w;
-      } else {
-        const id = assignPersistentId(doc, node);
-        const width = Math.max(MIN_COL, Math.min(MAX_COL, Math.round(w)));
-        node.layout = { ...(node.layout || {}), w: width };
-        if (!layout.nodes) layout.nodes = {};
-        const prev = layout.nodes[key] || layout.nodes[id] || { x: 100, y: 100 };
-        if (id !== key) delete layout.nodes[key];
-        layout.nodes[id] = { ...prev, w: width };
-        if (getFocusId() === key) setFocusId(id);
-      }
-      widthHotKey = null;
-      setDoc(doc);
-      onChange?.();
-    }
-
+    /** A finished drag is one undo step (F7, no toast); a hand-set width drops `w-auto` (F5a). */
     function commitWidth(): void {
-      if (!widthDrag) return;
-      const key = widthDrag.key;
-      const w = getLayout().nodes?.[key]?.w;
+      const drag = widthDrag;
       widthDrag = null;
-      if (typeof w !== 'number') return;
-      persistColumn(key, w);
+      resizingWidthKey = null;
+      if (!drag) return;
+      const w = getLayout().nodes?.[drag.key]?.w;
+      if (typeof w !== 'number' || w <= 0) return;
+      commitWidthStep(
+        'drag',
+        drag.key,
+        [{ key: drag.key, before: drag.before, after: { w, wAuto: null }, idState: drag.idState }],
+        { toast: false },
+      );
     }
 
-    /** Last popover choice per pill key, to mark it when the width still matches. */
+    /** Last Slim / Wider per pill key, to mark it when the width still matches. */
     const widthChoiceByKey = new Map<string, { label: string; w: number }>();
     let widthPopAbort: AbortController | null = null;
 
@@ -3109,24 +3672,61 @@ export function createMapView(
       pop.style.top = `${Math.round(top)}px`;
     }
 
-    function storedWidth(key: string): number | null {
-      const node = findNodeByKey(key);
-      const w = node?.layout?.w ?? getLayout().nodes?.[key]?.w;
-      return typeof w === 'number' ? w : null;
+    type WidthItem = {
+      kind: WidthPickKind;
+      label: string;
+      choice: string;
+      /** `menuitem` for actions on other nodes (F12). */
+      radio: boolean;
+      w?: number;
+    };
+
+    /** Which item carries ✓ for this pill (one at most). */
+    function checkedWidthKind(key: string): WidthPickKind | null {
+      const n = nodeByKey(key);
+      if (!n) return null;
+      const cur = readWidth(key, n);
+      if (cur.w == null) return 'auto';
+      if (cur.wAuto === W_AUTO_SINGLE_LINE) return 'line';
+      // The last Slim / Wider pick wins while the width still matches it.
+      const last = widthChoiceByKey.get(key);
+      if (last && last.w === cur.w) return last.label === 'Slim' ? 'slim' : 'wider';
+      const m = fitMeasure(n, key);
+      const fit = fitTextEntry({ fit: fitTextWidth(m.label, m.opts), auto: autoTextWidth(m.label, m.opts) });
+      if (fit.w != null && Math.abs(cur.w - fit.w) <= 1) return 'fit';
+      return null;
     }
 
-    function showWidthPop(clientX: number, clientY: number, key: string, textW: number): void {
+    /**
+     * The width popover (F3, P1 on tap and `w`): a Fit row (Fit text · 1 line ·
+     * 1 line siblings) above the Width row (Slim · Wider · Auto). One pick =
+     * one batched write and one undo step.
+     */
+    function showWidthPop(
+      clientX: number,
+      clientY: number,
+      key: string,
+      textW: number,
+      how: { keyboard?: boolean; coarse?: boolean } = {},
+    ): void {
       dismissWidthPop();
+      closeLevelMenu(false);
+      dismissLinkPop(false);
       const ac = new AbortController();
       widthPopAbort = ac;
+      const coarse =
+        how.coarse ??
+        (typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches);
       const pop = document.createElement('div');
       pop.className = 'map-width-pop';
       pop.setAttribute('role', 'menu');
       pop.setAttribute('aria-label', 'Pill width');
+      pop.dataset.key = key;
       pop.style.cssText = [
         'position:absolute',
         'z-index:6',
         'display:flex',
+        'flex-direction:column',
         'gap:6px',
         'padding:6px',
         'border-radius:10px',
@@ -3134,66 +3734,122 @@ export function createMapView(
         'border:1px solid #3d5a73',
         'box-shadow:0 8px 24px rgba(0,0,0,.35)',
         'touch-action:manipulation',
+        '-webkit-touch-callout:none',
+        'user-select:none',
       ].join(';');
       const slimW = Math.max(MIN_COL, Math.min(MAX_COL, Math.round(textW - 56)));
       const widerW = Math.max(MIN_COL, Math.min(MAX_COL, Math.round(textW + 56)));
-      const choices: { label: string; w: number | null }[] = [
-        { label: 'Slim', w: slimW },
-        { label: 'Wider', w: widerW },
-        { label: 'Auto', w: null },
+      const rows: { label: string; items: WidthItem[] }[] = [
+        {
+          label: 'Fit',
+          items: [
+            { kind: 'fit', label: 'Fit text', choice: 'fit-text', radio: true },
+            { kind: 'line', label: '1 line', choice: 'line', radio: true },
+            { kind: 'siblings', label: '1 line siblings', choice: 'siblings', radio: false },
+          ],
+        },
+        {
+          label: 'Width',
+          items: [
+            { kind: 'slim', label: 'Slim', choice: 'slim', radio: true, w: slimW },
+            { kind: 'wider', label: 'Wider', choice: 'wider', radio: true, w: widerW },
+            { kind: 'auto', label: 'Auto', choice: 'auto', radio: true },
+          ],
+        },
       ];
-      const cur = storedWidth(key);
-      const last = widthChoiceByKey.get(key);
-      const currentLabel =
-        cur == null ? 'Auto' : last && last.w === cur ? last.label : null;
+      const checkedKind = checkedWidthKind(key);
       const buttons: HTMLButtonElement[] = [];
-      for (const choice of choices) {
-        const btn = document.createElement('button');
-        btn.type = 'button';
-        const checked = choice.label === currentLabel;
-        btn.setAttribute('role', 'menuitemradio');
-        btn.setAttribute('aria-checked', checked ? 'true' : 'false');
-        btn.dataset.choice = choice.label.toLowerCase();
-        btn.textContent = checked ? `✓ ${choice.label}` : choice.label;
-        btn.style.cssText = [
-          'min-height:44px',
-          'min-width:44px',
-          'padding:0 14px',
-          'border-radius:8px',
-          `border:1px solid ${checked ? '#8ec8ff' : '#3d5a73'}`,
-          `background:${checked ? '#24425e' : '#1b3044'}`,
-          'color:#e7ecf1',
-          'font:15px/1 system-ui,sans-serif',
-          'cursor:pointer',
-          'touch-action:manipulation',
-        ].join(';');
-        bindTap(
-          btn,
-          (ev) => {
-            ev.preventDefault();
-            ev.stopPropagation();
-            dismissWidthPop();
-            if (ev.type === 'pointerup') {
-              // The repaint removes this button; its trailing click must not
-              // land on whatever is drawn under the finger next.
-              const pe = ev as PointerEvent;
-              swallow = armSwallow(performance.now(), pe.clientX, pe.clientY);
-            }
-            if (choice.w == null) widthChoiceByKey.delete(key);
-            else widthChoiceByKey.set(key, { label: choice.label, w: choice.w });
-            persistColumn(key, choice.w);
-          },
-          { signal: ac.signal },
-        );
-        buttons.push(btn);
-        pop.appendChild(btn);
+      const kinds: WidthPickKind[] = [];
+      const pick = (item: WidthItem, ev?: Event) => {
+        const hadFocus = pop.contains(document.activeElement);
+        dismissWidthPop();
+        if (ev?.type === 'pointerup') {
+          // The repaint removes this button; its trailing click must not
+          // land on whatever is drawn under the finger next.
+          const pe = ev as PointerEvent;
+          swallow = armSwallow(performance.now(), pe.clientX, pe.clientY);
+        }
+        if (item.kind === 'slim' || item.kind === 'wider') {
+          widthChoiceByKey.set(key, { label: item.label, w: item.w! });
+        } else {
+          widthChoiceByKey.delete(key);
+        }
+        applyWidthPick(key, item.kind, item.w);
+        if (hadFocus) focusMapForKeys();
+      };
+      for (const row of rows) {
+        const group = document.createElement('div');
+        group.className = 'map-width-row';
+        group.setAttribute('role', 'group');
+        group.setAttribute('aria-label', row.label);
+        group.dataset.row = row.label.toLowerCase();
+        group.style.cssText = 'display:flex;gap:6px;flex-wrap:nowrap';
+        for (const item of row.items) {
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          const checked = item.radio && item.kind === checkedKind;
+          btn.setAttribute('role', item.radio ? 'menuitemradio' : 'menuitem');
+          if (item.radio) btn.setAttribute('aria-checked', checked ? 'true' : 'false');
+          btn.dataset.choice = item.choice;
+          const hint = WIDTH_MENU_KEYS[item.kind];
+          if (hint) btn.setAttribute('aria-keyshortcuts', hint);
+          const text = document.createElement('span');
+          text.className = 'map-width-label';
+          text.textContent = checked ? `✓ ${item.label}` : item.label;
+          btn.appendChild(text);
+          if (hint && how.keyboard) {
+            // Key hints only when the menu came from the keyboard (F13: no on-page copy).
+            const k = document.createElement('kbd');
+            k.className = 'map-width-key';
+            k.setAttribute('aria-hidden', 'true');
+            k.textContent = hint;
+            k.style.cssText = 'margin-left:6px;opacity:.7;font:12px/1 ui-monospace,monospace';
+            btn.appendChild(k);
+          }
+          btn.style.cssText = [
+            coarse ? 'min-height:52px' : 'min-height:32px',
+            coarse ? 'min-width:46px' : 'min-width:32px',
+            coarse ? 'padding:0 14px' : 'padding:0 10px',
+            'border-radius:8px',
+            `border:1px solid ${checked ? '#8ec8ff' : '#3d5a73'}`,
+            `background:${checked ? '#24425e' : '#1b3044'}`,
+            'color:#e7ecf1',
+            `font:${coarse ? 15 : 14}px/1 system-ui,sans-serif`,
+            'white-space:nowrap',
+            'cursor:pointer',
+            'touch-action:manipulation',
+          ].join(';');
+          bindTap(
+            btn,
+            (ev) => {
+              ev.preventDefault();
+              ev.stopPropagation();
+              pick(item, ev);
+            },
+            { signal: ac.signal },
+          );
+          buttons.push(btn);
+          kinds.push(item.kind);
+          group.appendChild(btn);
+        }
+        pop.appendChild(group);
       }
       // Keys stay inside the menu: Enter / Space must not reach the host's
-      // fold keys, arrows move between items, Esc closes.
+      // fold keys, arrows move between items (one flat order across both
+      // rows), the mnemonics t / l / s / a pick, Esc closes.
       pop.addEventListener(
         'keydown',
         (e) => {
           const i = buttons.indexOf(document.activeElement as HTMLButtonElement);
+          const mnemonic = !e.ctrlKey && !e.metaKey && !e.altKey ? widthMenuKeyItem(e.key) : null;
+          if (mnemonic) {
+            e.preventDefault();
+            e.stopPropagation();
+            const at = kinds.indexOf(mnemonic);
+            const row = rows.flatMap((r) => r.items)[at];
+            if (row) pick(row);
+            return;
+          }
           if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
             buttons[(i + 1 + buttons.length) % buttons.length]?.focus();
           } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
@@ -3226,7 +3882,25 @@ export function createMapView(
       if (hostStyle.position === 'static') host.style.position = 'relative';
       host.appendChild(pop);
       placeWidthPop(pop, clientX, clientY);
+      if (how.keyboard) {
+        const at = checkedKind ? kinds.indexOf(checkedKind) : 0;
+        try {
+          buttons[Math.max(0, at)]?.focus({ preventScroll: true });
+        } catch {
+          /* focus not available */
+        }
+      }
     }
+
+    openWidthPopHook = (key, how) => {
+      const g = nodeEl(key);
+      const pill = g?.querySelector('.map-pill');
+      if (!g || !pill) return false;
+      const r = pill.getBoundingClientRect();
+      const textW = Number(g.getAttribute('data-text-w')) || MIN_COL;
+      showWidthPop(r.right, r.bottom, key, textW, { keyboard: !!how.keyboard });
+      return true;
+    };
 
     let edgeArm: {
       pointerId: number;
@@ -3629,7 +4303,7 @@ export function createMapView(
         // in-map controls guard their own clicks.
         if (
           touchClickGuarded(e.detail, now, nodeTouchTapAt) &&
-          !target?.closest?.('.map-width-pop, .of-map-controls, .map-level-menu, .map-link-pop')
+          !target?.closest?.('.map-width-pop, .of-map-controls, .map-level-menu, .map-link-pop, .map-toast')
         ) {
           swallow = null;
           e.preventDefault();
@@ -3680,7 +4354,7 @@ export function createMapView(
       const target = e.target as Element | null;
       // The resize popover and in-map controls handle their own taps: no
       // preventDefault, capture or double-tap zoom on them.
-      if (target?.closest?.('.map-width-pop, .of-map-controls, .map-level-menu, .map-link-pop')) return;
+      if (target?.closest?.('.map-width-pop, .of-map-controls, .map-level-menu, .map-link-pop, .map-toast')) return;
       dismissWidthPop();
       closeLevelMenu(false);
       const onLabel = !!target?.closest?.('.map-label');
@@ -3703,6 +4377,7 @@ export function createMapView(
           startX: e.clientX,
           startW: edge.textW,
           moved: false,
+          ...dragStart(edge.key),
         };
         onChange?.();
         e.preventDefault();
@@ -3884,6 +4559,7 @@ export function createMapView(
               startX: arm.startX,
               startW: arm.startW,
               moved: true,
+              ...dragStart(arm.key),
             };
             try {
               host.setPointerCapture(e.pointerId);
@@ -3945,8 +4621,9 @@ export function createMapView(
         const drag = widthDrag;
         widthDrag = null;
         if (!drag.moved) {
+          resizingWidthKey = null;
           swallow = armSwallow(performance.now(), e.clientX, e.clientY);
-          showWidthPop(e.clientX, e.clientY, drag.key, drag.startW);
+          showWidthPop(e.clientX, e.clientY, drag.key, drag.startW, { coarse: e.pointerType !== 'mouse' });
           return;
         }
         widthDrag = drag;
@@ -3960,7 +4637,7 @@ export function createMapView(
         const moved = Math.hypot(e.clientX - arm.startX, e.clientY - arm.startY);
         if (moved < 10) {
           swallow = armSwallow(performance.now(), e.clientX, e.clientY);
-          showWidthPop(e.clientX, e.clientY, arm.key, arm.startW);
+          showWidthPop(e.clientX, e.clientY, arm.key, arm.startW, { coarse: true });
         }
       }
       const had = pointers.get(e.pointerId);
@@ -4108,7 +4785,7 @@ export function createMapView(
       const pt = (e as PointerEvent).pointerType || '';
       const act = levelContextAction({
         inMenu: !!t?.closest?.('.map-level-menu'),
-        inOverlay: !!t?.closest?.('.map-link-pop, .map-width-pop, .of-map-controls'),
+        inOverlay: !!t?.closest?.('.map-link-pop, .map-width-pop, .of-map-controls, .map-toast'),
         onHandle: !!g,
         foldable: !!id && !!foldLevelPicker(getDoc(), id),
         menuOpen: packageMenuOpen(),
@@ -4195,7 +4872,7 @@ export function createMapView(
       // A button in the resize popover or in controls a host put inside the
       // map keeps its own Enter / Space (no fold toggle on the way).
       const kt = e.target as Element | null;
-      if (kt?.closest?.('.map-width-pop, .of-map-controls, .map-level-menu, .map-link-pop')) return;
+      if (kt?.closest?.('.map-width-pop, .of-map-controls, .map-level-menu, .map-link-pop, .map-toast')) return;
       // Enter / Space on a focused chip (the #N chip's SVG anchor) opens its popover.
       const chipSel = '.map-note-link-hit, .map-jump-hit, .map-thread-hit, .map-link-hit';
       const chip =
@@ -4205,6 +4882,30 @@ export function createMapView(
         e.preventDefault();
         e.stopPropagation();
         activateNodeHit(chipNode, chip, e);
+        return;
+      }
+      // F7: in view mode Ctrl/⌘+Z and Shift+Ctrl/⌘+Z undo / redo width steps
+      // on the package's own stack. Edit mode, an empty stack or a host that
+      // takes the steps (onWidthStep) leave the keys alone.
+      if (
+        (e.ctrlKey || e.metaKey) &&
+        !e.altKey &&
+        (e.key === 'z' || e.key === 'Z') &&
+        !isEditing() &&
+        mapKeyboardShouldHandle({
+          isActive: isActive(),
+          target: e.target as { tagName?: string; isContentEditable?: boolean } | null,
+          activeElement: document.activeElement,
+          host,
+          modeButton,
+          modifier: false,
+        })
+      ) {
+        const done = e.shiftKey ? redoWidth() : undoWidth();
+        if (done) {
+          e.preventDefault();
+          e.stopPropagation();
+        }
         return;
       }
       if (
@@ -4221,6 +4922,15 @@ export function createMapView(
       }
       const doc = getDoc();
       const focusId = getFocusId();
+
+      // F11: `w` opens the width popover for the selected node.
+      if ((e.key === 'w' || e.key === 'W') && focusId && openWidthPopHook) {
+        if (openWidthMenu(focusId)) {
+          e.preventDefault();
+          e.stopPropagation();
+          return;
+        }
+      }
       const n = focusId ? findNode(doc.nodes, focusId) : null;
       const selected = !!(n && n.id);
 
@@ -4330,6 +5040,10 @@ export function createMapView(
     },
     closeLevelMenu: () => closeLevelMenu(false),
     closeMenus,
+    openWidthMenu,
+    applyWidthPick: (id: string, kind: WidthPickKind) => applyWidthPick(id, kind) !== false,
+    undoWidth,
+    redoWidth,
     applyFoldLevel,
     setWholeMapLevel,
     currentWholeMapLevel: () => currentWholeMapLevel(getDoc()),

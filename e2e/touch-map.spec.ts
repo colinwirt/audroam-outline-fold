@@ -419,7 +419,7 @@ test.describe('only the gesture’s own click is swallowed', () => {
   });
 });
 
-// ── Resize popover (C4/C5) ─────────────────────────────────────────────────
+// ── Resize popover (C4/C5; fit row hold-to-fit P1) ─────────────────────────────────────────────────
 
 async function tapToFocus(c: Ctx, id: string): Promise<void> {
   const pill = await box(c.page, `.map-node[data-id="${id}"] .map-pill`);
@@ -453,10 +453,12 @@ async function expectPopInside(c: Ctx, touch: { x: number; y: number }): Promise
       return { w: r.width, h: r.height };
     }),
   );
-  expect(sizes).toHaveLength(3);
+  // Hold-to-fit P1: the Fit row (Fit text · 1 line · 1 line siblings) over
+  // Slim · Wider · Auto; coarse items ≥ 46×52 (F12).
+  expect(sizes).toHaveLength(6);
   for (const s of sizes) {
-    expect(s.h).toBeGreaterThanOrEqual(44);
-    expect(s.w).toBeGreaterThanOrEqual(44);
+    expect(s.h).toBeGreaterThanOrEqual(52);
+    expect(s.w).toBeGreaterThanOrEqual(46);
   }
 }
 

@@ -24,3 +24,11 @@ Playwright touch harness for the Map (0.2.30+). Not a demo.
   `window.__hops` records `onHop` calls from either view.
 - `?theme=light` puts `of-theme-light` on the page (Map and Outline);
   `jumps.spec.ts` checks the Outline chips in both themes.
+- `widths.md` (`?doc=widths.md`) has long id-less leaves under an id-less
+  parent, a leaf with an authored line break, short leaves that already fit,
+  and one leaf with a stored `w`, for the hold-to-fit P1 specs
+  (`e2e/map-widths.spec.ts`, `e2e/touch-map-widths.spec.ts`). `?readonly=1`
+  passes `canPersistWidths: false` (session-only widths); `?hoststack=1`
+  makes `onWidthStep` take the steps (host-owned undo). `window.__serialize`
+  returns the document text, `__changes` counts `onChange`, `__widthSteps`
+  records `onWidthStep`.

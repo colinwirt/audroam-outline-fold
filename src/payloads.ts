@@ -170,16 +170,20 @@ export function parseLayoutBlock(block: string): {
   const fm: OutlineFrontmatter = {};
   let current: string | null = null;
   let width: number | undefined;
+  let wAuto: string | undefined;
 
   const flush = () => {
     if (!current || width == null) {
       current = null;
       width = undefined;
+      wAuto = undefined;
       return;
     }
-    out[current] = { w: width };
+    // `w-auto` rides on `w` (F5a): without a `w` the entry is ignored, as older parsers do.
+    out[current] = wAuto ? { w: width, wAuto } : { w: width };
     current = null;
     width = undefined;
+    wAuto = undefined;
   };
 
   for (const raw of block.split(/\r?\n/)) {
@@ -190,6 +194,8 @@ export function parseLayoutBlock(block: string): {
         const n = Number(field[1]);
         if (Number.isFinite(n) && n > 0) width = n;
       }
+      const auto = raw.match(/^\s+w-auto\s*:\s*([A-Za-z][\w-]*)\s*$/i);
+      if (auto && current) wAuto = auto[1]!.toLowerCase();
       continue;
     }
     const line = raw.trim();
@@ -353,7 +359,7 @@ export function collectLayouts(nodes: OutlineNode[]): LayoutMap {
   const walk = (list: OutlineNode[]) => {
     for (const n of list) {
       if (n.id && typeof n.layout?.w === 'number' && n.layout.w > 0) {
-        out[n.id] = { w: n.layout.w };
+        out[n.id] = n.layout.wAuto ? { w: n.layout.w, wAuto: n.layout.wAuto } : { w: n.layout.w };
       }
       if (n.children?.length) walk(n.children);
     }
@@ -400,6 +406,8 @@ export function formatLayoutBlock(
     if (typeof w !== 'number' || !(w > 0)) continue;
     lines.push(`${id}:`);
     lines.push(`  w: ${Math.round(w)}`);
+    const mode = layouts[id]?.wAuto;
+    if (mode && /^[A-Za-z][\w-]*$/.test(mode)) lines.push(`  w-auto: ${mode}`);
   }
   if (lines.length === 1) return '';
   lines.push('---');
