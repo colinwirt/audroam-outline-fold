@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Map: fixed spaces between words disappearing at some pill widths
+- At some pill widths (a stored `w`, a hold-to-fit pick such as Fit text, Slim / Wider, or Auto's orphan widening) the space after a carried-over word was dropped, so `ip addr # interface names` painted `ip addr #` / `interfacenames`. The pixel wrap now keeps a space that is not at the line break; spaces at the break still end the line, and the caption text is never changed.
+- Tests: `tests/wrap-space-sweep.test.ts` (width, font size, measurer and wrapCh sweeps, including an inline-code caption at `w: 200`); `e2e/map-wrap-spaces.spec.ts` (fixture `examples/e2e-touch/wrap-spaces.md`) sweeps pill widths in Chromium.
+
 ## 0.2.35 — 2026-10-08
 
 ### Map: pill widths for reading (hold-to-fit P1)

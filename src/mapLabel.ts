@@ -513,6 +513,7 @@ function wrapCharsToWidth(chars: StyledChar[], maxW: number, fontPx: number): St
   const lines: StyledChar[][] = [];
   let cur: StyledChar[] = [];
   let curW = 0;
+  let softBreak = false;
   const push = (cs: StyledChar[]) => {
     while (cs.length && cs[cs.length - 1]!.c === ' ') cs = cs.slice(0, -1);
     lines.push(cs);
@@ -527,8 +528,11 @@ function wrapCharsToWidth(chars: StyledChar[], maxW: number, fontPx: number): St
       push(cur);
       cur = [];
       curW = 0;
+      softBreak = false;
       continue;
     }
+    // The rest of a run of spaces at a soft break belongs to the break.
+    if (softBreak && ch.c === ' ' && cur.length === 0) continue;
     const urlLen = takeUrl(i);
     if (urlLen > 1) {
       let urlW = 0;
@@ -547,6 +551,7 @@ function wrapCharsToWidth(chars: StyledChar[], maxW: number, fontPx: number): St
     }
     const nextW = curW + charWidth(ch, fontPx);
     if (cur.length > 0 && nextW > maxW) {
+      softBreak = true;
       let breakAt = -1;
       for (let j = cur.length - 1; j > 0; j--) {
         if (cur[j]!.c === ' ') {
@@ -558,7 +563,9 @@ function wrapCharsToWidth(chars: StyledChar[], maxW: number, fontPx: number): St
         push(cur.slice(0, breakAt));
         cur = cur.slice(breakAt + 1);
         while (cur.length && cur[0]!.c === ' ') cur = cur.slice(1);
-        if (ch.c !== ' ') cur = cur.concat(ch);
+        // The line broke at an earlier space, so `ch` is not at the break.
+        // A space here separates the carried word from the next one: keep it.
+        if (ch.c !== ' ' || cur.length) cur = cur.concat(ch);
       } else {
         push(cur);
         cur = ch.c === ' ' ? [] : [ch];

@@ -32,3 +32,7 @@ Playwright touch harness for the Map (0.2.30+). Not a demo.
   makes `onWidthStep` take the steps (host-owned undo). `window.__serialize`
   returns the document text, `__changes` counts `onChange`, `__widthSteps`
   records `onWidthStep`.
+- `wrap-spaces.md` (`?doc=wrap-spaces.md`) has the same caption as plain,
+  inline-code (with a stored `w: 200`) and tiny-HTML text for
+  `e2e/map-wrap-spaces.spec.ts`, which sweeps each pill's `w` and checks the
+  painted lines keep the spaces between words.
