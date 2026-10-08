@@ -18,11 +18,12 @@
 <header><h1>e2e touch harness</h1><span id="ver"></span></header>
 <div id="panel"><div id="mapHost" class="map-wrap" aria-label="Map"></div></div>
 <script type="module">
-import { parse, createMapView, mountMapControls } from '../../dist/index.js';
+import { parse, createMapView, mountMapControls, seedDefaultFold } from '../../dist/index.js';
 
 const params = new URLSearchParams(location.search);
 const md = await (await fetch(params.get('doc') || 'fixture.md')).text();
 let doc = parse(md);
+if (params.get('seed') === 'level1') doc = seedDefaultFold(doc);
 const layout = { _source: 'auto-pack', nodes: {} };
 let focusId = params.get('focus') || '';
 const host = document.getElementById('mapHost');
@@ -68,7 +69,7 @@ map.bindGestures();
 map.bindKeyboard({});
 map.paint();
 const container = params.get('controls') === 'outside' ? document.getElementById('panel') : host;
-mountMapControls(map, container);
+mountMapControls(map, container, { levels: params.get('levels') === '1' });
 requestAnimationFrame(() => {
   map.paint();
   map.fit();

@@ -10,3 +10,7 @@ Playwright touch harness for the Map (0.2.30+). Not a demo.
 - `onChange` repaints, like the example hosts.
 - `window.__map`, `__zooms`, `__fits`, `__tasks`, `__notes`, `__threads`, `__setFocus`
   are test hooks used by `e2e/touch-*.spec.ts` and `e2e/map-controls.spec.ts`.
+- `levels.md` (`?doc=levels.md`) is four levels deep for the fold-to-level
+  specs (`e2e/fold-level.spec.ts`, `e2e/touch-fold-level.spec.ts`).
+  `?seed=level1` runs `seedDefaultFold` before the first paint; `?levels=1`
+  adds the toolbar Levels group (`mountMapControls(..., { levels: true })`).

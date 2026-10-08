@@ -1,0 +1,24 @@
+- Hillcrest library network <id:root>
+  - Branches <id:branches>
+    - Riverside branch <id:riverside>
+      - Opening hours <id:rhours>
+        - Weekdays 9–6 <id:rwk>
+        - Saturday 10–2 <id:rsat>
+      - Services <id:rserv>
+        - Study rooms <id:rstudy>
+        - Printing <id:rprint>
+      - Staff on roster <id:rstaff>
+    - Hill Street branch <id:hill>
+      - Opening hours <id:hhours>
+        - Weekdays 9–5 <id:hwk>
+      - Services <id:hserv>
+        - Home delivery <id:hdel>
+  - Programs <id:programs>
+    - Story time <id:story>
+      - Toddlers · Tue <id:tod>
+      - Pre-school · Thu <id:pre>
+    - Code club <id:code>
+      - Python next steps <id:py>
+  - Facilities <id:fac>
+    - Roof repair · East Hill <id:roof>
+    - New shelving · North <id:shelf>
