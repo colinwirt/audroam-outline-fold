@@ -13,6 +13,21 @@ test('touch: rows are 44 px and a tap on the hop row selects its node', async ({
   const hs = await page.locator('.map-link-item').evaluateAll((els) => els.map((e) => (e as HTMLElement).offsetHeight));
   expect(hs).toHaveLength(3);
   for (const h of hs) expect(h).toBeGreaterThanOrEqual(44);
+  // A one-finger pan keeps it open and it moves with the globe.
+  const h = await box(page, '#mapHost');
+  const before = await box(page, '.map-link-pop');
+  await t.start([{ x: h.x + 30, y: h.y + h.h - 40 }]);
+  for (let i = 1; i <= 8; i++) {
+    await t.move([{ x: h.x + 30 + i * 5, y: h.y + h.h - 40 - i * 4 }]);
+    await page.waitForTimeout(16);
+  }
+  await t.end();
+  await page.waitForTimeout(700);
+  await expect(page.locator('.map-link-pop')).toHaveCount(1);
+  const after = await box(page, '.map-link-pop');
+  const g2 = await box(page, '.map-node[data-id="multi"] .map-link-hit');
+  expect(Math.abs(after.x - before.x) + Math.abs(after.y - before.y)).toBeGreaterThan(10);
+  expect(after.x - (g2.x + g2.w)).toBeCloseTo(8, 0);
   const row = centre(await box(page, '.map-link-item[data-hop-id="plants"]'));
   await t.tap(row.x, row.y);
   await expect(page.locator('.map-link-pop')).toHaveCount(0);

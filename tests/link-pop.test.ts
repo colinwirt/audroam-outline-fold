@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { captionLinks, linkPopWhere } from '../src/index.js';
+import { captionLinks, linkPopWhere, placeLinkPop } from '../src/index.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const mapSrc = readFileSync(join(here, '../src/mapView.ts'), 'utf8');
@@ -61,6 +61,32 @@ describe('linkPopWhere', () => {
   });
 });
 
+describe('placeLinkPop', () => {
+  const panel = { w: 800, h: 500 };
+  const menu = { w: 160, h: 46 };
+  const anchor = { x: 400, y: 200, w: 20, h: 20 };
+
+  it('right of the globe, 8 px gap, centred on it; no pan when it fits', () => {
+    expect(placeLinkPop({ anchor, panel, menu })).toEqual({ left: 428, top: 187, shift: { x: 0, y: 0 } });
+  });
+
+  it('past the right edge: pans left just enough for an 8 px margin, never flips', () => {
+    const r = placeLinkPop({ anchor: { ...anchor, x: 700 }, panel, menu });
+    expect(r.left).toBe(728);
+    expect(r.shift).toEqual({ x: 800 - 8 - (728 + 160), y: 0 });
+  });
+
+  it('past the top or bottom: pans vertically, 8 px margin', () => {
+    expect(placeLinkPop({ anchor: { ...anchor, y: -5 }, panel, menu }).shift).toEqual({ x: 0, y: 8 - (-5 + 10 - 23) });
+    expect(placeLinkPop({ anchor: { ...anchor, y: 480 }, panel, menu }).shift).toEqual({ x: 0, y: 500 - 8 - (480 + 10 + 23) });
+  });
+
+  it('a globe left of the map pans right; a popover bigger than the map keeps its left edge in', () => {
+    expect(placeLinkPop({ anchor: { ...anchor, x: -40 }, panel, menu }).shift.x).toBe(8 - (-40 + 28));
+    expect(placeLinkPop({ anchor: { ...anchor, x: 100 }, panel: { w: 150, h: 500 }, menu }).shift.x).toBe(8 - 128);
+  });
+});
+
 describe('link popover source', () => {
   it('no inline paint: classes from outline-fold.css, only left/top set', () => {
     const show = block('showLinkPop');
@@ -70,9 +96,18 @@ describe('link popover source', () => {
       expect(b).not.toMatch(/monospace/);
       expect(b).not.toMatch(/style\.(opacity|transition|background|color|font)/);
     }
-    expect(block('positionLinkPop')).toMatch(/placeLevelMenu\(/);
+    expect(block('positionLinkPop')).toMatch(/placeLinkPop\(/);
     expect(dismiss).toMatch(/is-closing/);
     expect(dismiss).toMatch(/setTimeout\(\(\) => m\.el\.remove\(\), 180\)/);
+    // Off the edge: pan the camera (zoom unchanged), smooth unless reduced motion.
+    expect(show).toMatch(/animateCamTo\(\{ x: cam\.x \+ shift\.x, y: cam\.y \+ shift\.y, k: cam\.k \}/);
+  });
+
+  it('a pan keeps it open: no dismiss on pan start or map pointerdown; taps without a drag close it', () => {
+    expect(block('startPan')).not.toMatch(/dismissLinkPop/);
+    expect(mapSrc).not.toMatch(/closest\?\.\('\.map-link-hit, \.map-link-pop'\)\) dismissLinkPop/);
+    const show = block('showLinkPop');
+    expect(show).toMatch(/'pointerup'[\s\S]*d\.moved[\s\S]*dismissLinkPop\(false\)/);
   });
 
   it('menu pattern: role=menu, menuitem rows, external links in a new tab with noopener', () => {

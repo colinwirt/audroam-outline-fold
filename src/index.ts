@@ -207,7 +207,14 @@ export {
   type WholeMapLevel,
 } from './foldLevelMenu.js';
 
-export { linkPopWhere, renderLinkPop, type LinkPopView } from './linkPop.js';
+export {
+  linkPopWhere,
+  renderLinkPop,
+  placeLinkPop,
+  LINK_POP_GAP,
+  LINK_POP_INSET,
+  type LinkPopView,
+} from './linkPop.js';
 
 export {
   savedViewStorageKey,

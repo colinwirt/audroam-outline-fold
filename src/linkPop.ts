@@ -62,6 +62,47 @@ export function linkPopWhere(link: CaptionLink, base?: string): string {
   return where;
 }
 
+type Box = { x: number; y: number; w: number; h: number };
+
+/** Gap between the globe and the popover (px). */
+export const LINK_POP_GAP = 8;
+/** The popover stays this far inside the map (px). */
+export const LINK_POP_INSET = 8;
+
+/**
+ * Popover placement in host-local px (0.2.33): to the right of the globe
+ * with an 8 px gap, vertically centred on it. Never flipped or clamped: it
+ * moves with the globe. `shift` is the camera pan (screen px, zoom unchanged)
+ * that brings the whole popover inside the map with an `inset` margin; zero
+ * when it already fits. A popover bigger than the map keeps its left and top
+ * edges in.
+ */
+export function placeLinkPop(opts: {
+  anchor: Box;
+  panel: { w: number; h: number };
+  menu: { w: number; h: number };
+  gap?: number;
+  inset?: number;
+}): { left: number; top: number; shift: { x: number; y: number } } {
+  const gap = opts.gap ?? LINK_POP_GAP;
+  const inset = opts.inset ?? LINK_POP_INSET;
+  const { anchor, panel, menu } = opts;
+  const left = anchor.x + anchor.w + gap;
+  const top = anchor.y + anchor.h / 2 - menu.h / 2;
+  const fit = (start: number, size: number, span: number): number => {
+    if (start < inset) return inset - start;
+    if (start + size > span - inset) return Math.max(inset - start, span - inset - (start + size));
+    return 0;
+  };
+  // Keep the globe in view too: the popover's left edge sits right of it.
+  const shift = { x: fit(left, menu.w, panel.w), y: fit(top, menu.h, panel.h) };
+  return {
+    left: Math.round(left),
+    top: Math.round(top),
+    shift: { x: Math.round(shift.x), y: Math.round(shift.y) },
+  };
+}
+
 export type LinkPopView = { el: HTMLElement; items: HTMLAnchorElement[] };
 
 /**

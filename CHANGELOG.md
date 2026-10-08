@@ -7,9 +7,10 @@
 - New shared tokens `--map-menu-bg`, `--map-menu-stroke`, `--map-menu-hover`, `--map-menu-shadow` (dark defaults, the values the level menu already used); the level menu reads them too, so it looks the same. Neither has light-theme values yet.
 - Each link is a menu row: label in the text colour, no underline, and a muted destination after it. External links show the host (`example.org`, no `www.`); same-site links show the file or folder they open (`?doc=../potholes/potholes.md` → `potholes.md`); a hop link (`#id:…`) shows only its label. Nothing is shown when the label already says it.
 - `role="menu"` with `menuitem` rows (was `role="dialog"`). The first row gets focus on open; arrows, `Home` / `End`, `Enter` / `Space`; `Esc` or `Tab` closes and focus goes back to the map.
-- Placed like the level menu: inside the map host, centred above the globe, flipped below when there is no room, 8 px inside the panel, and it follows pan and zoom. Was fixed to the page below the globe's left edge.
-- Unchanged: hop links select their node; external links open in a new tab with `rel="noopener noreferrer"`; an outside click (now also outside the map) or a pan closes it; 180 ms fade (class `is-closing`; none with reduced motion). An external link now also closes the menu when followed.
-- New exports: `linkPopWhere`, `renderLinkPop`.
+- Placed inside the map host, to the right of the globe with an 8 px gap and centred on it, so it never covers the pill's caption or the pill above. When that would cross the map's right, top or bottom edge, the camera pans just enough to bring it 8 px inside (smooth, immediate with reduced motion, zoom unchanged). It moves with the globe through pan and zoom. Was fixed to the page below the globe's left edge. New `placeLinkPop`, `LINK_POP_GAP`, `LINK_POP_INSET`.
+- Closing: a tap or click outside it without a drag (anywhere on the page), `Esc`, `Tab`, or following a link; the globe's node folding away also closes it. A pan, pinch or wheel zoom keeps it open (it used to close on pan), and so does a drag that starts outside it. 180 ms fade (class `is-closing`; none with reduced motion).
+- Unchanged: hop links select their node; external links open in a new tab with `rel="noopener noreferrer"`.
+- New exports: `linkPopWhere`, `renderLinkPop`, `placeLinkPop`.
 - Tests: `tests/link-pop.test.ts`, `e2e/link-pop.spec.ts` and `e2e/touch-link-pop.spec.ts` (fixture `examples/e2e-touch/links.md`).
 
 ## 0.2.32 — 2026-10-08

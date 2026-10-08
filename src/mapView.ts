@@ -9,7 +9,7 @@
  * Sealed nodes: omitted until unlocked (no gray stubs) — caller filters doc if needed.
  */
 import { captionLinks, captionWithoutLinks } from './captionRich.js';
-import { renderLinkPop } from './linkPop.js';
+import { placeLinkPop, renderLinkPop } from './linkPop.js';
 import {
   toggleFold,
   isCollapsed,
@@ -1462,23 +1462,23 @@ export function createMapView(
     return { x: r.left - hr.left, y: r.top - hr.top, w: r.width, h: r.height };
   }
 
-  /** Same placement as the level menu: centred above the globe, flip below, 8 px inside. */
-  function positionLinkPop(): void {
+  /** Right of the globe, centred on it; returns the pan that would fit it. */
+  function positionLinkPop(): { x: number; y: number } | null {
     const m = linkPop;
-    if (!m) return;
+    if (!m) return null;
     const anchor = linkHitRect(m.id);
     if (!anchor) {
       dismissLinkPop();
-      return;
+      return null;
     }
-    const pos = placeLevelMenu({
+    const pos = placeLinkPop({
       anchor,
       panel: hostViewport(),
       menu: { w: m.el.offsetWidth, h: m.el.offsetHeight },
     });
     m.el.style.left = `${pos.left}px`;
     m.el.style.top = `${pos.top}px`;
-    m.el.dataset.below = pos.below ? 'true' : 'false';
+    return pos.shift;
   }
 
   function focusLinkItem(index: number): void {
@@ -1578,17 +1578,51 @@ export function createMapView(
     );
     if (getComputedStyle(host).position === 'static') host.style.position = 'relative';
     host.appendChild(view.el);
-    positionLinkPop();
+    const shift = positionLinkPop();
+    if (shift && (shift.x || shift.y)) {
+      // Past the map edge: pan just enough (8 px margin), zoom unchanged.
+      // animateCamTo jumps when reduced motion is on.
+      animateCamTo({ x: cam.x + shift.x, y: cam.y + shift.y, k: cam.k }, 200);
+    }
+    // Close on a tap or click outside it (here or anywhere on the page) that
+    // did not drag. A pan, pinch or wheel zoom keeps it open; it follows the
+    // globe through applyCam.
+    const downs = new Map<number, { x: number; y: number; slop: number; moved: boolean }>();
+    const inPop = (t: EventTarget | null) =>
+      !!(t as Element | null)?.closest?.('.map-link-pop, .map-link-hit');
     document.addEventListener(
       'pointerdown',
       (e) => {
-        const t = e.target as Node | null;
-        // Inside the host the map's own pointerdown decides.
-        if (t && host.contains(t)) return;
+        if (inPop(e.target)) return;
+        const type = e.pointerType || 'mouse';
+        downs.set(e.pointerId, { x: e.clientX, y: e.clientY, slop: type === 'mouse' ? 4 : 10, moved: false });
+        // A second finger is a pinch: none of these is a tap.
+        if (downs.size > 1) for (const d of downs.values()) d.moved = true;
+      },
+      { capture: true, signal: sig },
+    );
+    document.addEventListener(
+      'pointermove',
+      (e) => {
+        const d = downs.get(e.pointerId);
+        if (d && Math.hypot(e.clientX - d.x, e.clientY - d.y) > d.slop) d.moved = true;
+      },
+      { capture: true, signal: sig },
+    );
+    document.addEventListener(
+      'pointerup',
+      (e) => {
+        const d = downs.get(e.pointerId);
+        downs.delete(e.pointerId);
+        if (!d || d.moved || inPop(e.target)) return;
         dismissLinkPop(false);
       },
       { capture: true, signal: sig },
     );
+    document.addEventListener('pointercancel', (e) => downs.delete(e.pointerId), {
+      capture: true,
+      signal: sig,
+    });
     document.addEventListener(
       'keydown',
       (e) => {
@@ -3288,7 +3322,6 @@ export function createMapView(
     }
 
     function startPan(p: Pt): void {
-      dismissLinkPop();
       clearTouchSelect();
       pan = anchorPan(cam, p);
       pinch = null;
@@ -3428,7 +3461,6 @@ export function createMapView(
       if (target?.closest?.('.map-width-pop, .of-map-controls, .map-level-menu, .map-link-pop')) return;
       dismissWidthPop();
       closeLevelMenu(false);
-      if (!target?.closest?.('.map-link-hit, .map-link-pop')) dismissLinkPop();
       const onLabel = !!target?.closest?.('.map-label');
       const type = e.pointerType || 'mouse';
       const barrel = type === 'pen' && (e.buttons & 2) !== 0;
