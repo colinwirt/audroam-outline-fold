@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.2.32 — unreleased
+## 0.2.32 — 2026-10-08
 
 ### Map handle and connectors (phases 2 and 3)
 - `--map-handle-bg` (default `transparent`) fills the − ring. The + glyph uses `--map-handle-glyph-on-gold` (`#0a1f28`), so it stays opaque when `--map-bg` has alpha.
