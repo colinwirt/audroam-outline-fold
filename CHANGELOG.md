@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.2.33 — unreleased
+
+### Map link popover (globe badge): restyle
+- Styled by classes in `outline-fold.css` instead of inline `cssText`, in the fold-level menu's language: same surface, border, radius, shadow and 14 px `--of-font` (was 13 px monospace), 32 px rows (44 px on touch), hover and focus highlight, gold focus ring.
+- New shared tokens `--map-menu-bg`, `--map-menu-stroke`, `--map-menu-hover`, `--map-menu-shadow` (dark defaults, the values the level menu already used); the level menu reads them too, so it looks the same. Neither has light-theme values yet.
+- Each link is a menu row: label in the text colour, no underline, and a muted destination after it. External links show the host (`example.org`, no `www.`); same-site links show the file or folder they open (`?doc=../potholes/potholes.md` → `potholes.md`); a hop link (`#id:…`) shows only its label. Nothing is shown when the label already says it.
+- `role="menu"` with `menuitem` rows (was `role="dialog"`). The first row gets focus on open; arrows, `Home` / `End`, `Enter` / `Space`; `Esc` or `Tab` closes and focus goes back to the map.
+- Placed like the level menu: inside the map host, centred above the globe, flipped below when there is no room, 8 px inside the panel, and it follows pan and zoom. Was fixed to the page below the globe's left edge.
+- Unchanged: hop links select their node; external links open in a new tab with `rel="noopener noreferrer"`; an outside click (now also outside the map) or a pan closes it; 180 ms fade (class `is-closing`; none with reduced motion). An external link now also closes the menu when followed.
+- New exports: `linkPopWhere`, `renderLinkPop`.
+- Tests: `tests/link-pop.test.ts`, `e2e/link-pop.spec.ts` and `e2e/touch-link-pop.spec.ts` (fixture `examples/e2e-touch/links.md`).
+
 ## 0.2.32 — 2026-10-08
 
 ### Map handle and connectors (phases 2 and 3)
