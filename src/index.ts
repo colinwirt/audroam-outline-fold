@@ -163,6 +163,22 @@ export {
 } from './mapSeed.js';
 
 export {
+  foldLevelPicker,
+  currentFoldLevel,
+  foldLevelNeedsConfirm,
+  foldChangeCount,
+  foldLevelSkipsAnimation,
+  foldLevelAnnouncement,
+  wholeMapAnnouncement,
+  FOLD_LEVEL_KEYS,
+  LEVEL_ALL_CONFIRM_NODES,
+  LEVEL_NO_FLIP_CHANGES,
+  type FoldLevelKey,
+  type FoldLevelItem,
+  type FoldLevelPicker,
+} from './foldLevel.js';
+
+export {
   mapResumeStorageKey,
   pagesDocKey,
   loadMapResume,
