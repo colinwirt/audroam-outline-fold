@@ -231,8 +231,77 @@ test.describe('Map fold handle and connectors (0.2.31)', () => {
       expect(h.hit).toEqual({ w: 32, h: 32, cx: h.cx });
     }
     expect(r.folded.expanded).toBe(false);
-    expect(r.root.circleFill).toBe('none');
+    // 0.2.32: the − fill is --map-handle-bg, transparent by default.
+    expect(['none', 'transparent', 'rgba(0, 0, 0, 0)']).toContain(r.root.circleFill);
     expect(r.edgeOpacity).toEqual(['1']);
     expect(r.stemOpacity).toEqual(['1']);
+  });
+});
+
+test.describe('Map handle hooks, halo, casing and light tokens (0.2.32)', () => {
+  const LIGHTHOUSE = 'examples/viewer/?doc=../lighthouse/lighthouse.md';
+
+  test('halo under the − only, casing only when the host sets it, light tokens opt-in', async ({ page }) => {
+    await page.goto(LIGHTHOUSE);
+    await page.locator('#btnMap').click();
+    await expect(page.locator('#mapHost .map-node').first()).toBeVisible();
+    await settle(page);
+
+    const before = await page.evaluate(() => {
+      const host = document.querySelector('#mapHost')!;
+      const root = host.querySelector('.map-node')!;
+      const kids = [...root.children].map((e) => e.getAttribute('class') || e.tagName);
+      return {
+        halos: host.querySelectorAll('.map-fold-halo').length,
+        expanded: host.querySelectorAll('.map-fold-indicator.is-expanded').length,
+        haloOnFolded: host.querySelectorAll('.map-node.collapsed > .map-fold-halo').length,
+        order: kids.filter((c) => /map-fold-(halo|stem|indicator)/.test(c)),
+        casings: host.querySelectorAll('.map-edge-casing, .map-fold-stem-casing').length,
+        plusGlyph: getComputedStyle(host.querySelector('.map-fold-indicator:not(.is-expanded) path')!).stroke,
+      };
+    });
+    expect(before.halos).toBe(before.expanded);
+    expect(before.haloOnFolded).toBe(0);
+    expect(before.order).toEqual(['map-fold-halo', 'map-fold-stem', 'map-fold-indicator is-expanded']);
+    expect(before.casings).toBe(0);
+    expect(before.plusGlyph).toBe('rgb(10, 31, 40)');
+
+    // A host that sets --connector-casing gets one casing per edge and stem, under the lines.
+    await page.evaluate(() => {
+      (document.querySelector('#mapHost') as HTMLElement).style.setProperty('--connector-casing', 'rgba(6, 18, 24, 0.85)');
+    });
+    await page.locator('#mapHost .map-node.collapsed .map-fold-hit').first().click();
+    await settle(page);
+    const cased = await page.evaluate(() => {
+      const host = document.querySelector('#mapHost')!;
+      const vp = host.querySelector('#mapViewport')!;
+      const cls = [...vp.children].map((e) => e.getAttribute('class'));
+      return {
+        edges: host.querySelectorAll('.map-edge').length,
+        edgeCasings: host.querySelectorAll('.map-edge-casing').length,
+        stems: host.querySelectorAll('.map-fold-stem').length,
+        stemCasings: host.querySelectorAll('.map-fold-stem-casing').length,
+        casingsFirst: cls.lastIndexOf('map-edge-casing') < cls.indexOf('map-edge'),
+        casingStroke: getComputedStyle(host.querySelector('.map-edge-casing')!).stroke,
+        casingWidth: getComputedStyle(host.querySelector('.map-edge-casing')!).strokeWidth,
+      };
+    });
+    expect(cased.edgeCasings).toBe(cased.edges);
+    expect(cased.stemCasings).toBe(cased.stems);
+    expect(cased.casingsFirst).toBe(true);
+    expect(cased.casingStroke).toBe('rgba(6, 18, 24, 0.85)');
+    expect(cased.casingWidth).toBe('3.2px');
+
+    const light = await page.evaluate(() => {
+      const host = document.querySelector('#mapHost') as HTMLElement;
+      host.classList.add('of-theme-light');
+      const cs = getComputedStyle(host);
+      return {
+        bg: cs.getPropertyValue('--map-bg').trim(),
+        gold: cs.getPropertyValue('--gold').trim(),
+        glyph: getComputedStyle(host.querySelector('.map-fold-indicator:not(.is-expanded) path')!).stroke,
+      };
+    });
+    expect(light).toEqual({ bg: '#f3f6f9', gold: '#9a7400', glyph: 'rgb(255, 255, 255)' });
   });
 });

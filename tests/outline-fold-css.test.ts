@@ -9,7 +9,7 @@ const css = readFileSync(
 );
 
 describe('outline-fold.css', () => {
-  it('paints a collapsed fold circle solid gold and an expanded circle see-through (0.2.31)', () => {
+  it('paints a collapsed fold circle solid gold and an expanded circle see-through unless --map-handle-bg is set (0.2.32)', () => {
     const collapsed = css.slice(
       css.indexOf('.map-fold-indicator circle'),
       css.indexOf('.map-fold-indicator path'),
@@ -19,7 +19,7 @@ describe('outline-fold.css', () => {
       css.indexOf('.map-fold-indicator.is-expanded path'),
     );
     expect(collapsed).toContain('fill: var(--gold)');
-    expect(expanded).toContain('fill: none');
+    expect(expanded).toContain('fill: var(--map-handle-bg, transparent)');
     expect(expanded).not.toContain('#000');
   });
 

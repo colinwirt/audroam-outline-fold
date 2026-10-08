@@ -139,7 +139,7 @@ describe('no black disc behind the − (H3)', () => {
     ]) {
       expect(cssRule(sel)).not.toMatch(black);
     }
-    expect(cssRule('.map-fold-indicator.is-expanded circle')).toContain('fill: none;');
+    expect(cssRule('.map-fold-indicator.is-expanded circle')).toContain('fill: var(--map-handle-bg, transparent);');
   });
 });
 

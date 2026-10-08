@@ -290,6 +290,22 @@ const packed = autoPackPositions(doc, {
 | `overlayResumeOnLayout` / `isResumeStale` / `softResetResume` | Resume overlays authored sidecar; stale soft-reset |
 | `toggleTask` / `onTaskToggle` / `resolveTask` | Task SVG lead; host owns persist; `<action:…>` on open→done; `<thread:…>` chip |
 
+### Map paint tokens (0.2.32)
+
+Set these on the map host or an ancestor. Defaults are the dark theme.
+
+| Token | Default | Role |
+|-------|---------|------|
+| `--map-bg` | `#0a1f28` | Canvas |
+| `--connector` | `#9bb0d0` | Edges and stems, no opacity. Keep ≥ 3:1 against the canvas. |
+| `--gold` | `#c9a227` | Fold handle ring and + disc |
+| `--map-handle-glyph-on-gold` | `#0a1f28` | The + glyph on the gold disc |
+| `--map-handle-bg` | `transparent` | Fill inside the − ring. Set a solid colour only if you know the canvas. |
+| `--map-halo` | `--map-bg` at 85% | Thin casing under the − ring and dash, so it reads on a pattern or image |
+| `--connector-casing` | `transparent` | When set, every edge and stem gets a 3.2 px casing underneath. Doubles the edge DOM; leave unset above ~2,000 edges. |
+
+`class="of-theme-light"` on the host (or an ancestor) switches to the light tokens: `--map-bg #f3f6f9`, `--connector #62778f`, `--gold #9a7400`, `--map-handle-glyph-on-gold #ffffff`. Pill and text colours are not part of the light set yet.
+
 **Click vs fold:** text/label (and non-handle chrome) → select only; circle-+ → fold; task SVG → `onTaskToggle`. Space stays fold.
 
 Layout sidecar discovery (`resolveLayout` / frontmatter `layoutSidecar:`) stays in [`examples/_shared/layoutSidecar.js`](./examples/_shared/layoutSidecar.js) — fetch-oriented Pages helper, not a package export. `examples/_shared/mapView.js` **re-exports** the package Map so existing demo imports keep working.

@@ -14,6 +14,22 @@
   --connector: #9bb0d0;
   --pill-fill: #0c222c;
   --pill-stroke: #7a9bb0;
+  /* Fold handle and connector hooks (0.2.32). --map-halo is not set here: its
+     default follows the nearest --map-bg (see .map-fold-halo). */
+  --map-handle-bg: transparent;
+  --map-handle-glyph-on-gold: #0a1f28;
+  --connector-casing: transparent;
+}
+
+/* Light theme tokens, opt-in: class="of-theme-light" on the map host or an
+   ancestor. Contrast targets: connector and gold >= 3:1 on --map-bg. */
+.of-theme-light {
+  --map-bg: #f3f6f9;
+  --connector: #62778f;
+  --gold: #9a7400;
+  --map-handle-glyph-on-gold: #ffffff;
+  --map-handle-bg: transparent;
+  --connector-casing: transparent;
 }
 
 .of-outline,
@@ -270,13 +286,14 @@
 }
 .map-fold-indicator path {
   fill: none;
-  stroke: var(--map-bg);
+  stroke: var(--map-handle-glyph-on-gold, #0a1f28);
   stroke-width: 1.8;
   stroke-linecap: round;
 }
-/* See-through: connectors start outside the ring, so nothing runs behind it. */
+/* See-through by default: connectors start outside the ring, so nothing runs
+   behind it. A host that wants a solid disc sets --map-handle-bg. */
 .map-fold-indicator.is-expanded circle {
-  fill: none;
+  fill: var(--map-handle-bg, transparent);
   stroke: var(--gold);
   stroke-width: 1.6;
 }
@@ -290,6 +307,31 @@
   stroke-width: 1.4;
 }
 .map-fold-stem {
+  pointer-events: none;
+}
+/* Halo under the − ring and dash: invisible on a plain canvas. */
+.map-fold-halo {
+  pointer-events: none;
+}
+.map-fold-halo circle,
+.map-fold-halo path {
+  fill: none;
+  stroke: var(--map-halo, color-mix(in srgb, var(--map-bg) 85%, transparent));
+  stroke-linecap: round;
+}
+.map-fold-halo circle {
+  stroke-width: 4.6;
+}
+.map-fold-halo path {
+  stroke-width: 4.4;
+}
+/* Optional casing under connectors and stems: drawn only when the host sets
+   --connector-casing (createMapView reads it at paint). */
+.map-edge-casing,
+.map-fold-stem-casing {
+  fill: none;
+  stroke: var(--connector-casing, transparent);
+  stroke-width: 3.2;
   pointer-events: none;
 }
 

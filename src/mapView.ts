@@ -401,14 +401,74 @@ export function foldHandleSvg(
         </g>`;
 }
 
-/** Stem then handle, in paint order, so the handle covers the stem's end. */
+/** Halo ring casing: 1.5 px each side of the 1.6 px gold ring. */
+export const FOLD_HALO_RING_W = 4.6;
+/** Halo casing under the − dash. */
+export const FOLD_HALO_DASH_W = 4.4;
+/** Casing stroke under each connector and stem when `--connector-casing` is set. */
+export const CONNECTOR_CASING_W = 3.2;
+
+/**
+ * Halo under the expanded handle's ring and dash, in `--map-halo` (default:
+ * the canvas colour at 85%). Invisible on a plain canvas; a thin outline on a
+ * pattern or image. The folded + is solid gold and gets none.
+ */
+export function foldHaloSvg(boxRight: number, y: number, foldSlot: number = FOLD_SLOT): string {
+  const { cx, r } = foldHandleGeometry(boxRight, foldSlot);
+  return `<g class="map-fold-halo" transform="translate(${cx} ${y})" aria-hidden="true" pointer-events="none">
+          <circle r="${r}" fill="none" stroke-width="${FOLD_HALO_RING_W}"/>
+          <path d="M -4 0 H 4" fill="none" stroke-width="${FOLD_HALO_DASH_W}"/>
+        </g>`;
+}
+
+/** Casing stroke drawn under the stem when the host set `--connector-casing`. */
+export function foldStemCasingSvg(boxRight: number, y: number, foldSlot: number = FOLD_SLOT): string {
+  const { innerRim } = foldHandleGeometry(boxRight, foldSlot);
+  return `<path class="map-fold-stem-casing" d="M ${boxRight} ${y} H ${innerRim}" fill="none" stroke-width="${CONNECTOR_CASING_W}" pointer-events="none"/>`;
+}
+
+export type FoldChromeOptions = {
+  /** Draw a casing under the stem (`--connector-casing` is set). */
+  casing?: boolean;
+};
+
+/**
+ * Fold chrome in paint order: halo (expanded only), stem casing (opt-in),
+ * stem, handle. The halo goes under the stem so the stub stays 8 px.
+ */
 export function foldChromeSvg(
   boxRight: number,
   y: number,
   collapsed: boolean,
   foldSlot: number = FOLD_SLOT,
+  opts: FoldChromeOptions = {},
 ): string {
-  return foldStemSvg(boxRight, y, foldSlot) + '\n      ' + foldHandleSvg(boxRight, y, collapsed, foldSlot);
+  const parts: string[] = [];
+  if (!collapsed) parts.push(foldHaloSvg(boxRight, y, foldSlot));
+  if (opts.casing) parts.push(foldStemCasingSvg(boxRight, y, foldSlot));
+  parts.push(foldStemSvg(boxRight, y, foldSlot));
+  parts.push(foldHandleSvg(boxRight, y, collapsed, foldSlot));
+  return parts.join('\n      ');
+}
+
+/**
+ * Whether a `--connector-casing` value asks for a casing. Empty, `transparent`,
+ * `none` and fully transparent colours do not.
+ */
+export function isConnectorCasingSet(value: string | null | undefined): boolean {
+  const v = String(value ?? '').trim().toLowerCase().replace(/\s+/g, '');
+  if (!v || v === 'transparent' || v === 'none' || v === 'initial' || v === 'unset') return false;
+  // rgba(r,g,b,0) / rgb(r g b / 0) / hsla(...,0)
+  const alpha = /^(?:rgba?|hsla?)\(.*[,/](0(?:\.0+)?|0?\.0+|0%)\)$/.exec(v);
+  if (alpha) return false;
+  // #rgba / #rrggbbaa with zero alpha
+  if (/^#[0-9a-f]{3}0$/.test(v) || /^#[0-9a-f]{6}00$/.test(v)) return false;
+  return true;
+}
+
+/** Casing paths for all edges, drawn before any edge line. */
+export function mapEdgeCasingSvg(d: string): string {
+  return `<path class="map-edge-casing" d="${d}"/>`;
 }
 
 /** Connector from a parent pill to one child. Positions are pill centres. */
@@ -1588,7 +1648,7 @@ export function createMapView(
     });
     if (!movers.length) return;
 
-    host.querySelectorAll<SVGElement>('.map-edge').forEach((el) => {
+    host.querySelectorAll<SVGElement>('.map-edge, .map-edge-casing').forEach((el) => {
       el.style.transition = 'none';
       el.style.opacity = '0.25';
     });
@@ -1599,7 +1659,7 @@ export function createMapView(
           g.style.transition = `transform ${ANIM_MS}ms ease`;
           g.style.transform = '';
         });
-        host.querySelectorAll<SVGElement>('.map-edge').forEach((el) => {
+        host.querySelectorAll<SVGElement>('.map-edge, .map-edge-casing').forEach((el) => {
           el.style.transition = `opacity ${ANIM_MS}ms ease`;
           el.style.opacity = '';
         });
@@ -1608,7 +1668,7 @@ export function createMapView(
             g.style.transition = '';
             g.style.transform = '';
           });
-          host.querySelectorAll<SVGElement>('.map-edge').forEach((el) => {
+          host.querySelectorAll<SVGElement>('.map-edge, .map-edge-casing').forEach((el) => {
             el.style.transition = '';
             el.style.opacity = '';
           });
@@ -1783,6 +1843,16 @@ export function createMapView(
     }
   }
 
+  /** H8: read --connector-casing once per paint. */
+  function connectorCasingOn(): boolean {
+    if (typeof getComputedStyle !== 'function') return false;
+    try {
+      return isConnectorCasingSet(getComputedStyle(host).getPropertyValue('--connector-casing'));
+    } catch {
+      return false;
+    }
+  }
+
   function paint(): void {
     invalidateContentUnion();
     // Boolean snapshot BEFORE the DOM rebuild (an element ref would be detached
@@ -1903,7 +1973,11 @@ export function createMapView(
     }
     for (const root of doc.nodes) walk(root);
 
-    const edgeSvg = edges.map((e) => mapEdgeSvg(e.d)).join('');
+    // H8: when the host sets --connector-casing, every casing goes under every line.
+    const casing = connectorCasingOn();
+    const edgeSvg =
+      (casing ? edges.map((e) => mapEdgeCasingSvg(e.d)).join('') : '') +
+      edges.map((e) => mapEdgeSvg(e.d)).join('');
     const nodeSvg = nodes
       .map(
         ({
@@ -1954,7 +2028,7 @@ export function createMapView(
           const foldHit = foldable
             ? `<rect class="map-fold-hit" x="${foldCx - 16}" y="${pos.y - 16}" width="32" height="32" fill="transparent" cursor="pointer"/>`
             : '';
-          const foldChrome = foldable ? foldChromeSvg(boxRight, pos.y, !!col, foldSlot) : '';
+          const foldChrome = foldable ? foldChromeSvg(boxRight, pos.y, !!col, foldSlot, { casing }) : '';
           const taskHit =
             task != null
               ? `<rect class="map-task-hit" x="${x + 2}" y="${Math.min(y, pos.y - 22)}" width="${Math.max(taskLead - 2, TASK_BOX)}" height="${Math.max(h, 44)}" fill="transparent" cursor="pointer" role="checkbox" aria-checked="${task === 'done' ? 'true' : task === 'pending' ? 'mixed' : 'false'}"/>`
