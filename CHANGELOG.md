@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.2.33 — unreleased
+## 0.2.33 — 2026-10-08
 
 ### Map link popover (globe badge): restyle
 - Styled by classes in `outline-fold.css` instead of inline `cssText`, in the fold-level menu's language: same surface, border, radius, shadow and 14 px `--of-font` (was 13 px monospace), 32 px rows (44 px on touch), hover and focus highlight, gold focus ring.
