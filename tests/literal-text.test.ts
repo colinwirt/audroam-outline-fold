@@ -53,6 +53,18 @@ describe('a bare <word> is text, not a tag', () => {
     expect(doc.nodes[0]!.title).toBe('Week 3 lab: inject <script>');
   });
 
+  it('outline-view chain: a minted <id:N> at line end keeps a leading or trailing <script>', () => {
+    // outline-view (Diff.mintIds) appends <id:N> to every id-less line before parse and
+    // takes it off again after serialize. 0.2.30 read the <script> as the id, so the
+    // save wrote `- inject <id:script>`, or dropped a leading <script> from the text.
+    for (const line of ['- <script> is the oldest payload', '- inject <script>']) {
+      const doc = parse(`${line} <id:9>\n`);
+      expect(doc.nodes[0]!.id).toBe('9');
+      expect(doc.nodes[0]!.title).toBe(line.slice(2));
+      expect(serialize(doc)).toBe(`${line} <id:9>\n`);
+    }
+  });
+
   it('a fold or a tick does not add an id because of <script>', () => {
     const text = '- [ ] Read the <script> chapter\n  - inline handlers\n';
     let doc = load(text);
