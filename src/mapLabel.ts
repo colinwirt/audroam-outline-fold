@@ -408,6 +408,8 @@ export interface MeasurePillOpts {
   jumps?: { id: string; label: string }[];
   /** Reserve height for more/less chrome when truncated or expanded-from-clip. */
   reserveMoreAffordance?: boolean;
+  /** Measure the caption at 600, as an open or pending task paints it (0.2.38). */
+  semibold?: boolean;
   fontSize?: number;
 }
 
@@ -477,14 +479,32 @@ export function lineAdvance(runs: CaptionStyleRun[], fontPx = BASE_FONT_PX): num
   return w;
 }
 
-/** Painted width of one line. Uses SVG text when a document is available. */
-export function lineWidth(runs: CaptionStyleRun[], fontPx: number): number {
+/**
+ * Open and pending task labels paint at 600 (0.2.38, K4). Measurement inside
+ * measurePill and the fit widths runs with this set, so a semibold caption
+ * wraps and sizes its pill at the weight it is painted in.
+ */
+let semiboldScope = false;
+
+function withSemibold<T>(on: boolean | undefined, fn: () => T): T {
+  const prev = semiboldScope;
+  semiboldScope = !!on;
+  try {
+    return fn();
+  } finally {
+    semiboldScope = prev;
+  }
+}
+
+/** Painted width of one line. Uses SVG text when a document is available.
+ * `semibold` measures non-bold runs at 600 (open task labels). */
+export function lineWidth(runs: CaptionStyleRun[], fontPx: number, semibold = semiboldScope): number {
   const px = clampFontPx(fontPx);
   let measured = 0;
   let complete = true;
   for (const run of runs) {
     const width = measureRunWidth(
-      { text: run.text, code: run.code, bold: run.bold, italic: run.italic },
+      { text: run.text, code: run.code, bold: run.bold, semibold, italic: run.italic },
       px,
     );
     if (width == null) {
@@ -500,7 +520,7 @@ const MIN_COL_W = 96;
 
 function charWidth(ch: StyledChar, fontPx: number): number {
   const width = measureRunWidth(
-    { text: ch.c, code: ch.code, bold: ch.bold, italic: ch.italic },
+    { text: ch.c, code: ch.code, bold: ch.bold, semibold: semiboldScope, italic: ch.italic },
     fontPx,
   );
   if (width != null) return width;
@@ -749,6 +769,10 @@ export function measurePill(
   label: string,
   opts: MeasurePillOpts = {},
 ): MeasuredPill {
+  return withSemibold(opts.semibold, () => measurePillAt(label, opts));
+}
+
+function measurePillAt(label: string, opts: MeasurePillOpts): MeasuredPill {
   const wrapCh = opts.wrapCh ?? DEFAULT_WRAP_CH;
   const cacheKey = [
     label,
@@ -765,6 +789,7 @@ export function measurePill(
     (opts.jumps || []).map((j) => `${j.id}\u0002${j.label}`).join('\u0003'),
     opts.reserveMoreAffordance === false ? 0 : 1,
     opts.fontSize ?? '',
+    opts.semibold ? 1 : 0,
   ].join('\u0001');
   const cached = pillCache.get(cacheKey);
   if (cached) return cached;
@@ -853,6 +878,8 @@ export interface FitMeasureOpts {
   wrapCh?: number;
   maxLines?: number | null;
   bodyExpanded?: boolean;
+  /** Open or pending task: measure at 600, as painted (0.2.38). */
+  semibold?: boolean;
 }
 
 function trimTrailingSpaces(chars: StyledChar[]): StyledChar[] {
@@ -888,14 +915,14 @@ function fitPads(opts: FitMeasureOpts): number {
 export function naturalLineWidth(label: string, opts: FitMeasureOpts = {}): number {
   const fontPx = clampFontPx(opts.fontSize);
   const loose = wrapLines(label, 100000, null);
-  return Math.ceil(widestForWrap(loose.richLines, fontPx) + fitPads(opts));
+  return withSemibold(opts.semibold, () => Math.ceil(widestForWrap(loose.richLines, fontPx) + fitPads(opts)));
 }
 
 /** F4: the widest line after wrapping at 60ch, plus the pads. Not clamped. */
 export function fitTextWidth(label: string, opts: FitMeasureOpts = {}): number {
   const fontPx = clampFontPx(opts.fontSize);
   const wrapped = wrapLines(label, FIT_TEXT_CH, null);
-  return Math.ceil(widestForWrap(wrapped.richLines, fontPx) + fitPads(opts));
+  return withSemibold(opts.semibold, () => Math.ceil(widestForWrap(wrapped.richLines, fontPx) + fitPads(opts)));
 }
 
 /** The caption column the pill has at Auto (no `w`). */
@@ -906,5 +933,6 @@ export function autoTextWidth(label: string, opts: FitMeasureOpts = {}): number 
     bodyExpanded: opts.bodyExpanded,
     reserveTask: opts.reserveTask,
     fontSize: opts.fontSize,
+    semibold: opts.semibold,
   }).textW;
 }

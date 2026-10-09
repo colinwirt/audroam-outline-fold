@@ -318,6 +318,24 @@
   stroke: var(--pill-stroke);
   stroke-width: 1.5;
 }
+/* K4 task emphasis (0.2.38): an open [ ] or in-progress [-] task has a 2 px
+   stroke and a semibold label; done [x] drops to 1 px with muted text
+   (#8b9bab on the #0c222c pill is 5.8:1). Folded gold and the focus ring
+   below still win. A cue keeps its own text colour. */
+.map-node.task-open .map-pill,
+.map-node.task-pending .map-pill {
+  stroke-width: 2;
+}
+.map-node.task-done .map-pill {
+  stroke-width: 1;
+}
+.map-node.task-open .map-label,
+.map-node.task-pending .map-label {
+  font-weight: 600;
+}
+.map-node.task-done .map-label {
+  fill: var(--muted, var(--of-muted));
+}
 .map-node.cue .map-pill {
   fill: var(--cue);
   stroke: #6fa88a;
@@ -397,6 +415,22 @@
   stroke: var(--map-handle-glyph-on-gold, #0a1f28);
   stroke-width: 1.8;
   stroke-linecap: round;
+}
+/* K6 folded count (0.2.38): beside the + handle, on the menu surface. Not
+   part of the handle's hit area. */
+.map-fold-count {
+  pointer-events: none;
+}
+.map-fold-count rect {
+  fill: var(--map-menu-bg);
+  stroke: var(--map-menu-stroke);
+  stroke-width: 1;
+}
+.map-fold-count text {
+  fill: var(--text, var(--of-text));
+  font-family: var(--of-font);
+  font-size: 11px;
+  font-weight: 600;
 }
 /* See-through by default: connectors start outside the ring, so nothing runs
    behind it. A host that wants a solid disc sets --map-handle-bg. */
@@ -680,6 +714,16 @@
   text-overflow: ellipsis;
   color: var(--muted, var(--of-muted));
   font-size: 12px;
+}
+/* K3 (0.2.38): trailing ↗ on rows that open a new window, as node menu M4. */
+.map-link-ext {
+  flex: none;
+  margin-left: -4px;
+  color: var(--muted, var(--of-muted));
+  font-size: 12px;
+}
+.map-link-label + .map-link-ext {
+  margin-left: auto;
 }
 /* Touch: 44 px rows. */
 .map-link-pop[data-pointer="coarse"] .map-link-item {

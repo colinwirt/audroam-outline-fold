@@ -260,6 +260,8 @@ export interface PillSizeOptions {
   thread?: boolean;
   /** `<r:x>` jump chips after the `#N` chips (0.2.34). */
   jumps?: { id: string; label: string }[];
+  /** Measure the caption at 600: an open or pending task (K4, 0.2.38). */
+  semibold?: boolean;
 }
 
 export interface PillSize {
@@ -557,6 +559,41 @@ export function foldHandleSvg(
         </g>`;
 }
 
+/** K6 (0.2.38): folded-count badge height and font size. */
+export const FOLD_COUNT_H = 16;
+export const FOLD_COUNT_FONT = 11;
+/** The fold hit target is 32 px wide around the handle centre (`.map-fold-hit`). */
+const FOLD_HIT_HALF = 16;
+
+/** Accessible text for a folded node's count: `5 hidden`. */
+export function foldCountLabel(count: number): string {
+  return `${count} hidden`;
+}
+
+/**
+ * K6 (0.2.38): a folded node's hidden-child count (its direct children),
+ * beside the gold + handle. 11 px on the menu surface, `aria-label` "5 hidden".
+ * It starts past the handle's 32 px hit target and takes no pointer events,
+ * so it is never part of the handle's hit area. Empty for 0.
+ */
+export function foldCountSvg(
+  boxRight: number,
+  y: number,
+  count: number,
+  foldSlot: number = FOLD_SLOT,
+): string {
+  if (!(count > 0)) return '';
+  const { cx } = foldHandleGeometry(boxRight, foldSlot);
+  const text = String(count);
+  const w = Math.max(FOLD_COUNT_H, Math.round(text.length * 6.6 + 10));
+  const x = cx + FOLD_HIT_HALF + 1;
+  const label = foldCountLabel(count);
+  return `<g class="map-fold-count" transform="translate(${x} ${y})" role="img" aria-label="${label}" pointer-events="none">
+          <rect x="0" y="${-FOLD_COUNT_H / 2}" width="${w}" height="${FOLD_COUNT_H}" rx="${FOLD_COUNT_H / 2}"/>
+          <text x="${w / 2}" y="4" text-anchor="middle" font-size="${FOLD_COUNT_FONT}" aria-hidden="true">${text}</text>
+        </g>`;
+}
+
 /** Halo ring casing: 1.5 px each side of the 1.6 px gold ring. */
 export const FOLD_HALO_RING_W = 4.6;
 /** Halo casing under the − dash. */
@@ -586,6 +623,8 @@ export function foldStemCasingSvg(boxRight: number, y: number, foldSlot: number 
 export type FoldChromeOptions = {
   /** Draw a casing under the stem (`--connector-casing` is set). */
   casing?: boolean;
+  /** Folded only: hidden-child count drawn beside the + (K6, 0.2.38). */
+  hiddenCount?: number;
 };
 
 /**
@@ -604,6 +643,7 @@ export function foldChromeSvg(
   if (opts.casing) parts.push(foldStemCasingSvg(boxRight, y, foldSlot));
   parts.push(foldStemSvg(boxRight, y, foldSlot));
   parts.push(foldHandleSvg(boxRight, y, collapsed, foldSlot));
+  if (collapsed && opts.hiddenCount) parts.push(foldCountSvg(boxRight, y, opts.hiddenCount, foldSlot));
   return parts.join('\n      ');
 }
 
@@ -690,6 +730,7 @@ export function pillSize(label: string, opts: PillSizeOptions = {}): PillSize {
     noteLinks: opts.noteLinks,
     thread: opts.thread,
     jumps: opts.jumps,
+    semibold: opts.semibold,
   });
   return measured;
 }
@@ -714,6 +755,7 @@ function nodePillOpts(
   return {
     reserveFold: hasKids(n),
     reserveTask: !!resolveTask(n),
+    semibold: isTaskEmphasis(resolveTask(n)),
     wrapCh: lay?.wrapCh ?? defaults?.wrapCh ?? DEFAULT_WRAP_CH,
     widthPx: typeof widthPx === 'number' && widthPx > 0 ? widthPx : undefined,
     maxLines,
@@ -758,6 +800,14 @@ function prefersReducedMotion(): boolean {
   }
 }
 
+/**
+ * K4 (0.2.38): an open `[ ]` or in-progress `[-]` task gets a 2 px stroke and
+ * a semibold label. Done `[x]` drops to 1 px with muted text (CSS).
+ */
+export function isTaskEmphasis(state: TaskState | null | undefined): boolean {
+  return state === 'open' || state === 'pending';
+}
+
 function taskGlyphSvg(state: TaskState, x: number, y: number): string {
   const stroke = state === 'open' ? '#8b9bab' : '#C9A227';
   const mark =
@@ -788,6 +838,7 @@ function multiLineText(
   _textW: number,
   richLines?: CaptionStyleRun[][],
   fontPx = DEFAULT_FONT_PX,
+  fontWeight = 400,
 ): string {
   const n = Math.max(1, lines.length);
   const box = lineBox(fontPx);
@@ -811,7 +862,7 @@ function multiLineText(
       return `<tspan x="${textX}" dy="${dy}">${show}</tspan>`;
     })
     .join('');
-  return `<text class="map-label" x="${textX}" y="${top}" text-anchor="start" font-size="${fontPx}" font-weight="400" font-family="${LABEL_FONT_FAMILY}">${tspans}</text>`;
+  return `<text class="map-label" x="${textX}" y="${top}" text-anchor="start" font-size="${fontPx}" font-weight="${fontWeight}" font-family="${LABEL_FONT_FAMILY}">${tspans}</text>`;
 }
 
 /**
@@ -1277,6 +1328,7 @@ export function createMapView(
       const size = pillSize(label, {
         reserveFold: foldable,
         reserveTask: !!resolveTask(n),
+        semibold: isTaskEmphasis(resolveTask(n)),
         wrapCh: pos.wrapCh ?? defaults.wrapCh,
         widthPx: pos.w,
         maxLines: pos.maxLines,
@@ -2386,6 +2438,7 @@ export function createMapView(
       opts: {
         fontSize: resolveFontPx(pos?.fontSize, layout.fontSize, getDoc().frontmatter?.fontSize),
         reserveTask: !!resolveTask(n),
+        semibold: isTaskEmphasis(resolveTask(n)),
         wrapCh: pos?.wrapCh,
         maxLines: pos?.maxLines,
         bodyExpanded: !!pos?.bodyExpanded,
@@ -3172,6 +3225,7 @@ export function createMapView(
       const size = pillSize(label, {
         reserveFold: foldable,
         reserveTask: !!taskParsed,
+        semibold: isTaskEmphasis(taskParsed),
         wrapCh: pos.wrapCh,
         widthPx: pos.w ?? n.layout?.w,
         maxLines: pos.maxLines,
@@ -3217,6 +3271,7 @@ export function createMapView(
           const cs = pillSize(clabel, {
             reserveFold: hasKids(c),
             reserveTask: !!cTask,
+            semibold: isTaskEmphasis(cTask),
             wrapCh: cpos.wrapCh,
             widthPx: cpos.w ?? c.layout?.w,
             maxLines: cpos.maxLines,
@@ -3292,7 +3347,10 @@ export function createMapView(
           const foldHit = foldable
             ? `<rect class="map-fold-hit" x="${foldCx - 16}" y="${pos.y - 16}" width="32" height="32" fill="transparent" cursor="pointer"/>`
             : '';
-          const foldChrome = foldable ? foldChromeSvg(boxRight, pos.y, !!col, foldSlot, { casing }) : '';
+          const hiddenCount = col ? n.children?.length ?? 0 : 0;
+          const foldChrome = foldable
+            ? foldChromeSvg(boxRight, pos.y, !!col, foldSlot, { casing, hiddenCount })
+            : '';
           const taskHit =
             task != null
               ? `<rect class="map-task-hit" x="${x + 2}" y="${Math.min(y, pos.y - 22)}" width="${Math.max(taskLead - 2, TASK_BOX)}" height="${Math.max(h, 44)}" fill="transparent" cursor="pointer" role="checkbox" aria-checked="${task === 'done' ? 'true' : task === 'pending' ? 'mixed' : 'false'}"/>`
@@ -3318,7 +3376,7 @@ export function createMapView(
               : '';
           const captionX = task != null ? textLeft : x + PILL_PAD_X;
           const widest = richLines.reduce(
-            (max, line) => Math.max(max, lineWidth(line, fontPx)),
+            (max, line) => Math.max(max, lineWidth(line, fontPx, isTaskEmphasis(task))),
             0,
           );
           // Chip row after the widest line, centred on the caption: thread pill,
@@ -3361,13 +3419,13 @@ export function createMapView(
             })
             .join('');
           return `<g class="${cls}" id="${esc(mapNodeDomId(domPrefix, key))}" data-id="${esc(key)}" data-text-w="${textW}"
-      role="treeitem" aria-selected="${focused ? 'true' : 'false'}" aria-current="${focused ? 'true' : 'false'}" aria-label="${esc(label)}${task != null ? (task === 'done' ? ', task done' : task === 'pending' ? ', task pending' : ', task open') : ''}${foldable ? (col ? ', collapsed' : ', expanded') : ''}${showMore ? ', more text available' : ''}${showLess ? ', showing full body' : ''}"
+      role="treeitem" aria-selected="${focused ? 'true' : 'false'}" aria-current="${focused ? 'true' : 'false'}" aria-label="${esc(label)}${task != null ? (task === 'done' ? ', task done' : task === 'pending' ? ', task pending' : ', task open') : ''}${foldable ? (col ? `, collapsed, ${foldCountLabel(hiddenCount)}` : ', expanded') : ''}${showMore ? ', more text available' : ''}${showLess ? ', showing full body' : ''}"
       ${foldable ? `aria-expanded="${col ? 'false' : 'true'}" aria-haspopup="menu"` : ''}${levelMenu && levelMenu.id === key ? ' data-level-open="true"' : ''}>
       <title>${esc(tip)}</title>
       <rect class="map-pill" x="${x}" y="${y}" width="${boxW}" height="${h}" rx="18" ry="18"/>
       ${taskChrome}
       ${globe}
-      ${multiLineText(lines, captionX, textCentreY, textW, richLines, fontPx)}
+      ${multiLineText(lines, captionX, textCentreY, textW, richLines, fontPx, isTaskEmphasis(task) ? 600 : 400)}
       ${moreChrome}
       ${chipSvg}
       ${foldChrome}

@@ -194,6 +194,20 @@ export function threadRows(): LinkPopRow[] {
   return [{ label: 'Open thread', kind: 'thread' }];
 }
 
+/** Trailing mark on rows that open a new window (node menu M4, K3). */
+export const LINK_EXT_ARROW = '\u2197';
+/** Added to the accessible name of a row that opens a new window. */
+export const OPENS_NEW_WINDOW = 'opens in new window';
+
+/**
+ * True when the row opens a new window: an href with `newTab`, never a hop
+ * (in-map jumps select a node here and never get ↗). `Open #N` with no
+ * noteUri only fires `onNoteLink`, so it gets no ↗ either.
+ */
+export function opensNewWindow(row: LinkPopRow): boolean {
+  return !!(row.href && row.newTab && !row.hopId);
+}
+
 export type LinkPopView = { el: HTMLElement; items: HTMLAnchorElement[] };
 
 /**
@@ -240,9 +254,16 @@ export function renderLinkPopRows(
     }
     if (row.hopId) {
       a.dataset.hopId = row.hopId;
-    } else if (row.href && row.newTab) {
+    } else if (opensNewWindow(row)) {
       a.target = '_blank';
       a.rel = 'noopener noreferrer';
+      // K3 / M4 (0.2.38): a trailing muted ↗, hidden from AT; the name says it.
+      const ext = document.createElement('span');
+      ext.className = 'map-link-ext';
+      ext.setAttribute('aria-hidden', 'true');
+      ext.textContent = LINK_EXT_ARROW;
+      a.appendChild(ext);
+      a.setAttribute('aria-label', `${row.label}${row.where ? `, ${row.where}` : ''}, ${OPENS_NEW_WINDOW}`);
     }
     el.appendChild(a);
     items.push(a);

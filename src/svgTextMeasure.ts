@@ -10,6 +10,8 @@ export interface RunMeasure {
   text: string;
   code?: boolean;
   bold?: boolean;
+  /** Open task label (0.2.38): painted at 600 unless the run is already bold. */
+  semibold?: boolean;
   italic?: boolean;
 }
 
@@ -27,7 +29,7 @@ const widthCache = new Map<string, number>();
 function domMeasurer(run: RunMeasure, fontPx: number): number | null {
   if (typeof document === 'undefined') return null;
   const family = run.code ? CODE_FONT_FAMILY : LABEL_FONT_FAMILY;
-  const key = `${fontPx}|${run.bold ? 1 : 0}|${run.italic ? 1 : 0}|${run.code ? 1 : 0}|${run.text}`;
+  const key = `${fontPx}|${run.bold ? 1 : run.semibold ? 2 : 0}|${run.italic ? 1 : 0}|${run.code ? 1 : 0}|${run.text}`;
   const hit = widthCache.get(key);
   if (hit !== undefined) return hit;
   if (!canvas) {
@@ -36,7 +38,7 @@ function domMeasurer(run: RunMeasure, fontPx: number): number | null {
   }
   if (!canvasCtx) return null;
   const style = run.italic ? 'italic' : 'normal';
-  const weight = run.bold ? '700' : '400';
+  const weight = run.bold ? '700' : run.semibold ? '600' : '400';
   canvasCtx.font = `${style} ${weight} ${fontPx}px ${family}`;
   const width = canvasCtx.measureText(run.text.length ? run.text : ' ').width;
   const stored = width > 0 ? width : 0;

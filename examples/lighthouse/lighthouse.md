@@ -6,7 +6,7 @@
     - [ ] Row out to the bell buoy
     - [ ] Count the gulls on the north rocks
   - Wednesday
-    - [ ] Paint the gallery rail
+    - [-] Paint the gallery rail
       - [ ] Buy linseed oil in the village
       - [ ] Ask Marta about the old ladder
   - Thursday

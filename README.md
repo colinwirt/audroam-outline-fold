@@ -134,7 +134,7 @@ A `#N` chip opens the link popover with up to three rows:
 | `Open map` | `noteMapUri` | `/notes/{id}/map` |
 | `Open details` | `noteDetailsUri` | `/notes/{id}/details` |
 
-Each template is a URL with `{id}` (or `{pnid}`) for the note number, http(s) or root-relative. It is taken from, in order: the document's `--- layout ---` block (or frontmatter), then the `createMapView` option of the same name, then the default. `Open #N` always shows (without a URL it only fires `onNoteLink`); `Open map` and `Open details` show only when their template gives a URL: `none` in the layout block, or `null` / `''` as the option, turns a row off, and a template without `{id}` gives none. Each row opens in a new tab and fires `onNoteLink({ id, pnid, node, open: 'note' | 'map' | 'details' })`. There is no in-map row: N is a note number, not a node id.
+Each template is a URL with `{id}` (or `{pnid}`) for the note number, http(s) or root-relative. It is taken from, in order: the document's `--- layout ---` block (or frontmatter), then the `createMapView` option of the same name, then the default. `Open #N` always shows (without a URL it only fires `onNoteLink`); `Open map` and `Open details` show only when their template gives a URL: `none` in the layout block, or `null` / `''` as the option, turns a row off, and a template without `{id}` gives none. Each row opens in a new tab and fires `onNoteLink({ id, pnid, node, open: 'note' | 'map' | 'details' })`. A row that opens a new tab ends in a muted `↗` (`.map-link-ext`, `aria-hidden`) and its accessible name ends ", opens in new window" (0.2.38, as node menu M4); a globe row to an external link gets it too. `Open #N` without a `noteUri` opens nothing, so it has no `↗`, and in-map jumps (hop rows, `→ caption` chips) never do. A host that wants `Open #N` to open the note sets `noteUri`, for example `/view/pnid/{id}`. There is no in-map row: N is a note number, not a node id.
 
 ```text
 --- layout ---
@@ -291,7 +291,9 @@ import {
   isCollapsed,
 } from '@audroam/outline-fold';
 
-const doc = parse(md);
+// Session ids let lines without <id:…> fold, tick and take focus, and make
+// an authored `(+)` on such a line load folded. See "Lines without an id".
+const doc = parse(md, { sessionIds: true });
 const layout = {
   version: 1,
   layout: 'ithoughts-lr',
@@ -357,6 +359,16 @@ const packed = autoPackPositions(doc, {
 | `overlayResumeOnLayout` / `isResumeStale` / `softResetResume` | Resume overlays authored sidecar; stale soft-reset |
 | `toggleTask` / `onTaskToggle` / `resolveTask` | Task SVG lead; host owns persist; `<action:…>` on open→done; `<thread:…>` chip |
 
+### Day-map tweaks (0.2.38)
+
+- **Open tasks stand out (K4).** An open `[ ]` or in-progress `[-]` task pill gets a 2 px stroke and a semibold (600) label; done `[x]` drops to 1 px with the muted text colour (`#8b9bab` on the pill, 5.8:1). The task box, its colours and its toggle are unchanged. A folded pill keeps its gold 2.25 px stroke and a selected pill its 2.5 px focus ring; a cue keeps its own text colour. The label is measured at 600 too (`pillSize(…, { semibold })`, `naturalLineWidth` / `fitTextWidth` / `autoTextWidth` `{ semibold }`), so the pill fits it. Classes: `.map-node.task-open`, `.task-pending`, `.task-done`. `isTaskEmphasis(state)` says which states are emphasised.
+- **Folded count (K6).** A folded node shows how many direct children it hides, beside the gold `+`: `.map-fold-count`, 11 px on the menu surface (`--map-menu-bg`, `--map-menu-stroke`, text colour), `role="img"` with `aria-label` "5 hidden"; the pill's label reads "…, collapsed, 5 hidden". It starts past the handle's 32 px hit target and takes no pointer events, so it is never part of the hit area. Gone when the node is open. `foldCountLabel(n)`.
+- **`↗` on new-window rows (K3).** See [`#N` popover and URL templates](#n-popover-and-url-templates).
+
+#### Lines without an id
+
+Fold state is keyed by id. A line without `<id:…>` has no id after `parse(md)` or `validateDocument(md).doc`, so the map can draw it but cannot fold it, and an authored `(+)` on it stays on the line (`node.foldMark`) instead of folding it: the node loads open, and its handle does nothing. Parse with session ids and both work: `parse(md, { sessionIds: true })`, or `validateDocument(md, { sessionIds: true }).doc` (0.2.38). Session ids are never written back by `serialize` (unless a jump names one), so the text round-trips. The map does not apply an id-less `(+)` on its own: without an id it could fold the node but never unfold it.
+
 ### Map paint tokens (0.2.32)
 
 Set these on the map host or an ancestor. Defaults are the dark theme.
@@ -413,6 +425,8 @@ const { ok, issues, doc } = validateDocument(source);
 | `enc_tag_ignored` | warning | malformed inline `<enc:…>` dropped by parse |
 
 Pass `{ singleKeyFallback: true }` when the unlock context has exactly one key (missing `kid` → warnings, not errors).
+
+Pass `{ sessionIds: true }` (or `{ sessionIds: { prefix } }`) when you render `result.doc` in the map or the Outline: it parses with session ids, so lines without `<id:…>` can fold and an authored `(+)` on them loads folded (0.2.38). See [Lines without an id](#lines-without-an-id). It is ignored when you pass a parsed doc.
 
 ## License
 

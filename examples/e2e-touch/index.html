@@ -19,7 +19,7 @@
 <header><h1>e2e touch harness</h1><span id="ver"></span></header>
 <div id="panel"><div id="mapHost" class="map-wrap" aria-label="Map"></div></div>
 <script type="module">
-import { parse, serialize, createMapView, mountMapControls, seedDefaultFold, toHtml, attachOutlineTree } from '../../dist/index.js';
+import { parse, serialize, createMapView, mountMapControls, seedDefaultFold, toHtml, attachOutlineTree, validateDocument } from '../../dist/index.js';
 
 const params = new URLSearchParams(location.search);
 // ?theme=light: the package's light theme on the page (Map and Outline).
@@ -28,7 +28,11 @@ if (params.get('theme') === 'light') {
   Object.assign(document.body.style, { background: '#e9eef3', color: '#1d2a36' });
 }
 const md = await (await fetch(params.get('doc') || 'fixture.md')).text();
-let doc = parse(md);
+// ?parse=validate: render validateDocument(md).doc, as some hosts do; add
+// &ids=session for validateDocument(md, { sessionIds: true }) (0.2.38).
+let doc = params.get('parse') === 'validate'
+  ? validateDocument(md, params.get('ids') === 'session' ? { sessionIds: true } : undefined).doc
+  : parse(md);
 if (params.get('seed') === 'level1') doc = seedDefaultFold(doc);
 const layout = { _source: 'auto-pack', nodes: {} };
 let focusId = params.get('focus') || '';

@@ -40,3 +40,9 @@ Playwright touch harness for the Map (0.2.30+). Not a demo.
   `12. `), a task before a number and a box after one, for
   `e2e/list-numbers.spec.ts`: the Map pill and the Outline row (`?view=outline`)
   show the number as typed.
+- `day-tweaks.md` (`?doc=day-tweaks.md`, fiction) is a small day map for the
+  0.2.38 P1 tweaks (`e2e/map-p1-tweaks.spec.ts`, `e2e/touch-map-p1-tweaks.spec.ts`):
+  open, in-progress and done tasks (K4), a folded node with five children (K6),
+  a `<t:N>` chip and an `<r:id>` jump (K3), and an id-less `Reference shelf (+)`.
+  `?parse=validate` renders `validateDocument(md).doc`; add `&ids=session` for
+  `validateDocument(md, { sessionIds: true }).doc`.

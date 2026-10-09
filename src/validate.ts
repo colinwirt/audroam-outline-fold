@@ -1,4 +1,4 @@
-import { parse } from './parse.js';
+import { parse, type ParseOptions } from './parse.js';
 import { parseEncBody } from './sealed.js';
 import type { OutlineFoldDoc, OutlineNode } from './types.js';
 
@@ -40,6 +40,13 @@ export interface ValidateOptions {
    * Default true when `singleKeyFallback`.
    */
   assumeSharedAlg?: boolean;
+  /**
+   * Parse a string source with `parse(source, { sessionIds })` (0.2.38), so
+   * `result.doc` folds, ticks and focuses lines without `<id:…>`, and a `(+)`
+   * on such a line loads folded. Without it, `result.doc` has no ids on those
+   * lines: the map draws them, but cannot fold them. Ignored for a doc source.
+   */
+  sessionIds?: ParseOptions['sessionIds'];
 }
 
 /** Lenient trailer field bag (may be incomplete). */
@@ -501,7 +508,7 @@ export function validateDocument(
 
   let doc: OutlineFoldDoc | undefined;
   try {
-    doc = parse(source);
+    doc = parse(source, options?.sessionIds ? { sessionIds: options.sessionIds } : undefined);
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     if (/both fold-/i.test(msg) || /fold-\s+and\s+fold\+/i.test(msg)) {
