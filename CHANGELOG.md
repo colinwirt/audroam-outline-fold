@@ -1,5 +1,38 @@
 # Changelog
 
+## 0.2.39 — 2026-10-09
+
+Node menu Open group: **Copy jump** and **Copy link** (node menu M2–M4, M8, M9, M11, LOCKED 2026-10-08).
+
+### Copy jump and Copy link
+- **Copy jump** copies the node's in-map jump tag, `<r:id>`, exactly as the package writes it (no spaces). Pasted into another caption it becomes a `→ caption` jump chip.
+- **Copy link** copies the full URL that opens the map focused on the node. New `createMapView` option `nodeUri`: a template with `{id}` (http(s) or root-relative, made absolute against the page) or a callback `({ id, node }) => url`. Unset: the current page with `focus=<id>` (other query keys kept, hash dropped). Hidden when no safe http(s) URL can be built (`file:` page, `nodeUri: null` / `''` / `none`, no `{id}`, a callback returning nothing).
+- Labels only: no icons and no `↗` (neither opens a window, M4).
+- **Lines without an id** get one on the first copy, with the rule widths already use (`assignPersistentId`: a session id is written as it is, otherwise the free 1-based position or the next number; short, no spaces). Only ` <id:N>` is added to that line, through one `setDoc` + `onChange`, so the host marks the document dirty and its save keeps it. Existing ids and the spelling and spacing of typed tags are never changed; a second copy writes nothing.
+- **Read-only:** new option `canMintIds` (`boolean` or `() => boolean`; default: `canPersistWidths`, true when unset). When false nothing is minted and, on a line without an id, both items are **hidden** (M11, the locked default). `map.nodeCopyItems(id)` still returns each item's `reason`, for a host that prefers disabled-with-tooltip. A line that has an id copies as usual.
+- Clipboard: `navigator.clipboard.writeText`, falling back to a hidden textarea + `execCommand('copy')`. A brief **Copied jump** / **Copied link** (or **Couldn't copy**) at the top of the map, `.map-copied`, `role="status"`, polite, about 1.6 s.
+- New option `onCopy(ev)`: `{ kind, key, id, text, minted, ok, reason? }` after every copy.
+
+### Package node menu (opt-in)
+- New option `nodeMenu: true`: the package's own node menu with `Levels…` (View group, nodes with children) and the Open group. Off by default, so a host with its own node menu (outline-view `#row-menu`) sees no change.
+- Opens on a right-click on the pill (the ± handle keeps the level picker; a label with a text selection keeps the browser menu), a 450 ms touch or pen hold on the pill chrome (ring from 150 ms, 10 px slop; the label keeps text select, L7), and `ContextMenu` / `Shift+F10` for the selected node (M1). Nothing applies (a read-only leaf without an id): no menu, the event stays the host's.
+- `role="menu"` named by the caption; `role="group"` per group labelled by a muted 11 px label (`#97a4b2`); `role="separator"` between groups; `role="menuitem"` rows, 32 px (44 px on coarse pointers); hover `#16324a`, focus adds a 2 px `#6cb6ff` inset ring.
+- Keys (M8): focus on the first item; `↑` / `↓` wrap, `Home` / `End`, type-ahead by first letter (cycling), `Enter` / `Space`, `→` on `Levels…`, `Esc` (focus back to the map), `Tab` closes.
+- One menu at a time: it closes the level picker and the link and width popovers, and `closeMenus()` / opening any of them closes it.
+- Not in this release: the ≤ 480 px bottom sheet (M7 P2); the menu is a clamped popover at every width.
+
+### API
+- Handle: `nodeCopyItems(id?)`, `copyJump(id?)`, `copyLink(id?)`, `ensureNodeId(id?)`, `openNodeMenu(id?, at?)`, `closeNodeMenu()`, `focusNode(id)` (select, unfold ancestors, follow; for `?focus=` on load).
+- Exports: `jumpTagFor`, `nodeFocusHref`, `nodeCopyItems`, `copyText`, `copyTextFallback`, `copiedText`, `nodeMenuKeyAction`, `placeNodeMenu`, `renderNodeMenu`, `mintNodeId`, `previewPersistentId`, `writtenId`, constants `COPY_JUMP_LABEL`, `COPY_LINK_LABEL`, `COPIED_TOAST_MS`, `FOCUS_PARAM`, `NODE_HOLD_SLOP`, `NODE_ID_RE`, `READ_ONLY_REASON`, `NO_LINK_REASON`, types `NodeCopyItem`, `NodeCopyKind`, `NodeCopyResult`, `NodeMenuEntry`, `NodeMenuGroup`, `NodeMenuKeyAction`, `NodeMenuView`, `NodeUriOption`.
+
+### Examples
+- Viewer: `nodeMenu: true`, and it reads `?focus=<id>` (selects the node, unfolds its ancestors), which is what Copy link copies. Its own `Shift+F10` → level picker binding is gone: `Shift+F10` opens the node menu and `Levels…` reaches the picker. Keys help and README updated.
+- e2e harness: `?nodemenu=1`, `?nodeuri=<template|none>`, `window.__copies`, `window.__sets` (setDoc count, the dirty mark), `window.__loadText(md)`. Fixture `examples/e2e-touch/copy-jump.md` (fiction).
+
+### Tests
+- `tests/copy-jump.test.ts`: jump tag, minting (position, next number, session id), no-op with an existing id, typed tag spacing kept byte for byte, read-only, Copy link URLs, item visibility, clipboard fallback, keys, placement, wiring.
+- `e2e/copy-jump.spec.ts` (desktop right-click, keyboard, clipboard content, fallback, dirty state after minting, read-only, `nodeUri`, one menu at a time) and `e2e/touch-copy-jump.spec.ts` (phone hold, 44 px rows, tap, minting, read-only). `e2e/pages-viewer.spec.ts`: `Shift+F10` opens the node menu; Copy link round trip through `?focus=`.
+
 ## 0.2.38 — 2026-10-09
 
 Day-map P1 tweaks (Design UX 2026-10-09 day-map takeaways, K9 phase P1: K4, K6, K3) and the id-less `(+)` finding.
