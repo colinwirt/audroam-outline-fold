@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.2.38 — 2026-10-09
+
+Day-map P1 tweaks (Design UX 2026-10-09 day-map takeaways, K9 phase P1: K4, K6, K3) and the id-less `(+)` finding.
+
+### Map: open tasks stand out (K4)
+- An open `[ ]` or in-progress `[-]` task pill has a 2 px stroke and a semibold (600) label. Done `[x]` drops to 1 px with the muted text colour (`#8b9bab` on the pill, 5.8:1). Plain pills keep 1.5 px.
+- A folded pill keeps its gold 2.25 px stroke and a selected pill its 2.5 px focus ring; a cue keeps its own text colour. The task box, its colours and its toggle (open → in progress → done) are unchanged.
+- The label is measured at 600 as well, so the pill fits it: `pillSize(label, { semibold })`, and `naturalLineWidth` / `fitTextWidth` / `autoTextWidth` take `{ semibold }`. New export `isTaskEmphasis(state)`.
+
+### Map: folded count (K6)
+- A folded node shows how many direct children it hides, beside the gold `+`: `.map-fold-count`, 11 px on the menu surface (`--map-menu-bg`, `--map-menu-stroke`, text colour), `role="img"`, `aria-label` "5 hidden". The pill's label reads "…, collapsed, 5 hidden". Gone when the node is open.
+- It starts past the handle's 32 px hit target and takes no pointer events, so it is never part of the handle's hit area. New export `foldCountLabel(n)`.
+
+### Map: `↗` on rows that open a new window (K3)
+- `Open #N`, `Open map` and `Open details` (and globe rows to external links) end in a muted `↗` (`.map-link-ext`, `aria-hidden`), and their accessible name ends ", opens in new window", as node menu M4. `Open #N` without a `noteUri` opens nothing and gets no `↗`; hop rows and `→ caption` jump chips never do. New exports `opensNewWindow(row)`, `LINK_EXT_ARROW`.
+
+### `(+)` on a line without an id
+- Fold state is keyed by id. After `parse(md)` or `validateDocument(md).doc` a line without `<id:…>` has no id, so the map cannot fold it and its `(+)` stays on the line (`node.foldMark`): it loads open. This is unchanged on purpose: applied without an id, the node would fold but could never be unfolded.
+- `validateDocument(md, { sessionIds: true })` (or `{ sessionIds: { prefix } }`) now parses with session ids, so `result.doc` folds those lines and an authored `(+)` loads folded. Ignored for a parsed-doc source. README: "Lines without an id"; the Map example parses with `{ sessionIds: true }`.
+
+### Tests and examples
+- `tests/map-p1-tweaks.test.ts`; `e2e/map-p1-tweaks.spec.ts` and `e2e/touch-map-p1-tweaks.spec.ts` (fixture `examples/e2e-touch/day-tweaks.md`, fiction). The e2e harness takes `?parse=validate` and `&ids=session`.
+- Lighthouse example: "Paint the gallery rail" is in progress (`[-]`).
+
 ## 0.2.37 — 2026-10-09
 
 ### Captions keep their list numbers
