@@ -185,8 +185,15 @@ function indentWidth(line: string): number {
   return w;
 }
 
+/**
+ * One leading bullet (`- `, `* `, `+ `) is line syntax, not caption text. A number
+ * such as `1. ` or `12. ` is caption text (0.2.37): `- 1. Check the oven` and
+ * `1. Check the oven` both read as the caption `1. Check the oven`, and serialize
+ * writes it back after the bullet. Task markers are leading only, so `- [ ] 1. x`
+ * is a task and `- 1. [ ] x` is plain text.
+ */
 function stripListMarker(rest: string): string {
-  return rest.replace(/^[-*+]\s+/, '').replace(/^\d+\.\s+/, '');
+  return rest.replace(/^[-*+]\s+/, '');
 }
 
 /**
@@ -607,7 +614,7 @@ export interface ParseOptions {
 
 /**
  * Parse indented markdown-ish outline (2 spaces or 1 tab ≈ one depth unit;
- * optional leading `- ` / `* ` / `1. `).
+ * optional leading `- ` / `* ` / `+ ` bullet; a leading `1. ` is caption text).
  */
 export function parse(text: string, opts?: ParseOptions): OutlineFoldDoc {
   const head = parseFrontmatter(text);

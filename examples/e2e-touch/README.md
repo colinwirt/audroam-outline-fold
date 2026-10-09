@@ -36,3 +36,7 @@ Playwright touch harness for the Map (0.2.30+). Not a demo.
   inline-code (with a stored `w: 200`) and tiny-HTML text for
   `e2e/map-wrap-spaces.spec.ts`, which sweeps each pill's `w` and checks the
   painted lines keep the spaces between words.
+- `list-numbers.md` (`?doc=list-numbers.md`) has numbered captions (`1. `,
+  `12. `), a task before a number and a box after one, for
+  `e2e/list-numbers.spec.ts`: the Map pill and the Outline row (`?view=outline`)
+  show the number as typed.
