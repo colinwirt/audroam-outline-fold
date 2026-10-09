@@ -1,0 +1,13 @@
+- Pottery course <id:course>
+  - Wheel week 3 · centring <id:wheel>
+    - Thu 8 Oct · 1:25 <kind:time> <id:t1>
+  - Glaze lab <id:glaze>
+    - Sat 3 Oct · 2:40 <kind:session> <id:s1>
+    - Glaze checklist and the tile labels for the test kiln shelf <id:check>
+    - Mon 5 Oct · 1:10 <kind : time> <id:t2>
+  - Kiln evening <id:kiln>
+    - Fri 9 Oct · ● open <kind:time> <id:t3>
+    - Fri 9 Oct · 3:05 <kind:session> <id:s2>
+    - Thu 8 Oct · 0:55 · notes for the cone 6 firing and the shelf wash <kind:time> <id:t4>
+  - Studio clean-up <kind:time> <id:t5>
+    - Wipe the wedging table <id:wipe>

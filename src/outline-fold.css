@@ -27,6 +27,15 @@
   /* Outline hop links and jump chips (0.2.34). */
   --of-hop: #9ecbff;
   --of-hop-hover: #cfe0ef;
+  /* Time leaves, <kind:time> / <kind:session> (0.2.40, TL2, TL4, TL6). Green is
+     the time family and stays green under any branch colour (TL7).
+     Dark: border 5.0:1 on --map-bg, 4.5:1 on the fill; letter 6.0:1; text 12.9:1. */
+  --time-fill: #0e2a22;
+  --time-stroke: #2ea043;
+  --time-stroke-hover: #3fb950;
+  --time-letter: #3fb950;
+  --time-text: #e7ecf1;
+  --time-edge: #2b8a3e;
 }
 
 /* Light theme tokens, opt-in: class="of-theme-light" on the map host or an
@@ -38,6 +47,9 @@
   --map-handle-glyph-on-gold: #ffffff;
   --map-handle-bg: transparent;
   --connector-casing: transparent;
+  /* Time leaves stay dark pills: same fill and text, border 4.0:1 on the canvas. */
+  --time-stroke: #2b8a3e;
+  --time-edge: #2b8a3e;
 }
 /* The Outline under the light theme (0.2.34): text, chip and link colours. Scoped to
    the Outline, because map labels sit on dark pills. */
@@ -354,6 +366,39 @@
 }
 .map-width-hit {
   cursor: ew-resize;
+}
+/* Time leaves (0.2.40, TL1–TL7): compact green pills for <kind:time> and
+   <kind:session> leaves. The rules name .time-leaf twice so they also beat a
+   branch colour (.has-branch, K1): time stays green everywhere (TL7). Focus
+   keeps the standard ring. */
+.map-node.time-leaf.time-leaf .map-pill {
+  fill: var(--time-fill);
+  stroke: var(--time-stroke);
+  stroke-width: 1.25;
+}
+.map-node.time-leaf.time-leaf:hover .map-pill {
+  stroke: var(--time-stroke-hover);
+}
+.map-node.time-leaf.time-leaf.is-focused .map-pill,
+.map-node.time-leaf.time-leaf:focus-visible .map-pill {
+  stroke: var(--accent, var(--of-accent));
+  stroke-width: 2;
+}
+.map-node.time-leaf .map-label {
+  fill: var(--time-text);
+}
+.map-kind-letter,
+.map-time-dot {
+  fill: var(--time-letter);
+}
+.map-kind-letter {
+  font-weight: 700;
+  pointer-events: none;
+}
+.map-edge.edge-time.edge-time {
+  stroke: var(--time-edge);
+  stroke-width: 1;
+  opacity: 1;
 }
 .map-label {
   fill: var(--text, var(--of-text));

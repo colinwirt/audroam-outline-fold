@@ -33,6 +33,12 @@ const DEFAULT_COLLAPSED = '(+)';
  */
 const KIND_WORDS =
   'doc|ticket|globe|db|feature|form|bug|risk|lock|encrypted|system-link|pending-approve';
+/**
+ * Time leaves (0.2.40, TL8): `<kind:time>` and `<kind:session>` are kinds in the
+ * colon form only. A bare `<time>` / `<session>` stays caption text, so text that
+ * already reads that way is never rewritten to a kind on save.
+ */
+const KIND_TAG_WORDS = `${KIND_WORDS}|time|session`;
 /** `<name : value >`: value has no `>`, and its own edge spaces are not part of it. */
 const tagRe = (name: string, value: string, flags = 'i') =>
   ({
@@ -46,7 +52,7 @@ const FREE_VALUE = '[^>]*?[^\\s>]';
 const ID_RE = tagRe('id', ID_VALUE, '');
 const ID_PREFIXED = ID_RE.span;
 const KIND_SPAN = new RegExp(
-  `^<(?:\\s*kind\\s*:\\s*(${KIND_WORDS})\\s*|(${KIND_WORDS}))>\\s*`,
+  `^<(?:\\s*kind\\s*:\\s*(${KIND_TAG_WORDS})\\s*|(${KIND_WORDS}))>\\s*`,
   'i',
 );
 const FLAG_SPAN = /^<(?:(private|encrypted|db)|\s*(db)\s*:\s*([^\s>]+)\s*)>\s*/i;
@@ -56,7 +62,7 @@ const ENC_SPAN = ENC_RE.span;
 
 const ID_TRAILING = ID_RE.trailing;
 const KIND_TRAILING = new RegExp(
-  `\\s*<(?:\\s*kind\\s*:\\s*(${KIND_WORDS})\\s*|(${KIND_WORDS}))>\\s*$`,
+  `\\s*<(?:\\s*kind\\s*:\\s*(${KIND_TAG_WORDS})\\s*|(${KIND_WORDS}))>\\s*$`,
   'i',
 );
 const FLAG_TRAILING = /\s*<(?:(private|encrypted|db)|\s*(db)\s*:\s*([^\s>]+)\s*)>\s*$/i;

@@ -15,6 +15,10 @@ export type NodeKind =
   | 'lock'
   | 'encrypted'
   | 'system-link'
+  /** Time record leaf (0.2.40, TL8): compact green pill with a `T` letter on the Map. */
+  | 'time'
+  /** Session record leaf (0.2.40, TL8): compact green pill with an `S` letter on the Map. */
+  | 'session'
   | string;
 
 /** Task checkbox state from leading `[ ]` / `[x]` / `[-]`. */

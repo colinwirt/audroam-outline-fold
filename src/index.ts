@@ -95,6 +95,10 @@ export {
   autoPackPositions,
   pillSize,
   mapNodeClassNames,
+  mapEdgeSvg,
+  timeLeafLetterW,
+  timeLeafPadLeft,
+  timeLeafNodeFontPx,
   FOLD_SLOT,
   resolveMapFocus,
   mapNodeKeepsTextSelection,
@@ -202,6 +206,23 @@ export {
   type WidthEntry,
   type WidthPickKind,
 } from './mapFit.js';
+
+export {
+  timeKindOf,
+  timeLeafKind,
+  timeLeafFontPx,
+  timeLeafCaption,
+  timeLeafAriaLabel,
+  TIME_LEAF_FONT_SCALE,
+  TIME_LEAF_PAD_Y,
+  TIME_LEAF_PAD_X,
+  TIME_LEAF_LETTER_GAP,
+  TIME_LEAF_MAX_CH,
+  TIME_LEAF_GAP_Y,
+  TIME_LEAF_LETTER,
+  TIME_LEAF_NAME,
+  type TimeLeafKind,
+} from './timeLeaf.js';
 
 export {
   seedColdStartFold,

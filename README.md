@@ -159,7 +159,11 @@ noteDetailsUri: none
 - Alarm arming notes <encrypted> <id:alarm>
 - Cafe supplier account <kind:ticket> <id:supplier-account>
 - Menu change awaiting sign-off <kind:pending-approve> <id:menu-signoff>
+- Thu 8 Oct · 1:25 <kind:time> <id:wheel-t1>
+- Sat 3 Oct · 2:40 <kind:session> <id:glaze-s1>
 ```
+
+`<kind:time>` and `<kind:session>` (0.2.40) mark time records; on the Map a leaf with one is a [time leaf](#time-leaves-0240). They are colon-form only: a bare `<time>` or `<session>` stays caption text.
 
 ## Demo crypto (not production MFA)
 
@@ -426,6 +430,36 @@ const map = createMapView(host, {
 
 The viewer example turns the package node menu on and reads `?focus=<id>`.
 
+### Time leaves (0.2.40)
+
+A line with `<kind:time>` or `<kind:session>` and **no children** draws on the Map as a compact green record pill (Design UX 2026-10-09, TL1–TL8). A record with children stays a normal note pill.
+
+```text
+- Pottery course <id:course>
+  - Glaze lab <id:glaze>
+    - Sat 3 Oct · 2:40 <kind:session> <id:s1>
+    - Glaze checklist <id:check>
+    - Mon 5 Oct · 1:10 <kind:time> <id:t2>
+  - Kiln evening <id:kiln>
+    - Fri 9 Oct · ● open <kind:time> <id:t3>
+```
+
+- **Grammar.** `time` and `session` are kinds, read with optional spaces (`<kind : time>`, `< kind:session >`), written as `<kind:time>` / `<kind:session>`, and a typed spelling is kept while the kind is unchanged. Bare `<time>` / `<session>` are caption text (so existing text that reads that way is never turned into a kind on save).
+- **Size (TL1).** 0.85× the map font (13.5 px on 16, rounded to 0.5 px; a per-node layout `fontSize` is used as written), one line that hugs the caption, and the height that follows from that (no 44 px minimum). No wrap, no more/less, and a stored `w` / `w-auto` does not apply. No width grip, and they are left out of hold-to-fit: the width popover and `w` do nothing on them, `applyWidthPick` returns false, and `1 line siblings` skips them.
+- **Colour (TL2, TL4, TL7).** Fill `--time-fill` `#0e2a22`, border `--time-stroke` `#2ea043` at 1.25 px (light theme `#2b8a3e`), text `#e7ecf1`, kind letter `--time-letter` `#3fb950` bold. The connector into a time leaf is `.map-edge.edge-time`, 1 px `--time-edge` `#2b8a3e`, no opacity. They stay green under any branch colour.
+- **Stacking (TL5).** Two consecutive time leaves under one parent are 6 px apart; next to a note the usual gap applies.
+- **States (TL6).** A tap selects (no new tap meaning); hover brightens the border to `--time-stroke-hover` `#3fb950`; focus keeps the standard ring. No fold handle and no task box. Keyboard navigation, the node menu (right-click, hold, `Shift+F10`) and a host's own `contextmenu` (Open note) work as on any pill.
+- **Classes.** `.map-node.leaf.time-leaf.kind-time` / `.kind-session`; the kind letter is `text.map-kind-letter`.
+
+**What the package draws and what the host writes (TL3).** The package draws the kind letter (`T` for time, `S` for session) from the kind, so the caption must **not** start with it. Everything else is the host's caption, shown as written: the compact date (`Thu 8 Oct`, the year only when it isn't this year), the duration as `h:mm`, or `● open` for a running record, then any real caption after it. The package's own formatting is limited to:
+
+- the letter, `role="img"` with `aria-label` "Time record" / "Session record";
+- the node's accessible name, "Time record, Thu 8 Oct · 1:25" (the caption as written; spoken expansions such as "1 hour 25 minutes" are not generated);
+- one line: line breaks become spaces, and a caption over 48 characters (`TIME_LEAF_MAX_CH`) is cut with `…` (the full caption stays in the tooltip);
+- a `●` in the caption painted in the letter's green.
+
+Helpers: `timeLeafKind(node)`, `timeKindOf(kind)`, `timeLeafFontPx(px)`, `timeLeafCaption(text)`, `timeLeafAriaLabel(kind, caption)`, `timeLeafNodeFontPx`, `timeLeafPadLeft`, `timeLeafLetterW`, `mapEdgeSvg(d, { timeLeaf })`, `mapNodeClassNames({ timeLeaf })`, `pillSize(label, { timeLeaf, fontSize })`, constants `TIME_LEAF_FONT_SCALE`, `TIME_LEAF_GAP_Y`, `TIME_LEAF_PAD_X`, `TIME_LEAF_PAD_Y`, `TIME_LEAF_LETTER_GAP`, `TIME_LEAF_MAX_CH`, `TIME_LEAF_LETTER`, `TIME_LEAF_NAME`, type `TimeLeafKind`.
+
 ### Map paint tokens (0.2.32)
 
 Set these on the map host or an ancestor. Defaults are the dark theme.
@@ -439,6 +473,12 @@ Set these on the map host or an ancestor. Defaults are the dark theme.
 | `--map-handle-bg` | `transparent` | Fill inside the − ring. Set a solid colour only if you know the canvas. |
 | `--map-halo` | `--map-bg` at 85% | Thin casing under the − ring and dash, so it reads on a pattern or image |
 | `--connector-casing` | `transparent` | When set, every edge and stem gets a 3.2 px casing underneath. Doubles the edge DOM; leave unset above ~2,000 edges. |
+| `--time-fill` | `#0e2a22` | Time leaf fill (0.2.40) |
+| `--time-stroke` | `#2ea043` (light `#2b8a3e`) | Time leaf border, 1.25 px. 5.0:1 on the dark canvas, 4.5:1 on the fill. |
+| `--time-stroke-hover` | `#3fb950` | Time leaf border on hover |
+| `--time-letter` | `#3fb950` | `T` / `S` kind letter and the `●` of `● open` (6.0:1 on the fill) |
+| `--time-text` | `#e7ecf1` | Time leaf caption (12.9:1 on the fill) |
+| `--time-edge` | `#2b8a3e` | 1 px connector into a time leaf (≥ 3:1 on both canvases) |
 
 `class="of-theme-light"` on the host (or an ancestor) switches to the light tokens: `--map-bg #f3f6f9`, `--connector #62778f`, `--gold #9a7400`, `--map-handle-glyph-on-gold #ffffff`. Map pill and text colours are not part of the light set yet. The Outline (`toHtml`) under it gets light text, muted, accent, stroke and link colours (`--of-text #1d2a36`, `--of-muted #566676`, `--of-accent #0b5cad`, `--of-stroke #c9d3dd`, `--of-hop #0b5cad`). Its `#N`, `→ caption` and Thread chips are small bold labels in `--of-accent`, `--of-hop` and `--of-muted`.
 

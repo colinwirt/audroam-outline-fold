@@ -411,6 +411,13 @@ export interface MeasurePillOpts {
   /** Measure the caption at 600, as an open or pending task paints it (0.2.38). */
   semibold?: boolean;
   fontSize?: number;
+  /**
+   * Compact pill (time leaves, 0.2.40 TL1): this vertical pad and no 44 px
+   * minimum height, so the height follows from the font.
+   */
+  compactPadY?: number;
+  /** Left pad before the caption in place of the default pad (time leaf kind letter). */
+  padLeft?: number;
 }
 
 export interface MeasuredPill {
@@ -790,6 +797,8 @@ function measurePillAt(label: string, opts: MeasurePillOpts): MeasuredPill {
     opts.reserveMoreAffordance === false ? 0 : 1,
     opts.fontSize ?? '',
     opts.semibold ? 1 : 0,
+    opts.compactPadY ?? '',
+    opts.padLeft ?? '',
   ].join('\u0001');
   const cached = pillCache.get(cacheKey);
   if (cached) return cached;
@@ -806,7 +815,8 @@ function measurePillAt(label: string, opts: MeasurePillOpts): MeasuredPill {
       ? Math.max(MIN_COL_W, opts.widthPx)
       : undefined;
   // The checkbox sits in the left pad. Do not add that pad again before the caption.
-  const padLeft = taskLead > 0 ? 0 : PILL_PAD_X;
+  const padLeft =
+    typeof opts.padLeft === 'number' && opts.padLeft >= 0 ? opts.padLeft : taskLead > 0 ? 0 : PILL_PAD_X;
   const padRight = PILL_PAD_X;
   const wrapped = widthPx
     ? wrapLinesToWidth(label, widthPx, effectiveMaxLines, fontPx, padLeft, padRight)
@@ -839,8 +849,11 @@ function measurePillAt(label: string, opts: MeasurePillOpts): MeasuredPill {
     opts.reserveMoreAffordance !== false &&
     (showMore || showLess || showLessSoft);
 
+  const compact = typeof opts.compactPadY === 'number' && opts.compactPadY >= 0;
   const h =
-    Math.max(44, PILL_PAD_Y * 2 + lineCount * box) +
+    (compact
+      ? Math.ceil(opts.compactPadY! * 2 + lineCount * box)
+      : Math.max(44, PILL_PAD_Y * 2 + lineCount * box)) +
     (needsAffordance ? MORE_AFFORDANCE_H : 0);
 
   const measured: MeasuredPill = {

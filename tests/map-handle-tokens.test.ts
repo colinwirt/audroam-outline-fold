@@ -144,7 +144,7 @@ describe('H8 optional connector casing', () => {
   });
 
   it('paints all casings before any edge line, and fades them with the edges', () => {
-    expect(mapSrc).toMatch(/casing \? edges\.map\(\(e\) => mapEdgeCasingSvg\(e\.d\)\)\.join\(''\) : ''\) \+\s+edges\.map\(\(e\) => mapEdgeSvg\(e\.d\)\)/);
+    expect(mapSrc).toMatch(/casing \? edges\.map\(\(e\) => mapEdgeCasingSvg\(e\.d\)\)\.join\(''\) : ''\) \+\s+edges\.map\(\(e\) => mapEdgeSvg\(e\.d, \{ timeLeaf: e\.timeLeaf \}\)\)/);
     expect(mapSrc.match(/querySelectorAll<SVGElement>\('\.map-edge, \.map-edge-casing'\)/g)?.length).toBe(3);
     expect(mapSrc).not.toMatch(/querySelectorAll<SVGElement>\('\.map-edge'\)/);
   });

@@ -71,6 +71,7 @@ import {
   DEFAULT_FONT_PX,
   lineBox,
   resolveFontPx,
+  clampFontPx,
   naturalLineWidth,
   fitTextWidth,
   autoTextWidth,
@@ -158,6 +159,19 @@ import {
   type NodeUriOption,
 } from './nodeMenu.js';
 import { toggleTask, nextTaskState, shouldFireAction } from './task.js';
+import {
+  TIME_LEAF_GAP_Y,
+  TIME_LEAF_LETTER,
+  TIME_LEAF_LETTER_GAP,
+  TIME_LEAF_NAME,
+  TIME_LEAF_PAD_X,
+  TIME_LEAF_PAD_Y,
+  timeLeafAriaLabel,
+  timeLeafCaption,
+  timeLeafFontPx,
+  timeLeafKind,
+  type TimeLeafKind,
+} from './timeLeaf.js';
 import {
   foldLevelAnnouncement,
   foldLevelPicker,
@@ -278,6 +292,12 @@ export interface PillSizeOptions {
   jumps?: { id: string; label: string }[];
   /** Measure the caption at 600: an open or pending task (K4, 0.2.38). */
   semibold?: boolean;
+  /**
+   * Time leaf (0.2.40, TL1): one line that hugs the caption (no wrap, no
+   * stored width, no more/less), the compact height, and room for the kind
+   * letter. `fontSize` is the size to paint at (see `timeLeafNodeFontPx`).
+   */
+  timeLeaf?: TimeLeafKind | null;
 }
 
 export interface PillSize {
@@ -767,8 +787,12 @@ export function childConnectorPath(
   );
 }
 
-export function mapEdgeSvg(d: string): string {
-  return `<path class="map-edge" d="${d}"/>`;
+/**
+ * A connector. `timeLeaf` marks the edge into a time leaf (0.2.40, TL4):
+ * `map-edge edge-time`, 1 px `--time-edge`.
+ */
+export function mapEdgeSvg(d: string, opts: { timeLeaf?: boolean } = {}): string {
+  return `<path class="map-edge${opts.timeLeaf ? ' edge-time' : ''}" d="${d}"/>`;
 }
 
 export { DEFAULT_WRAP_CH, DEFAULT_MAX_LINES, SOFT_SAFETY_MAX_LINES, SOFT_SAFETY_MAX_CHARS, TASK_LEAD };
@@ -789,10 +813,14 @@ export function mapNodeClassNames(opts: {
   task?: TaskState | null;
   bodyExpanded?: boolean;
   focused?: boolean;
+  /** Time leaf (0.2.40): `time-leaf kind-time` / `time-leaf kind-session`. Leaves only. */
+  timeLeaf?: TimeLeafKind | null;
 }): string {
+  const tl = !opts.foldable && opts.timeLeaf ? opts.timeLeaf : null;
   return [
     'map-node',
     opts.foldable ? '' : 'leaf',
+    tl ? `time-leaf kind-${tl}` : '',
     opts.collapsed ? 'collapsed' : '',
     opts.cue ? 'cue' : '',
     opts.task === 'done' ? 'task-done' : opts.task === 'pending' ? 'task-pending' : opts.task ? 'task-open' : '',
@@ -803,7 +831,48 @@ export function mapNodeClassNames(opts: {
     .join(' ');
 }
 
+/** Kind letter width (bold `T` / `S`) at a font size. */
+export function timeLeafLetterW(fontPx: number): number {
+  return Math.ceil(fontPx * 0.68);
+}
+
+/** Left pad of a time leaf: pad, the kind letter, the gap before the caption. */
+export function timeLeafPadLeft(fontPx: number): number {
+  return TIME_LEAF_PAD_X + timeLeafLetterW(fontPx) + TIME_LEAF_LETTER_GAP;
+}
+
+/**
+ * TL1 font for a time leaf: a per-node `fontSize` in the layout is used as
+ * written; otherwise 0.85× the map font (layout file, frontmatter, then 16).
+ */
+export function timeLeafNodeFontPx(
+  node: number | undefined,
+  layout: number | undefined,
+  frontmatter: number | undefined,
+): number {
+  if (typeof node === 'number' && Number.isFinite(node)) return resolveFontPx(node, undefined, undefined);
+  return timeLeafFontPx(resolveFontPx(undefined, layout, frontmatter));
+}
+
 export function pillSize(label: string, opts: PillSizeOptions = {}): PillSize {
+  if (opts.timeLeaf) {
+    const fontPx = clampFontPx(opts.fontSize);
+    return measurePill(timeLeafCaption(label), {
+      wrapCh: 100000,
+      maxLines: 1,
+      fontSize: fontPx,
+      reserveFold: false,
+      reserveTask: false,
+      reserveMoreAffordance: false,
+      compactPadY: TIME_LEAF_PAD_Y,
+      padLeft: timeLeafPadLeft(fontPx),
+      foldSlot: FOLD_SLOT,
+      taskLead: TASK_LEAD,
+      noteLinks: opts.noteLinks,
+      thread: opts.thread,
+      jumps: opts.jumps,
+    });
+  }
   const measured = measurePill(label, {
     wrapCh: opts.wrapCh ?? DEFAULT_WRAP_CH,
     widthPx: opts.widthPx,
@@ -839,6 +908,14 @@ function nodePillOpts(
         ? defaults.maxLines
         : undefined;
   const widthPx = lay?.w ?? n.layout?.w;
+  const tl = timeLeafKind(n);
+  if (tl) {
+    return {
+      timeLeaf: tl,
+      fontSize: timeLeafNodeFontPx(lay?.fontSize, defaults?.fontSize, undefined),
+      ...nodeChips(n, doc),
+    };
+  }
   return {
     reserveFold: hasKids(n),
     reserveTask: !!resolveTask(n),
@@ -850,6 +927,22 @@ function nodePillOpts(
     fontSize: lay?.fontSize ?? defaults?.fontSize,
     ...nodeChips(n, doc),
   };
+}
+
+/**
+ * Time leaf pill options for paint (0.2.40): the stored width, wrap and
+ * more/less of the layout entry do not apply (TL1). Null for other nodes.
+ */
+function timeLeafPaintOpts(
+  n: OutlineNode,
+  pos: { fontSize?: number } | undefined,
+  layoutFont: number | undefined,
+  fmFont: number | undefined,
+  doc?: OutlineFoldDoc,
+): PillSizeOptions | null {
+  const tl = timeLeafKind(n);
+  if (!tl) return null;
+  return { timeLeaf: tl, fontSize: timeLeafNodeFontPx(pos?.fontSize, layoutFont, fmFont), ...nodeChips(n, doc) };
 }
 
 /**
@@ -907,6 +1000,19 @@ function taskGlyphSvg(state: TaskState, x: number, y: number): string {
     <rect x="-7" y="-7" width="14" height="14" rx="3" fill="none" stroke="${stroke}" stroke-width="1.75"/>
     ${mark}
   </g>`;
+}
+
+/** The width grip and its hit area (bottom-right corner). Time leaves have none (TL1). */
+function widthGripSvg(boxRight: number, y: number, h: number, textW: number, shown: boolean): string {
+  return `<g class="map-width-grip" stroke="#8ec8ff" stroke-width="1.75" stroke-linecap="round" fill="none" pointer-events="none" opacity="${shown ? '1' : '0'}">
+        <path d="M ${boxRight - 10} ${y + h + 5} H ${boxRight + 5} V ${y + h - 10}"/>
+      </g>
+      <rect class="map-width-hit" data-text-w="${textW}" x="${boxRight - 6}" y="${y + h - 6}" width="18" height="18" fill="transparent" cursor="ew-resize" pointer-events="${shown ? 'all' : 'none'}"/>`;
+}
+
+/** TL3: a `●` in a time leaf caption (`● open`) paints in the kind letter's green. */
+function timeLeafDots(textSvg: string): string {
+  return textSvg.replace(/●/g, '<tspan class="map-time-dot">●</tspan>');
 }
 
 function globeGlyphSvg(x: number, y: number): string {
@@ -1008,7 +1114,10 @@ export function autoPackPositions(
     for (let i = 0; i < kids.length; i++) {
       const ch = layoutSubtree(kids[i]!, childGroupLeft, y);
       y += ch;
-      if (i < kids.length - 1) y += gapY;
+      // TL5: two consecutive time leaves under one parent stack 6 px apart.
+      if (i < kids.length - 1) {
+        y += timeLeafKind(kids[i]) && timeLeafKind(kids[i + 1]) ? Math.min(gapY, TIME_LEAF_GAP_Y) : gapY;
+      }
     }
     const stackH = y - top;
     // A pill taller than its child stack used to stay centred on the stack
@@ -1415,7 +1524,7 @@ export function createMapView(
       const pos = layout.nodes[key]!;
       const label = captionWithoutLinks(displayCaption(n.title));
       const foldable = hasKids(n);
-      const size = pillSize(label, {
+      const size = pillSize(label, timeLeafPaintOpts(n, pos, layout.fontSize, doc.frontmatter?.fontSize, doc) ?? {
         reserveFold: foldable,
         reserveTask: !!resolveTask(n),
         semibold: isTaskEmphasis(resolveTask(n)),
@@ -2859,7 +2968,7 @@ export function createMapView(
       const key = nodeMapKey(n, pos);
       const lay = layout.nodes?.[key];
       const mode = lay && lay.wAuto !== undefined ? lay.wAuto : n.layout?.wAuto;
-      if (mode !== W_AUTO_SINGLE_LINE || key === resizingWidthKey) continue;
+      if (mode !== W_AUTO_SINGLE_LINE || key === resizingWidthKey || timeLeafKind(n)) continue;
       let w: number;
       const held = autoWidthCache.get(key);
       if (editingKey && key === editingKey && held != null) {
@@ -3028,11 +3137,13 @@ export function createMapView(
   /** The popover's and `w` menu's picks (F3–F6). */
   function applyWidthPick(key: string, kind: WidthPickKind, explicitW?: number): MapWidthStep | null | false {
     const n = nodeByKey(key);
-    if (!n) return false;
+    // Time leaves have no width (TL1): no pick applies to them.
+    if (!n || timeLeafKind(n)) return false;
     let scope: OutlineNode[] = [n];
     if (kind === 'siblings') {
       const parent = findParentOf(getDoc().nodes, n);
-      scope = siblingScope(n, parent ? parent.children : getDoc().nodes);
+      // TL1: `1 line siblings` skips time leaves.
+      scope = siblingScope(n, parent ? parent.children : getDoc().nodes).filter((s) => !timeLeafKind(s));
     }
     const cap = currentSingleLineCap();
     let capped = 0;
@@ -3578,7 +3689,7 @@ export function createMapView(
     const layout = getLayout();
     const vb = layout.viewBox!;
     const focusId = getFocusId();
-    const edges: { d: string }[] = [];
+    const edges: { d: string; timeLeaf?: boolean }[] = [];
     type NodePaint = {
       n: OutlineNode;
       key: string;
@@ -3603,6 +3714,7 @@ export function createMapView(
       showLess: boolean;
       bodyExpanded: boolean;
       fontPx: number;
+      timeLeaf: TimeLeafKind | null;
     };
     const nodes: NodePaint[] = [];
     const order = indexOutline(doc.nodes);
@@ -3614,7 +3726,8 @@ export function createMapView(
       const foldable = hasKids(n);
       const col = foldable && !!n.id && isCollapsed(doc, n.id);
       const taskParsed = resolveTask(n);
-      const size = pillSize(label, {
+      const timeLeaf = timeLeafKind(n);
+      const size = pillSize(label, timeLeafPaintOpts(n, pos, layout.fontSize, doc.frontmatter?.fontSize, doc) ?? {
         reserveFold: foldable,
         reserveTask: !!taskParsed,
         semibold: isTaskEmphasis(taskParsed),
@@ -3625,14 +3738,14 @@ export function createMapView(
         fontSize: resolveFontPx(pos.fontSize, layout.fontSize, doc.frontmatter?.fontSize),
         ...nodeChips(n, doc),
       });
-      const cue = isCue(n);
+      const cue = !timeLeaf && isCue(n);
       const thread = resolveThread(n);
       const chips = mapChipPieces(nodeChips(n, doc));
       nodes.push({
         n,
         key,
         pos,
-        label,
+        label: timeLeaf ? timeLeafCaption(label) : label,
         w: size.w,
         h: size.h,
         textW: size.textW,
@@ -3641,17 +3754,19 @@ export function createMapView(
         lines: size.lines,
         richLines: size.richLines,
         truncated: size.truncated,
-        fullText: size.fullText || n.title,
+        fullText: timeLeaf ? label : size.fullText || n.title,
         foldable,
         col,
         cue,
-        task: taskParsed ?? null,
+        // A time leaf is a record, not a task: no checkbox (TL6).
+        task: timeLeaf ? null : taskParsed ?? null,
         thread,
         chips,
         showMore: size.showMore,
         showLess: size.showLess,
         bodyExpanded: size.bodyExpanded,
         fontPx: size.fontPx,
+        timeLeaf,
       });
 
       if (foldable && !col) {
@@ -3660,7 +3775,7 @@ export function createMapView(
           const cpos = layout.nodes![cKey] || { x: pos.x + 200, y: pos.y };
           const clabel = captionWithoutLinks(displayCaption(c.title));
           const cTask = resolveTask(c);
-          const cs = pillSize(clabel, {
+          const cs = pillSize(clabel, timeLeafPaintOpts(c, cpos, layout.fontSize, doc.frontmatter?.fontSize, doc) ?? {
             reserveFold: hasKids(c),
             reserveTask: !!cTask,
             semibold: isTaskEmphasis(cTask),
@@ -3677,6 +3792,7 @@ export function createMapView(
               { x: pos.x, y: pos.y, w: size.w, foldSlot: size.foldSlot },
               { x: cpos.x, y: cpos.y, w: cs.w },
             ),
+            timeLeaf: !!timeLeafKind(c),
           });
           walk(c);
         }
@@ -3688,7 +3804,7 @@ export function createMapView(
     const casing = connectorCasingOn();
     const edgeSvg =
       (casing ? edges.map((e) => mapEdgeCasingSvg(e.d)).join('') : '') +
-      edges.map((e) => mapEdgeSvg(e.d)).join('');
+      edges.map((e) => mapEdgeSvg(e.d, { timeLeaf: e.timeLeaf })).join('');
     const nodeSvg = nodes
       .map(
         ({
@@ -3715,6 +3831,7 @@ export function createMapView(
           showLess,
           bodyExpanded,
           fontPx,
+          timeLeaf,
         }) => {
           const x = pos.x - w / 2;
           const y = pos.y - h / 2;
@@ -3734,6 +3851,7 @@ export function createMapView(
             task,
             bodyExpanded,
             focused,
+            timeLeaf,
           });
           const foldCx = foldHandleGeometry(boxRight, foldSlot).cx;
           const foldHit = foldable
@@ -3766,7 +3884,15 @@ export function createMapView(
             links.length > 0
               ? globeGlyphSvg(boxRight - 2, y + 8)
               : '';
-          const captionX = task != null ? textLeft : x + PILL_PAD_X;
+          const captionX = timeLeaf
+            ? x + timeLeafPadLeft(fontPx)
+            : task != null
+              ? textLeft
+              : x + PILL_PAD_X;
+          // TL3: the kind letter, bold green, named for assistive tech.
+          const kindLetter = timeLeaf
+            ? `<text class="map-kind-letter" x="${x + TIME_LEAF_PAD_X}" y="${textCentreY + lineBox(fontPx) / 4}" text-anchor="start" font-size="${fontPx}" font-weight="700" font-family="${LABEL_FONT_FAMILY}" role="img" aria-label="${TIME_LEAF_NAME[timeLeaf]}">${TIME_LEAF_LETTER[timeLeaf]}</text>`
+            : '';
           const widest = richLines.reduce(
             (max, line) => Math.max(max, lineWidth(line, fontPx, isTaskEmphasis(task))),
             0,
@@ -3811,22 +3937,20 @@ export function createMapView(
             })
             .join('');
           return `<g class="${cls}" id="${esc(mapNodeDomId(domPrefix, key))}" data-id="${esc(key)}" data-text-w="${textW}"
-      role="treeitem" aria-selected="${focused ? 'true' : 'false'}" aria-current="${focused ? 'true' : 'false'}" aria-label="${esc(label)}${task != null ? (task === 'done' ? ', task done' : task === 'pending' ? ', task pending' : ', task open') : ''}${foldable ? (col ? `, collapsed, ${foldCountLabel(hiddenCount)}` : ', expanded') : ''}${showMore ? ', more text available' : ''}${showLess ? ', showing full body' : ''}"
+      role="treeitem" aria-selected="${focused ? 'true' : 'false'}" aria-current="${focused ? 'true' : 'false'}" aria-label="${esc(timeLeaf ? timeLeafAriaLabel(timeLeaf, label) : label)}${task != null ? (task === 'done' ? ', task done' : task === 'pending' ? ', task pending' : ', task open') : ''}${foldable ? (col ? `, collapsed, ${foldCountLabel(hiddenCount)}` : ', expanded') : ''}${showMore ? ', more text available' : ''}${showLess ? ', showing full body' : ''}"
       ${foldable ? `aria-expanded="${col ? 'false' : 'true'}" aria-haspopup="menu"` : ''}${levelMenu && levelMenu.id === key ? ' data-level-open="true"' : ''}>
       <title>${esc(tip)}</title>
       <rect class="map-pill" x="${x}" y="${y}" width="${boxW}" height="${h}" rx="18" ry="18"/>
       ${taskChrome}
       ${globe}
-      ${multiLineText(lines, captionX, textCentreY, textW, richLines, fontPx, isTaskEmphasis(task) ? 600 : 400)}
+      ${kindLetter}
+      ${timeLeaf ? timeLeafDots(multiLineText(lines, captionX, textCentreY, textW, richLines, fontPx, 400)) : multiLineText(lines, captionX, textCentreY, textW, richLines, fontPx, isTaskEmphasis(task) ? 600 : 400)}
       ${moreChrome}
       ${chipSvg}
       ${foldChrome}
       ${taskHit}
       ${foldHit}
-      <g class="map-width-grip" stroke="#8ec8ff" stroke-width="1.75" stroke-linecap="round" fill="none" pointer-events="none" opacity="${widthShown ? '1' : '0'}">
-        <path d="M ${boxRight - 10} ${y + h + 5} H ${boxRight + 5} V ${y + h - 10}"/>
-      </g>
-      <rect class="map-width-hit" data-text-w="${textW}" x="${boxRight - 6}" y="${y + h - 6}" width="18" height="18" fill="transparent" cursor="ew-resize" pointer-events="${widthShown ? 'all' : 'none'}"/>
+      ${timeLeaf ? '' : widthGripSvg(boxRight, y, h, textW, widthShown)}
     </g>`;
         },
       )
@@ -4355,6 +4479,8 @@ export function createMapView(
     }
 
     openWidthPopHook = (key, how) => {
+      // TL1: no width popover on a time leaf (`w` does nothing there).
+      if (timeLeafKind(nodeByKey(key))) return false;
       const g = nodeEl(key);
       const pill = g?.querySelector('.map-pill');
       if (!g || !pill) return false;
@@ -4379,7 +4505,7 @@ export function createMapView(
     ): { key: string; textW: number } | null {
       let best: { key: string; textW: number } | null = null;
       let bestDx = slop + 1;
-      host.querySelectorAll<SVGGElement>('.map-node').forEach((g) => {
+      host.querySelectorAll<SVGGElement>('.map-node:not(.time-leaf)').forEach((g) => {
         const pill = g.querySelector('.map-pill');
         if (!pill) return;
         const r = pill.getBoundingClientRect();

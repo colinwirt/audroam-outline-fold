@@ -52,3 +52,8 @@ Playwright touch harness for the Map (0.2.30+). Not a demo.
   `?nodemenu=1` turns on the package node menu; `?nodeuri=<template>` sets
   `nodeUri` (`none` hides Copy link). `window.__copies` records `onCopy`, and
   `window.__sets` counts `setDoc` calls (the host's dirty mark).
+- `time-leaves.md` (`?doc=time-leaves.md`, fiction) has `<kind:time>` and
+  `<kind:session>` leaves (one spelled `<kind : time>`, one running `● open`,
+  one long caption that is cut to one line), a note between two of them, and
+  a time record with a child (a normal note pill), for the 0.2.40 time leaf
+  specs (`e2e/time-leaves.spec.ts`, `e2e/touch-time-leaves.spec.ts`).
