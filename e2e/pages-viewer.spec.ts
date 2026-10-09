@@ -306,16 +306,44 @@ test.describe('Map handle hooks, halo, casing and light tokens (0.2.32)', () => 
   });
 });
 
-test.describe('Pages viewer: Shift+F10 is the host\'s (L9 amended 2026-10-08)', () => {
-  test('the viewer, which has no node menu, opens the level picker itself; Esc closes it', async ({ page }) => {
+test.describe('Pages viewer: Shift+F10 opens the package node menu (0.2.39, node menu M1)', () => {
+  test('Shift+F10 / ContextMenu open the node menu; Levels… reaches the level picker; Esc closes', async ({ page }) => {
     const host = await openMap(page);
     await clickNode(page, host, 'root');
     await expectSelected(page, HOST, 'root');
     await page.keyboard.press('Shift+F10');
+    const menu = page.locator('.map-node-menu');
+    await expect(menu).toHaveCount(1);
+    await expect(menu.locator('[role="menuitem"]')).toHaveText(['Levels…', 'Copy jump', 'Copy link']);
+    await page.keyboard.press('Escape');
+    await expect(menu).toHaveCount(0);
+    await page.keyboard.press('ContextMenu');
+    await expect(menu).toHaveCount(1);
+    await page.keyboard.press('Enter');
+    await expect(menu).toHaveCount(0);
     await expect(page.locator('.map-level-menu')).toHaveCount(1);
     await page.keyboard.press('Escape');
     await expect(page.locator('.map-level-menu')).toHaveCount(0);
-    await page.keyboard.press('ContextMenu');
-    await expect(page.locator('.map-level-menu')).toHaveCount(1);
+  });
+
+  test('Copy link copies the viewer URL with focus=<id>, and that URL opens with the node selected', async ({ page }) => {
+    await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+    const host = await openMap(page);
+    await clickNode(page, host, 'root');
+    await press(page, '2');
+    await selectViaKeys(page, HOST, ['ArrowRight'], 'menu');
+    await page.keyboard.press('Shift+F10');
+    await page.locator('.map-node-menu [data-item="copy-link"]').click();
+    const expected = new URL(page.url());
+    expected.searchParams.set('focus', 'menu');
+    expected.hash = '';
+    await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(expected.href);
+    await expect(page.locator('.map-copied')).toHaveText('Copied link');
+    // Opened fresh (no saved map state), the copied link selects that node.
+    await page.addInitScript(() => localStorage.clear());
+    await page.goto(expected.href);
+    await page.locator('#btnMap').click();
+    await expect(page.locator(`${HOST} .map-node[data-id="menu"]`)).toHaveCount(1);
+    await expectSelected(page, HOST, 'menu', { hostFocused: false });
   });
 });

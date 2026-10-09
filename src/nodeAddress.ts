@@ -87,6 +87,50 @@ export function assignPersistentId(
   return node.id;
 }
 
+/**
+ * The id `assignPersistentId` would give `node`, without writing it (0.2.39).
+ * A written id is returned as is.
+ */
+export function previewPersistentId(
+  doc: OutlineFoldDoc,
+  node: OutlineNode,
+  opts?: AutoIdOptions,
+): string {
+  if (node.id) return node.id;
+  const prefix = opts?.prefix ?? '';
+  const used = collectNodeIds(doc.nodes);
+  if (!prefix) {
+    const pos = indexOutline(doc.nodes).get(node);
+    if (pos && !used.has(String(pos))) return String(pos);
+  }
+  return nextAutoId(used, prefix);
+}
+
+/** The id written on the line (`<id:…>`), or null. A session id not yet written is null. */
+export function writtenId(node: OutlineNode | null | undefined): string | null {
+  return node?.id && !node.autoId ? node.id : null;
+}
+
+/**
+ * Copy jump / Copy link (0.2.39): the line's written id, or a new one when
+ * `canMint`. A new id comes from `assignPersistentId` (a session id is kept
+ * and written; otherwise the free position or the next number, so a short
+ * id with no spaces). Only `node.id` changes: the caption, its tags and their
+ * spelling and spacing are untouched. Read-only (`canMint: false`) and no id:
+ * nothing is written and `id` is null. The caller writes the doc back
+ * (setDoc + onChange) when `minted`.
+ */
+export function mintNodeId(
+  doc: OutlineFoldDoc,
+  node: OutlineNode,
+  opts: AutoIdOptions & { canMint: boolean },
+): { id: string | null; minted: boolean } {
+  const have = writtenId(node);
+  if (have) return { id: have, minted: false };
+  if (!opts.canMint) return { id: null, minted: false };
+  return { id: assignPersistentId(doc, node, opts.prefix ? { prefix: opts.prefix } : undefined), minted: true };
+}
+
 /** A line's own `(+)` (no id) becomes fold state on `doc.fold` once it has an id. */
 function moveFoldMarkToDoc(doc: OutlineFoldDoc, node: OutlineNode): void {
   if (!node.foldMark || !node.id) return;

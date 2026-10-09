@@ -70,6 +70,9 @@ export {
 
 export {
   assignPersistentId,
+  previewPersistentId,
+  mintNodeId,
+  writtenId,
   indexOutline,
   linkPayloadNodes,
   nextAutoId,
@@ -115,6 +118,7 @@ export {
   type MapKeyboardWire,
   type MapViewHandle,
   type MapWidthStep,
+  type NodeCopyResult,
   type MapFocusDirection,
   type ResolveMapFocusOptions,
 } from './mapView.js';
@@ -394,3 +398,29 @@ export {
   type CleanIdsResult,
   type CleanMarkdownOptions,
 } from './clean.js';
+export {
+  COPY_JUMP_LABEL,
+  COPY_LINK_LABEL,
+  COPIED_TOAST_MS,
+  FOCUS_PARAM,
+  NODE_HOLD_SLOP,
+  NODE_ID_RE,
+  NO_LINK_REASON,
+  READ_ONLY_REASON,
+  copiedText,
+  copyText,
+  copyTextFallback,
+  jumpTagFor,
+  nodeCopyItems,
+  nodeFocusHref,
+  nodeMenuKeyAction,
+  placeNodeMenu,
+  renderNodeMenu,
+  type NodeCopyItem,
+  type NodeCopyKind,
+  type NodeMenuEntry,
+  type NodeMenuGroup,
+  type NodeMenuKeyAction,
+  type NodeMenuView,
+  type NodeUriOption,
+} from './nodeMenu.js';

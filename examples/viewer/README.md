@@ -12,6 +12,11 @@ examples/viewer/?doc=../outline-demo.md
 |-------|------|
 | `doc` (or `md`) | Markdown outline URL (same-origin, under `examples/`) |
 | `layout` | Optional sidecar JSON; else frontmatter `layoutSidecar:` / sibling `*.layout.json`; else **auto-pack** |
+| `focus` | Optional node id: selects it and unfolds its ancestors (what **Copy link** copies) |
+
+## Node menu (0.2.39)
+
+Right-click a pill (not its ± handle), hold it on a phone, or press `Shift+F10` / `ContextMenu` on the selected node: **Levels…** (nodes with children) · **Copy jump** (`<r:id>`, paste it into another caption for a jump chip) · **Copy link** (this page with `&focus=<id>`). A line without an id gets a short one on its first copy, shown in **Handoff text**.
 
 Uses shared core (`../_shared/`): `parseDoc` → `createOutlineView` → `createMapView` (package Map, re-exported) → `resolveLayout` (Pages-only).
 

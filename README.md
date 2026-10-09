@@ -326,7 +326,7 @@ const packed = autoPackPositions(doc, {
 | `autoPackPositions(doc, opts?)` | Deterministic L→R positions for the fold-visible tree |
 | `resolveMapFocus(doc, focusId, dir, opts?)` | Map L→R focus resolver (↑↓ siblings · → child · ← parent; no fold-on-arrow) |
 
-**Map keyboard (when a node is selected):** `.` / Space / Enter toggle fold on the focus node; digits `0`–`9` / `*` call `setExpandLevel(doc, n, { under: focusId })` — depth **under the selection** (`1` = show that node’s children). Digits are no-ops with no selection. `ContextMenu` / `Shift+F10` are left to the host (its node menu); a host reaches the fold-to-level picker with `map.openLevelMenu(id)`. `w` opens the width popover for the selected node (mnemonics `t` Fit text, `l` 1 line, `s` 1 line siblings, `a` Auto); in view mode `Ctrl/⌘+Z` / `Shift+Ctrl/⌘+Z` undo / redo width steps. Outline `attachOutlineTree` digits stay tree-absolute.
+**Map keyboard (when a node is selected):** `.` / Space / Enter toggle fold on the focus node; digits `0`–`9` / `*` call `setExpandLevel(doc, n, { under: focusId })` — depth **under the selection** (`1` = show that node’s children). Digits are no-ops with no selection. `ContextMenu` / `Shift+F10` are left to the host (its node menu), unless `nodeMenu: true` (0.2.39), when they open the package node menu; a host reaches the fold-to-level picker with `map.openLevelMenu(id)`. `w` opens the width popover for the selected node (mnemonics `t` Fit text, `l` 1 line, `s` 1 line siblings, `a` Auto); in view mode `Ctrl/⌘+Z` / `Shift+Ctrl/⌘+Z` undo / redo width steps. Outline `attachOutlineTree` digits stay tree-absolute.
 | `pillSize(label, opts?)` / `FOLD_SLOT` / `TASK_LEAD` | Pill measure (multi-line wrap; foldable end-cap always reserved; `FOLD_SLOT=34`; task lead when task set) |
 
 
@@ -368,6 +368,63 @@ const packed = autoPackPositions(doc, {
 #### Lines without an id
 
 Fold state is keyed by id. A line without `<id:…>` has no id after `parse(md)` or `validateDocument(md).doc`, so the map can draw it but cannot fold it, and an authored `(+)` on it stays on the line (`node.foldMark`) instead of folding it: the node loads open, and its handle does nothing. Parse with session ids and both work: `parse(md, { sessionIds: true })`, or `validateDocument(md, { sessionIds: true }).doc` (0.2.38). Session ids are never written back by `serialize` (unless a jump names one), so the text round-trips. The map does not apply an id-less `(+)` on its own: without an id it could fold the node but never unfold it.
+
+### Node menu: Copy jump and Copy link (0.2.39)
+
+Two items in the node menu's **Open** group (node menu M2–M4, M11). Neither opens a window, so they are plain labels: no icon and no `↗`.
+
+- **Copy jump** copies the in-map jump tag for the node, `<r:id>`, written the way the package writes it (no spaces). Paste it into another caption and that line gets a `→ caption` jump chip.
+- **Copy link** copies the full URL that opens the map focused on the node. The host decides the address with `nodeUri`; without it, it is the current page with `focus=<id>` (other query keys kept, the hash dropped). Copy link is hidden when no safe http(s) URL can be built (a `file:` page, `nodeUri: null`, a template without `{id}`, a callback that returns nothing).
+
+**A line without an id** gets one on its first copy: `assignPersistentId`, the rule widths already use (a session id is written as it is; otherwise the free 1-based position, or the next number), so it is short and the tag has no spaces. Only ` <id:N>` is added to that line, through `setDoc` + `onChange`, so the host marks the document dirty and its save keeps the id. An existing id, and the spelling and spacing of every tag the user typed, are never changed. A second copy writes nothing.
+
+**Read-only** (`canMintIds: false`, or `canPersistWidths: false` when `canMintIds` is unset): nothing is minted, and on a line without an id the two items are **hidden** (M11: show only what applies; `map.nodeCopyItems(id)` still gives each item's `reason` for a host that would rather show it disabled with a tooltip). A line that already has an id copies as usual.
+
+The copy uses `navigator.clipboard.writeText`, falling back to a hidden textarea and `document.execCommand('copy')`. A brief **Copied jump** / **Copied link** (or **Couldn't copy**) shows at the top of the map in a `role="status"` polite live region (`.map-copied`, about 1.6 s).
+
+```js
+// Fiction: a pottery open day.
+const doc = parse(`- Pottery open day <id:openday>
+  - Glaze table <id:glaze>
+  - Kiln corner
+    - Check the cones  < r : glaze >  before firing
+  - Front desk <id:desk>
+`);
+const map = createMapView(host, {
+  getDoc: () => doc,
+  setDoc: (d) => { doc = d; markDirty(); },   // a minted id arrives here
+  getLayout: () => layout,
+  getFocusId: () => focusId,
+  setFocusId: (id) => { focusId = id; },
+  onChange: () => map.paint(),
+  nodeMenu: true,                              // the package's own node menu
+  nodeUri: '/maps/pottery-open-day?focus={id}', // or ({ id, node }) => url; null hides Copy link
+  canMintIds: () => userCanEdit,               // false: read-only, nothing minted
+  onCopy: (ev) => console.log(ev.kind, ev.text, ev.minted),
+});
+// Copy jump on "Front desk" copies <r:desk> and writes nothing.
+// Copy jump on "Kiln corner" (position 3) writes `  - Kiln corner <id:3>` and copies <r:3>.
+// Copy link on "Front desk" copies https://<this host>/maps/pottery-open-day?focus=desk
+```
+
+**The package node menu** (`nodeMenu: true`, off by default) holds `Levels…` (View group, nodes with children; opens the level picker) and the Open group. It opens on a right-click on the pill (not the ± handle, which keeps the level picker; a label with a text selection keeps the browser menu), a 450 ms touch or pen hold on the pill chrome (ring from 150 ms, 10 px slop, not the label, which keeps text select), and `ContextMenu` / `Shift+F10` for the selected node. `role="menu"` named by the caption, `role="group"` per group labelled by its muted 11 px label, `role="separator"` between groups, `role="menuitem"` rows (32 px, 44 px on coarse pointers). Keys: focus starts on the first item; `↑` / `↓` wrap, `Home` / `End`, type-ahead by first letter (`c` cycles Copy jump → Copy link), `Enter` / `Space`, `→` on `Levels…`, `Esc` (focus back to the map), `Tab` closes. One menu at a time: it closes the level picker and the link and width popovers, and they close it. Nothing in it applies (a read-only leaf without an id): no menu, and the event is left to the host.
+
+**A host with its own node menu** (outline-view's `#row-menu`) leaves `nodeMenu` off and builds the two items itself:
+
+| | |
+|---|---|
+| `nodeUri` | `createMapView` option. `'…{id}…'` template (http(s) or root-relative, made absolute against the page), or `({ id, node }) => url`. Unset: current page + `focus=<id>`. `null` / `''` / `none`: no Copy link. |
+| `canMintIds` | `createMapView` option, `boolean` or `() => boolean`. Default: `canPersistWidths` (true when unset). |
+| `onCopy(ev)` | `createMapView` option: every copy, `{ kind: 'jump' \| 'link', key, id, text, minted, ok, reason? }`. |
+| `nodeMenu` | `createMapView` option: the package's own node menu (above). Default false. |
+| `map.nodeCopyItems(id?)` | `[{ kind, label, hidden, reason?, text? }]` for Copy jump and Copy link, in menu order. |
+| `map.copyJump(id?)` / `map.copyLink(id?)` | Mint if needed and allowed, copy, confirm. Call them straight from the click (clipboard needs the user activation). Resolve to the `onCopy` event. |
+| `map.ensureNodeId(id?)` | The written id, minting one when allowed; null when read-only and there is none. |
+| `map.openNodeMenu(id?, { clientX, clientY }?)` / `map.closeNodeMenu()` | The package node menu (needs `nodeMenu: true`). `map.closeMenus()` closes it too. |
+| `map.focusNode(id)` | Select a node, unfold its ancestors, camera follows: for `?focus=<id>` on load. |
+| helpers | `jumpTagFor`, `nodeFocusHref`, `nodeCopyItems`, `copyText`, `copyTextFallback`, `copiedText`, `mintNodeId`, `previewPersistentId`, `writtenId`, `nodeMenuKeyAction`, `placeNodeMenu`, `renderNodeMenu`, `FOCUS_PARAM`, `NODE_HOLD_SLOP`, `READ_ONLY_REASON`, `NO_LINK_REASON`. |
+
+The viewer example turns the package node menu on and reads `?focus=<id>`.
 
 ### Map paint tokens (0.2.32)
 

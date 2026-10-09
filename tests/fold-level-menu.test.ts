@@ -331,7 +331,11 @@ describe('mapView wiring (source checks)', () => {
 
   it('ContextMenu and Shift+F10 are left to the host (L9 amended); treeitems say aria-haspopup', () => {
     expect(src).toContain("host.addEventListener('contextmenu'");
-    expect(src).toContain("if (e.key === 'ContextMenu' || (e.key === 'F10' && e.shiftKey)) return;");
+    // Left to the host unless it turned on the package node menu (0.2.39): no preventDefault otherwise.
+    const keys = src.slice(src.indexOf("if (e.key === 'ContextMenu' || (e.key === 'F10' && e.shiftKey)) {"));
+    expect(keys.slice(0, keys.indexOf('return;\n      }'))).toMatch(
+      /if \(nodeMenuOn && focusId && openNodeMenu\(focusId, null, \{ fine: true \}\)\) \{\s+e\.preventDefault\(\);/,
+    );
     const kb = src.slice(src.indexOf('function bindKeyboard('));
     expect(kb.slice(0, kb.indexOf('host.addEventListener(\'keydown\', onKey)'))).not.toMatch(/(?<!map\.)openLevelMenu\(/);
     expect(src).toContain('aria-haspopup="menu"');
@@ -345,6 +349,6 @@ describe('mapView wiring (source checks)', () => {
   });
 
   it('the menu, ring and live region survive paint', () => {
-    expect(src).toContain("'.map-width-pop, .of-map-controls, .map-level-menu, .map-level-ring, .map-live, .map-link-pop, .map-toast'");
+    expect(src).toContain("'.map-width-pop, .of-map-controls, .map-level-menu, .map-level-ring, .map-live, .map-link-pop, .map-toast, .map-node-menu, .map-node-ring, .map-copied'");
   });
 });

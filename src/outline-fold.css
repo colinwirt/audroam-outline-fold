@@ -531,6 +531,7 @@
 }
 
 /* Level menu: HTML overlay in the map host, anchored to the handle. */
+.map-node-menu,
 .map-level-menu,
 .map-link-pop {
   box-sizing: border-box;
@@ -733,3 +734,74 @@
 @media (prefers-reduced-motion: reduce) {
   .map-link-pop { transition: none; }
 }
+
+/* Node menu (0.2.39, `nodeMenu: true`): M2 groups with muted labels and
+   dividers, M3 labels only (no icons, no ↗: nothing here opens a window), M5
+   hover / focus, M7 44 px rows on coarse pointers. */
+.map-node-menu {
+  min-width: 11rem;
+  max-width: 18rem;
+  padding: 4px;
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+.map-node-menu-group { display: flex; flex-direction: column; }
+.map-node-menu-label {
+  padding: 4px 10px 2px;
+  color: #97a4b2;
+  font-size: 11px;
+  line-height: 1.3;
+}
+.map-node-menu-sep {
+  height: 1px;
+  margin: 4px 6px;
+  background: var(--map-menu-stroke);
+}
+.map-node-menu-item {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  min-height: 32px;
+  width: 100%;
+  margin: 0;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.map-node-menu[data-pointer="coarse"] .map-node-menu-item { min-height: 44px; }
+.map-node-menu-item:hover { background: #16324a; }
+.map-node-menu-item:focus { outline: none; }
+.map-node-menu-item:focus-visible,
+.map-node-menu-item:focus {
+  background: #16324a;
+  box-shadow: inset 0 0 0 2px #6cb6ff;
+}
+.map-node-menu-item[aria-disabled="true"] { opacity: 0.45; cursor: default; }
+
+/* "Copied" confirmation (0.2.39): brief, `role=status`, top centre of the map. */
+.map-copied {
+  position: absolute;
+  z-index: 8;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 6px 14px;
+  border-radius: 10px;
+  background: var(--map-menu-bg);
+  border: 1px solid var(--map-menu-stroke);
+  box-shadow: var(--map-menu-shadow);
+  color: var(--text, var(--of-text));
+  font: 14px/1.2 var(--of-font);
+  pointer-events: none;
+  white-space: nowrap;
+}
+.map-copied:empty { display: none; }
+.map-copied[data-ok="false"] { border-color: #d29922; }

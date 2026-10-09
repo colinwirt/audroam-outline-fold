@@ -1,6 +1,6 @@
 /**
  * Shared Outline | Map viewer.
- * Query: ?doc=<md url> [&layout=<sidecar json>]
+ * Query: ?doc=<md url> [&layout=<sidecar json>] [&focus=<node id>]
  * Shared core only: parseDoc → createOutlineView + createMapView + layoutSidecar.
  */
 import { loadDoc } from '../_shared/parseDoc.js';
@@ -431,17 +431,21 @@ async function boot() {
     },
     isActive: () => mode === 'map',
     ariaLabel: rootTitle + ' mind map, left to right. Pan and zoom enabled.',
+    // The package node menu (0.2.39): right-click or hold a pill, or
+    // Shift+F10 / ContextMenu: Levels… · Copy jump · Copy link. Copy link is
+    // this page with focus=<id> (read below). A line without an id gets one in
+    // the Handoff text on its first copy; the viewer itself saves nothing.
+    nodeMenu: true,
   });
   map.ensurePositions();
   map.bindGestures();
   map.bindKeyboard({ panel, modeButton: btnMap });
-  // This viewer has no node menu of its own, so ContextMenu / Shift+F10 open
-  // the level picker for the selected node (the package leaves the key to hosts).
-  mapHost.addEventListener('keydown', (e) => {
-    if (mode !== 'map' || !(e.key === 'ContextMenu' || (e.key === 'F10' && e.shiftKey))) return;
-    if (e.target instanceof Element && e.target.closest('.map-level-menu')) return;
-    if (map.openLevelMenu()) e.preventDefault();
-  });
+  // ?focus=<id> (a copied link): select that node and unfold its ancestors.
+  const focusParam = params.get('focus');
+  if (focusParam && findNode(doc.nodes, focusParam)) {
+    map.focusNode(focusParam);
+    outline?.refresh(focusId);
+  }
   // Whole-map Levels 1 2 3 All (fold to level P3), after Fit.
   mountMapLevels(map, mapTools);
   if (resume?.camera && typeof resume.camera.k === 'number') {

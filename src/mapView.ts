@@ -140,7 +140,23 @@ import {
   type CamState,
   type WorldRect,
 } from './mapCamera.js';
-import { assignPersistentId, indexOutline, nodeMapKey } from './nodeAddress.js';
+import { assignPersistentId, indexOutline, mintNodeId, nodeMapKey, previewPersistentId, writtenId } from './nodeAddress.js';
+import {
+  COPIED_TOAST_MS,
+  NODE_HOLD_SLOP,
+  copiedText,
+  copyText,
+  jumpTagFor,
+  nodeCopyItems as nodeCopyItemsFor,
+  nodeFocusHref,
+  nodeMenuKeyAction,
+  placeNodeMenu,
+  renderNodeMenu,
+  type NodeCopyItem,
+  type NodeCopyKind,
+  type NodeMenuEntry,
+  type NodeUriOption,
+} from './nodeMenu.js';
 import { toggleTask, nextTaskState, shouldFireAction } from './task.js';
 import {
   foldLevelAnnouncement,
@@ -364,6 +380,49 @@ export interface MapViewOptions {
    * the toast's Undo, `map.undoWidth()`).
    */
   onWidthStep?: (step: MapWidthStep) => boolean | void;
+  /**
+   * 0.2.39: the package's own node menu (M2–M4, M8, M9) with `Levels…` and the
+   * Open group (`Copy jump`, `Copy link`). It opens on a right-click on the
+   * pill (not the ± handle), a touch or pen hold of 450 ms on the pill chrome
+   * (not the label), and `ContextMenu` / `Shift+F10` for the selected node.
+   * Default false: a host with its own node menu leaves it off and calls
+   * `map.nodeCopyItems`, `map.copyJump` and `map.copyLink` from its items.
+   */
+  nodeMenu?: boolean;
+  /**
+   * 0.2.39 Copy link: the URL that opens the map focused on a node. A template
+   * with `{id}` (http(s) or root-relative; made absolute against the page), or
+   * a function `({ id, node }) => url`. Unset: the current page with
+   * `focus=<id>` (http(s) pages only). `null` or `''`: no Copy link.
+   */
+  nodeUri?: NodeUriOption;
+  /**
+   * 0.2.39: Copy jump / Copy link on a line without an id write a short id
+   * onto it (`assignPersistentId`, as widths do) through setDoc + onChange, so
+   * the host marks the document dirty and its save keeps it. False: read-only,
+   * nothing is minted and the two items are hidden on lines without an id
+   * (M11). Default: the value of `canPersistWidths` (true when unset).
+   */
+  canMintIds?: boolean | (() => boolean);
+  /** 0.2.39: after every Copy jump / Copy link (copied or not). */
+  onCopy?: (ev: NodeCopyResult) => void;
+}
+
+/** What a Copy jump / Copy link did (0.2.39). */
+export interface NodeCopyResult {
+  kind: NodeCopyKind;
+  /** The map key it was asked for (an id, or a position for a line without one). */
+  key: string;
+  /** The node's id afterwards, or null when there is none (read-only). */
+  id: string | null;
+  /** What was put on the clipboard (or would have been). */
+  text: string | null;
+  /** True when this copy wrote a new id onto the line. */
+  minted: boolean;
+  /** True when the clipboard took it. */
+  ok: boolean;
+  /** Why nothing was copied: `missing`, `read-only`, `no-link`, `clipboard`. */
+  reason?: 'missing' | 'read-only' | 'no-link' | 'clipboard';
 }
 
 export interface MapKeyboardWire {
@@ -424,6 +483,34 @@ export interface MapViewHandle {
   currentWholeMapLevel: () => WholeMapLevel | null;
   /** Called after every paint. Returns an unsubscribe function. */
   onPaint: (fn: () => void) => () => void;
+  /**
+   * 0.2.39: open the package node menu for a node (default: the selected one),
+   * at a client point or under the pill. Needs `nodeMenu: true` and
+   * bindGestures(). False when nothing in it applies.
+   */
+  openNodeMenu: (id?: string, at?: { clientX: number; clientY: number }) => boolean;
+  /** 0.2.39: close the package node menu if it is open. */
+  closeNodeMenu: () => void;
+  /**
+   * 0.2.39: Copy jump and Copy link for a node (default: the selected one), in
+   * menu order, each with `hidden` and a `reason` (for a host that shows it
+   * disabled with a tooltip) and `text` when the node already has an id.
+   */
+  nodeCopyItems: (id?: string) => NodeCopyItem[];
+  /** 0.2.39: copy `<r:id>` for a node, minting its id first if needed and allowed. */
+  copyJump: (id?: string) => Promise<NodeCopyResult>;
+  /** 0.2.39: copy the URL that opens the map focused on a node, minting its id first if needed and allowed. */
+  copyLink: (id?: string) => Promise<NodeCopyResult>;
+  /**
+   * 0.2.39: the node's written id, minting one (setDoc + onChange) when it has
+   * none and minting is allowed. Null when read-only and there is none.
+   */
+  ensureNodeId: (id?: string) => string | null;
+  /**
+   * 0.2.39: select a node, unfold its folded ancestors and let the camera
+   * follow (as a jump does, without onHop). For `?focus=<id>` on load.
+   */
+  focusNode: (id: string) => boolean;
 }
 
 function walkNodes(
@@ -1245,6 +1332,9 @@ export function createMapView(
     onCameraSettle,
     canPersistWidths: canPersistWidthsOpt,
     onWidthStep,
+    nodeMenu: nodeMenuOn = false,
+    canMintIds: canMintIdsOpt,
+    onCopy,
   } = opts;
   const wheelSetting = gestureOpts.wheel ?? wheelMode;
   // Host fallbacks for the note-link templates; `'noteMapUri' in opts` keeps an explicit null.
@@ -2009,11 +2099,12 @@ export function createMapView(
 
   /** Any package menu open: level picker, link popover, width popover. */
   function packageMenuOpen(): boolean {
-    return !!levelMenu || !!linkPop || !!host.querySelector('.map-width-pop');
+    return !!levelMenu || !!linkPop || !!nodeMenu || !!host.querySelector('.map-width-pop');
   }
 
   /** One menu at a time (node menu M1): close every package menu. */
   function closeMenus(): void {
+    closeNodeMenu(false);
     closeLevelMenu(false);
     dismissLinkPop(false);
     dismissWidthPopHook?.();
@@ -2180,7 +2271,8 @@ export function createMapView(
     const doc = getDoc();
     const picker = foldLevelPicker(doc, id);
     if (!picker || !nodeEl(id)) return false;
-    // One menu at a time: the link and width popovers close first.
+    // One menu at a time: the node menu, link and width popovers close first.
+    closeNodeMenu(false);
     dismissLinkPop(false);
     dismissWidthPopHook?.();
     if (getFocusId() !== id) {
@@ -2310,6 +2402,306 @@ export function createMapView(
     setDoc(next);
     onChange?.();
     announce(wholeMapAnnouncement(next, level));
+  }
+
+
+  // ── Node menu: Copy jump / Copy link (0.2.39, node menu M2–M4, M8, M9, M11) ──
+
+  type NodeMenuState = {
+    key: string;
+    el: HTMLElement;
+    items: HTMLElement[];
+    entries: NodeMenuEntry[];
+    abort: AbortController;
+  };
+  let nodeMenu: NodeMenuState | null = null;
+  let copiedToast: { el: HTMLElement; timer: number } | null = null;
+
+  function idsMintable(): boolean {
+    if (canMintIdsOpt !== undefined) {
+      return typeof canMintIdsOpt === 'function' ? !!canMintIdsOpt() : canMintIdsOpt !== false;
+    }
+    return widthsPersist();
+  }
+
+  function focusHref(id: string, node: OutlineNode | null): string | null {
+    return nodeFocusHref(id, { nodeUri: opts.nodeUri, node, base: pageBase() ?? null });
+  }
+
+  function copyItemsFor(key: string): NodeCopyItem[] {
+    const node = nodeByKey(key);
+    if (!node) return [];
+    const canMint = idsMintable();
+    const id = writtenId(node);
+    return nodeCopyItemsFor({
+      id,
+      canMint,
+      previewId: id ? null : node.id || previewPersistentId(getDoc(), node),
+      href: (x) => focusHref(x, node),
+    });
+  }
+
+  /**
+   * The line's written id, or a new one: `assignPersistentId` (a session id is
+   * kept and written; otherwise the free position or the next number), then
+   * one setDoc + onChange so the host marks the document dirty. Only `<id:…>`
+   * is added; the caption, its tags and their spacing are untouched.
+   */
+  function ensureNodeId(key: string): { id: string | null; minted: boolean } {
+    const node = nodeByKey(key);
+    if (!node) return { id: null, minted: false };
+    const doc = getDoc();
+    const { id, minted } = mintNodeId(doc, node, { canMint: idsMintable() });
+    if (!id || !minted) return { id, minted: false };
+    const layout = getLayout();
+    if (id !== key && layout.nodes?.[key]) {
+      if (!layout.nodes[id]) layout.nodes[id] = layout.nodes[key]!;
+      delete layout.nodes[key];
+    }
+    if (getFocusId() === key) setFocusId(id);
+    if (nodeMenu?.key === key) nodeMenu.key = id;
+    setDoc(doc);
+    onChange?.();
+    return { id, minted: true };
+  }
+
+  function dismissCopied(): void {
+    if (!copiedToast) return;
+    window.clearTimeout(copiedToast.timer);
+    copiedToast.el.remove();
+    copiedToast = null;
+  }
+
+  /** The brief visible confirmation; `role=status` so it is read once (polite). */
+  function showCopied(text: string, ok: boolean): void {
+    if (typeof document === 'undefined') return;
+    dismissCopied();
+    if (getComputedStyle(host).position === 'static') host.style.position = 'relative';
+    const el = document.createElement('div');
+    el.className = 'map-copied';
+    el.dataset.ok = ok ? 'true' : 'false';
+    el.setAttribute('role', 'status');
+    el.setAttribute('aria-live', 'polite');
+    el.setAttribute('aria-atomic', 'true');
+    host.appendChild(el);
+    // Filled a frame later so the new live region announces it.
+    requestAnimationFrame(() => {
+      el.textContent = text;
+    });
+    const timer = window.setTimeout(() => {
+      if (copiedToast?.el === el) copiedToast = null;
+      el.remove();
+    }, COPIED_TOAST_MS);
+    copiedToast = { el, timer };
+  }
+
+  /**
+   * One copy. The id is minted (when needed and allowed) and the clipboard
+   * write starts in the same task as the pick, so it keeps the user activation.
+   */
+  function copyNode(key: string, kind: NodeCopyKind): Promise<NodeCopyResult> {
+    const done = (r: NodeCopyResult): NodeCopyResult => {
+      onCopy?.(r);
+      return r;
+    };
+    const node = nodeByKey(key);
+    if (!node) return Promise.resolve(done({ kind, key, id: null, text: null, minted: false, ok: false, reason: 'missing' }));
+    const item = copyItemsFor(key).find((it) => it.kind === kind);
+    if (!item || item.hidden) {
+      const reason = writtenId(node) || idsMintable() ? 'no-link' : 'read-only';
+      return Promise.resolve(done({ kind, key, id: writtenId(node), text: null, minted: false, ok: false, reason }));
+    }
+    const { id, minted } = ensureNodeId(key);
+    const text = id ? (kind === 'jump' ? jumpTagFor(id) : focusHref(id, node)) : null;
+    if (!id || !text) {
+      return Promise.resolve(
+        done({ kind, key, id, text: null, minted, ok: false, reason: id ? 'no-link' : 'read-only' }),
+      );
+    }
+    return copyText(text).then((ok) => {
+      showCopied(copiedText(kind, ok), ok);
+      return done({ kind, key, id, text, minted, ok, ...(ok ? {} : { reason: 'clipboard' as const }) });
+    });
+  }
+
+  function nodeMenuEntries(key: string): NodeMenuEntry[] {
+    const entries: NodeMenuEntry[] = [];
+    if (foldLevelPicker(getDoc(), key)) entries.push({ key: 'levels', label: 'Levels…', group: 'View', popup: true });
+    for (const it of copyItemsFor(key)) {
+      if (it.hidden) continue;
+      entries.push({ key: it.kind === 'jump' ? 'copy-jump' : 'copy-link', label: it.label, group: 'Open' });
+    }
+    return entries;
+  }
+
+  function closeNodeMenu(returnFocus = true): void {
+    const m = nodeMenu;
+    if (!m) return;
+    nodeMenu = null;
+    m.abort.abort();
+    const hadFocus = m.el.contains(document.activeElement);
+    m.el.remove();
+    nodeEl(m.key)?.removeAttribute('data-node-menu-open');
+    if (returnFocus || hadFocus) focusMapForKeys();
+  }
+
+  function focusNodeMenuItem(index: number): void {
+    const m = nodeMenu;
+    const b = m?.items[index];
+    if (!m || !b) return;
+    for (const it of m.items) it.tabIndex = -1;
+    b.tabIndex = 0;
+    try {
+      b.focus({ preventScroll: true });
+    } catch {
+      /* focus not available */
+    }
+  }
+
+  function pickNodeMenuItem(index: number): void {
+    const m = nodeMenu;
+    if (!m) return;
+    const entry = m.entries[index];
+    if (!entry) return;
+    const key = m.key;
+    closeNodeMenu(true);
+    if (entry.key === 'levels') {
+      openLevelMenu(key);
+      return;
+    }
+    void copyNode(key, entry.key === 'copy-jump' ? 'jump' : 'link');
+  }
+
+  /** Host-local point under the pill's left edge, for a keyboard open. */
+  function pillAnchor(key: string): { x: number; y: number } | null {
+    const pill = nodeEl(key)?.querySelector('.map-pill');
+    if (!pill) return null;
+    const r = pill.getBoundingClientRect();
+    const hr = host.getBoundingClientRect();
+    return { x: r.left - hr.left, y: r.bottom - hr.top + 4 };
+  }
+
+  function openNodeMenu(key: string, at?: { clientX: number; clientY: number } | null, how: { fine?: boolean } = {}): boolean {
+    if (!nodeMenuOn || typeof document === 'undefined') return false;
+    closeMenus();
+    const node = nodeByKey(key);
+    if (!node || !nodeEl(key)) return false;
+    const entries = nodeMenuEntries(key);
+    if (!entries.length) return false;
+    if (getFocusId() !== key) {
+      setFocusId(key);
+      userCamGesture = true;
+      pendingFollow = null;
+      onChange?.();
+    }
+    if (getComputedStyle(host).position === 'static') host.style.position = 'relative';
+    const fine = how.fine ?? !coarsePointer();
+    const view = renderNodeMenu({ title: widthTitle(node), entries, fine, nodeId: key });
+    const abort = new AbortController();
+    const m: NodeMenuState = { key, el: view.el, items: view.items, entries, abort };
+    nodeMenu = m;
+    const sig = abort.signal;
+    view.items.forEach((b, i) => {
+      bindTap(
+        b,
+        (ev) => {
+          ev.preventDefault();
+          ev.stopPropagation();
+          if (ev.type === 'pointerup') {
+            const pe = ev as PointerEvent;
+            armClickSwallow?.(pe.clientX, pe.clientY);
+          }
+          pickNodeMenuItem(i);
+        },
+        { signal: sig },
+      );
+    });
+    view.el.addEventListener(
+      'keydown',
+      (e) => {
+        const i = m.items.indexOf(document.activeElement as HTMLElement);
+        const act = nodeMenuKeyAction(e.key, i, m.entries);
+        // Every key stays inside the menu: no fold, zoom or host shortcut.
+        e.stopPropagation();
+        if (!act) return;
+        if (act.type === 'move') {
+          e.preventDefault();
+          focusNodeMenuItem(act.index);
+        } else if (act.type === 'close') {
+          if (e.key === 'Escape') e.preventDefault();
+          closeNodeMenu(act.returnFocus);
+        } else if (act.type === 'activate') {
+          // Enter / Space reach the button's own click (bindTap).
+          if (e.key === 'Enter' || e.key === ' ') return;
+          e.preventDefault();
+          pickNodeMenuItem(act.index);
+        }
+      },
+      { signal: sig },
+    );
+    view.el.addEventListener('contextmenu', (e) => e.preventDefault(), { signal: sig });
+    host.appendChild(view.el);
+    const hr = host.getBoundingClientRect();
+    const point = at ? { x: at.clientX - hr.left, y: at.clientY - hr.top } : pillAnchor(key) ?? { x: 8, y: 8 };
+    const vp = hostViewport();
+    const pos = placeNodeMenu({ at: point, panel: vp, menu: { w: view.el.offsetWidth, h: view.el.offsetHeight } });
+    view.el.style.left = `${pos.left}px`;
+    view.el.style.top = `${pos.top}px`;
+    nodeEl(key)?.setAttribute('data-node-menu-open', 'true');
+    document.addEventListener(
+      'pointerdown',
+      (e) => {
+        const t = e.target as Node | null;
+        if (t && m.el.contains(t)) return;
+        closeNodeMenu(false);
+      },
+      { capture: true, signal: sig },
+    );
+    document.addEventListener(
+      'keydown',
+      (e) => {
+        if (e.key !== 'Escape' || nodeMenu !== m) return;
+        if (m.el.contains(e.target as Node)) return;
+        e.preventDefault();
+        e.stopPropagation();
+        closeNodeMenu(true);
+      },
+      { capture: true, signal: sig },
+    );
+    focusNodeMenuItem(0);
+    return true;
+  }
+
+  /** Select a node and unfold its ancestors (a jump without onHop). */
+  function focusNode(id: string): boolean {
+    let doc = getDoc();
+    const node = id ? findNode(doc.nodes, id) : null;
+    if (!node) return false;
+    const path: OutlineNode[] = [];
+    const walk = (list: OutlineNode[]): boolean => {
+      for (const n of list) {
+        if (n === node) return true;
+        if (n.children?.length && walk(n.children)) {
+          path.push(n);
+          return true;
+        }
+      }
+      return false;
+    };
+    walk(doc.nodes);
+    let unfolded = false;
+    for (const a of path) {
+      if (a.id && isCollapsed(doc, a.id)) {
+        doc = toggleFold(doc, a.id);
+        unfolded = true;
+      }
+    }
+    if (unfolded) setDoc(doc);
+    setFocusId(id);
+    userCamGesture = false;
+    pendingFollow = { kind: 'focus' };
+    onChange?.();
+    return true;
   }
 
 
@@ -3444,7 +3836,7 @@ export function createMapView(
     // in the map) survive the SVG rewrite (0.2.30).
     const overlays = Array.from(host.children).filter((el) =>
       el.matches?.(
-        '.map-width-pop, .of-map-controls, .map-level-menu, .map-level-ring, .map-live, .map-link-pop, .map-toast',
+        '.map-width-pop, .of-map-controls, .map-level-menu, .map-level-ring, .map-live, .map-link-pop, .map-toast, .map-node-menu, .map-node-ring, .map-copied',
       ),
     );
     // A focused menu item is detached by the rewrite below; put focus back after.
@@ -3456,6 +3848,10 @@ export function createMapView(
       linkPop && typeof document !== 'undefined'
         ? linkPop.items.indexOf(document.activeElement as HTMLAnchorElement)
         : -1;
+    const nodeMenuFocus =
+      nodeMenu && typeof document !== 'undefined'
+        ? nodeMenu.items.indexOf(document.activeElement as HTMLElement)
+        : -1;
     host.innerHTML = `<svg class="map-svg" viewBox="0 0 ${Math.max(1, host.clientWidth || 1180)} ${Math.max(1, host.clientHeight || 520)}"
       preserveAspectRatio="xMidYMid meet" role="none" focusable="false">
       <rect width="100%" height="100%" fill="var(--map-bg)"/>
@@ -3466,6 +3862,14 @@ export function createMapView(
       </g>
     </svg>`;
     for (const el of overlays) host.appendChild(el);
+    if (nodeMenu) nodeEl(nodeMenu.key)?.setAttribute('data-node-menu-open', 'true');
+    if (nodeMenu && nodeMenuFocus >= 0) {
+      try {
+        nodeMenu.items[nodeMenuFocus]?.focus({ preventScroll: true });
+      } catch {
+        /* focus not available */
+      }
+    }
     if (linkPop && linkFocus >= 0) {
       try {
         linkPop.items[linkFocus]?.focus({ preventScroll: true });
@@ -4242,6 +4646,63 @@ export function createMapView(
       }, LEVEL_HOLD_MS);
     }
 
+    // Node menu hold (0.2.39, M7): 450 ms on the pill chrome (not the label,
+    // not a handle) with a touch or pen, a ring from 150 ms, 10 px slop.
+    let nodeHold: { pointerId: number; key: string; x: number; y: number } | null = null;
+    let nodeHoldTimers: number[] = [];
+    /** The pointer whose hold opened the node menu: its lift is swallowed. */
+    let nodeHoldOpened: number | null = null;
+
+    function clearNodeHold(): void {
+      for (const t of nodeHoldTimers) window.clearTimeout(t);
+      nodeHoldTimers = [];
+      nodeHold = null;
+      host.querySelector(':scope > .map-node-ring')?.remove();
+    }
+
+    function beginNodeHold(e: PointerEvent, key: string): void {
+      clearNodeHold();
+      const hold = { pointerId: e.pointerId, key, x: e.clientX, y: e.clientY };
+      nodeHold = hold;
+      nodeHoldTimers.push(
+        window.setTimeout(() => {
+          if (nodeHold !== hold) return;
+          const hr = host.getBoundingClientRect();
+          const size = 44;
+          const ring = document.createElement('div');
+          ring.className = 'map-level-ring map-node-ring';
+          ring.setAttribute('aria-hidden', 'true');
+          ring.style.cssText = `position:absolute;z-index:6;pointer-events:none;width:${size}px;height:${size}px;left:${Math.round(hold.x - hr.left - size / 2)}px;top:${Math.round(hold.y - hr.top - size / 2)}px`;
+          ring.innerHTML =
+            '<svg viewBox="0 0 44 44" width="44" height="44"><circle class="map-level-ring-track" cx="22" cy="22" r="19"/><circle class="map-level-ring-fill" cx="22" cy="22" r="19" pathLength="100" transform="rotate(-90 22 22)"/></svg>';
+          if (getComputedStyle(host).position === 'static') host.style.position = 'relative';
+          ring.style.setProperty('--map-level-ring-ms', `${LEVEL_HOLD_MS - LEVEL_RING_MS}ms`);
+          host.appendChild(ring);
+          requestAnimationFrame(() => ring.classList.add('is-filling'));
+        }, LEVEL_RING_MS),
+        window.setTimeout(() => {
+          if (nodeHold !== hold) return;
+          const p = pointers.get(hold.pointerId);
+          const still = !!p && Math.hypot(p.x - p.sx, p.y - p.sy) <= NODE_HOLD_SLOP;
+          clearNodeHold();
+          if (!still || mode !== 'pending' || drivers().length !== 1) return;
+          clearLongPress();
+          clearTouchSelect();
+          // The gesture machine forgets this pointer: no tap, pan or select on lift.
+          pointers.delete(hold.pointerId);
+          mode = 'idle';
+          samples = [];
+          nodeHoldOpened = hold.pointerId;
+          try {
+            navigator.vibrate?.(10);
+          } catch {
+            /* vibrate not allowed */
+          }
+          if (nodeMenu?.key !== hold.key) openNodeMenu(hold.key, { clientX: hold.x, clientY: hold.y }, { fine: false });
+        }, LEVEL_HOLD_MS),
+      );
+    }
+
     function levelItemAt(clientX: number, clientY: number): number {
       const m = levelMenu;
       if (!m) return -1;
@@ -4253,8 +4714,9 @@ export function createMapView(
     function recognise(kind: 'pan' | 'pinch'): void {
       const was = mode;
       mode = kind;
-      // A pan or pinch cancels a fold-handle hold (L4).
+      // A pan or pinch cancels a fold-handle hold (L4) and a node menu hold (M7).
       if (levelHold) clearLevelHold();
+      if (nodeHold) clearNodeHold();
       if (was === 'pending' || was === 'idle') {
         userCamGesture = true;
         const ds = drivers();
@@ -4297,6 +4759,7 @@ export function createMapView(
       clearLongPress();
       clearTouchSelect();
       clearLevelHold();
+      clearNodeHold();
       if (levelMenu) levelMenu.dragPointer = null;
       if (raf) cancelAnimationFrame(raf);
       raf = 0;
@@ -4361,7 +4824,7 @@ export function createMapView(
         // in-map controls guard their own clicks.
         if (
           touchClickGuarded(e.detail, now, nodeTouchTapAt) &&
-          !target?.closest?.('.map-width-pop, .of-map-controls, .map-level-menu, .map-link-pop, .map-toast')
+          !target?.closest?.('.map-width-pop, .of-map-controls, .map-level-menu, .map-link-pop, .map-toast, .map-node-menu, .map-copied')
         ) {
           swallow = null;
           e.preventDefault();
@@ -4412,9 +4875,10 @@ export function createMapView(
       const target = e.target as Element | null;
       // The resize popover and in-map controls handle their own taps: no
       // preventDefault, capture or double-tap zoom on them.
-      if (target?.closest?.('.map-width-pop, .of-map-controls, .map-level-menu, .map-link-pop, .map-toast')) return;
+      if (target?.closest?.('.map-width-pop, .of-map-controls, .map-level-menu, .map-link-pop, .map-toast, .map-node-menu, .map-copied')) return;
       dismissWidthPop();
       closeLevelMenu(false);
+      closeNodeMenu(false);
       const onLabel = !!target?.closest?.('.map-label');
       const type = e.pointerType || 'mouse';
       const barrel = type === 'pen' && (e.buttons & 2) !== 0;
@@ -4534,8 +4998,20 @@ export function createMapView(
         // one-finger samples now (0.2.30, gesture amendment 2026-10-05).
         gestureHadTwo = true;
         samples = [];
-        // A second pointer cancels a fold-handle hold (L4).
+        // A second pointer cancels a fold-handle hold (L4) and a node menu hold.
         if (levelHold) clearLevelHold();
+        if (nodeHold) clearNodeHold();
+      } else if (
+        count === 1 &&
+        nodeMenuOn &&
+        finger &&
+        type !== 'mouse' &&
+        nodeEl &&
+        !control &&
+        !onLabel &&
+        !barrel
+      ) {
+        beginNodeHold(e, nodeEl.getAttribute('data-id') || '');
       } else if (
         count === 1 &&
         nodeEl &&
@@ -4589,6 +5065,9 @@ export function createMapView(
         if (levelHold && e.pointerId === levelHold.pointerId) {
           levelHold = levelHoldMoved(levelHold, e.clientX, e.clientY);
           if (levelHold.phase === 'cancelled') clearLevelHold();
+        }
+        if (nodeHold && e.pointerId === nodeHold.pointerId) {
+          if (Math.hypot(e.clientX - nodeHold.x, e.clientY - nodeHold.y) > NODE_HOLD_SLOP) clearNodeHold();
         }
         if (widthDrag && e.pointerId === widthDrag.pointerId) {
           e.preventDefault();
@@ -4675,6 +5154,18 @@ export function createMapView(
         return;
       }
       if (levelHold && levelHold.pointerId === e.pointerId) clearLevelHold();
+      if (nodeHold && nodeHold.pointerId === e.pointerId) clearNodeHold();
+      // The lift of the hold that opened the node menu: no tap, select or click.
+      if (nodeHoldOpened === e.pointerId) {
+        nodeHoldOpened = null;
+        swallow = armSwallow(performance.now(), e.clientX, e.clientY);
+        nodeTouchTapAt = performance.now();
+        if (pointers.size === 0) {
+          mode = 'idle';
+          endPanGuard();
+        }
+        return;
+      }
       if (widthDrag && e.pointerId === widthDrag.pointerId) {
         const drag = widthDrag;
         widthDrag = null;
@@ -4827,6 +5318,45 @@ export function createMapView(
       if (releasing) return;
     }, { signal });
 
+    /**
+     * `nodeMenu: true` (0.2.39): a contextmenu the level picker leaves alone.
+     * Kept (true) inside the node menu, on the host itself while it is open
+     * (the keyboard's own contextmenu), and on a pill whose node menu opens or
+     * is already open (a hold opened it). The label keeps text select on touch
+     * (L7) and the browser menu over a text selection (M1). False: the event
+     * is the host's, untouched.
+     */
+    function nodeMenuContext(e: MouseEvent, pt: string): boolean {
+      if (!nodeMenuOn) return false;
+      const t = e.target as Element | null;
+      const own = () => {
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+        return true;
+      };
+      if (nodeMenu && (t?.closest?.('.map-node-menu') || t === host)) return own();
+      const pillKey = t?.closest?.('.map-node')?.getAttribute('data-id') || '';
+      if (!pillKey || t?.closest?.('.map-link-pop, .map-width-pop, .of-map-controls, .map-toast, .map-copied')) return false;
+      const onLabel = !!t?.closest?.('.map-label');
+      const sel = typeof window !== 'undefined' ? window.getSelection?.() : null;
+      const selected = !!sel && !sel.isCollapsed && !!sel.toString().trim();
+      if (onLabel && (pt === 'touch' || pt === 'pen' || selected)) return false;
+      if (nodeMenu && nodeMenu.key === pillKey) return own();
+      const opened = openNodeMenu(pillKey, { clientX: e.clientX, clientY: e.clientY }, {
+        fine: pt === 'mouse' || (!pt && !coarsePointer()),
+      });
+      if (!opened) return false;
+      if (nodeHold) {
+        // The platform's long-press came first: it opened the menu, and the lift is no tap.
+        nodeHoldOpened = nodeHold.pointerId;
+        pointers.delete(nodeHold.pointerId);
+        mode = 'idle';
+        clearNodeHold();
+      }
+      return own();
+    }
+
     // Right-click on a fold handle opens the level menu (L9); nowhere else
     // does (Colin, 2026-10-08). A touch or pen long-press on a handle is the
     // hold above, so only its platform menu is swallowed. Capture phase on the
@@ -4843,13 +5373,15 @@ export function createMapView(
       const pt = (e as PointerEvent).pointerType || '';
       const act = levelContextAction({
         inMenu: !!t?.closest?.('.map-level-menu'),
-        inOverlay: !!t?.closest?.('.map-link-pop, .map-width-pop, .of-map-controls, .map-toast'),
+        inOverlay: !!t?.closest?.('.map-link-pop, .map-width-pop, .of-map-controls, .map-toast, .map-copied'),
         onHandle: !!g,
         foldable: !!id && !!foldLevelPicker(getDoc(), id),
         menuOpen: packageMenuOpen(),
         holding: !!levelHold,
         pointerType: pt,
       });
+      // The package node menu (0.2.39, opt-in) takes what the picker leaves.
+      if ((act === 'pass' || act === 'close') && nodeMenuContext(e, pt)) return;
       if (act === 'pass') return;
       if (act === 'close') {
         closeMenus();
@@ -4930,7 +5462,7 @@ export function createMapView(
       // A button in the resize popover or in controls a host put inside the
       // map keeps its own Enter / Space (no fold toggle on the way).
       const kt = e.target as Element | null;
-      if (kt?.closest?.('.map-width-pop, .of-map-controls, .map-level-menu, .map-link-pop, .map-toast')) return;
+      if (kt?.closest?.('.map-width-pop, .of-map-controls, .map-level-menu, .map-link-pop, .map-toast, .map-node-menu, .map-copied')) return;
       // Enter / Space on a focused chip (the #N chip's SVG anchor) opens its popover.
       const chipSel = '.map-note-link-hit, .map-jump-hit, .map-thread-hit, .map-link-hit';
       const chip =
@@ -4996,7 +5528,14 @@ export function createMapView(
       // node menu M1, 2026-10-08): no preventDefault, so the platform
       // contextmenu event reaches the host. A host reaches the level picker
       // with map.openLevelMenu(id) (its `Levels…` item).
-      if (e.key === 'ContextMenu' || (e.key === 'F10' && e.shiftKey)) return;
+      if (e.key === 'ContextMenu' || (e.key === 'F10' && e.shiftKey)) {
+        // With the package node menu on (0.2.39) it opens for the selected node.
+        if (nodeMenuOn && focusId && openNodeMenu(focusId, null, { fine: true })) {
+          e.preventDefault();
+          e.stopPropagation();
+        }
+        return;
+      }
       if (e.shiftKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight' || e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
         e.preventDefault();
         stopMotion();
@@ -5111,6 +5650,22 @@ export function createMapView(
         paintListeners.delete(fn);
       };
     },
+    openNodeMenu: (id?: string, at?: { clientX: number; clientY: number }) => {
+      const target = id ?? getFocusId();
+      return target ? openNodeMenu(target, at ?? null) : false;
+    },
+    closeNodeMenu: () => closeNodeMenu(false),
+    nodeCopyItems: (id?: string) => {
+      const target = id ?? getFocusId();
+      return target ? copyItemsFor(target) : [];
+    },
+    copyJump: (id?: string) => copyNode(id ?? getFocusId(), 'jump'),
+    copyLink: (id?: string) => copyNode(id ?? getFocusId(), 'link'),
+    ensureNodeId: (id?: string) => {
+      const target = id ?? getFocusId();
+      return target ? ensureNodeId(target).id : null;
+    },
+    focusNode,
   };
 }
 

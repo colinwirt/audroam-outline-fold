@@ -46,3 +46,9 @@ Playwright touch harness for the Map (0.2.30+). Not a demo.
   a `<t:N>` chip and an `<r:id>` jump (K3), and an id-less `Reference shelf (+)`.
   `?parse=validate` renders `validateDocument(md).doc`; add `&ids=session` for
   `validateDocument(md, { sessionIds: true }).doc`.
+- `copy-jump.md` (`?doc=copy-jump.md&nodemenu=1`) has lines with and without
+  ids and a spaced `< r : glaze >` jump, for the node menu Copy jump / Copy
+  link specs (`e2e/copy-jump.spec.ts`, `e2e/touch-copy-jump.spec.ts`).
+  `?nodemenu=1` turns on the package node menu; `?nodeuri=<template>` sets
+  `nodeUri` (`none` hides Copy link). `window.__copies` records `onCopy`, and
+  `window.__sets` counts `setDoc` calls (the host's dirty mark).

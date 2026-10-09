@@ -1,0 +1,8 @@
+- Pottery open day <id:openday>
+  - Glaze table <id:glaze>
+    - Mix the celadon batch
+    - Label the test tiles
+  - Kiln corner
+    - Check the cones  < r : glaze >  before firing
+    - Sweep the kiln shelves
+  - Front desk <id:desk>

@@ -47,6 +47,8 @@ window.__fits = 0;
 window.__paints = 0;
 window.__changes = 0;
 window.__widthSteps = [];
+window.__copies = [];
+window.__sets = 0;
 
 // ?view=outline: the text Outline (toHtml + attachOutlineTree) instead of the map.
 if (params.get('view') === 'outline') {
@@ -69,9 +71,16 @@ if (params.get('view') === 'outline') {
   window.__ready = true;
 } else {
 
+// ?nodemenu=1: the package's own node menu (Copy jump / Copy link, 0.2.39).
+// ?nodeuri=<template>: Copy link's template (`none` hides Copy link).
+const nodeUriParam = params.get('nodeuri');
 const map = createMapView(host, {
   getDoc: () => doc,
-  setDoc: (d) => { doc = d; },
+  // __sets counts document writes: the host's dirty mark.
+  setDoc: (d) => { doc = d; window.__sets++; },
+  nodeMenu: params.get('nodemenu') === '1',
+  ...(nodeUriParam != null ? { nodeUri: nodeUriParam === 'none' ? null : nodeUriParam } : {}),
+  onCopy: (ev) => window.__copies.push(ev),
   getLayout: () => layout,
   getFocusId: () => focusId,
   setFocusId: (id) => { focusId = id; },
@@ -106,6 +115,8 @@ window.__layout = () => layout;
 window.__serialize = () => serialize(doc);
 window.__focus = () => focusId;
 window.__setFocus = (id) => { focusId = id; map.paint(); };
+// Load other text into the map (a host save + reload, or a paste into a caption).
+window.__loadText = (text) => { doc = parse(text); map.paint(); };
 
 map.ensurePositions();
 map.bindGestures();
