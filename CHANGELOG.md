@@ -1,5 +1,45 @@
 # Changelog
 
+## 0.2.40 — 2026-10-09
+
+Map **time leaves**: `<kind:time>` and `<kind:session>` records draw as compact green pills (Design UX 2026-10-09 map time leaf, TL1–TL8, LOCKED 2026-10-09; TL8 option A).
+
+### Grammar
+- `time` and `session` are kinds: `<kind:time>`, `<kind:session>`. Read with optional spaces (`<kind : time>`, `< kind:session >`, any case), written without spaces, and a typed spelling is kept while the kind is unchanged.
+- Colon form only: a bare `<time>` or `<session>` stays caption text, so existing text that reads that way is never turned into a kind on save.
+- `NodeKind` lists `'time' | 'session'`.
+
+### Map
+- A `time` / `session` line **with no children** is a time leaf: `.map-node.leaf.time-leaf.kind-time` / `.kind-session`. A record with children stays a normal note pill.
+- **Size (TL1):** 0.85× the map font (13.5 px on 16, rounded to 0.5 px; a per-node layout `fontSize` is used as written), one line that hugs the caption, and the height that follows from the font (no 44 px minimum). No wrap and no more/less; a stored `w` / `w-auto` does not apply. A caption over 48 characters is cut with `…`; the tooltip has the full text.
+- **Kind letter (TL3):** a bold `T` (time) or `S` (session) before the caption, drawn from the kind: `text.map-kind-letter`, `role="img"`, `aria-label` "Time record" / "Session record". The node's accessible name is "Time record, <caption>". A `●` in the caption paints in the letter's green. Everything else (date, `h:mm`, `● open`) is the host's caption, shown as written.
+- **Colour (TL2, TL7):** fill `#0e2a22`, border `#2ea043` 1.25 px (light theme `#2b8a3e`), text `#e7ecf1`, letter `#3fb950`. The rules outrank a branch-colour rule, so time stays green.
+- **Connector (TL4):** the edge into a time leaf is `.map-edge.edge-time`, 1 px `#2b8a3e`, no opacity.
+- **Stacking (TL5):** consecutive time leaves under one parent are 6 px apart (other siblings keep the 14 px gap).
+- **States (TL6):** a tap selects; hover brightens the border to `#3fb950`; focus keeps the standard ring. No fold handle, no task box, no width grip.
+- **Hold-to-fit:** time leaves are left out. The width popover and `w` do nothing on them, `applyWidthPick` returns false, `1 line siblings` skips them, and the right-edge drag ignores them.
+- Keyboard navigation, the package node menu (right-click, hold, `Shift+F10`) and a host's own `contextmenu` work on time leaves as on any pill.
+
+### Tokens
+- New: `--time-fill` `#0e2a22`, `--time-stroke` `#2ea043` (light `#2b8a3e`), `--time-stroke-hover` `#3fb950`, `--time-letter` `#3fb950`, `--time-text` `#e7ecf1`, `--time-edge` `#2b8a3e`.
+
+### API
+- `mapNodeClassNames({ timeLeaf })`, `pillSize(label, { timeLeaf, fontSize })`, `mapEdgeSvg(d, { timeLeaf })` (now exported).
+- `measurePill` options `compactPadY` and `padLeft`.
+- Exports: `timeKindOf`, `timeLeafKind`, `timeLeafFontPx`, `timeLeafNodeFontPx`, `timeLeafCaption`, `timeLeafAriaLabel`, `timeLeafPadLeft`, `timeLeafLetterW`, constants `TIME_LEAF_FONT_SCALE`, `TIME_LEAF_PAD_X`, `TIME_LEAF_PAD_Y`, `TIME_LEAF_LETTER_GAP`, `TIME_LEAF_MAX_CH`, `TIME_LEAF_GAP_Y`, `TIME_LEAF_LETTER`, `TIME_LEAF_NAME`, type `TimeLeafKind`.
+
+### Host contract
+- Write `<kind:time>` (T records) or `<kind:session>` (S records) on the record line, with no spaces.
+- Caption: the compact date, then the duration as `h:mm` or `● open` for a running record, then any real caption, e.g. `Thu 8 Oct · 1:25`, `Fri 9 Oct · ● open`. **Without** a leading `T ` / `S `: the package draws the letter.
+
+### Examples
+- Student study: fictional time and session records under Biology and COMP101.
+- e2e harness fixture `examples/e2e-touch/time-leaves.md` (fiction).
+
+### Tests
+- `tests/time-leaves.test.ts`: parse (both kinds, spacing, case, leading/trailing, bare words literal), round trip and spelling, writer output, helpers, classes, `pillSize`, auto-pack gaps, edge class, CSS tokens and contrast.
+- `e2e/time-leaves.spec.ts` (desktop: classes, letter and names, one line at 13.5 px, 6 px stacking, colours, hover, focus ring, branch rule, light theme, no handle, no grip, hold-to-fit exclusion, keyboard, node menu, host `contextmenu`) and `e2e/touch-time-leaves.spec.ts` (phone: classes, tap selects, no popover, fit exclusion, hold opens the node menu).
+
 ## 0.2.39 — 2026-10-09
 
 Node menu Open group: **Copy jump** and **Copy link** (node menu M2–M4, M8, M9, M11, LOCKED 2026-10-08).
