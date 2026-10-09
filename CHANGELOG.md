@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.37 — 2026-10-09
+
+### Captions keep their list numbers
+- A leading list number is now caption text. Before, parse dropped a `1. ` / `12. ` after the bullet (or on its own), so `- 1. Rake the leaves` read as `Rake the leaves` and the number was lost on the next save. Now `- 1. Rake the leaves` and `1. Rake the leaves` both read as `1. Rake the leaves`, serialize writes `- 1. Rake the leaves`, and edits, folds and task ticks keep the number. Only one leading `-`, `*` or `+` bullet (plus its space) is stripped. This is the default; there is no option.
+- Task boxes stay leading-only: `- [ ] 2. Prune the roses` is a task with caption `2. Prune the roses`; `- 3. [ ] Oil the gate` is plain text. Behaviour change: a box after a number (`- 1. [ ] x`, `1. [ ] x`) used to become a task because the number was stripped first; it is now caption text.
+- Map pills and the Outline show the number as typed; caption rendering has no ordered lists. No other code stripped numbers (serialize, task chrome, clean, validate, captionRich, toHtml and the Map were already number-safe).
+- Tests: `tests/list-numbers.test.ts` (parse, serialize round trip, caption edit re-parse, fold/task toggles, `validateDocument`, `captionToHtml` / `toHtml`); `e2e/list-numbers.spec.ts` (fixture `examples/e2e-touch/list-numbers.md`) checks the Map pills and the Outline rows in Chromium.
+
 ## 0.2.36 — 2026-10-09
 
 ### Map: fixed spaces between words disappearing at some pill widths
