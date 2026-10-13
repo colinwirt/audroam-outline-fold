@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.2.42 — 2026-10-13 (unreleased, not published)
+## 0.2.42 — 2026-10-13
 
 - **1 line siblings** is now state on every sibling, not only the ones that wrapped: each pill in scope gets `w-auto: single-line`, so a short sibling that is later edited past one line stays clamped and lines up with the rest (re-measured on render).
 - New width pick **1 line: all at this level** (key `v`): the same state on every pill at the pressed pill's depth across the whole outline. `levelScope`, `isOneLineScopeKind` exported; `oneLineEntry(m, { always })`.
