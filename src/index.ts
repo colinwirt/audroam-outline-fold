@@ -200,6 +200,8 @@ export {
   stepEntry,
   sameWidth,
   siblingScope,
+  levelScope,
+  isOneLineScopeKind,
   widthToastText,
   widthPickAnnouncement,
   widthMenuKeyItem,

@@ -100,7 +100,7 @@ function natural(page: Page, caption: string) {
 }
 
 test.describe('hold-to-fit P1: the width popover gains a Fit row', () => {
-  test('two groups, six items, roles and ✓ state', async ({ page }) => {
+  test('two groups, seven items, roles and ✓ state', async ({ page }) => {
     await open(page);
     const k = await keyOf(page, GLOVES);
     await openPop(page, k);
@@ -119,10 +119,11 @@ test.describe('hold-to-fit P1: the width popover gains a Fit row', () => {
     );
     expect(groups.map((g) => g.label)).toEqual(['Fit', 'Width']);
     const items = groups.flatMap((g) => g.items);
-    expect(items.map((i) => i.choice)).toEqual(['fit-text', 'line', 'siblings', 'slim', 'wider', 'auto']);
+    expect(items.map((i) => i.choice)).toEqual(['fit-text', 'line', 'siblings', 'level', 'slim', 'wider', 'auto']);
     expect(items.map((i) => i.role)).toEqual([
       'menuitemradio',
       'menuitemradio',
+      'menuitem',
       'menuitem',
       'menuitemradio',
       'menuitemradio',
@@ -130,7 +131,7 @@ test.describe('hold-to-fit P1: the width popover gains a Fit row', () => {
     ]);
     expect(items[2]!.checked).toBeNull();
     expect(items.filter((i) => i.checked === 'true').map((i) => i.text)).toEqual(['✓ Auto']);
-    expect(items.map((i) => i.keys)).toEqual(['t', 'l', 's', null, null, 'a']);
+    expect(items.map((i) => i.keys)).toEqual(['t', 'l', 's', 'v', null, null, 'a']);
     // Fine pointer: 32 px rows; no key hints on a pointer open (F13).
     for (const i of items) expect(i.h).toBeGreaterThanOrEqual(32);
     await expect(page.locator('.map-width-pop kbd')).toHaveCount(0);
@@ -202,19 +203,19 @@ test.describe('hold-to-fit P1: the width popover gains a Fit row', () => {
     }
     // Each its own width, not a shared one.
     expect(new Set(Object.values(ws)).size).toBe(3);
-    // Seeds already fits on one line at Auto: nothing written, no id (F4/F8).
-    expect(await stored(page, keys.seeds)).toEqual({ w: null, wAuto: null });
+    // 0.2.42: Seeds fits at Auto but still gets the state (it is a scope pick).
+    expect((await stored(page, keys.seeds)).wAuto).toBe('single-line');
     // Other parent's children are untouched.
     expect(await stored(page, keys.beans)).toEqual({ w: null, wAuto: null });
     const after = await text(page);
-    expect(writtenId(after, SEEDS)).toBeNull();
+    expect(writtenId(after, SEEDS)).not.toBeNull();
     expect(writtenId(after, BEANS)).toBeNull();
     expect(writtenId(after, 'Spring work days')).toBeNull();
     expect(writtenId(after, GLOVES)).not.toBeNull();
     expect(writtenId(after, PLOT)).not.toBeNull();
     expect(layoutEntry(after, 'compost')).toEqual([`w: ${ws.compost}`, 'w-auto: single-line']);
     await expect(live(page)).toHaveText(/^Bring gloves.* and 3 siblings on 1 line\.$/);
-    await expect(toast(page).locator('.map-toast-text')).toHaveText('3 widths changed');
+    await expect(toast(page).locator('.map-toast-text')).toHaveText('4 widths changed');
     await toast(page).locator('.map-toast-undo').click();
     await page.waitForTimeout(350);
     await expect(toast(page)).toHaveCount(0);
@@ -222,6 +223,48 @@ test.describe('hold-to-fit P1: the width popover gains a Fit row', () => {
     expect(await stored(page, keys.compost)).toEqual({ w: 180, wAuto: null });
     // The ids this step minted are taken back: the text is as it was.
     expect(await text(page)).toBe(before);
+  });
+
+  test('0.2.42: a short sibling edited past one line stays on 1 line and aligned', async ({ page }) => {
+    await open(page);
+    const seeds = await keyOf(page, SEEDS);
+    const gloves = await keyOf(page, GLOVES);
+    await openPop(page, seeds);
+    await pick(page, 'siblings');
+    expect((await stored(page, seeds)).wAuto).toBe('single-line');
+    const left = (k: string) => page.evaluate((s) => (document.querySelector(s + ' .map-pill') as any).getBBox().x, sel(k));
+    const seedsLeft = await left(seeds);
+    const glovesLeft = await left(gloves);
+    const h0 = await page.evaluate((s) => (document.querySelector(s + ' .map-pill') as any).getBBox().height, sel(gloves));
+    // The edit commits: the caption grows well past one line at Auto.
+    await page.evaluate((id) => {
+      const walk = (l: any[]): any => { for (const n of l) { if (n.id === id) return n; const h = n.children && walk(n.children); if (h) return h; } };
+      walk((window as any).__doc().nodes).title = 'Seeds from the swap table go in the tin by the door, labelled with the bed and the date';
+      (window as any).__map.paint();
+    }, seeds);
+    await page.waitForTimeout(200);
+    const key = await keyOf(page, 'Seeds from');
+    expect(await lineCount(page, key)).toBe(1);
+    expect((await stored(page, key)).wAuto).toBe('single-line');
+    // Same left edge as before the edit, and the siblings did not move sideways.
+    // Still on its siblings' shared left edge (the camera may pan, so relative).
+    expect(Math.abs((await left(key)) - (await left(gloves)) - (seedsLeft - glovesLeft))).toBeLessThan(1.5);
+    const h1 = await page.evaluate((s) => (document.querySelector(s + ' .map-pill') as any).getBBox().height, sel(key));
+    expect(Math.abs(h1 - h0)).toBeLessThan(1.5);
+  });
+
+  test('0.2.42: 1 line: all at this level covers cousins under other parents', async ({ page }) => {
+    await open(page);
+    const seeds = await keyOf(page, SEEDS);
+    await openPop(page, seeds);
+    await expect(page.locator('.map-width-pop button[data-choice="level"]')).toHaveText(/1 line: all at this level/);
+    await pick(page, 'level');
+    for (const t of [SEEDS, GLOVES, COMPOST, PLOT, BEANS, PUMPKINS]) {
+      expect((await stored(page, await keyOf(page, t))).wAuto, t).toBe('single-line');
+    }
+    // A different depth is untouched.
+    expect(await stored(page, await keyOf(page, 'Spring work days'))).toEqual({ w: null, wAuto: null });
+    await expect(live(page)).toHaveText(/^Seeds and 5 other pills at this level on 1 line\.$/);
   });
 
   test('Fit text: widest line at 60ch; within 4 px of Auto deletes (no id, no step)', async ({ page }) => {
@@ -277,7 +320,7 @@ test.describe('hold-to-fit P1: keyboard', () => {
     await expect(page.locator('.map-width-pop')).toHaveCount(1);
     expect(await page.evaluate(() => (document.activeElement as HTMLElement)?.dataset.choice)).toBe('auto');
     // Key hints show when the keyboard opened it.
-    await expect(page.locator('.map-width-pop kbd')).toHaveText(['t', 'l', 's', 'a']);
+    await expect(page.locator('.map-width-pop kbd')).toHaveText(['t', 'l', 's', 'v', 'a']);
     await page.keyboard.press('l');
     await expect(page.locator('.map-width-pop')).toHaveCount(0);
     await page.waitForTimeout(300);

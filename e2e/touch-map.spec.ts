@@ -453,9 +453,9 @@ async function expectPopInside(c: Ctx, touch: { x: number; y: number }): Promise
       return { w: r.width, h: r.height };
     }),
   );
-  // Hold-to-fit P1: the Fit row (Fit text · 1 line · 1 line siblings) over
+  // Hold-to-fit P1: the Fit row (Fit text · 1 line · 1 line siblings · 1 line: all at this level) over
   // Slim · Wider · Auto; coarse items ≥ 46×52 (F12).
-  expect(sizes).toHaveLength(6);
+  expect(sizes).toHaveLength(7);
   for (const s of sizes) {
     expect(s.h).toBeGreaterThanOrEqual(52);
     expect(s.w).toBeGreaterThanOrEqual(46);

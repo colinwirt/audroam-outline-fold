@@ -21,7 +21,12 @@ export const WIDTH_TOAST_MS = 8000;
 export const W_AUTO_SINGLE_LINE = 'single-line';
 
 /** The popover's items, in order (fit row, then the width row). */
-export type WidthPickKind = 'fit' | 'line' | 'siblings' | 'slim' | 'wider' | 'auto';
+export type WidthPickKind = 'fit' | 'line' | 'siblings' | 'level' | 'slim' | 'wider' | 'auto';
+
+/** Picks that put a whole scope on 1 line: every pill in scope gets the state, short or not. */
+export function isOneLineScopeKind(kind: string): boolean {
+  return kind === 'siblings' || kind === 'level';
+}
 
 /** A pill's stored width: `w` null is Auto; `wAuto` is the F5a mode. */
 export interface WidthEntry {
@@ -66,9 +71,14 @@ export function fitTextEntry(m: { fit: number; auto: number }): WidthEntry {
  * A caption that already sits on one line at Auto (natural ≤ Auto + 4 px)
  * keeps Auto: nothing is written and no id is minted (F8).
  */
-export function oneLineEntry(m: { natural: number; auto: number; cap: number }): WidthEntry & { capped: boolean } {
+export function oneLineEntry(
+  m: { natural: number; auto: number; cap: number },
+  opts?: { always?: boolean },
+): WidthEntry & { capped: boolean } {
   const capped = Math.ceil(m.natural) > m.cap;
-  if (!capped && m.natural <= m.auto + WIDTH_AUTO_TOLERANCE) return { w: null, wAuto: null, capped: false };
+  // 0.2.42: a scope pick (1 line siblings / all at this level) is state on every
+  // pill in scope, so a short pill that later grows past one line stays clamped.
+  if (!opts?.always && !capped && m.natural <= m.auto + WIDTH_AUTO_TOLERANCE) return { w: null, wAuto: null, capped: false };
   return { w: singleLineWidth(m.natural, m.cap), wAuto: W_AUTO_SINGLE_LINE, capped };
 }
 
@@ -99,6 +109,22 @@ export function widthToastText(changed: number): string {
   return `${plural(changed, 'width', 'widths')} changed`;
 }
 
+/** Every pill at the same depth as `pressed` across the whole outline, pressed first. */
+export function levelScope<T extends { children?: T[] }>(pressed: T, roots: readonly T[] | null | undefined): T[] {
+  let level: T[] = [];
+  const walk = (list: readonly T[], out: T[][], depth: number) => {
+    for (const n of list) {
+      (out[depth] ??= []).push(n);
+      if (n.children?.length) walk(n.children, out, depth + 1);
+    }
+  };
+  const byDepth: T[][] = [];
+  walk(roots || [], byDepth, 0);
+  for (const row of byDepth) if (row.includes(pressed)) level = row;
+  if (!level.length) return [pressed];
+  return [pressed, ...level.filter((n) => n !== pressed)];
+}
+
 /**
  * F12 live-region text for a pick. `title` is the pressed node's caption,
  * `count` the pills in scope, `capped` how many still wrap at the cap.
@@ -117,6 +143,11 @@ export function widthPickAnnouncement(
     case 'siblings': {
       const others = Math.max(0, (p.count ?? 1) - 1);
       const who = others > 0 ? `${title} and ${plural(others, 'sibling', 'siblings')}` : title;
+      return `${who} on 1 line.${capText}`;
+    }
+    case 'level': {
+      const others = Math.max(0, (p.count ?? 1) - 1);
+      const who = others > 0 ? `${title} and ${plural(others, 'other pill', 'other pills')} at this level` : title;
       return `${who} on 1 line.${capText}`;
     }
     case 'fit':
@@ -144,11 +175,12 @@ export const WIDTH_HELP_LINES: readonly string[] = [
   'w: width menu. Ctrl/⌘+Z: undo widths.',
 ];
 
-/** Popover mnemonics (F11): `t` Fit text, `l` 1 line, `s` 1 line siblings, `a` Auto. */
+/** Popover mnemonics (F11): `t` Fit text, `l` 1 line, `s` 1 line siblings, `v` 1 line: all at this level, `a` Auto. */
 export const WIDTH_MENU_KEYS: Readonly<Partial<Record<WidthPickKind, string>>> = {
   fit: 't',
   line: 'l',
   siblings: 's',
+  level: 'v',
   auto: 'a',
 };
 

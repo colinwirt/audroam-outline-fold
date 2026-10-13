@@ -76,7 +76,7 @@ test.describe('hold-to-fit P1 on touch: the Fit row on a grip tap', () => {
         return { choice: (b as HTMLElement).dataset.choice, w: r.width, h: r.height };
       }),
     );
-    expect(items.map((i) => i.choice)).toEqual(['fit-text', 'line', 'siblings', 'slim', 'wider', 'auto']);
+    expect(items.map((i) => i.choice)).toEqual(['fit-text', 'line', 'siblings', 'level', 'slim', 'wider', 'auto']);
     for (const i of items) {
       expect(i.h).toBeGreaterThanOrEqual(52);
       expect(i.w).toBeGreaterThanOrEqual(46);
@@ -97,7 +97,7 @@ test.describe('hold-to-fit P1 on touch: the Fit row on a grip tap', () => {
     expect((await stored(page, compost)).wAuto).toBe('single-line');
     // The tap did not land on whatever was drawn under the finger next.
     expect(await page.evaluate(() => (window as any).__focus())).toBe(k);
-    await expect(page.locator('#mapHost .map-toast .map-toast-text')).toHaveText('3 widths changed');
+    await expect(page.locator('#mapHost .map-toast .map-toast-text')).toHaveText('4 widths changed');
     await tapIn(c, '#mapHost .map-toast .map-toast-undo');
     await expect(page.locator('#mapHost .map-toast')).toHaveCount(0);
     await page.waitForTimeout(400);

@@ -162,7 +162,7 @@ describe('hold-to-fit P1: words (F7, F11, F12, F13)', () => {
   });
 
   it('mnemonics t / l / s / a', () => {
-    expect(WIDTH_MENU_KEYS).toEqual({ fit: 't', line: 'l', siblings: 's', auto: 'a' });
+    expect(WIDTH_MENU_KEYS).toEqual({ fit: 't', line: 'l', siblings: 's', level: 'v', auto: 'a' });
     expect(widthMenuKeyItem('t')).toBe('fit');
     expect(widthMenuKeyItem('L')).toBe('line');
     expect(widthMenuKeyItem('s')).toBe('siblings');

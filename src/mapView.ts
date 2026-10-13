@@ -87,6 +87,8 @@ import {
   oneLineEntry,
   sameWidth,
   siblingScope,
+  levelScope,
+  isOneLineScopeKind,
   singleLineCap,
   singleLineWidth,
   stepEntry,
@@ -3155,6 +3157,8 @@ export function createMapView(
       const parent = findParentOf(getDoc().nodes, n);
       // TL1: `1 line siblings` skips time leaves.
       scope = siblingScope(n, parent ? parent.children : getDoc().nodes).filter((s) => !timeLeafKind(s));
+    } else if (kind === 'level') {
+      scope = levelScope(n, getDoc().nodes).filter((s) => !timeLeafKind(s));
     }
     const cap = currentSingleLineCap();
     let capped = 0;
@@ -3165,12 +3169,12 @@ export function createMapView(
       let after: WidthEntry;
       if (kind === 'fit') {
         after = fitTextEntry({ fit: fitTextWidth(m.label, m.opts), auto: autoTextWidth(m.label, m.opts) });
-      } else if (kind === 'line' || kind === 'siblings') {
+      } else if (kind === 'line' || isOneLineScopeKind(kind)) {
         const one = oneLineEntry({
           natural: naturalLineWidth(m.label, m.opts),
           auto: autoTextWidth(m.label, m.opts),
           cap,
-        });
+        }, { always: isOneLineScopeKind(kind) });
         if (one.capped) capped++;
         after = { w: one.w, wAuto: one.wAuto };
       } else if (kind === 'slim' || kind === 'wider') {
@@ -4322,6 +4326,8 @@ export function createMapView(
       pop.style.cssText = [
         'position:absolute',
         'z-index:6',
+        `max-width:${Math.max(160, Math.floor((host.clientWidth || 9999) - 16))}px`,
+        'box-sizing:border-box',
         'display:flex',
         'flex-direction:column',
         'gap:6px',
@@ -4343,6 +4349,7 @@ export function createMapView(
             { kind: 'fit', label: 'Fit text', choice: 'fit-text', radio: true },
             { kind: 'line', label: '1 line', choice: 'line', radio: true },
             { kind: 'siblings', label: '1 line siblings', choice: 'siblings', radio: false },
+            { kind: 'level', label: '1 line: all at this level', choice: 'level', radio: false },
           ],
         },
         {
@@ -4380,7 +4387,8 @@ export function createMapView(
         group.setAttribute('role', 'group');
         group.setAttribute('aria-label', row.label);
         group.dataset.row = row.label.toLowerCase();
-        group.style.cssText = 'display:flex;gap:6px;flex-wrap:nowrap';
+        // 0.2.42: four Fit items; a narrow map wraps the row instead of overflowing.
+        group.style.cssText = 'display:flex;gap:6px;flex-wrap:wrap';
         for (const item of row.items) {
           const btn = document.createElement('button');
           btn.type = 'button';
