@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.2.41 — 2026-10-13
+
+Clean map: no package-made bold, and secondary chrome behind a `details` option.
+
+### No bold label text
+- Open / in-progress task labels are weight 400 (were 600 since 0.2.38, K4). They keep the 2 px task stroke and the task box; done keeps 1 px muted text. Measurement no longer uses the semibold scope for tasks (`isTaskEmphasis` is still exported).
+- The time-leaf kind letter `T` / `S` is 400 (was 700); it keeps its green.
+- `#N` note-link chips, `→` jump chips and thread chips are 400 on the Map (`.map-note-link`, `.map-jump-link`) and in the Outline (`.of-note-link`, `.of-jump`, `.of-thread`), were 600.
+- Bold comes only from the user's caption markup: `<b>` / `<strong>` (tiny HTML allowlist). Markdown `**bold**` is not parsed.
+- Unchanged (chrome, not label text): menu tiles, toolbar buttons, the width-undo toast button and the count badge text keep their weights.
+
+### `details` option (default off)
+- `createMapView(host, { details })`, `map.setDetails(on)`, `map.details()`. Toggles `.of-details` on the host; CSS shows `.map-fold-count`, `.map-level-key`, `.map-width-key` and `.map-level-count` only under it.
+- e2e harness: `examples/e2e-touch/index.html?details=1`.
+
 ## 0.2.40 — 2026-10-09
 
 Map **time leaves**: `<kind:time>` and `<kind:session>` records draw as compact green pills (Design UX 2026-10-09 map time leaf, TL1–TL8, LOCKED 2026-10-09; TL8 option A).
