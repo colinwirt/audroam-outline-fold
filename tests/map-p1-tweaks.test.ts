@@ -59,14 +59,14 @@ describe('K4: open tasks stand out', () => {
     expect(isTaskEmphasis(undefined)).toBe(false);
   });
 
-  it('CSS: 2 px stroke and 600 label for open / pending, 1 px and muted text for done', () => {
+  it('CSS: 2 px stroke and normal-weight label for open / pending (0.2.41: no bold), 1 px and muted text for done', () => {
     const stroke = cssBlock('.map-node.task-open .map-pill,');
     expect(stroke).toContain('.map-node.task-pending .map-pill');
     expect(stroke).toContain('stroke-width: 2;');
     expect(cssBlock('.map-node.task-done .map-pill {')).toContain('stroke-width: 1;');
     const label = cssBlock('.map-node.task-open .map-label,');
     expect(label).toContain('.map-node.task-pending .map-label');
-    expect(label).toContain('font-weight: 600;');
+    expect(label).toContain('font-weight: 400;');
     expect(cssBlock('.map-node.task-done .map-label {')).toContain('fill: var(--muted, var(--of-muted));');
   });
 
@@ -84,9 +84,9 @@ describe('K4: open tasks stand out', () => {
     expect(mapNodeClassNames({ task: 'done' })).toContain('task-done');
   });
 
-  it('paint writes font-weight 600 on an open task label and measures chips at that weight', () => {
-    expect(mapSrc).toMatch(/multiLineText\([^)]*isTaskEmphasis\(task\) \? 600 : 400\)/);
-    expect(mapSrc).toMatch(/lineWidth\(line, fontPx, isTaskEmphasis\(task\)\)/);
+  it('paint writes font-weight 400 on every label, open tasks included (0.2.41)', () => {
+    expect(mapSrc).not.toMatch(/isTaskEmphasis\(task\) \? 600/);
+    expect(mapSrc).toMatch(/lineWidth\(line, fontPx, false\)/);
   });
 
   it('a semibold caption is measured at 600, so its pill fits the painted text', () => {

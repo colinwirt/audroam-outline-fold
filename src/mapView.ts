@@ -327,6 +327,12 @@ export interface MapViewOptions {
   setFocusId: (id: string) => void;
   onChange?: () => void;
   ariaLabel?: string;
+  /**
+   * Secondary chrome (0.2.41): folded-count badges after fold handles and the
+   * key hints / item counts in the level and width menus. Default false
+   * (clean map). Toggles the `of-details` class on the host; CSS does the rest.
+   */
+  details?: boolean;
   /** Whether map mode is showing (gestures/keyboard). */
   isActive?: () => boolean;
   /** Task checkbox toggle — host owns persist / side effects. */
@@ -497,6 +503,10 @@ export interface MapViewHandle {
   redoWidth: () => boolean;
   /** Apply a level under a node, as a menu pick does (anchors the handle, announces). */
   applyFoldLevel: (id: string, level: FoldLevelKey) => void;
+  /** Show or hide secondary chrome (counts, key hints); see `details`. */
+  setDetails: (on: boolean) => void;
+  /** Whether secondary chrome is showing. */
+  details: () => boolean;
   /** Every root to a level (toolbar Levels, L8). */
   setWholeMapLevel: (level: WholeMapLevel) => void;
   /** The toolbar level the whole map is at, or null. */
@@ -919,7 +929,7 @@ function nodePillOpts(
   return {
     reserveFold: hasKids(n),
     reserveTask: !!resolveTask(n),
-    semibold: isTaskEmphasis(resolveTask(n)),
+    semibold: false,
     wrapCh: lay?.wrapCh ?? defaults?.wrapCh ?? DEFAULT_WRAP_CH,
     widthPx: typeof widthPx === 'number' && widthPx > 0 ? widthPx : undefined,
     maxLines,
@@ -1416,6 +1426,7 @@ export function createMapView(
   host: HTMLElement,
   opts: MapViewOptions,
 ): MapViewHandle {
+  host.classList.toggle('of-details', !!opts.details);
   const {
     getDoc,
     setDoc,
@@ -1527,7 +1538,7 @@ export function createMapView(
       const size = pillSize(label, timeLeafPaintOpts(n, pos, layout.fontSize, doc.frontmatter?.fontSize, doc) ?? {
         reserveFold: foldable,
         reserveTask: !!resolveTask(n),
-        semibold: isTaskEmphasis(resolveTask(n)),
+        semibold: false,
         wrapCh: pos.wrapCh ?? defaults.wrapCh,
         widthPx: pos.w,
         maxLines: pos.maxLines,
@@ -2939,7 +2950,7 @@ export function createMapView(
       opts: {
         fontSize: resolveFontPx(pos?.fontSize, layout.fontSize, getDoc().frontmatter?.fontSize),
         reserveTask: !!resolveTask(n),
-        semibold: isTaskEmphasis(resolveTask(n)),
+        semibold: false,
         wrapCh: pos?.wrapCh,
         maxLines: pos?.maxLines,
         bodyExpanded: !!pos?.bodyExpanded,
@@ -3730,7 +3741,7 @@ export function createMapView(
       const size = pillSize(label, timeLeafPaintOpts(n, pos, layout.fontSize, doc.frontmatter?.fontSize, doc) ?? {
         reserveFold: foldable,
         reserveTask: !!taskParsed,
-        semibold: isTaskEmphasis(taskParsed),
+        semibold: false,
         wrapCh: pos.wrapCh,
         widthPx: pos.w ?? n.layout?.w,
         maxLines: pos.maxLines,
@@ -3778,7 +3789,7 @@ export function createMapView(
           const cs = pillSize(clabel, timeLeafPaintOpts(c, cpos, layout.fontSize, doc.frontmatter?.fontSize, doc) ?? {
             reserveFold: hasKids(c),
             reserveTask: !!cTask,
-            semibold: isTaskEmphasis(cTask),
+            semibold: false,
             wrapCh: cpos.wrapCh,
             widthPx: cpos.w ?? c.layout?.w,
             maxLines: cpos.maxLines,
@@ -3891,10 +3902,10 @@ export function createMapView(
               : x + PILL_PAD_X;
           // TL3: the kind letter, bold green, named for assistive tech.
           const kindLetter = timeLeaf
-            ? `<text class="map-kind-letter" x="${x + TIME_LEAF_PAD_X}" y="${textCentreY + lineBox(fontPx) / 4}" text-anchor="start" font-size="${fontPx}" font-weight="700" font-family="${LABEL_FONT_FAMILY}" role="img" aria-label="${TIME_LEAF_NAME[timeLeaf]}">${TIME_LEAF_LETTER[timeLeaf]}</text>`
+            ? `<text class="map-kind-letter" x="${x + TIME_LEAF_PAD_X}" y="${textCentreY + lineBox(fontPx) / 4}" text-anchor="start" font-size="${fontPx}" font-weight="400" font-family="${LABEL_FONT_FAMILY}" role="img" aria-label="${TIME_LEAF_NAME[timeLeaf]}">${TIME_LEAF_LETTER[timeLeaf]}</text>`
             : '';
           const widest = richLines.reduce(
-            (max, line) => Math.max(max, lineWidth(line, fontPx, isTaskEmphasis(task))),
+            (max, line) => Math.max(max, lineWidth(line, fontPx, false)),
             0,
           );
           // Chip row after the widest line, centred on the caption: thread pill,
@@ -3944,7 +3955,7 @@ export function createMapView(
       ${taskChrome}
       ${globe}
       ${kindLetter}
-      ${timeLeaf ? timeLeafDots(multiLineText(lines, captionX, textCentreY, textW, richLines, fontPx, 400)) : multiLineText(lines, captionX, textCentreY, textW, richLines, fontPx, isTaskEmphasis(task) ? 600 : 400)}
+      ${timeLeaf ? timeLeafDots(multiLineText(lines, captionX, textCentreY, textW, richLines, fontPx, 400)) : multiLineText(lines, captionX, textCentreY, textW, richLines, fontPx, 400)}
       ${moreChrome}
       ${chipSvg}
       ${foldChrome}
@@ -5741,6 +5752,10 @@ export function createMapView(
     }
   }
 
+  function setDetails(on: boolean): void {
+    host.classList.toggle('of-details', !!on);
+  }
+
   return {
     paint,
     ensurePositions,
@@ -5769,6 +5784,8 @@ export function createMapView(
     redoWidth,
     applyFoldLevel,
     setWholeMapLevel,
+    setDetails,
+    details: () => host.classList.contains('of-details'),
     currentWholeMapLevel: () => currentWholeMapLevel(getDoc()),
     onPaint: (fn: () => void) => {
       paintListeners.add(fn);

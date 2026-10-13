@@ -7,7 +7,7 @@ test.describe('P1 tweaks on touch', () => {
     await page.context().route('https://notes.example.org/**', (r) =>
       r.fulfill({ contentType: 'text/html', body: '<title>note</title>' }),
     );
-    await page.goto('examples/e2e-touch/index.html?doc=day-tweaks.md');
+    await page.goto('examples/e2e-touch/index.html?doc=day-tweaks.md&details=1');
     await page.waitForFunction(() => (window as any).__ready === true);
     await page.waitForTimeout(150);
   });
@@ -58,7 +58,7 @@ test.describe('P1 tweaks on touch', () => {
     }
   });
 
-  test('K4: open tasks are semibold with a 2 px stroke on a phone too', async ({ page }) => {
+  test('K4: open tasks are normal weight (0.2.41) with a 2 px stroke on a phone too', async ({ page }) => {
     const got = await page.evaluate(() =>
       ['compost', 'beans', 'butt'].map((id) => {
         const g = document.querySelector(`.map-node[data-id="${id}"]`)!;
@@ -69,8 +69,8 @@ test.describe('P1 tweaks on touch', () => {
       }),
     );
     expect(got).toEqual([
-      ['2px', '600'],
-      ['2px', '600'],
+      ['2px', '400'],
+      ['2px', '400'],
       ['1px', '400'],
     ]);
   });

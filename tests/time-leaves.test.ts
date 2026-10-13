@@ -274,7 +274,7 @@ describe('CSS tokens (TL2, TL4, TL6, TL7)', () => {
     expect(decl(block('.map-node.time-leaf.time-leaf:hover .map-pill'), 'stroke')).toBe('var(--time-stroke-hover)');
     expect(css).toContain('.map-node.time-leaf.time-leaf.is-focused .map-pill');
     const letter = block('.map-kind-letter');
-    expect(decl(letter, 'font-weight')).toBe('700');
+    expect(decl(letter, 'font-weight')).toBe('400');
     const edge = block('.map-edge.edge-time.edge-time');
     expect(decl(edge, 'stroke')).toBe('var(--time-edge)');
     expect(decl(edge, 'stroke-width')).toBe('1');

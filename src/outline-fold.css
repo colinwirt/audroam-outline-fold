@@ -148,7 +148,7 @@
   flex: none;
   color: var(--of-hop);
   font-size: 0.75rem;
-  font-weight: 600;
+  font-weight: 400;
   line-height: 1;
   padding: 0 0.1rem;
   text-decoration: none;
@@ -206,7 +206,7 @@
   color: var(--accent, var(--of-accent));
   font: inherit;
   font-size: 0.75rem;
-  font-weight: 600;
+  font-weight: 400;
   line-height: 1;
   padding: 0 0.1rem;
   cursor: pointer;
@@ -236,7 +236,7 @@
   color: var(--muted, var(--of-muted));
   font: inherit;
   font-size: 0.75rem;
-  font-weight: 600;
+  font-weight: 400;
   line-height: 1;
   padding: 0 0.1rem;
   cursor: pointer;
@@ -343,7 +343,7 @@
 }
 .map-node.task-open .map-label,
 .map-node.task-pending .map-label {
-  font-weight: 600;
+  font-weight: 400;
 }
 .map-node.task-done .map-label {
   fill: var(--muted, var(--of-muted));
@@ -392,7 +392,7 @@
   fill: var(--time-letter);
 }
 .map-kind-letter {
-  font-weight: 700;
+  font-weight: 400;
   pointer-events: none;
 }
 .map-edge.edge-time.edge-time {
@@ -413,7 +413,7 @@
   fill: var(--accent, var(--of-accent));
   font-family: var(--of-font);
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 400;
 }
 /* Thread pill (0.2.34): in the chip row after the caption, inside the node,
    on the menu surface with a muted label. */
@@ -435,7 +435,7 @@
   fill: #9ecbff;
   font-family: var(--of-font);
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 400;
 }
 .map-jump-hit:hover .map-jump-link {
   fill: #cfe0ef;
@@ -850,3 +850,14 @@
 }
 .map-copied:empty { display: none; }
 .map-copied[data-ok="false"] { border-color: #d29922; }
+
+/* 0.2.41: clean map by default. Secondary chrome (folded-count badges, menu key
+   hints and level item counts) shows only when the host has `of-details`. */
+.map-fold-count,
+.map-level-key,
+.map-level-count,
+.map-width-key { display: none !important; }
+.of-details .map-fold-count,
+.of-details .map-level-key,
+.of-details .map-level-count,
+.of-details .map-width-key { display: inline !important; }

@@ -9,7 +9,7 @@ import { test, expect, type Page } from '@playwright/test';
  * Host: examples/e2e-touch with levels.md.
  */
 
-const HARNESS = 'examples/e2e-touch/index.html?doc=levels.md';
+const HARNESS = 'examples/e2e-touch/index.html?doc=levels.md&details=1';
 const MENU = '.map-level-menu';
 
 async function open(page: Page, url = HARNESS) {

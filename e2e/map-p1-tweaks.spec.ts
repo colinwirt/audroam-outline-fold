@@ -7,7 +7,8 @@ import { test, expect, type Page } from '@playwright/test';
  * Fixture: examples/e2e-touch/day-tweaks.md (fiction).
  */
 
-const MAP = 'examples/e2e-touch/index.html?doc=day-tweaks.md';
+const MAP = 'examples/e2e-touch/index.html?doc=day-tweaks.md&details=1';
+const CLEAN = 'examples/e2e-touch/index.html?doc=day-tweaks.md';
 const node = (id: string) => `#mapHost .map-node[data-id="${id}"]`;
 
 async function open(page: Page, url = MAP) {
@@ -44,16 +45,16 @@ const paint = (page: Page, id: string) =>
   }, node(id));
 
 test.describe('K4: the open tasks stand out', () => {
-  test('open and in-progress: 2 px, semibold; done: 1 px, muted; box chrome intact', async ({ page }) => {
+  test('open and in-progress: 2 px, normal weight (0.2.41); done: 1 px, muted; box chrome intact', async ({ page }) => {
     await open(page);
     const compost = await paint(page, 'compost');
     expect(compost.stroke).toBe('2px');
-    expect(compost.weight).toBe('600');
+    expect(compost.weight).toBe('400');
     expect(compost.box).toBe(true);
     expect(compost.hit).toBe('false');
     const beans = await paint(page, 'beans');
     expect(beans.stroke).toBe('2px');
-    expect(beans.weight).toBe('600');
+    expect(beans.weight).toBe('400');
     expect(beans.hit).toBe('mixed');
     const butt = await paint(page, 'butt');
     expect(butt.stroke).toBe('1px');
@@ -76,7 +77,7 @@ test.describe('K4: the open tasks stand out', () => {
     const mid = await paint(page, 'compost');
     expect(mid.cls).toContain('task-pending');
     expect(mid.stroke).toBe('2px');
-    expect(mid.weight).toBe('600');
+    expect(mid.weight).toBe('400');
     await clickSel(page, `${node('compost')} .map-task-hit`);
     await expect.poll(() => page.evaluate(() => (window as any).__tasks.length)).toBe(2);
     expect(await page.evaluate(() => (window as any).__tasks[1])).toEqual({ id: 'compost', from: 'pending', to: 'done' });
@@ -92,7 +93,7 @@ test.describe('K4: the open tasks stand out', () => {
     await page.evaluate(() => (window as any).__setFocus('compost'));
     const p = await paint(page, 'compost');
     expect(p.stroke).toBe('2.5px');
-    expect(p.weight).toBe('600');
+    expect(p.weight).toBe('400');
   });
 });
 
@@ -200,5 +201,21 @@ test.describe('authored (+) on a line with no id', () => {
     const out: string = await page.evaluate(() => (window as any).__serialize());
     expect(out).toContain('  - Reference shelf\n');
     expect(out).not.toMatch(/Reference shelf.*<id:/);
+  });
+});
+
+test.describe('0.2.41 clean mode: details off by default', () => {
+  test('no count badge without details; setDetails(true) shows it, false hides it', async ({ page }) => {
+    await open(page, CLEAN);
+    const seeds = page.locator(node('seeds'));
+    await expect(page.locator('#mapHost')).not.toHaveClass(/of-details/);
+    const count = seeds.locator('.map-fold-count');
+    if (await count.count()) await expect(count).toBeHidden();
+    await page.evaluate(() => document.querySelector('#mapHost')!.classList.add('of-details'));
+    if (await count.count()) await expect(count).toBeVisible();
+    const weights = await page.$$eval('#mapHost .map-label, #mapHost .map-kind-letter', (els) =>
+      [...new Set(els.map((e) => getComputedStyle(e).fontWeight))],
+    );
+    expect(weights).toEqual(['400']);
   });
 });

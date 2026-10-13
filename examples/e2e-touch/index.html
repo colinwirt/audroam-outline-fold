@@ -75,6 +75,7 @@ if (params.get('view') === 'outline') {
 // ?nodeuri=<template>: Copy link's template (`none` hides Copy link).
 const nodeUriParam = params.get('nodeuri');
 const map = createMapView(host, {
+  details: params.get('details') === '1',
   getDoc: () => doc,
   // __sets counts document writes: the host's dirty mark.
   setDoc: (d) => { doc = d; window.__sets++; },
