@@ -1,3 +1,4 @@
+import { altHoldSlop } from './altGesture.js';
 /**
  * Phase-1 map gestures (0.2.18): anchored pinch+pan and wheel intent.
  * Rubber-band, inertia, and double-tap stay in phase 2.
@@ -20,9 +21,8 @@ export const SCALE_DEADZONE_PX = 12;
 export type GestureMode = 'idle' | 'pending' | 'pan' | 'pinch';
 
 export function slopPx(pointerType: string): number {
-  if (pointerType === 'pen') return 8;
-  if (pointerType === 'mouse') return 4;
-  return 10;
+  // One slop for pans and holds (0.2.44 arbiter): a hold inside it is never a pan.
+  return altHoldSlop(pointerType);
 }
 
 export function mid(a: Pt, b: Pt): Pt {

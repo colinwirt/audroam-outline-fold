@@ -366,6 +366,16 @@
 }
 .map-width-hit {
   cursor: ew-resize;
+  /* 0.2.44: a long-press here opens the width menu, never a native callout or selection. */
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+.map-width-grip,
+.map-fold-indicator {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
 }
 /* Time leaves (0.2.40, TL1–TL7): compact green pills for <kind:time> and
    <kind:session> leaves. The rules name .time-leaf twice so they also beat a

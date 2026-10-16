@@ -41,13 +41,14 @@ async function focusPill(c: Ctx, key: string): Promise<void> {
   const pill = await box(c.page, `${sel(key)} .map-pill`);
   await c.t.tap(pill.x + Math.min(24, pill.w / 3), pill.y + pill.h / 2);
   await expect.poll(() => c.page.evaluate(() => (window as any).__focus())).toBe(key);
-  await c.page.waitForTimeout(450);
+  await c.page.waitForTimeout(650);
 }
 
 async function openPop(c: Ctx, key: string): Promise<{ x: number; y: number }> {
   const pill = await box(c.page, `${sel(key)} .map-pill`);
   const pt = { x: pill.x + pill.w - 3, y: pill.y + pill.h - 3 };
-  await c.t.tap(pt.x, pt.y);
+  // 0.2.44: a long-press opens the width menu (a tap does nothing).
+  await c.t.tap(pt.x, pt.y, 650);
   await expect(c.page.locator('.map-width-pop')).toHaveCount(1);
   return pt;
 }
@@ -92,7 +93,7 @@ test.describe('hold-to-fit P1 on touch: the Fit row on a grip tap', () => {
     await openPop(c, k);
     await tapIn(c, '.map-width-pop button[data-choice="siblings"]');
     await expect(page.locator('.map-width-pop')).toHaveCount(0);
-    await page.waitForTimeout(400);
+    await page.waitForTimeout(650);
     expect((await stored(page, k)).wAuto).toBe('single-line');
     expect((await stored(page, compost)).wAuto).toBe('single-line');
     // The tap did not land on whatever was drawn under the finger next.
@@ -100,8 +101,44 @@ test.describe('hold-to-fit P1 on touch: the Fit row on a grip tap', () => {
     await expect(page.locator('#mapHost .map-toast .map-toast-text')).toHaveText('4 widths changed');
     await tapIn(c, '#mapHost .map-toast .map-toast-undo');
     await expect(page.locator('#mapHost .map-toast')).toHaveCount(0);
-    await page.waitForTimeout(400);
+    await page.waitForTimeout(650);
     expect(await stored(page, compost)).toEqual({ w: 180, wAuto: null });
     expect(await page.evaluate(() => (window as any).__serialize())).toBe(before);
+  });
+});
+
+test.describe('0.2.44: width corner gestures on touch', () => {
+  test('a tap on the corner opens nothing; a long-press opens the menu and writes nothing', async ({ page }) => {
+    const c = await open(page);
+    const k = await keyOf(page, GLOVES);
+    await focusPill(c, k);
+    const before = await stored(page, k);
+    const pill = await box(page, `${sel(k)} .map-pill`);
+    const pt = { x: pill.x + pill.w - 3, y: pill.y + pill.h - 3 };
+    await c.t.tap(pt.x, pt.y);
+    await page.waitForTimeout(250);
+    await expect(page.locator('.map-width-pop')).toHaveCount(0);
+    await c.t.tap(pt.x, pt.y, 650);
+    await expect(page.locator('.map-width-pop')).toHaveCount(1);
+    expect(await stored(page, k)).toEqual(before);
+  });
+
+  test('a sideways swipe on the corner still resizes and opens no menu', async ({ page }) => {
+    const c = await open(page);
+    const k = await keyOf(page, GLOVES);
+    await focusPill(c, k);
+    const pill = await box(page, `${sel(k)} .map-pill`);
+    const pt = { x: pill.x + pill.w - 3, y: pill.y + pill.h - 3 };
+    await c.t.start([pt]);
+    for (let i = 1; i <= 8; i++) {
+      await c.t.move([{ x: pt.x - 6 * i, y: pt.y }]);
+      await page.waitForTimeout(16);
+    }
+    await page.waitForTimeout(600);
+    await c.t.end();
+    await page.waitForTimeout(250);
+    await expect(page.locator('.map-width-pop')).toHaveCount(0);
+    const after = await box(page, `${sel(k)} .map-pill`);
+    expect(after.w).toBeLessThan(pill.w - 10);
   });
 });

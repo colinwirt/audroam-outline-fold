@@ -27,7 +27,7 @@ const visible = (page: Page) =>
   page.evaluate(() => [...document.querySelectorAll('.map-node')].map((n) => n.getAttribute('data-id')));
 
 test.describe('fold to level: touch', () => {
-  test('a 450 ms hold opens the picker and the lift never toggles', async ({ page }) => {
+  test('a 500 ms hold opens the picker and the lift never toggles', async ({ page }) => {
     const t = await open(page);
     const p = centre(await box(page, handle('branches')));
     await t.start([p]);
@@ -37,7 +37,7 @@ test.describe('fold to level: touch', () => {
     await page.waitForTimeout(350);
     await expect(page.locator(MENU)).toHaveCount(1);
     await t.end();
-    await page.waitForTimeout(400);
+    await page.waitForTimeout(650);
     expect(await expanded(page, 'branches')).toBe('true');
     // Lifting on nothing (the handle) keeps the picker open.
     await expect(page.locator(MENU)).toHaveCount(1);
@@ -64,7 +64,7 @@ test.describe('fold to level: touch', () => {
     const one = centre(await box(page, `${MENU} [data-level="1"]`));
     await t.tap(one.x, one.y);
     await expect(page.locator(MENU)).toHaveCount(0);
-    await page.waitForTimeout(400);
+    await page.waitForTimeout(650);
     const v = await visible(page);
     expect(v).toContain('riverside');
     expect(v).not.toContain('rhours');
@@ -85,7 +85,7 @@ test.describe('fold to level: touch', () => {
     await expect(page.locator(`${MENU} [data-level="0"]`)).toHaveClass(/is-hot/);
     await t.end();
     await expect(page.locator(MENU)).toHaveCount(0);
-    await page.waitForTimeout(450);
+    await page.waitForTimeout(650);
     expect(await expanded(page, 'branches')).toBe('false');
     const after = await box(page, handle('branches'));
     expect(Math.abs(after.x - before.x)).toBeLessThanOrEqual(2);
@@ -93,7 +93,7 @@ test.describe('fold to level: touch', () => {
     await expect(page.locator('.map-live')).toHaveText('Branches folded. 13 items hidden.');
   });
 
-  test('moving past 10 px before 450 ms cancels: no picker, no toggle', async ({ page }) => {
+  test('moving past 10 px before 500 ms cancels: no picker, no toggle', async ({ page }) => {
     const t = await open(page);
     const p = centre(await box(page, handle('branches')));
     await t.start([p]);
@@ -116,7 +116,7 @@ test.describe('fold to level: touch', () => {
     await t.start([{ ...p, id: 0 }]);
     await page.waitForTimeout(150);
     await t.start([{ ...p, id: 0 }, { x: h.x + h.w * 0.8, y: h.y + h.h * 0.8, id: 1 }]);
-    await page.waitForTimeout(500);
+    await page.waitForTimeout(650);
     await expect(page.locator(MENU)).toHaveCount(0);
     await t.end();
     await page.waitForTimeout(300);
@@ -129,7 +129,7 @@ test.describe('fold to level: touch', () => {
     const p = centre(await box(page, handle('branches')));
     await t.tap(p.x, p.y);
     await expect.poll(() => expanded(page, 'branches')).toBe('false');
-    await page.waitForTimeout(500);
+    await page.waitForTimeout(650);
     expect(await expanded(page, 'branches')).toBe('false');
     await expect(page.locator(MENU)).toHaveCount(0);
   });

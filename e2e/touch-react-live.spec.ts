@@ -21,7 +21,7 @@ async function openMap(page: Page) {
   await page.goto('react-live/');
   await page.getByRole('button', { name: 'Map', exact: true }).tap();
   await expect(page.locator('.map-wrap .map-node[data-id="root"]')).toHaveCount(1);
-  await page.waitForTimeout(500);
+  await page.waitForTimeout(650);
   const t = await Touch.attach(page);
   const host = await box(page, '.map-wrap');
   // Lower-left of the map: clear of the toolbar (top-right).
@@ -39,7 +39,7 @@ test.describe('react-live toolbar on touch', () => {
     const { t } = await openMap(page);
     const k0 = (await camOf(page)).k;
     await tap(t, page, ZI);
-    await page.waitForTimeout(400);
+    await page.waitForTimeout(650);
     expect((await camOf(page)).k / k0).toBeCloseTo(1.2, 4);
   });
 
@@ -52,7 +52,7 @@ test.describe('react-live toolbar on touch', () => {
       await page.waitForTimeout(delay);
       const k0 = (await camOf(page)).k;
       await tap(t, page, ZI);
-      await page.waitForTimeout(450);
+      await page.waitForTimeout(650);
       expect((await camOf(page)).k / k0).toBeCloseTo(1.2, 4);
     });
   }
@@ -64,7 +64,7 @@ test.describe('react-live toolbar on touch', () => {
     await t.tap(p.x, p.y, 20);
     await page.waitForTimeout(60);
     await t.tap(p.x, p.y, 20);
-    await page.waitForTimeout(450);
+    await page.waitForTimeout(650);
     expect((await camOf(page)).k / k0).toBeCloseTo(1.44, 4);
     expect(await page.evaluate(() => window.visualViewport?.scale ?? 1)).toBe(1);
   });
@@ -80,12 +80,12 @@ test.describe('react-live toolbar on touch', () => {
     await page.waitForTimeout(60);
     const k1 = (await camOf(page)).k;
     await tap(t, page, ZO);
-    await page.waitForTimeout(450);
+    await page.waitForTimeout(650);
     expect((await camOf(page)).k / k1).toBeCloseTo(1 / 1.2, 4);
     await t.slowPan(bg.x, bg.y, -2, 0);
     await page.waitForTimeout(60);
     await tap(t, page, FIT);
-    await page.waitForTimeout(450);
+    await page.waitForTimeout(650);
     const fit = await camOf(page);
     expect(fit.k).toBeCloseTo(start.k, 4);
     expect(Math.abs(fit.x - start.x)).toBeLessThan(1);

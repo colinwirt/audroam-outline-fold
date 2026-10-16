@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.2.44 — 2026-10-16
+
+### Alternate menus: right-click on mouse, long-press on touch / pen
+- **Width corner:** a left click (or a still tap) on the corner no longer opens the width menu; it does nothing. Right-click opens it (mouse); a 500 ms long-press opens it (touch on a selected pill, pen). Left-drag / sideways swipe still resize. A long-press lift is swallowed (no select, no resize). `w` still opens it from the keyboard.
+- **Fold handle** and **node menu** holds unchanged in meaning (tap folds / selects; right-click or long-press opens), now 500 ms (was 450) via the shared arbiter.
+- Right-click on the corner gets `preventDefault` + `stopPropagation` (capture), so neither the browser menu nor a host's own node menu appears there; touch / pen platform long-press menus on the corner are swallowed.
+- `.map-width-hit`, `.map-width-grip`, `.map-fold-indicator`: `-webkit-touch-callout: none`, `user-select: none`.
+
+### Shared gesture arbiter (`src/altGesture.ts`)
+- `ALT_HOLD_MS` (500), `ALT_RING_MS` (150), `altHoldSlop` (mouse 4 / pen 8 / touch 10 px), `altPressKind`, `altHoldsOpenMenu`, `altDragCommits`, `altArbiterStart` / `Move` / `Tick` / `Cancel` / `AllowsDrag` / `Release`. `LEVEL_HOLD_MS`, `LEVEL_RING_MS`, `levelHoldSlop` and `slopPx` now derive from it (pen hold slop 10 → 8 px).
+- Direction-aware commit: a pan / drag / resize starts only when net displacement passes the slop **and** is ≥ 70 % of the path (`ALT_STRAIGHTNESS`); wobble keeps a long-press candidate alive up to 2.5 × slop (`ALT_WOBBLE_CAP`). Used by the canvas pan, label text-hold, fold-handle hold, node-menu hold, width corner hold, mouse/pen corner drag and touch corner swipe.
+- A right-button / pen-barrel press never starts a pan, drag or resize.
+
+### Tests
+- Unit: `tests/alt-gesture.test.ts` (timing, slop, press kinds, hold → menu, drag → no menu, jitter vs deliberate drag, source wiring). Fold-level tests updated for 500 ms / pen 8 px.
+- Playwright: desktop corner left-click no-op / right-click opens / right-drag no resize; touch corner tap no-op / long-press opens / swipe resizes without menu; jittery long-press on a pill opens the node menu without panning; deliberate pan opens no menu. Existing corner tests open the menu by right-click / long-press; hold waits 450 → 650 ms.
+
 ## 0.2.43 — 2026-10-16
 
 ### Width corner: click is a click

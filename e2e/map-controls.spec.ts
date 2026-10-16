@@ -21,7 +21,7 @@ const paints = (page: Page) => page.evaluate(() => (window as any).__paints);
 
 async function openPopWithMouse(page: Page, id: string) {
   const pill = (await page.locator(`.map-node[data-id="${id}"] .map-pill`).boundingBox())!;
-  await page.mouse.click(pill.x + pill.width - 2, pill.y + pill.height - 2);
+  await page.mouse.click(pill.x + pill.width - 2, pill.y + pill.height - 2, { button: 'right' });
   await expect(page.locator('.map-width-pop')).toHaveCount(1);
 }
 

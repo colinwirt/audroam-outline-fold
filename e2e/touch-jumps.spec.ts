@@ -13,7 +13,7 @@ test.describe('jumps on touch', () => {
     const c = centre(await box(page, '.map-node[data-id="jump"] .map-jump-hit[data-jump="tom"]'));
     await t.tap(c.x, c.y);
     await expect.poll(() => page.evaluate(() => (window as any).__focus())).toBe('tom');
-    await page.waitForTimeout(400);
+    await page.waitForTimeout(650);
     expect(await page.evaluate(() => (window as any).__hops)).toEqual([{ id: 'tom', from: 'jump' }]);
     expect(await page.evaluate(() => location.hash)).toBe('');
   });
@@ -25,7 +25,7 @@ test.describe('jumps on touch', () => {
     const t = await Touch.attach(page);
     const c = centre(await box(page, '.map-node[data-id="jump"] .map-jump-hit[data-jump="gone"]'));
     await t.tap(c.x, c.y);
-    await page.waitForTimeout(400);
+    await page.waitForTimeout(650);
     expect(await page.evaluate(() => (window as any).__hops)).toEqual([]);
     expect(await page.evaluate(() => location.hash)).toBe('');
   });

@@ -110,7 +110,7 @@ test.describe('fold to level: mouse and keyboard', () => {
     await hit(page, 'branches').click({ button: 'right' });
     await page.locator(`${MENU} [data-level="1"]`).click();
     await expect(page.locator(MENU)).toHaveCount(0);
-    await page.waitForTimeout(450);
+    await page.waitForTimeout(650);
     const after = (await hit(page, 'branches').boundingBox())!;
     expect(Math.abs(after.x - before.x)).toBeLessThanOrEqual(2);
     expect(Math.abs(after.y - before.y)).toBeLessThanOrEqual(2);

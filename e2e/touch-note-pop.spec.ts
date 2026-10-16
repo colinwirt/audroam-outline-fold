@@ -64,7 +64,7 @@ test.describe('chips open the link popover on touch', () => {
     const row = centre(await box(page, '.map-link-item[data-row="thread"]'));
     await t.tap(row.x, row.y);
     await expect(page.locator('.map-link-pop')).toHaveCount(0);
-    await page.waitForTimeout(500);
+    await page.waitForTimeout(650);
     expect(await page.evaluate(() => (window as any).__threads.length)).toBe(1);
   });
 });

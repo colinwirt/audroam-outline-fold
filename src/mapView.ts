@@ -8,6 +8,7 @@
  * Scrapbook (0.2.8+): multi-line wrap, task lead SVG, text click ≠ fold; label text selectable (0.2.10); pan clears selection (0.2.11); keyboard only when Map focused (0.2.12); rich caption breaks+HTML + focus-on-click + camera follow/clamp (0.2.13); proportion follow + cameraRecentre + edit ensure (0.2.14); focusId is-focused ring (0.2.15); single stable focus owner = host tabindex=0 + aria-activedescendant, keydown on host (0.2.16).
  * Sealed nodes: omitted until unlocked (no gray stubs) — caller filters doc if needed.
  */
+import { ALT_HOLD_MS, altDragCommits, altPressKind } from './altGesture.js';
 import { captionLinks, captionWithoutLinks } from './captionRich.js';
 import {
   captionLinkRows,
@@ -4212,6 +4213,28 @@ export function createMapView(
       hit?: Element;
     };
     const pointers = new Map<number, Tracked>();
+    /**
+     * 0.2.44 arbiter: start, last point and path length (client px) of every
+     * press, so each handler asks altDragCommits (distance AND direction)
+     * before it pans, drags, resizes or cancels a hold. Jitter is not a drag.
+     */
+    const track = new Map<number, { sx: number; sy: number; x: number; y: number; path: number; type: string }>();
+    function trackDown(e: PointerEvent): void {
+      track.set(e.pointerId, { sx: e.clientX, sy: e.clientY, x: e.clientX, y: e.clientY, path: 0, type: e.pointerType || 'mouse' });
+    }
+    function trackMove(e: PointerEvent): void {
+      const t = track.get(e.pointerId);
+      if (!t) return;
+      t.path += Math.hypot(e.clientX - t.x, e.clientY - t.y);
+      t.x = e.clientX;
+      t.y = e.clientY;
+    }
+    /** Whether this press has committed to a drag (shared arbiter). */
+    function committed(pointerId: number, type?: string): boolean {
+      const t = track.get(pointerId);
+      if (!t) return false;
+      return altDragCommits({ dx: t.x - t.sx, dy: t.y - t.sy, path: t.path, pointerType: type ?? t.type });
+    }
     let mode: 'idle' | 'pending' | 'pan' | 'pinch' = 'idle';
     let widthDrag: {
       pointerId: number;
@@ -4578,6 +4601,37 @@ export function createMapView(
       startY: number;
       startW: number;
     } | null = null;
+    /**
+     * 0.2.44 width corner hold (touch, pen): a still press of ALT_HOLD_MS on
+     * the corner opens the width menu; moving past the slop first cancels it
+     * (the press is then a resize). A tap / click on the corner opens nothing.
+     */
+    let widthHoldTimer = 0;
+    /** The pointer whose corner hold opened the width menu: its lift is swallowed. */
+    let widthHoldOpened: number | null = null;
+    function clearWidthHold(): void {
+      if (widthHoldTimer) window.clearTimeout(widthHoldTimer);
+      widthHoldTimer = 0;
+    }
+    function beginWidthHold(pointerId: number, key: string, x: number, y: number, startW: number): void {
+      clearWidthHold();
+      widthHoldTimer = window.setTimeout(() => {
+        widthHoldTimer = 0;
+        const stillArm = edgeArm?.pointerId === pointerId;
+        const stillDrag = widthDrag?.pointerId === pointerId && !widthDrag.moved;
+        if (!stillArm && !stillDrag) return;
+        edgeArm = null;
+        if (stillDrag) widthDrag = null;
+        resizingWidthKey = null;
+        widthHoldOpened = pointerId;
+        try {
+          navigator.vibrate?.(10);
+        } catch {
+          /* vibrate not allowed */
+        }
+        showWidthPop(x, y, key, startW, { coarse: true });
+      }, ALT_HOLD_MS);
+    }
 
     function rightEdgeKey(
       clientX: number,
@@ -4890,7 +4944,7 @@ export function createMapView(
         window.setTimeout(() => {
           if (nodeHold !== hold) return;
           const p = pointers.get(hold.pointerId);
-          const still = !!p && Math.hypot(p.x - p.sx, p.y - p.sy) <= NODE_HOLD_SLOP;
+          const still = !!p && !committed(hold.pointerId);
           clearNodeHold();
           if (!still || mode !== 'pending' || drivers().length !== 1) return;
           clearLongPress();
@@ -5015,8 +5069,8 @@ export function createMapView(
           applyGestureCam(next);
         } else if (mode === 'pending' && ds.length === 1 && !singlePanLocked) {
           const p = ds[0];
-          const moved = Math.hypot(p.x - p.sx, p.y - p.sy);
-          if (moved > slopPx(p.type)) startPan(p);
+          // Arbiter: distance past the slop AND a consistent direction.
+          if (committed(p.id, p.type)) startPan(p);
         }
       });
     }
@@ -5073,6 +5127,7 @@ export function createMapView(
     );
 
     host.addEventListener('pointerdown', (e) => {
+      trackDown(e);
       // Any new primary press is a new gesture: the last one's click swallow
       // is over, even inside the popover or the controls (0.2.30).
       if (e.isPrimary) swallow = null;
@@ -5089,7 +5144,9 @@ export function createMapView(
       const onLabel = !!target?.closest?.('.map-label');
       const type = e.pointerType || 'mouse';
       const barrel = type === 'pen' && (e.buttons & 2) !== 0;
-      if (e.button > 1) return;
+      // Arbiter (0.2.44): a right / barrel press never pans, drags or resizes;
+      // its contextmenu opens the menu.
+      if (altPressKind({ button: e.button, buttons: e.buttons, pointerType: type }) === 'alt' || e.button > 1) return;
       const coarse = window.matchMedia?.('(pointer: coarse)')?.matches ?? false;
       const finger = type === 'touch' || (coarse && type === 'mouse' && e.button === 0);
       const onControl = !!target?.closest?.(
@@ -5109,6 +5166,7 @@ export function createMapView(
           moved: false,
           ...dragStart(edge.key),
         };
+        if (type === 'pen') beginWidthHold(e.pointerId, edge.key, e.clientX, e.clientY, edge.textW);
         onChange?.();
         e.preventDefault();
         try {
@@ -5128,6 +5186,7 @@ export function createMapView(
           startY: e.clientY,
           startW: edge.textW,
         };
+        beginWidthHold(e.pointerId, edge.key, e.clientX, e.clientY, edge.textW);
         // Lazy capture (0.2.30): the host captures only once this turns into
         // a width drag, so a tap still reaches the pill's own handlers.
         e.preventDefault();
@@ -5245,7 +5304,7 @@ export function createMapView(
           longPressTimer = window.setTimeout(() => {
             const p = pointers.get(e.pointerId);
             if (!p || mode !== 'pending') return;
-            if (Math.hypot(p.x - p.sx, p.y - p.sy) > slopPx(p.type)) return;
+            if (committed(e.pointerId, p.type)) return;
             labelTextHold = true;
             window.setTimeout(() => {
               const sel = window.getSelection?.();
@@ -5264,6 +5323,7 @@ export function createMapView(
     host.addEventListener(
       'pointermove',
       (e) => {
+        trackMove(e);
         // Drag-to-level (L5): after the menu opens, the finger only slides.
         if (levelMenu && levelMenu.dragPointer === e.pointerId) {
           e.preventDefault();
@@ -5271,11 +5331,12 @@ export function createMapView(
           return;
         }
         if (levelHold && e.pointerId === levelHold.pointerId) {
-          levelHold = levelHoldMoved(levelHold, e.clientX, e.clientY);
+          // Arbiter: only a deliberate move cancels the hold; jitter keeps it.
+          if (committed(e.pointerId, levelHold.pointerType)) levelHold = levelHoldCancel(levelHold);
           if (levelHold.phase === 'cancelled') clearLevelHold();
         }
         if (nodeHold && e.pointerId === nodeHold.pointerId) {
-          if (Math.hypot(e.clientX - nodeHold.x, e.clientY - nodeHold.y) > NODE_HOLD_SLOP) clearNodeHold();
+          if (committed(e.pointerId)) clearNodeHold();
         }
         if (widthDrag && e.pointerId === widthDrag.pointerId) {
           e.preventDefault();
@@ -5283,7 +5344,9 @@ export function createMapView(
           // the pointer has moved WIDTH_DRAG_THRESHOLD px from the press.
           if (!widthDrag.moved) {
             if (!passedDragThreshold(e.clientX - widthDrag.startX, e.clientY - (widthDrag.startY ?? e.clientY))) return;
+            if (!committed(e.pointerId)) return;
             widthDrag.moved = true;
+            clearWidthHold();
           }
           const dx = (e.clientX - widthDrag.startX) / (cam.k || 1);
           showWidthHot(widthDrag.key);
@@ -5294,7 +5357,9 @@ export function createMapView(
         if (edgeArm && e.pointerId === edgeArm.pointerId) {
           const dx = e.clientX - edgeArm.startX;
           const dy = e.clientY - edgeArm.startY;
-          if (Math.hypot(dx, dy) > 10 && Math.abs(dx) > Math.abs(dy) * 1.2) {
+          const deliberate = committed(e.pointerId, 'touch');
+          if (deliberate) clearWidthHold();
+          if (deliberate && Math.abs(dx) > Math.abs(dy) * 1.2) {
             const arm = edgeArm;
             edgeArm = null;
             pointers.delete(e.pointerId);
@@ -5382,10 +5447,11 @@ export function createMapView(
       if (widthDrag && e.pointerId === widthDrag.pointerId) {
         const drag = widthDrag;
         widthDrag = null;
+        clearWidthHold();
         if (!drag.moved) {
+          // 0.2.44: a click on the corner is not a menu (right-click / hold is).
           resizingWidthKey = null;
           swallow = armSwallow(performance.now(), e.clientX, e.clientY);
-          showWidthPop(e.clientX, e.clientY, drag.key, drag.startW, { coarse: e.pointerType !== 'mouse' });
           return;
         }
         widthDrag = drag;
@@ -5397,10 +5463,20 @@ export function createMapView(
         const arm = edgeArm;
         edgeArm = null;
         const moved = Math.hypot(e.clientX - arm.startX, e.clientY - arm.startY);
-        if (moved < 10) {
-          swallow = armSwallow(performance.now(), e.clientX, e.clientY);
-          showWidthPop(e.clientX, e.clientY, arm.key, arm.startW, { coarse: true });
+        clearWidthHold();
+        // 0.2.44: a tap on the corner opens nothing (the hold does).
+        if (moved < 10) swallow = armSwallow(performance.now(), e.clientX, e.clientY);
+      }
+      if (widthHoldOpened === e.pointerId) {
+        widthHoldOpened = null;
+        swallow = armSwallow(performance.now(), e.clientX, e.clientY);
+        nodeTouchTapAt = performance.now();
+        pointers.delete(e.pointerId);
+        if (pointers.size === 0) {
+          mode = 'idle';
+          endPanGuard();
         }
+        return;
       }
       const had = pointers.get(e.pointerId);
       pointers.delete(e.pointerId);
@@ -5520,6 +5596,9 @@ export function createMapView(
       }
     };
     host.addEventListener('pointerup', endPointer, { signal });
+    // Bubble listeners run in order: drop the arbiter track after endPointer.
+    host.addEventListener('pointerup', (e) => track.delete(e.pointerId), { signal });
+    host.addEventListener('pointercancel', (e) => track.delete(e.pointerId), { signal });
     host.addEventListener('pointerleave', () => {
       if (!widthDrag) showWidthHot(null);
     }, { signal });
@@ -5580,6 +5659,25 @@ export function createMapView(
     host.addEventListener('contextmenu', (e) => {
       if (!isActive()) return;
       const t = e.target as Element | null;
+      // 0.2.44: the width corner's alternate menu. Mouse right-click opens it;
+      // a touch / pen long-press opens it through the corner hold, so the
+      // platform menu is only swallowed.
+      if (!t?.closest?.('.map-width-pop, .map-level-menu, .map-node-menu, .of-map-controls, .map-link-pop, .map-toast, .map-copied, .map-fold-hit, .map-fold-indicator')) {
+        const cpt = (e as PointerEvent).pointerType || '';
+        const fingerish = cpt === 'touch' || cpt === 'pen' || (!cpt && coarsePointer());
+        const corner = rightEdgeKey(e.clientX, e.clientY, fingerish ? 28 : 18);
+        if (corner) {
+          e.preventDefault();
+          e.stopPropagation();
+          e.stopImmediatePropagation();
+          if (cpt === 'touch' || cpt === 'pen' || widthHoldOpened !== null) return;
+          closeLevelMenu(false);
+          closeNodeMenu(false);
+          setFocusId(corner.key);
+          showWidthPop(e.clientX, e.clientY, corner.key, corner.textW, { coarse: !!cpt && cpt !== 'mouse' });
+          return;
+        }
+      }
       const handle = t?.closest?.('.map-fold-hit, .map-fold-indicator') ?? null;
       const g = handle?.closest?.('.map-node') ?? null;
       const id = g?.getAttribute('data-id') || '';

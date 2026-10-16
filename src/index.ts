@@ -459,3 +459,23 @@ export {
   type NodeMenuView,
   type NodeUriOption,
 } from './nodeMenu.js';
+
+export {
+  ALT_HOLD_MS,
+  ALT_RING_MS,
+  altHoldSlop,
+  altDragCommits,
+  ALT_STRAIGHTNESS,
+  ALT_WOBBLE_CAP,
+  altPressKind,
+  altHoldsOpenMenu,
+  altArbiterStart,
+  altArbiterMove,
+  altArbiterTick,
+  altArbiterCancel,
+  altArbiterAllowsDrag,
+  altArbiterRelease,
+  type AltPress,
+  type AltArbiter,
+  type AltArbiterPhase,
+} from './altGesture.js';

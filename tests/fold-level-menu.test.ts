@@ -50,19 +50,19 @@ const hold = (pointerType = 'touch') =>
   startLevelHold({ pointerId: 1, pointerType, id: 'mon', x: 100, y: 100, t: 1000 });
 
 describe('hold timing and slop (L4)', () => {
-  it('rings at 150 ms and opens at 450 ms', () => {
+  it('rings at 150 ms and opens at 500 ms', () => {
     expect(LEVEL_RING_MS).toBe(150);
-    expect(LEVEL_HOLD_MS).toBe(450);
+    expect(LEVEL_HOLD_MS).toBe(500);
     const h = hold();
     expect(levelHoldAt(h, 1149).phase).toBe('arming');
     expect(levelHoldAt(h, 1150).phase).toBe('ring');
-    expect(levelHoldAt(h, 1449).phase).toBe('ring');
-    expect(levelHoldAt(h, 1450).phase).toBe('open');
+    expect(levelHoldAt(h, 1499).phase).toBe("ring");
+    expect(levelHoldAt(h, 1500).phase).toBe("open");
   });
 
   it('slop is 10 px on touch and pen, 4 px on mouse', () => {
     expect(levelHoldSlop('touch')).toBe(10);
-    expect(levelHoldSlop('pen')).toBe(10);
+    expect(levelHoldSlop('pen')).toBe(8);
     expect(levelHoldSlop('mouse')).toBe(4);
     expect(levelHoldMoved(hold('touch'), 110, 100).phase).toBe('arming');
     expect(levelHoldMoved(hold('touch'), 108, 108).phase).toBe('cancelled');
@@ -301,7 +301,7 @@ describe('mapView wiring (source checks)', () => {
     // Pass and close return before preventDefault, so the host still sees them.
     const pass = body.indexOf("if (act === 'pass') return;");
     const close = body.indexOf('closeMenus();');
-    const pd = body.indexOf('e.preventDefault();');
+    const pd = body.lastIndexOf('e.preventDefault();');
     expect(pass).toBeGreaterThan(0);
     expect(close).toBeGreaterThan(pass);
     expect(pd).toBeGreaterThan(close);

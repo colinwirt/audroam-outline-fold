@@ -2,7 +2,7 @@ import { test, expect, type Page } from '@playwright/test';
 import { Touch } from './touch';
 
 /**
- * Node menu Copy jump / Copy link on a phone (0.2.39, node menu M7): a 450 ms
+ * Node menu Copy jump / Copy link on a phone (0.2.39, node menu M7): a 500 ms
  * hold on the pill chrome opens it, 44 px rows, tap an item. Fixture:
  * examples/e2e-touch/copy-jump.md (fiction). Kiln corner has no id (key 5).
  */
@@ -117,5 +117,48 @@ test.describe('node menu on touch: hold the pill, tap Copy jump / Copy link', ()
     expect(await page.locator(`${MENU} [role="menuitem"]`).allTextContents()).toEqual(['Copy jump', 'Copy link']);
     expect(await page.evaluate(() => (window as any).__serialize())).toBe(before);
     expect(await page.evaluate(() => (window as any).__sets)).toBe(0);
+  });
+});
+
+test.describe('0.2.44 gesture arbiter: long-press vs pan', () => {
+  const pillAt = async (page: Page, id: string) => (await page.locator(`${node(id)} .map-pill`).boundingBox())!;
+
+  test('a jittery long-press opens the menu and does not pan', async ({ page }) => {
+    await open(page);
+    const t = await Touch.attach(page);
+    const p = await chromePoint(page, '5');
+    const before = await pillAt(page, '5');
+    await t.start([p]);
+    // Back-and-forth wobble that passes the 10 px slop but has no direction.
+    const xs = [4, -6, 11, -11, 12, -9, 6, -3, 0];
+    for (const dx of xs) {
+      await t.move([{ x: p.x + dx, y: p.y + (dx > 0 ? 2 : -1) }]);
+      await page.waitForTimeout(40);
+    }
+    await page.waitForTimeout(400);
+    await t.end();
+    await page.waitForTimeout(200);
+    await expect(page.locator(MENU)).toHaveCount(1);
+    const after = await pillAt(page, '5');
+    expect(Math.abs(after.x - before.x)).toBeLessThan(1);
+    expect(Math.abs(after.y - before.y)).toBeLessThan(1);
+  });
+
+  test('a deliberate pan from the pill pans and never opens the menu', async ({ page }) => {
+    await open(page);
+    const t = await Touch.attach(page);
+    const p = await chromePoint(page, '5');
+    const before = await pillAt(page, '5');
+    await t.start([p]);
+    for (let i = 1; i <= 10; i++) {
+      await t.move([{ x: p.x - 4 * i, y: p.y - i }]);
+      await page.waitForTimeout(16);
+    }
+    await page.waitForTimeout(700); // past the hold time, still down
+    await t.end();
+    await page.waitForTimeout(300);
+    await expect(page.locator(MENU)).toHaveCount(0);
+    const after = await pillAt(page, '5');
+    expect(before.x - after.x).toBeGreaterThan(20);
   });
 });

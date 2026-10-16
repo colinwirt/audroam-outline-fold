@@ -25,7 +25,7 @@ async function show(page: Page, id: string) {
     m.zoomBy(2);
     m.focusNode(k);
   }, id);
-  await page.waitForTimeout(450);
+  await page.waitForTimeout(650);
 }
 
 /** A point on the pill chrome: inside the pill, off the label. */
@@ -66,13 +66,13 @@ test.describe('time leaves on touch', () => {
     const t = await Touch.attach(page);
     const p = await chromePoint(page, 't1');
     await t.tap(p.x, p.y);
-    await page.waitForTimeout(400);
+    await page.waitForTimeout(650);
     await expect.poll(() => page.evaluate(() => (window as any).__focus())).toBe('t1');
     await expect(page.locator(node('t1'))).toHaveClass(/is-focused/);
     await expect(page.locator(`${node('t1')} .map-width-grip`)).toHaveCount(0);
     const b = (await page.locator(`${node('t1')} .map-pill`).boundingBox())!;
     await t.tap(b.x + b.width - 2, b.y + b.height - 2);
-    await page.waitForTimeout(400);
+    await page.waitForTimeout(650);
     await expect(page.locator('.map-width-pop')).toHaveCount(0);
     await expect(page.locator('.map-link-pop, .map-level-menu')).toHaveCount(0);
   });

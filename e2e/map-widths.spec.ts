@@ -68,7 +68,8 @@ function writtenId(doc: string, caption: string): string | null {
 
 async function openPop(page: Page, key: string) {
   const pill = (await page.locator(`${sel(key)} .map-pill`).boundingBox())!;
-  await page.mouse.click(pill.x + pill.width - 2, pill.y + pill.height - 2);
+  // 0.2.44: right-click opens the width menu (a left click does nothing).
+  await page.mouse.click(pill.x + pill.width - 2, pill.y + pill.height - 2, { button: 'right' });
   await expect(page.locator('.map-width-pop')).toHaveCount(1);
 }
 
@@ -494,7 +495,7 @@ async function cornerInView(page: Page, key: string): Promise<{ x: number; y: nu
 }
 
 test.describe('0.2.43: corner click vs drag', () => {
-  test('a click with < 4 px jitter opens the menu and writes nothing', async ({ page }) => {
+  test('a click with < 4 px jitter opens nothing and writes nothing (0.2.44)', async ({ page }) => {
     await open(page);
     const k = await keyOf(page, GLOVES);
     await openPop(page, k);
@@ -509,7 +510,7 @@ test.describe('0.2.43: corner click vs drag', () => {
     await page.mouse.move(x + 2, y + 1);
     await page.mouse.move(x + 3, y);
     await page.mouse.up();
-    await expect(page.locator('.map-width-pop')).toHaveCount(1);
+    await expect(page.locator('.map-width-pop')).toHaveCount(0);
     expect(await stored(page, k)).toEqual(before);
     expect(await text(page)).toBe(doc0);
   });
@@ -530,6 +531,29 @@ test.describe('0.2.43: corner click vs drag', () => {
     expect(after.wAuto).toBe('single-line-held');
     expect(after.w).not.toBe(before.w);
     expect(await page.evaluate(() => (window as any).__map.undoWidth())).toBeTruthy();
+    expect(await stored(page, k)).toEqual(before);
+  });
+});
+
+test.describe('0.2.44: width corner mouse gestures', () => {
+  test('left click opens nothing; right-click opens the width menu; right-drag never resizes', async ({ page }) => {
+    await open(page);
+    const k = await keyOf(page, GLOVES);
+    const pill = (await page.locator(`${sel(k)} .map-pill`).boundingBox())!;
+    const x = pill.x + pill.width - 2;
+    const y = pill.y + pill.height - 2;
+    const before = await stored(page, k);
+    await page.mouse.click(x, y);
+    await page.waitForTimeout(150);
+    await expect(page.locator('.map-width-pop')).toHaveCount(0);
+    await page.mouse.move(x, y);
+    await page.mouse.down({ button: 'right' });
+    await page.mouse.move(x + 60, y, { steps: 6 });
+    await page.mouse.up({ button: 'right' });
+    expect(await stored(page, k)).toEqual(before);
+    await page.keyboard.press('Escape');
+    await page.mouse.click(x, y, { button: 'right' });
+    await expect(page.locator('.map-width-pop')).toHaveCount(1);
     expect(await stored(page, k)).toEqual(before);
   });
 });

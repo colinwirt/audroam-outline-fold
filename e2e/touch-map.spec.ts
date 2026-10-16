@@ -47,7 +47,7 @@ const zooms = (page: Page): Promise<Zoom[]> => page.evaluate(() => (window as an
 
 /** n activations, each ×f on the camera shown at that moment, and nothing overwrote the last one. */
 async function expectZoomSteps(page: Page, n: number, f: number): Promise<void> {
-  await page.waitForTimeout(450);
+  await page.waitForTimeout(650);
   const z = await zooms(page);
   expect(z.length, `−/+ activations (${JSON.stringify(z)})`).toBe(n);
   for (const s of z) expect(s.after / s.before, 'each tap is one ×1.2 step').toBeCloseTo(f, 4);
@@ -145,7 +145,7 @@ test.describe('Fit single tap', () => {
         await page.waitForTimeout(60);
       }
       await tapSel(c, FIT);
-      await page.waitForTimeout(450);
+      await page.waitForTimeout(650);
       expect(await page.evaluate(() => (window as any).__fits)).toBe(1);
       const now = await cam(page);
       expect(now.k).toBeCloseTo(c.fitCam.k, 4);
@@ -165,7 +165,7 @@ test.describe('controls inside the host', () => {
     await c.t.tap(p.x, p.y, 20);
     await page.waitForTimeout(80);
     await c.t.tap(p.x, p.y, 20);
-    await page.waitForTimeout(450);
+    await page.waitForTimeout(650);
     expect(await page.evaluate(() => (window as any).__fits)).toBe(2);
     expect((await cam(page)).k).toBeCloseTo(k0, 4);
   });
@@ -354,7 +354,7 @@ test.describe('in-map handle: one tap shortly after a fling', () => {
       await page.waitForTimeout(16);
     }
     await c.t.end();
-    await page.waitForTimeout(500);
+    await page.waitForTimeout(650);
     expect(await expanded(page, 'tasks')).toBe('true');
   });
 });
@@ -387,7 +387,7 @@ test.describe('only the gesture’s own click is swallowed', () => {
   test('a click more than 400 ms later is delivered', async ({ page }) => {
     const c = await open(page);
     const rel = await panAndRelease(c);
-    await page.waitForTimeout(450);
+    await page.waitForTimeout(650);
     await bareClickOnFold(page, rel.x, rel.y);
     await expect.poll(() => expanded(page, 'tasks')).toBe('false');
   });
@@ -425,14 +425,14 @@ async function tapToFocus(c: Ctx, id: string): Promise<void> {
   const pill = await box(c.page, `.map-node[data-id="${id}"] .map-pill`);
   await c.t.tap(pill.x + Math.min(24, pill.w / 3), pill.y + pill.h / 2);
   await expect.poll(() => c.page.evaluate(() => (window as any).__focus())).toBe(id);
-  await c.page.waitForTimeout(450);
+  await c.page.waitForTimeout(650);
 }
 
 /** Tap the bottom-right corner of the focused pill. Returns the touch point. */
 async function openPop(c: Ctx, id: string): Promise<{ x: number; y: number }> {
   const pill = await box(c.page, `.map-node[data-id="${id}"] .map-pill`);
   const pt = { x: pill.x + pill.w - 3, y: pill.y + pill.h - 3 };
-  await c.t.tap(pt.x, pt.y);
+  await c.t.tap(pt.x, pt.y, 650);
   await expect(c.page.locator('.map-width-pop')).toHaveCount(1);
   return pt;
 }
@@ -497,7 +497,7 @@ test.describe('resize popover: each choice applies on the first tap', () => {
         const w0 = await textW(page, 'view');
         if (kind === 'slow pan') {
           await c.t.slowPan(c.bg.x, c.bg.y);
-          await page.waitForTimeout(400);
+          await page.waitForTimeout(650);
         } else if (kind === 'fling') {
           await c.t.fling(c.bg.x, c.bg.y);
           await page.waitForTimeout(60);

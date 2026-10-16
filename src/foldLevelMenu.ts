@@ -14,11 +14,12 @@ import {
   type FoldLevelPicker,
 } from './foldLevel.js';
 import type { OutlineFoldDoc, OutlineNode } from './types.js';
+import { ALT_HOLD_MS, ALT_RING_MS, altHoldSlop } from './altGesture.js';
 
 /** A hold this long on a fold handle opens the menu (L4). */
-export const LEVEL_HOLD_MS = 450;
+export const LEVEL_HOLD_MS = ALT_HOLD_MS;
 /** The progress ring shows after this long (L4). */
-export const LEVEL_RING_MS = 150;
+export const LEVEL_RING_MS = ALT_RING_MS;
 /** The menu stays this far inside the map panel (L6). */
 export const LEVEL_MENU_INSET = 8;
 /** Gap between the handle and the menu. */
@@ -26,7 +27,7 @@ export const LEVEL_MENU_GAP = 10;
 
 /** Movement that cancels a hold: 10 px on touch and pen, 4 px on mouse (L4). */
 export function levelHoldSlop(pointerType: string | undefined): number {
-  return pointerType === 'mouse' || !pointerType ? 4 : 10;
+  return altHoldSlop(pointerType);
 }
 
 export type LevelHoldPhase = 'arming' | 'ring' | 'open' | 'cancelled';
