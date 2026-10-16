@@ -480,6 +480,19 @@ test.describe('hold-to-fit P1: the undo toast (D5 pattern)', () => {
   });
 });
 
+/** The pill's bottom-right corner, panned into the viewport when a 1-line pill runs past it. */
+async function cornerInView(page: Page, key: string): Promise<{ x: number; y: number }> {
+  let pill = (await page.locator(`${sel(key)} .map-pill`).boundingBox())!;
+  const vw = page.viewportSize()!.width;
+  const over = pill.x + pill.width - (vw - 120);
+  if (over > 0) {
+    await page.evaluate((dx) => (window as any).__map.panBy(-dx, 0), over);
+    await page.waitForTimeout(100);
+    pill = (await page.locator(`${sel(key)} .map-pill`).boundingBox())!;
+  }
+  return { x: pill.x + pill.width - 2, y: pill.y + pill.height - 2 };
+}
+
 test.describe('0.2.43: corner click vs drag', () => {
   test('a click with < 4 px jitter opens the menu and writes nothing', async ({ page }) => {
     await open(page);
@@ -490,10 +503,7 @@ test.describe('0.2.43: corner click vs drag', () => {
     const doc0 = await text(page);
     expect(before.wAuto).toBe('single-line');
     // Corner of the (now wide) pill; bring it into view through the camera first.
-    await page.evaluate(() => (window as any).__map.paint());
-    const pill = (await page.locator(`${sel(k)} .map-pill`).boundingBox())!;
-    const x = Math.min(pill.x + pill.width - 2, 1390);
-    const y = pill.y + pill.height - 2;
+    const { x, y } = await cornerInView(page, k);
     await page.mouse.move(x, y);
     await page.mouse.down();
     await page.mouse.move(x + 2, y + 1);
@@ -510,9 +520,7 @@ test.describe('0.2.43: corner click vs drag', () => {
     await openPop(page, k);
     await pick(page, 'line');
     const before = await stored(page, k);
-    const pill = (await page.locator(`${sel(k)} .map-pill`).boundingBox())!;
-    const x = Math.min(pill.x + pill.width - 2, 1390);
-    const y = pill.y + pill.height - 2;
+    const { x, y } = await cornerInView(page, k);
     await page.mouse.move(x, y);
     await page.mouse.down();
     for (let i = 1; i <= 6; i++) await page.mouse.move(x - i * 10, y);

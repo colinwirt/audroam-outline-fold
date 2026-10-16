@@ -4258,6 +4258,8 @@ export function createMapView(
       );
     }
 
+    /** 0.2.43: the width each pill's last Wide pick wrote, to mark Wide while it still matches. */
+    const wideW = new Map<string, number>();
     let widthPopAbort: AbortController | null = null;
 
     function dismissWidthPop(): void {
@@ -4281,13 +4283,26 @@ export function createMapView(
       const ph = pr.height;
       const ax = clientX - hr.left;
       const ay = clientY - hr.top;
-      let left = ax - pw + 16;
-      let top = ay - gap - ph;
-      if (top < inset) top = ay + gap;
       const maxLeft = Math.max(inset, hr.width - pw - inset);
       const maxTop = Math.max(inset, hr.height - ph - inset);
-      left = Math.min(maxLeft, Math.max(inset, left));
-      top = Math.min(maxTop, Math.max(inset, top));
+      let left = Math.min(maxLeft, Math.max(inset, ax - pw + 16));
+      let top: number;
+      // 0.2.43: never under the finger. Above, else below, else beside the
+      // touch point; when nothing fits, the roomier side scrolls.
+      const spaceAbove = ay - gap - inset;
+      const spaceBelow = hr.height - inset - (ay + gap);
+      if (ph <= spaceAbove) top = ay - gap - ph;
+      else if (ph <= spaceBelow) top = ay + gap;
+      else if (ph <= hr.height - 2 * inset && (ax - gap - pw >= inset || ax + gap + pw <= hr.width - inset)) {
+        top = Math.min(maxTop, Math.max(inset, ay - ph / 2));
+        left = ax - gap - pw >= inset ? ax - gap - pw : ax + gap;
+      } else {
+        const above = spaceAbove >= spaceBelow;
+        const room = Math.max(48, above ? spaceAbove : spaceBelow);
+        pop.style.maxHeight = `${Math.floor(room)}px`;
+        pop.style.overflowY = 'auto';
+        top = above ? ay - gap - Math.min(ph, room) : ay + gap;
+      }
       pop.style.left = `${Math.round(left)}px`;
       pop.style.top = `${Math.round(top)}px`;
     }
@@ -4322,12 +4337,13 @@ export function createMapView(
       const cur = readWidth(key, n);
       if (cur.w == null) return 'auto';
       if (isSingleLineMode(cur.wAuto)) return 'line';
+      if (wideW.get(key) === cur.w) return 'wide';
       const m = fitMeasure(n, key);
       const fit = fitTextEntry({ fit: fitTextWidth(m.label, m.opts), auto: autoTextWidth(m.label, m.opts) });
       if (fit.w != null && Math.abs(cur.w - fit.w) <= 1) return 'fit';
       // Wide: the column already sits at min(one line, cap).
-      const wideW = Math.min(currentSingleLineCap(), Math.ceil(naturalLineWidth(m.label, m.opts)));
-      if (Math.abs(cur.w - wideW) <= 1) return 'wide';
+      const wideTarget = Math.min(currentSingleLineCap(), Math.ceil(naturalLineWidth(m.label, m.opts)));
+      if (Math.abs(cur.w - wideTarget) <= 1) return 'wide';
       return null;
     }
 
@@ -4420,6 +4436,11 @@ export function createMapView(
           return;
         }
         applyWidthPick(key, item.kind);
+        if (item.kind === 'wide') {
+          const w = readWidth(key, nodeByKey(key)!).w;
+          if (w != null) wideW.set(key, w);
+          else wideW.delete(key);
+        }
         if (hadFocus) focusMapForKeys();
       };
       for (const row of rows) {
@@ -4437,7 +4458,7 @@ export function createMapView(
           btn.setAttribute('role', item.radio ? 'menuitemradio' : 'menuitem');
           if (item.radio) btn.setAttribute('aria-checked', checked ? 'true' : 'false');
           btn.dataset.choice = item.choice;
-          const hint = WIDTH_MENU_KEYS[item.kind];
+          const hint = item.autoWidth ? undefined : WIDTH_MENU_KEYS[item.kind];
           if (hint) btn.setAttribute('aria-keyshortcuts', hint);
           const text = document.createElement('span');
           text.className = 'map-width-label';
