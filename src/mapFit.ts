@@ -13,15 +13,72 @@ export const WIDTH_MAX_COL = 1400;
 export const WIDTH_AUTO_TOLERANCE = 4;
 /** F5a: the single-line cap leaves this much of the map's width at 100% zoom. */
 export const SINGLE_LINE_MARGIN = 48;
-/** Slim / Wider step (the popover's existing items). */
+/** Legacy Slim / Wider step (kept for `stepEntry`; the menu now has `Wide`). */
 export const WIDTH_STEP = 56;
+/** 0.2.43: a corner press is a resize only after the pointer moves this far (CSS px). */
+export const WIDTH_DRAG_THRESHOLD = 4;
+/** 0.2.43: a hand-dragged 1-line pill keeps its 1-line flag at the dragged width. */
+export const W_AUTO_SINGLE_LINE_HELD = 'single-line-held';
 /** F7: the undo toast stays about this long (D5 pattern). */
 export const WIDTH_TOAST_MS = 8000;
 /** F5a: the one known `w-auto` mode. */
 export const W_AUTO_SINGLE_LINE = 'single-line';
 
 /** The popover's items, in order (fit row, then the width row). */
-export type WidthPickKind = 'fit' | 'line' | 'siblings' | 'level' | 'slim' | 'wider' | 'auto';
+export type WidthPickKind = 'fit' | 'line' | 'siblings' | 'level' | 'wide' | 'auto';
+/** Kinds older hosts may still pass (0.2.42 and before). */
+export type LegacyWidthPickKind = WidthPickKind | 'slim' | 'wider';
+
+/**
+ * 0.2.43: Slim and Wider merged into Wide. Old values still parse:
+ * `slim` → `fit` (Fit text), `wider` → `wide`. Unknown → null.
+ */
+export function normalizeWidthPickKind(kind: string): WidthPickKind | null {
+  switch (kind) {
+    case 'slim':
+      return 'fit';
+    case 'wider':
+      return 'wide';
+    case 'fit':
+    case 'line':
+    case 'siblings':
+    case 'level':
+    case 'wide':
+    case 'auto':
+      return kind;
+    default:
+      return null;
+  }
+}
+
+/** True for both 1-line modes (re-measured and drag-held). */
+export function isSingleLineMode(mode: string | null | undefined): boolean {
+  return mode === W_AUTO_SINGLE_LINE || mode === W_AUTO_SINGLE_LINE_HELD;
+}
+
+/** 0.2.43: has a corner press moved far enough to be a resize drag? */
+export function passedDragThreshold(dx: number, dy: number, px: number = WIDTH_DRAG_THRESHOLD): boolean {
+  return Math.hypot(dx, dy) >= px;
+}
+
+/**
+ * 0.2.43 "Wide": widen toward the natural one-line width, capped at the
+ * single-line cap (map width at 100% − 48, ≤ 1400). Never narrower than the
+ * current column. A hand-set width (no `w-auto`).
+ */
+export function wideEntry(m: { natural: number; current: number; cap: number }): WidthEntry {
+  const target = Math.min(m.cap, Math.ceil(m.natural));
+  return { w: clampCol(Math.max(m.current, target), Math.max(m.cap, m.current)), wAuto: null };
+}
+
+/**
+ * 0.2.43: the entry a finished corner drag writes. A 1-line pill keeps its
+ * 1-line flag (as `single-line-held`, so the dragged width is not re-measured
+ * away); any other pill gets a plain hand-set width.
+ */
+export function dragEntry(before: WidthEntry, w: number): WidthEntry {
+  return { w: clampCol(w), wAuto: isSingleLineMode(before.wAuto) ? W_AUTO_SINGLE_LINE_HELD : null };
+}
 
 /** Picks that put a whole scope on 1 line: every pill in scope gets the state, short or not. */
 export function isOneLineScopeKind(kind: string): boolean {
@@ -152,9 +209,7 @@ export function widthPickAnnouncement(
     }
     case 'fit':
       return p.auto ? `${title} at default width.` : `${title} wraps at 60 characters.`;
-    case 'slim':
-      return `${title} narrower.`;
-    case 'wider':
+    case 'wide':
       return `${title} wider.`;
     case 'auto':
       return `${title} at default width.`;
@@ -191,4 +246,35 @@ export function widthMenuKeyItem(key: string): WidthPickKind | null {
     if (hint === k) return kind as WidthPickKind;
   }
   return null;
+}
+
+/** 0.2.43: map-wide meaning of Auto (layout block `autoWidth:`). */
+export type AutoWidthSetting = '32ch' | '48ch' | '64ch' | 'fit-view';
+export const AUTO_WIDTH_CHOICES: readonly AutoWidthSetting[] = ['32ch', '48ch', '64ch', 'fit-view'];
+
+/** Parse an `autoWidth:` value (`32ch`, `48`, `fit-view`); null when unknown. */
+export function parseAutoWidth(raw: string | null | undefined): string | null {
+  const v = String(raw ?? '').trim().toLowerCase();
+  if (v === 'fit-view' || v === 'fitview') return 'fit-view';
+  const m = v.match(/^(\d{1,3})\s*(ch)?$/);
+  if (!m) return null;
+  const n = Number(m[1]);
+  return n >= 8 && n <= 400 ? `${n}ch` : null;
+}
+
+/**
+ * Auto's wrap in characters for a map-wide setting. `Nch` → N; `fit-view` →
+ * as many characters as fit the single-line cap at this font (approx 0.6em
+ * per char, minus pads). Missing / unknown → `fallback` (DEFAULT_WRAP_CH).
+ */
+export function autoWrapCh(
+  setting: string | null | undefined,
+  o: { viewportW?: number | null; fontPx?: number; fallback: number },
+): number {
+  const v = parseAutoWidth(setting);
+  if (!v) return o.fallback;
+  if (v !== 'fit-view') return Number(v.slice(0, -2));
+  const cap = singleLineCap(o.viewportW);
+  const px = (o.fontPx && o.fontPx > 0 ? o.fontPx : 14) * 0.6;
+  return Math.max(8, Math.floor((cap - 32) / px));
 }

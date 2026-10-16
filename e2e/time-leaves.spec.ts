@@ -176,7 +176,7 @@ test.describe('time leaves (desktop)', () => {
     await open(page);
     const before: string = await page.evaluate(() => (window as any).__serialize());
     expect(await page.evaluate(() => (window as any).__map.openWidthMenu('t2'))).toBe(false);
-    for (const kind of ['fit', 'line', 'siblings', 'slim', 'wider', 'auto']) {
+    for (const kind of ['fit', 'line', 'siblings', 'wide', 'auto', 'slim', 'wider']) {
       expect(await page.evaluate((k) => (window as any).__map.applyWidthPick('t2', k), kind), kind).toBe(false);
     }
     await page.locator(node('t2')).click();

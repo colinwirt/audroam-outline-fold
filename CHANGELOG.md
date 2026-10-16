@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.2.43 — 2026-10-16
+
+### Width corner: click is a click
+- A mouse press on the corner becomes a resize only after the pointer moves ≥ 4 px (`WIDTH_DRAG_THRESHOLD`, `passedDragThreshold`). A click with less jitter opens the width menu and writes nothing (stored `w` / `w-auto` untouched). Touch keeps its 10 px horizontal-intent gate; a still tap opens the menu and writes nothing.
+- A real drag on a 1-line pill (1 line / 1 line siblings / all at this level) keeps the 1-line flag: it is saved as `w-auto: single-line-held` at the dragged width (not re-measured away). Picking **1 line** again restores re-measuring. The drag is still one undo step. `dragEntry`, `isSingleLineMode`, `W_AUTO_SINGLE_LINE_HELD` exported. Older parsers read the `w` fallback.
+
+### Slim + Wider → Wide
+- The Width row is now **Wide · Auto**. Wide widens toward the natural one-line width, capped at the single-line cap (map width at 100% − 48, ≤ 1400), never narrower than now; a hand-set `w` (no `w-auto`). `wideEntry` exported.
+- Back-compat: `applyWidthPick(id, 'slim')` → Fit text, `'wider'` → Wide (`normalizeWidthPickKind`). Slim / Wider were never persisted as named modes, so saved files need no migration.
+
+### Map-wide Auto width
+- New layout-block key `autoWidth: 32ch | 48ch | 64ch | Nch | fit-view` (default 32ch, the old Auto). It sets the wrap Auto uses for every pill with no own `w` / wrapCh; per-node choices override it. `fit-view` ≈ characters that fit the single-line cap. Parsed, merged and serialized; `parseAutoWidth`, `autoWrapCh`, `AUTO_WIDTH_CHOICES` exported.
+- The width menu has a third row **Auto width** (`Auto: 32ch`, `Auto: 48ch`, `Auto: 64ch`, `Auto: fit view`, ✓ on the current one) that sets it for the whole map (`setDoc` + `onChange`; not on the width undo stack).
+
 ## 0.2.42 — 2026-10-13
 
 - **1 line siblings** is now state on every sibling, not only the ones that wrapped: each pill in scope gets `w-auto: single-line`, so a short sibling that is later edited past one line stays clamped and lines up with the rest (re-measured on render).

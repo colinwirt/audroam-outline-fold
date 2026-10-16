@@ -235,6 +235,7 @@ export function serialize(doc: OutlineFoldDoc): string {
     (fm?.collapsedMarker ?? DEFAULT_COLLAPSED) === DEFAULT_COLLAPSED &&
     !fm?.expandedMarker &&
     fm?.fontSize == null &&
+    !fm?.autoWidth &&
     !fm?.noteUri &&
     !fm?.noteMapUri &&
     !fm?.noteDetailsUri;
@@ -244,6 +245,7 @@ export function serialize(doc: OutlineFoldDoc): string {
     collapsedMarker: fm?.collapsedMarker ?? DEFAULT_COLLAPSED,
     expandedMarker: fm?.expandedMarker,
     fontSize: fm?.fontSize,
+    autoWidth: fm?.autoWidth,
     noteUri: fm?.noteUri,
     noteMapUri: fm?.noteMapUri,
     noteDetailsUri: fm?.noteDetailsUri,

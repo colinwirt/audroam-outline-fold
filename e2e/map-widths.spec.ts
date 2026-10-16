@@ -117,9 +117,9 @@ test.describe('hold-to-fit P1: the width popover gains a Fit row', () => {
         })),
       })),
     );
-    expect(groups.map((g) => g.label)).toEqual(['Fit', 'Width']);
+    expect(groups.map((g) => g.label)).toEqual(['Fit', 'Width', 'Auto width']);
     const items = groups.flatMap((g) => g.items);
-    expect(items.map((i) => i.choice)).toEqual(['fit-text', 'line', 'siblings', 'level', 'slim', 'wider', 'auto']);
+    expect(items.map((i) => i.choice)).toEqual(['fit-text', 'line', 'siblings', 'level', 'wide', 'auto', 'auto-width-32ch', 'auto-width-48ch', 'auto-width-64ch', 'auto-width-fit-view']);
     expect(items.map((i) => i.role)).toEqual([
       'menuitemradio',
       'menuitemradio',
@@ -127,11 +127,15 @@ test.describe('hold-to-fit P1: the width popover gains a Fit row', () => {
       'menuitem',
       'menuitemradio',
       'menuitemradio',
-      'menuitemradio',
+      'menuitem',
+      'menuitem',
+      'menuitem',
+      'menuitem',
     ]);
     expect(items[2]!.checked).toBeNull();
     expect(items.filter((i) => i.checked === 'true').map((i) => i.text)).toEqual(['✓ Auto']);
-    expect(items.map((i) => i.keys)).toEqual(['t', 'l', 's', 'v', null, null, 'a']);
+    expect(items.find((i) => i.choice === 'auto-width-32ch')!.text).toBe('✓ Auto: 32ch');
+    expect(items.map((i) => i.keys)).toEqual(['t', 'l', 's', 'v', null, 'a', null, null, null, null]);
     // Fine pointer: 32 px rows; no key hints on a pointer open (F13).
     for (const i of items) expect(i.h).toBeGreaterThanOrEqual(32);
     await expect(page.locator('.map-width-pop kbd')).toHaveCount(0);
@@ -288,13 +292,13 @@ test.describe('hold-to-fit P1: the width popover gains a Fit row', () => {
     await expect(toast(page)).toHaveCount(0);
   });
 
-  test('Slim, Wider and Fit text drop w-auto; Auto drops both keys', async ({ page }) => {
+  test('Wide and Fit text drop w-auto; Auto drops both keys', async ({ page }) => {
     await open(page);
     const k = await keyOf(page, GLOVES);
     await openPop(page, k);
     await pick(page, 'line');
     await openMenu(page, k);
-    await pick(page, 'slim');
+    await pick(page, 'wide');
     expect((await stored(page, k)).wAuto).toBeNull();
     expect(layoutEntry(await text(page), k)).toHaveLength(1);
     await openMenu(page, k);
@@ -473,5 +477,51 @@ test.describe('hold-to-fit P1: the undo toast (D5 pattern)', () => {
     await expect(toast(page)).toHaveCount(0);
     // Dismissed is not undone.
     expect(await stored(page, k)).toEqual({ w: null, wAuto: null });
+  });
+});
+
+test.describe('0.2.43: corner click vs drag', () => {
+  test('a click with < 4 px jitter opens the menu and writes nothing', async ({ page }) => {
+    await open(page);
+    const k = await keyOf(page, GLOVES);
+    await openPop(page, k);
+    await pick(page, 'line');
+    const before = await stored(page, k);
+    const doc0 = await text(page);
+    expect(before.wAuto).toBe('single-line');
+    // Corner of the (now wide) pill; bring it into view through the camera first.
+    await page.evaluate(() => (window as any).__map.paint());
+    const pill = (await page.locator(`${sel(k)} .map-pill`).boundingBox())!;
+    const x = Math.min(pill.x + pill.width - 2, 1390);
+    const y = pill.y + pill.height - 2;
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+    await page.mouse.move(x + 2, y + 1);
+    await page.mouse.move(x + 3, y);
+    await page.mouse.up();
+    await expect(page.locator('.map-width-pop')).toHaveCount(1);
+    expect(await stored(page, k)).toEqual(before);
+    expect(await text(page)).toBe(doc0);
+  });
+
+  test('a real drag on a 1-line pill keeps the 1-line flag (held) and is undoable', async ({ page }) => {
+    await open(page);
+    const k = await keyOf(page, BEANS);
+    await openPop(page, k);
+    await pick(page, 'line');
+    const before = await stored(page, k);
+    const pill = (await page.locator(`${sel(k)} .map-pill`).boundingBox())!;
+    const x = Math.min(pill.x + pill.width - 2, 1390);
+    const y = pill.y + pill.height - 2;
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+    for (let i = 1; i <= 6; i++) await page.mouse.move(x - i * 10, y);
+    await page.mouse.up();
+    await page.waitForTimeout(200);
+    const after = await stored(page, k);
+    expect(after.wAuto).toBe('single-line-held');
+    expect(after.w).not.toBe(before.w);
+    expect(await page.evaluate(() => (window as any).__map.undoWidth())).toBeTruthy();
+    expect(await stored(page, k)).toEqual(before);
   });
 });

@@ -52,11 +52,11 @@ test.describe('controls: mouse and keyboard activate exactly once', () => {
     await openPopWithMouse(page, 'view');
     const w0 = Number(await page.locator('.map-node[data-id="view"]').getAttribute('data-text-w'));
     const p0 = await paints(page);
-    await page.locator('.map-width-pop button[data-choice="slim"]').click();
+    await page.locator('.map-width-pop button[data-choice="wide"]').click();
     await expect(page.locator('.map-width-pop')).toHaveCount(0);
     await page.waitForTimeout(150);
     expect(await paints(page)).toBe(p0 + 1);
-    expect(await page.evaluate(() => (window as any).__layout().nodes.view.w)).toBe(Math.max(120, Math.round(w0 - 56)));
+    expect(await page.evaluate(() => (window as any).__layout().nodes.view.w)).toBeGreaterThanOrEqual(w0);
   });
 
   test('popover: keyboard Enter / Space apply once; Enter does not fold the selected node; Esc closes', async ({ page }) => {
@@ -73,7 +73,7 @@ test.describe('controls: mouse and keyboard activate exactly once', () => {
 
     await openPopWithMouse(page, 'tasks');
     const p0 = await paints(page);
-    await page.locator('.map-width-pop button[data-choice="wider"]').focus();
+    await page.locator('.map-width-pop button[data-choice="wide"]').focus();
     await page.keyboard.press('Enter');
     await expect(page.locator('.map-width-pop')).toHaveCount(0);
     await page.waitForTimeout(150);
@@ -83,7 +83,7 @@ test.describe('controls: mouse and keyboard activate exactly once', () => {
 
     await openPopWithMouse(page, 'tasks');
     // ArrowRight moves through the items; Space activates.
-    await page.locator('.map-width-pop button[data-choice="slim"]').focus();
+    await page.locator('.map-width-pop button[data-choice="level"]').focus();
     await page.keyboard.press('ArrowRight');
     await page.keyboard.press('ArrowRight');
     const p1 = await paints(page);

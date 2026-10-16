@@ -157,8 +157,7 @@ describe('hold-to-fit P1: words (F7, F11, F12, F13)', () => {
     expect(widthPickAnnouncement('fit', { title: 'Beans' })).toBe('Beans wraps at 60 characters.');
     expect(widthPickAnnouncement('fit', { title: 'Peas', auto: true })).toBe('Peas at default width.');
     expect(widthPickAnnouncement('auto', { title: 'Peas' })).toBe('Peas at default width.');
-    expect(widthPickAnnouncement('slim', { title: 'Peas' })).toBe('Peas narrower.');
-    expect(widthPickAnnouncement('wider', { title: 'Peas' })).toBe('Peas wider.');
+    expect(widthPickAnnouncement('wide', { title: 'Peas' })).toBe('Peas wider.');
   });
 
   it('mnemonics t / l / s / a', () => {

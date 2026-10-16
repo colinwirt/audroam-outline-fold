@@ -76,7 +76,7 @@ test.describe('hold-to-fit P1 on touch: the Fit row on a grip tap', () => {
         return { choice: (b as HTMLElement).dataset.choice, w: r.width, h: r.height };
       }),
     );
-    expect(items.map((i) => i.choice)).toEqual(['fit-text', 'line', 'siblings', 'level', 'slim', 'wider', 'auto']);
+    expect(items.map((i) => i.choice)).toEqual(['fit-text', 'line', 'siblings', 'level', 'wide', 'auto', 'auto-width-32ch', 'auto-width-48ch', 'auto-width-64ch', 'auto-width-fit-view']);
     for (const i of items) {
       expect(i.h).toBeGreaterThanOrEqual(52);
       expect(i.w).toBeGreaterThanOrEqual(46);

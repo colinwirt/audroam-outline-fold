@@ -1,4 +1,5 @@
 import { parseEncBody } from './sealed.js';
+import { parseAutoWidth } from './mapFit.js';
 import type {
   NodeLayout,
   OutlineFrontmatter,
@@ -271,6 +272,12 @@ function readFmLine(
     fm.expandedMarker = unquote(em[1]!.trim());
     return true;
   }
+  const autoWidth = line.match(/^autoWidth\s*:\s*(\S+)\s*$/i);
+  if (autoWidth) {
+    const v = parseAutoWidth(autoWidth[1]);
+    if (v) fm.autoWidth = v;
+    return true;
+  }
   const fontSize = line.match(/^fontSize\s*:\s*(\d+(?:\.\d+)?)\s*$/i);
   if (fontSize) {
     fm.fontSize = Number(fontSize[1]);
@@ -318,6 +325,7 @@ export function mergeFrontmatter(
   if (tail.expandedMarker !== undefined)
     out.expandedMarker = tail.expandedMarker;
   if (tail.fontSize !== undefined) out.fontSize = tail.fontSize;
+  if (tail.autoWidth !== undefined) out.autoWidth = tail.autoWidth;
   if (tail.noteUri !== undefined) out.noteUri = tail.noteUri;
   if (tail.noteMapUri !== undefined) out.noteMapUri = tail.noteMapUri;
   if (tail.noteDetailsUri !== undefined) out.noteDetailsUri = tail.noteDetailsUri;
@@ -392,6 +400,9 @@ export function formatLayoutBlock(
       Number.isFinite(frontmatter.fontSize)
     ) {
       lines.push(`fontSize: ${frontmatter.fontSize}`);
+    }
+    if (frontmatter.autoWidth && parseAutoWidth(frontmatter.autoWidth)) {
+      lines.push(`autoWidth: ${parseAutoWidth(frontmatter.autoWidth)}`);
     }
     for (const key of ['noteUri', 'noteMapUri', 'noteDetailsUri'] as const) {
       const uri = frontmatter[key];

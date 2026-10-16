@@ -149,6 +149,12 @@ export interface OutlineFrontmatter {
   /** Map label size in px. Overridden by the layout file and by a node fontSize. */
   fontSize?: number;
   /**
+   * 0.2.43 `autoWidth:` in the layout block: what Auto means map-wide
+   * (`32ch` default, `48ch`, `64ch`, any `Nch`, or `fit-view`). A node's own
+   * `w` / `w-auto` / wrapCh overrides it.
+   */
+  autoWidth?: string;
+  /**
    * `<t:N>` open pattern from the layout block.
    * `{id}` is the note id. `https://b.audroam.com/view/pnid/{id}` or `/view/pnid/{id}`.
    */

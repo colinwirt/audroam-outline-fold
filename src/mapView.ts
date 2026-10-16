@@ -85,6 +85,14 @@ import {
   WIDTH_TOAST_MS,
   fitTextEntry,
   oneLineEntry,
+  wideEntry,
+  dragEntry,
+  passedDragThreshold,
+  normalizeWidthPickKind,
+  isSingleLineMode,
+  autoWrapCh,
+  AUTO_WIDTH_CHOICES,
+  type LegacyWidthPickKind,
   sameWidth,
   siblingScope,
   levelScope,
@@ -498,8 +506,8 @@ export interface MapViewHandle {
    * bindGestures() or a node.
    */
   openWidthMenu: (id?: string) => boolean;
-  /** Apply a width pick (`fit`, `line`, `siblings`, `slim`, `wider`, `auto`) as the popover does. */
-  applyWidthPick: (id: string, kind: WidthPickKind) => boolean;
+  /** Apply a width pick (`fit`, `line`, `siblings`, `level`, `wide`, `auto`; legacy `slim`/`wider`) as the popover does. */
+  applyWidthPick: (id: string, kind: LegacyWidthPickKind) => boolean;
   /** Undo / redo the last width step on the package's own stack. False when there is none. */
   undoWidth: () => boolean;
   redoWidth: () => boolean;
@@ -1529,7 +1537,7 @@ export function createMapView(
     const layout = getLayout();
     const rects: WorldRect[] = [];
     const byId = new Map<string, WorldRect>();
-    const defaults = { wrapCh: DEFAULT_WRAP_CH, maxLines: DEFAULT_MAX_LINES };
+    const defaults = { wrapCh: autoCh(), maxLines: DEFAULT_MAX_LINES };
     const order = indexOutline(doc.nodes);
     function walk(n: OutlineNode): void {
       const key = nodeMapKey(n, order.get(n) || 0);
@@ -2953,7 +2961,7 @@ export function createMapView(
         fontSize: resolveFontPx(pos?.fontSize, layout.fontSize, getDoc().frontmatter?.fontSize),
         reserveTask: !!resolveTask(n),
         semibold: false,
-        wrapCh: pos?.wrapCh,
+        wrapCh: pos?.wrapCh ?? autoCh(),
         maxLines: pos?.maxLines,
         bodyExpanded: !!pos?.bodyExpanded,
       },
@@ -2963,6 +2971,16 @@ export function createMapView(
   /** F5a cap: the map's visible width at 100% zoom − 48, at most 1400. */
   function currentSingleLineCap(): number {
     return singleLineCap(hostViewport().w);
+  }
+
+  /** 0.2.43: Auto's wrap for this map (`autoWidth:` in the layout block). */
+  function autoCh(): number {
+    const doc = getDoc();
+    return autoWrapCh(doc.frontmatter?.autoWidth, {
+      viewportW: hostViewport().w,
+      fontPx: resolveFontPx(undefined, getLayout().fontSize, doc.frontmatter?.fontSize),
+      fallback: DEFAULT_WRAP_CH,
+    });
   }
 
   /**
@@ -3148,7 +3166,10 @@ export function createMapView(
   }
 
   /** The popover's and `w` menu's picks (F3–F6). */
-  function applyWidthPick(key: string, kind: WidthPickKind, explicitW?: number): MapWidthStep | null | false {
+  function applyWidthPick(key: string, rawKind: LegacyWidthPickKind, _explicitW?: number): MapWidthStep | null | false {
+    // 0.2.43: `slim` → Fit text, `wider` → Wide (old hosts / saved picks).
+    const kind = normalizeWidthPickKind(rawKind);
+    if (!kind) return false;
     const n = nodeByKey(key);
     // Time leaves have no width (TL1): no pick applies to them.
     if (!n || timeLeafKind(n)) return false;
@@ -3177,11 +3198,8 @@ export function createMapView(
         }, { always: isOneLineScopeKind(kind) });
         if (one.capped) capped++;
         after = { w: one.w, wAuto: one.wAuto };
-      } else if (kind === 'slim' || kind === 'wider') {
-        after =
-          explicitW != null
-            ? { w: Math.max(120, Math.min(WIDTH_MAX_COL, Math.round(explicitW))), wAuto: null }
-            : stepEntry(paintedTextW(k, node), kind === 'slim' ? -1 : 1);
+      } else if (kind === 'wide') {
+        after = wideEntry({ natural: naturalLineWidth(m.label, m.opts), current: paintedTextW(k, node), cap });
       } else {
         after = { w: null, wAuto: null };
       }
@@ -3400,6 +3418,7 @@ export function createMapView(
       const packed = autoPackPositions(doc, {
         isNodeCollapsed: (id) => isCollapsed(doc, id),
         nodeLayout: prior,
+        wrapCh: autoCh(),
         fontSize: resolveFontPx(undefined, layout.fontSize, doc.frontmatter?.fontSize),
       });
       const merged: Record<string, MapPoint> = {};
@@ -3746,7 +3765,7 @@ export function createMapView(
         reserveFold: foldable,
         reserveTask: !!taskParsed,
         semibold: false,
-        wrapCh: pos.wrapCh,
+        wrapCh: pos.wrapCh ?? autoCh(),
         widthPx: pos.w ?? n.layout?.w,
         maxLines: pos.maxLines,
         bodyExpanded: !!pos.bodyExpanded,
@@ -3794,7 +3813,7 @@ export function createMapView(
             reserveFold: hasKids(c),
             reserveTask: !!cTask,
             semibold: false,
-            wrapCh: cpos.wrapCh,
+            wrapCh: cpos.wrapCh ?? autoCh(),
             widthPx: cpos.w ?? c.layout?.w,
             maxLines: cpos.maxLines,
             bodyExpanded: !!cpos.bodyExpanded,
@@ -4198,6 +4217,8 @@ export function createMapView(
       pointerId: number;
       key: string;
       startX: number;
+      /** 0.2.43: for the drag threshold. */
+      startY?: number;
       startW: number;
       moved: boolean;
       /** Width before the drag, for its undo step (F7). */
@@ -4221,7 +4242,7 @@ export function createMapView(
       layout.nodes[key] = { ...prev, w: Math.max(MIN_COL, Math.min(MAX_COL, Math.round(w))) };
     }
 
-    /** A finished drag is one undo step (F7, no toast); a hand-set width drops `w-auto` (F5a). */
+    /** A finished drag is one undo step (F7, no toast). 0.2.43: a 1-line pill keeps its 1-line flag. */
     function commitWidth(): void {
       const drag = widthDrag;
       widthDrag = null;
@@ -4232,13 +4253,11 @@ export function createMapView(
       commitWidthStep(
         'drag',
         drag.key,
-        [{ key: drag.key, before: drag.before, after: { w, wAuto: null }, idState: drag.idState }],
+        [{ key: drag.key, before: drag.before, after: dragEntry(drag.before, w), idState: drag.idState }],
         { toast: false },
       );
     }
 
-    /** Last Slim / Wider per pill key, to mark it when the width still matches. */
-    const widthChoiceByKey = new Map<string, { label: string; w: number }>();
     let widthPopAbort: AbortController | null = null;
 
     function dismissWidthPop(): void {
@@ -4280,7 +4299,21 @@ export function createMapView(
       /** `menuitem` for actions on other nodes (F12). */
       radio: boolean;
       w?: number;
+      /** 0.2.43: map-wide Auto width choice (row "Auto width"). */
+      autoWidth?: string;
     };
+
+    /** 0.2.43: set what Auto means for the whole map (`autoWidth:` in the layout block). */
+    function setAutoWidth(v: string): void {
+      const doc = getDoc();
+      const fm = { ...(doc.frontmatter || {}) };
+      if (v === '32ch') delete fm.autoWidth;
+      else fm.autoWidth = v;
+      setDoc({ ...doc, frontmatter: fm });
+      announce(`Auto width ${v === 'fit-view' ? 'fits the view' : v}.`);
+      paint();
+      onChange?.();
+    }
 
     /** Which item carries ✓ for this pill (one at most). */
     function checkedWidthKind(key: string): WidthPickKind | null {
@@ -4288,13 +4321,13 @@ export function createMapView(
       if (!n) return null;
       const cur = readWidth(key, n);
       if (cur.w == null) return 'auto';
-      if (cur.wAuto === W_AUTO_SINGLE_LINE) return 'line';
-      // The last Slim / Wider pick wins while the width still matches it.
-      const last = widthChoiceByKey.get(key);
-      if (last && last.w === cur.w) return last.label === 'Slim' ? 'slim' : 'wider';
+      if (isSingleLineMode(cur.wAuto)) return 'line';
       const m = fitMeasure(n, key);
       const fit = fitTextEntry({ fit: fitTextWidth(m.label, m.opts), auto: autoTextWidth(m.label, m.opts) });
       if (fit.w != null && Math.abs(cur.w - fit.w) <= 1) return 'fit';
+      // Wide: the column already sits at min(one line, cap).
+      const wideW = Math.min(currentSingleLineCap(), Math.ceil(naturalLineWidth(m.label, m.opts)));
+      if (Math.abs(cur.w - wideW) <= 1) return 'wide';
       return null;
     }
 
@@ -4340,8 +4373,6 @@ export function createMapView(
         '-webkit-touch-callout:none',
         'user-select:none',
       ].join(';');
-      const slimW = Math.max(MIN_COL, Math.min(MAX_COL, Math.round(textW - 56)));
-      const widerW = Math.max(MIN_COL, Math.min(MAX_COL, Math.round(textW + 56)));
       const rows: { label: string; items: WidthItem[] }[] = [
         {
           label: 'Fit',
@@ -4355,12 +4386,22 @@ export function createMapView(
         {
           label: 'Width',
           items: [
-            { kind: 'slim', label: 'Slim', choice: 'slim', radio: true, w: slimW },
-            { kind: 'wider', label: 'Wider', choice: 'wider', radio: true, w: widerW },
+            { kind: 'wide', label: 'Wide', choice: 'wide', radio: true },
             { kind: 'auto', label: 'Auto', choice: 'auto', radio: true },
           ],
         },
+        {
+          label: 'Auto width',
+          items: AUTO_WIDTH_CHOICES.map((v) => ({
+            kind: 'auto' as WidthPickKind,
+            label: v === 'fit-view' ? 'Auto: fit view' : `Auto: ${v}`,
+            choice: `auto-width-${v}`,
+            radio: false,
+            autoWidth: v,
+          })),
+        },
       ];
+      const curAutoWidth = getDoc().frontmatter?.autoWidth || '32ch';
       const checkedKind = checkedWidthKind(key);
       const buttons: HTMLButtonElement[] = [];
       const kinds: WidthPickKind[] = [];
@@ -4373,12 +4414,12 @@ export function createMapView(
           const pe = ev as PointerEvent;
           swallow = armSwallow(performance.now(), pe.clientX, pe.clientY);
         }
-        if (item.kind === 'slim' || item.kind === 'wider') {
-          widthChoiceByKey.set(key, { label: item.label, w: item.w! });
-        } else {
-          widthChoiceByKey.delete(key);
+        if (item.autoWidth) {
+          setAutoWidth(item.autoWidth);
+          if (hadFocus) focusMapForKeys();
+          return;
         }
-        applyWidthPick(key, item.kind, item.w);
+        applyWidthPick(key, item.kind);
         if (hadFocus) focusMapForKeys();
       };
       for (const row of rows) {
@@ -4392,7 +4433,7 @@ export function createMapView(
         for (const item of row.items) {
           const btn = document.createElement('button');
           btn.type = 'button';
-          const checked = item.radio && item.kind === checkedKind;
+          const checked = item.autoWidth ? item.autoWidth === curAutoWidth : item.radio && item.kind === checkedKind;
           btn.setAttribute('role', item.radio ? 'menuitemradio' : 'menuitem');
           if (item.radio) btn.setAttribute('aria-checked', checked ? 'true' : 'false');
           btn.dataset.choice = item.choice;
@@ -5043,6 +5084,7 @@ export function createMapView(
           key: edge.key,
           startX: e.clientX,
           startW: edge.textW,
+          startY: e.clientY,
           moved: false,
           ...dragStart(edge.key),
         };
@@ -5216,7 +5258,12 @@ export function createMapView(
         }
         if (widthDrag && e.pointerId === widthDrag.pointerId) {
           e.preventDefault();
-          widthDrag.moved = true;
+          // 0.2.43: a click's jitter is not a resize. Nothing is written until
+          // the pointer has moved WIDTH_DRAG_THRESHOLD px from the press.
+          if (!widthDrag.moved) {
+            if (!passedDragThreshold(e.clientX - widthDrag.startX, e.clientY - (widthDrag.startY ?? e.clientY))) return;
+            widthDrag.moved = true;
+          }
           const dx = (e.clientX - widthDrag.startX) / (cam.k || 1);
           showWidthHot(widthDrag.key);
           applyWidth(widthDrag.key, widthDrag.startW + dx);
@@ -5787,7 +5834,7 @@ export function createMapView(
     closeLevelMenu: () => closeLevelMenu(false),
     closeMenus,
     openWidthMenu,
-    applyWidthPick: (id: string, kind: WidthPickKind) => applyWidthPick(id, kind) !== false,
+    applyWidthPick: (id: string, kind: LegacyWidthPickKind) => applyWidthPick(id, kind) !== false,
     undoWidth,
     redoWidth,
     applyFoldLevel,

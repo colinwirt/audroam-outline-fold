@@ -454,8 +454,8 @@ async function expectPopInside(c: Ctx, touch: { x: number; y: number }): Promise
     }),
   );
   // Hold-to-fit P1: the Fit row (Fit text · 1 line · 1 line siblings · 1 line: all at this level) over
-  // Slim · Wider · Auto; coarse items ≥ 46×52 (F12).
-  expect(sizes).toHaveLength(7);
+  // Wide · Auto, then the Auto width row (0.2.43); coarse items ≥ 46×52 (F12).
+  expect(sizes).toHaveLength(10);
   for (const s of sizes) {
     expect(s.h).toBeGreaterThanOrEqual(52);
     expect(s.w).toBeGreaterThanOrEqual(46);
@@ -473,7 +473,7 @@ const checked = (page: Page) =>
       .map((b) => b.textContent),
   );
 
-async function choose(c: Ctx, label: 'slim' | 'wider' | 'auto'): Promise<void> {
+async function choose(c: Ctx, label: 'wide' | 'auto'): Promise<void> {
   // Find the item by its text (works with or without the ✓ mark).
   const b = await c.page.evaluate((l) => {
     const btn = [...document.querySelectorAll('.map-width-pop button')].find((x) =>
@@ -490,10 +490,10 @@ async function choose(c: Ctx, label: 'slim' | 'wider' | 'auto'): Promise<void> {
 
 test.describe('resize popover: each choice applies on the first tap', () => {
   for (const kind of ['fresh', 'slow pan', 'fling'] as const) {
-    test(`Slim, Wider, Auto (${kind})`, async ({ page }) => {
+    test(`Wide, Auto (${kind})`, async ({ page }) => {
       const c = await open(page);
       await tapToFocus(c, 'view');
-      for (const label of ['slim', 'wider', 'auto'] as const) {
+      for (const label of ['wide', 'auto'] as const) {
         const w0 = await textW(page, 'view');
         if (kind === 'slow pan') {
           await c.t.slowPan(c.bg.x, c.bg.y);
@@ -509,7 +509,7 @@ test.describe('resize popover: each choice applies on the first tap', () => {
         if (kind === 'fling') expect(Date.now() - t0, 'choice tapped soon after the fling').toBeLessThan(1500);
         const w = await storedW(page, 'view');
         if (label === 'auto') expect(w).toBeNull();
-        else expect(w).toBe(Math.max(120, Math.round(w0 + (label === 'slim' ? -56 : 56))));
+        else expect(w!).toBeGreaterThanOrEqual(w0);
       }
     });
   }
@@ -519,9 +519,9 @@ test.describe('resize popover: each choice applies on the first tap', () => {
     await tapToFocus(c, 'view');
     await openPop(c, 'view');
     expect(await checked(page)).toEqual(['✓ Auto']);
-    await choose(c, 'slim');
+    await choose(c, 'wide');
     await openPop(c, 'view');
-    expect(await checked(page)).toEqual(['✓ Slim']);
+    expect(await checked(page)).toEqual(['✓ Wide']);
   });
 
   test('stays open and inside the panel across map.paint()', async ({ page }) => {
@@ -533,8 +533,8 @@ test.describe('resize popover: each choice applies on the first tap', () => {
     await expect(page.locator('.map-width-pop')).toHaveCount(1);
     await expectPopInside(c, touch);
     const w0 = await textW(page, 'view');
-    await choose(c, 'wider');
-    expect(await storedW(page, 'view')).toBe(Math.min(1400, Math.round(w0 + 56)));
+    await choose(c, 'wide');
+    expect(await storedW(page, 'view')).toBeGreaterThanOrEqual(w0);
   });
 
   for (const edge of ['right', 'bottom'] as const) {
@@ -554,7 +554,7 @@ test.describe('resize popover: each choice applies on the first tap', () => {
       }, { dx, dy });
       const touch = await openPop(c, 'view');
       await expectPopInside(c, touch);
-      await choose(c, 'slim');
+      await choose(c, 'wide');
       expect(await storedW(page, 'view')).not.toBeNull();
     });
   }
