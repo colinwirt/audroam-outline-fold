@@ -15,7 +15,7 @@ const baseURL = external
 export default defineConfig({
   testDir: 'e2e',
   globalSetup: external ? './e2e/wait-for-deploy.ts' : undefined,
-  timeout: 60_000,
+  timeout: 15_000,
   expect: { timeout: 5_000 },
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
