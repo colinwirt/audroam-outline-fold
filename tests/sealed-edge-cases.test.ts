@@ -5,6 +5,7 @@ import {
   toggleFold,
   createKey,
   clearKeys,
+  setSealCipher,
   sealBranch,
   openSealedBranch,
   openViewerCount,
@@ -48,7 +49,7 @@ async function sealed() {
 }
 const ctOf = (t: string, id: string) => t.match(new RegExp(`^${id}:\\n(?:  .*\\n)*?  ct: (\\S+)`, 'm'))?.[1];
 
-beforeEach(() => clearKeys());
+beforeEach(() => { clearKeys(); setSealCipher('a256gcm'); });
 
 describe('Q1 rendering: unlock never puts plaintext in the main doc', () => {
   it('main doc keeps only the sealed line while a viewer is open (Outline + Map source)', async () => {
@@ -85,7 +86,7 @@ describe('Q2 id or marker removed from the sealed line', () => {
   it('restoring the id (reattach) round-trips byte-identical', async () => {
     const { text } = await sealed();
     const doc = parse(text.replace('<id:v>', ''));
-    const line = doc.nodes[0]!.children!.find((n) => n.title === SEALED_PLACEHOLDER && !n.sealed)!;
+    const line = doc.nodes[0]!.children!.find((n) => n.title === SEALED_PLACEHOLDER && !n.id)!;
     reattachSealedOrphan(doc, 'v', line);
     expect(serialize(doc)).toBe(text);
   });
@@ -124,7 +125,7 @@ describe('Q3 leak attempts', () => {
 
   it('kid changed: open fails closed, save keeps the ciphertext as is', async () => {
     const { text } = await sealed();
-    const bad = text.replace(/^(v:\n  kid: )\S+/m, '$1AAAAAAAAAAAAAAAAAAAAAA');
+    const bad = text.replace('<enc:k1> <id:v>', '<enc:k9> <id:v>');
     const doc = parse(bad);
     await expect(openSealedBranch(doc, 'v', CTX)).rejects.toThrow("Can't unlock");
     expect(serialize(doc)).toBe(bad);
@@ -133,7 +134,7 @@ describe('Q3 leak attempts', () => {
 
   it('indentation changed (sealed line moved under a sibling): still one sealed leaf, no leak', async () => {
     const { text } = await sealed();
-    const moved = text.replace('  - Sealed branch <id:v>\n', '').replace('  - Public sibling <id:s>', '  - Public sibling <id:s>\n    - Sealed branch <id:v>');
+    const moved = text.replace('  - Sealed branch <enc:k1> <id:v>\n', '').replace('  - Public sibling <id:s>', '  - Public sibling <id:s>\n    - Sealed branch <enc:k1> <id:v>');
     const doc = parse(moved);
     const out = serialize(doc);
     expect(out).not.toMatch(SECRET);
@@ -144,7 +145,7 @@ describe('Q3 leak attempts', () => {
 
   it('duplicate sealed id: save refuses', async () => {
     const { text } = await sealed();
-    const doc = parse(text.replace('  - Public sibling', '  - Sealed branch <id:v>\n  - Public sibling'));
+    const doc = parse(text.replace('  - Public sibling', '  - Sealed branch <enc:k1> <id:v>\n  - Public sibling'));
     expect(() => serialize(doc)).toThrow(/duplicate sealed id/);
   });
 
@@ -168,7 +169,7 @@ describe('Q3 leak attempts', () => {
     const folded = toggleFold(doc, 'r');
     const out = serialize(folded);
     expect(out).not.toMatch(SECRET);
-    expect(out).toContain('--- keys ---');
+    expect(out).toContain('--- keyring ---');
     expect(ctOf(out, 'v')).toBe(ctOf(text, 'v'));
   });
 
@@ -202,7 +203,7 @@ describe('viewer lifecycle and fixed mode', () => {
     expect(ctOf(out, 'w')).toBe(ctOf(text, 'w'));
     expect(ctOf(out, 'v')).not.toBe(ctOf(text, 'v'));
     expect(find(doc, 'v')!.sealed!.kid).toBe(kid);
-    expect(find(doc, 'v')!.sealed!.alg).toBe('of-seal-v1');
+    expect(find(doc, 'v')!.sealed!.alg).toBe('of-seal-v2');
     view.close();
     const again = await openSealedBranch(doc, 'v', CTX);
     expect(again.doc.nodes[0]!.children![0]!.title).toBe('Secret child v2');
@@ -241,7 +242,7 @@ describe('viewer lifecycle and fixed mode', () => {
     const { doc } = await sealed();
     const view = await openSealedBranch(doc, 'v', CTX);
     view.doc.nodes[0]!.title = 'x';
-    doc.keys = doc.keys!.map((k) => ({ ...k, kdf: k.kdf.replace('600000', '700000') }));
+    doc.keyring = doc.keyring!.map((k) => ({ ...k, kdf: k.kdf.replace('600000', '700000') }));
     await expect(view.save()).rejects.toThrow(/key entry changed/);
   });
 

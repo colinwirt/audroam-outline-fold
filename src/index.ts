@@ -483,6 +483,20 @@ export {
 export {
   SealError,
   SEAL_ALG,
+  SEAL_ALG_V1,
+  SEAL_CIPHERS,
+  SEAL_LABELS,
+  supportedVersions,
+  setSealCipher,
+  type SealCipher,
+  unlockKeyring,
+  changeKeyringPassphrase,
+  migrateSealedV1,
+  type MigrationResult,
+  branchCipher,
+  deriveShareKeyBits,
+  parseBranchCtV2,
+  type BranchBlobV2,
   SEALED_PLACEHOLDER,
   MAX_SEAL_DEPTH,
   setArgon2Provider,
@@ -510,8 +524,8 @@ export {
   type Argon2Provider,
   type KdfParams,
 } from './sealedBranch.js';
-export type { SealKeyEntry } from './types.js';
-export { parseKeysBlock, formatKeysBlock } from './payloads.js';
+export type { SealKeyEntry, SealKeyringEntry } from './types.js';
+export { parseKeysBlock, formatKeysBlock, parseKeyringBlock, formatKeyringBlock } from './payloads.js';
 export {
   SealedSaveError,
   sealedSaveProblems,

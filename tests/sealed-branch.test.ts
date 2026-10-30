@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { pbkdf2Sync, hkdfSync, createCipheriv } from 'node:crypto';
+import { hkdfSync, createDecipheriv } from 'node:crypto';
 import {
   parse,
   serialize,
@@ -7,6 +7,7 @@ import {
   createKey,
   unlockKey,
   clearKeys,
+  setSealCipher,
   unlockedKids,
   exportKeyEntry,
   importKeyEntry,
@@ -20,7 +21,7 @@ import {
   type OutlineFoldDoc,
   type OutlineNode,
 } from '../src/index.js';
-import { __subkeyBitsForKat, b64u, unb64u } from '../src/sealedBranch.js';
+import { __installSecretForKat, __branchKeyBitsForKat, __encryptForKat, aadV2, unlockKeyring, b64u, unb64u } from '../src/sealedBranch.js';
 
 const PASS = 'correct horse battery staple';
 const CTX = { noteId: 'note-1', ownerId: 'owner-1' };
@@ -55,7 +56,7 @@ function tamperCt(text: string, seg: number, at = 2): string {
   });
 }
 
-beforeEach(() => clearKeys());
+beforeEach(() => { clearKeys(); setSealCipher('a256gcm'); });
 
 describe('sealed branches: format', () => {
   it('locked branch is a single neutral node; caption and children never serialized', async () => {
@@ -64,8 +65,10 @@ describe('sealed branches: format', () => {
     expect(text).not.toContain('deeper');
     expect(text).toContain(`- ${SEALED_PLACEHOLDER}`);
     expect(text).toContain('--- payloads ---');
-    expect(text).toContain('--- keys ---');
-    expect(text).toContain('alg: of-seal-v1');
+    expect(text).toContain('--- keyring ---');
+    expect(text).not.toContain('--- keys ---');
+    expect(text).toContain('alg: of-seal-v2');
+    expect(text).toMatch(/- Sealed branch <enc:k1> <id:v>/);
   });
 
   it('public label is explicit and shown instead of the placeholder', async () => {
@@ -81,11 +84,12 @@ describe('sealed branches: format', () => {
     expect(validateSealedBranches(doc)).toEqual([]);
   });
 
-  it('key list holds no verifier: only kid, kdf, pub', async () => {
+  it('keyring holds only wrapped entries: kdf, wrap, pub (no hash or verifier field)', async () => {
     const { text } = await sealedDoc();
-    const block = text.split('--- keys ---')[1]!.split('\n---')[0]!;
+    const block = text.split('--- keyring ---')[1]!.split('\n---')[0]!;
     const fields = [...block.matchAll(/^ +(\w+):/gm)].map((m) => m[1]);
-    expect(new Set(fields)).toEqual(new Set(['kdf', 'pub']));
+    expect(new Set(fields)).toEqual(new Set(['kdf', 'wrap', 'pub']));
+    expect(block).toMatch(/wrap: a256gcm\.[\w-]{16}\.[\w-]+/);
     expect(block).not.toMatch(/check|verif|hash/i);
   });
 
@@ -141,7 +145,7 @@ describe('sealed branches: unlock, re-lock, fail closed', () => {
     const seen = new Set<string>();
     for (let i = 0; i < 50; i++) {
       const d = parse(SRC);
-      d.keys = doc.keys;
+      d.keyring = doc.keyring;
       await sealBranch(d, find(d, 'v'), key.kid, CTX);
       seen.add(find(d, 'v').sealed!.ciphertext!.split('.')[1]!);
     }
@@ -152,7 +156,8 @@ describe('sealed branches: unlock, re-lock, fail closed', () => {
     const { text, kid } = await sealedDoc();
     clearKeys();
     const doc = parse(text);
-    await unlockKey(doc, kid, 'wrong');
+    await expect(unlockKey(doc, kid, 'wrong')).rejects.toThrow("Can't unlock");
+    await expect(unlockKeyring(doc, 'wrong')).rejects.toThrow("Can't unlock");
     await expect(openSealedBranch(doc, 'v', CTX)).rejects.toThrow("Can't unlock");
   });
 
@@ -166,30 +171,51 @@ describe('sealed branches: unlock, re-lock, fail closed', () => {
 });
 
 describe('sealed branches: tamper and binding', () => {
+  const hdrEdit = (f: (h: string) => string) => (t: string) =>
+    t.replace(/ct: (\S+?)\./, (_m, h) => `ct: ${b64u(new TextEncoder().encode(f(new TextDecoder().decode(unb64u(h)))))}.`);
   const cases: [string, (t: string) => string][] = [
-    ['header (salt)', (t) => tamperCt(t, 0, 50)],
-    ['header (version)', (t) => t.replace(/ct: (\S+?)\./, (_m, h) => `ct: ${b64u(new TextEncoder().encode(new TextDecoder().decode(unb64u(h)).replace('v=1', 'v=2')))}.`)],
+    ['header (salt)', (t) => tamperCt(t, 0, 80)],
+    ['header (version)', hdrEdit((h) => h.replace('v=2', 'v=3'))],
+    ['header (cipher swapped, label kept)', hdrEdit((h) => h.replace('c=a256gcm', 'c=xc20p'))],
+    ['header (cipher and label swapped)', hdrEdit((h) => h.replace('c=a256gcm', 'c=xc20p').replace('of/a256gcm/v1', 'of/xc20p/v1'))],
+    ['header (label to share purpose)', hdrEdit((h) => h.replace('of/a256gcm/v1', 'of/share/v1'))],
+    ['header (kid)', hdrEdit((h) => h.replace('kid=k1', 'kid=k2'))],
     ['nonce', (t) => tamperCt(t, 1)],
     ['ciphertext', (t) => tamperCt(t, 2)],
-    ['kid in payload', (t) => t.replace(/  kid: (\S+)/, '  kid: AAAAAAAAAAAAAAAAAAAAAA')],
-    ['kdf params', (t) => t.replace(/i=600000/, 'i=600001')],
-    ['kdf salt', (t) => t.replace(/(kdf: \S+salt=)(.)/, (_m, a, c) => a + (c === 'A' ? 'B' : 'A'))],
+    ['enc tag kid', (t) => t.replace('<enc:k1>', '<enc:k2>')],
+    ['keyring kdf params', (t) => t.replace(/i=600000/, 'i=600001')],
+    ['keyring kdf salt', (t) => t.replace(/(kdf: \S+salt=)(.)/, (_m, a, c) => a + (c === 'A' ? 'B' : 'A'))],
+    ['keyring wrap', (t) => t.replace(/(wrap: a256gcm\.\S+\.)(.)/, (_m, a, c) => a + (c === 'A' ? 'B' : 'A'))],
   ];
   for (const [name, mut] of cases) {
     it(`tampered ${name} fails closed`, async () => {
-      const { text, kid } = await sealedDoc();
+      const doc0 = parse(SRC);
+      const k1 = await createKey(doc0, PASS);
+      await createKey(doc0, PASS); // k2 exists and unlocks: swaps to it must still fail
+      await sealBranch(doc0, find(doc0, 'v'), k1.kid, CTX);
+      const text = serialize(doc0);
       const bad = mut(text);
       expect(bad).not.toBe(text);
+      clearKeys();
       const doc = parse(bad);
-      try { await unlockKey(doc, kid, PASS); } catch { /* bad kdf header */ }
-      if (!doc.keys?.some((k) => k.kid === find(doc, 'v').sealed!.kid)) {
-        // kid swapped to one not in the list: import a fresh entry under that kid with the same kdf
-        doc.keys = [...(doc.keys ?? []), { kid: find(doc, 'v').sealed!.kid!, kdf: doc.keys![0]!.kdf }];
-        await unlockKey(doc, find(doc, 'v').sealed!.kid!, PASS);
-      }
+      try { await unlockKeyring(doc, PASS); } catch { /* tampered keyring */ }
       await expect(openSealedBranch(doc, 'v', CTX)).rejects.toThrow("Can't unlock");
     });
   }
+
+  it('unknown cipher id gives the uniform SealError', async () => {
+    const { text } = await sealedDoc();
+    const bad = hdrEdit((h) => h.replace('c=a256gcm', 'c=aes128').replace('of/a256gcm/v1', 'of/aes128/v1'))(text);
+    const doc = parse(bad);
+    const err = await openSealedBranch(doc, 'v', CTX).catch((e) => e);
+    expect(err).toBeInstanceOf(SealError);
+    expect(String(err.message)).toBe("Can't unlock");
+    // and no silent default for writing
+    setSealCipher(null);
+    await expect(sealBranch(parse(text), find(parse(text), 's'), 'k1', CTX)).rejects.toThrow(/no cipher chosen/);
+    setSealCipher('a256gcm');
+    await expect(sealBranch(doc, find(doc, 's'), 'k1', CTX, { cipher: 'nope' as never })).rejects.toBeInstanceOf(SealError);
+  });
 
   for (const [name, ctx] of [
     ['another note', { ...CTX, noteId: 'note-2' }],
@@ -213,7 +239,8 @@ describe('key list: reuse across maps, remove guard', () => {
   it('exported entry has no secret; same passphrase unlocks in a second map; blob cannot move', async () => {
     const a = await sealedDoc();
     const entry = exportKeyEntry(a.doc, a.kid);
-    expect(Object.keys(entry).sort()).toEqual(['kdf', 'kid', 'pub']);
+    expect(Object.keys(entry).sort()).toEqual(['kdf', 'kid', 'pub', 'wrap']);
+    expect(JSON.stringify(entry)).not.toContain(PASS);
     const b = parse(SRC);
     importKeyEntry(b, entry);
     clearKeys();
@@ -229,9 +256,13 @@ describe('key list: reuse across maps, remove guard', () => {
   it('same kid gives different subkeys in two maps (HKDF info binds note id)', async () => {
     const { kid } = await sealedDoc();
     const salt = new Uint8Array(16);
-    const k1 = await __subkeyBitsForKat(kid, salt, 'v', 'note-1');
-    const k2 = await __subkeyBitsForKat(kid, salt, 'v', 'note-2');
+    const k1 = await __branchKeyBitsForKat(kid, 'a256gcm', salt, 'note-1', 'v');
+    const k2 = await __branchKeyBitsForKat(kid, 'a256gcm', salt, 'note-2', 'v');
     expect(b64u(k1)).not.toBe(b64u(k2));
+    // labels separate purposes and ciphers under one secret (OF-44)
+    const kx = await __branchKeyBitsForKat(kid, 'xc20p', salt, 'note-1', 'v');
+    const ks = await __branchKeyBitsForKat(kid, 'share', salt, 'note-1', 'v');
+    expect(new Set([b64u(k1), b64u(kx), b64u(ks)]).size).toBe(3);
   });
 
   it('removeKey is blocked while a branch references the kid', async () => {
@@ -273,7 +304,7 @@ describe('nested sealed branches (encrypt-then-embed)', () => {
     expect(iv.closed).toBe(true);
 
     const d3 = parse(SRC);
-    d3.keys = doc.keys;
+    d3.keyring = doc.keyring;
     await unlockKey(d3, k1.kid, PASS);
     await sealBranch(d3, find(d3, 'v'), k1.kid, CTX);
     const ov = await openSealedBranch(d3, 'v', CTX);
@@ -283,29 +314,28 @@ describe('nested sealed branches (encrypt-then-embed)', () => {
 });
 
 describe('KAT (independent reference via node:crypto)', () => {
-  it('ciphertext matches a PBKDF2 → HKDF → AES-256-GCM reference', async () => {
-    const kdfSalt = new Uint8Array(16).fill(1);
-    const brSalt = new Uint8Array(16).fill(2);
+  it('a256gcm ciphertext decrypts with a node:crypto HKDF → AES-256-GCM reference', async () => {
+    const secret = new Uint8Array(32).fill(7);
+    const salt = new Uint8Array(16).fill(2);
     const nonce = new Uint8Array(12).fill(3);
-    const kid = 'AAAAAAAAAAAAAAAAAAAAAA';
-    const kdf = `kdf=pbkdf2-sha256&i=600000&salt=${b64u(kdfSalt)}`;
+    await __installSecretForKat('k1', secret);
     const doc = parse('- Top <id:t>\n  - inner <id:i>');
-    importKeyEntry(doc, { kid, kdf });
-    await unlockKey(doc, kid, PASS);
-    await sealBranch(doc, find(doc, 't'), kid, CTX, {}, { salt: brSalt, nonce });
+    // keyring entry is needed only for sealBranch's ring check; the secret above is used
+    await createKey(doc, PASS, { kid: 'kx' });
+    doc.keyring!.push({ ...doc.keyring![0]!, kid: 'k1' });
+    await sealBranch(doc, find(doc, 't'), 'k1', CTX, {}, { salt, nonce });
     const ct = find(doc, 't').sealed!.ciphertext!;
-
-    const master = pbkdf2Sync(PASS, kdfSalt, 600000, 32, 'sha256');
-    const sub = Buffer.from(hkdfSync('sha256', master, brSalt, JSON.stringify(['of-seal-v1', 'note-1', 't']), 32));
-    expect(b64u(await __subkeyBitsForKat(kid, brSalt, 't', 'note-1'))).toBe(b64u(sub));
-    const hdr = `v=1&alg=A256GCM&kdf=hkdf-sha256&salt=${b64u(brSalt)}`;
-    const aad = JSON.stringify(['of-seal-aad-1', hdr, kid, kdf, 'note-1', 'owner-1', 't', '']);
-    const pt = JSON.stringify({ v: 1, caption: 'Top', body: '- inner <id:i>\n' });
-    const c = createCipheriv('aes-256-gcm', sub, nonce);
-    c.setAAD(Buffer.from(aad));
-    const body = Buffer.concat([c.update(pt, 'utf8'), c.final(), c.getAuthTag()]);
-    expect(ct).toBe(`${b64u(new TextEncoder().encode(hdr))}.${b64u(nonce)}.${b64u(new Uint8Array(body))}`);
-    // Pinned vector (regression)
-    expect(b64u(sub)).toMatchSnapshot();
+    const [h, n, body] = ct.split('.');
+    const hdr = new TextDecoder().decode(unb64u(h!));
+    expect(hdr).toBe(`v=2&c=a256gcm&label=of/a256gcm/v1&kdf=hkdf-sha256&kid=k1&salt=${b64u(salt)}`);
+    expect(n).toBe(b64u(nonce));
+    const key = Buffer.from(hkdfSync('sha256', secret, salt, JSON.stringify(['of-seal-v2', 'of/a256gcm/v1', 'note-1', 't']), 32));
+    const raw = Buffer.from(unb64u(body!));
+    const d = createDecipheriv('aes-256-gcm', key, nonce);
+    d.setAAD(Buffer.from(aadV2(hdr, 'of/a256gcm/v1', 'k1', 't', CTX)));
+    d.setAuthTag(raw.subarray(raw.length - 16));
+    const pt = Buffer.concat([d.update(raw.subarray(0, raw.length - 16)), d.final()]).toString('utf8');
+    expect(JSON.parse(pt)).toEqual({ v: 1, caption: 'Top', body: '- inner <id:i>\n' });
+    expect(await __encryptForKat('k1', 'a256gcm', 't', CTX, pt, { salt, nonce })).toBe(ct);
   });
 });

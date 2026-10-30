@@ -173,7 +173,7 @@ ghost:
   });
 
   it('enc_tag_ignored warning for malformed enc', () => {
-    const r = validateDocument(`- Weird <enc:not-a-payload> <id:w1>\n`);
+    const r = validateDocument(`- Weird <enc:not a payload> <id:w1>\n`);
     expect(r.ok).toBe(true);
     expect(r.issues.some((i) => i.code === 'enc_tag_ignored')).toBe(true);
   });
