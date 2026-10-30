@@ -1,0 +1,41 @@
+{
+  "note": "of-seal-v2 known-answer vectors (fixed secret/salt/nonce). Regenerating must not change them.",
+  "secret": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+  "kid": "kat1",
+  "ctx": {
+    "noteId": "kat-note",
+    "ownerId": "kat-owner"
+  },
+  "nodeId": "n1",
+  "plaintext": "{\"v\":1,\"caption\":\"KAT caption\",\"body\":\"- child <id:c>\\n\"}",
+  "vectors": [
+    {
+      "cipher": "a256gcm",
+      "parentId": "",
+      "salt": "oKGio6SlpqeoqaqrrK2urw",
+      "nonce": "EBESExQVFhcYGRob",
+      "ct": "dj0yJmM9YTI1NmdjbSZsYWJlbD1vZi9hMjU2Z2NtL3YxJmtkZj1oa2RmLXNoYTI1NiZraWQ9a2F0MSZzYWx0PW9LR2lvNlNscHFlb3FhcXJySzJ1cnc.EBESExQVFhcYGRob.uRy-Ur7HHLcuAEtEA6_Y0Vf1WgoZ4ZM9c3Rkdg6YD6tZAytbDmd8r04TQf0N6rtHekuDS39QYfMxhouTjIjhMWjE0MeYWGMndg"
+    },
+    {
+      "cipher": "xc20p",
+      "parentId": "",
+      "salt": "oKGio6SlpqeoqaqrrK2urw",
+      "nonce": "EBESExQVFhcYGRobHB0eHyAhIiMkJSYn",
+      "ct": "dj0yJmM9eGMyMHAmbGFiZWw9b2YveGMyMHAvdjEma2RmPWhrZGYtc2hhMjU2JmtpZD1rYXQxJnNhbHQ9b0tHaW82U2xwcWVvcWFxcnJLMnVydw.EBESExQVFhcYGRobHB0eHyAhIiMkJSYn.McVhX-aQFAwIomwAzSx4rSovBAiDlErKZD_AGgdNE1N6yfIhERMz3jHMNH8G3Zvyxgm3RChVGtDYUWvBlwHfgODb-YYt790dnA"
+    },
+    {
+      "cipher": "a256gcm",
+      "parentId": "p0",
+      "salt": "oKGio6SlpqeoqaqrrK2urw",
+      "nonce": "EBESExQVFhcYGRob",
+      "ct": "dj0yJmM9YTI1NmdjbSZsYWJlbD1vZi9hMjU2Z2NtL3YxJmtkZj1oa2RmLXNoYTI1NiZraWQ9a2F0MSZzYWx0PW9LR2lvNlNscHFlb3FhcXJySzJ1cnc.EBESExQVFhcYGRob.uRy-Ur7HHLcuAEtEA6_Y0Vf1WgoZ4ZM9c3Rkdg6YD6tZAytbDmd8r04TQf0N6rtHekuDS39QYfMx5hEiOm6pWrm7gbtJ67yuBA"
+    },
+    {
+      "cipher": "xc20p",
+      "parentId": "p0",
+      "salt": "oKGio6SlpqeoqaqrrK2urw",
+      "nonce": "EBESExQVFhcYGRobHB0eHyAhIiMkJSYn",
+      "ct": "dj0yJmM9eGMyMHAmbGFiZWw9b2YveGMyMHAvdjEma2RmPWhrZGYtc2hhMjU2JmtpZD1rYXQxJnNhbHQ9b0tHaW82U2xwcWVvcWFxcnJLMnVydw.EBESExQVFhcYGRobHB0eHyAhIiMkJSYn.McVhX-aQFAwIomwAzSx4rSovBAiDlErKZD_AGgdNE1N6yfIhERMz3jHMNH8G3Zvyxgm3RChVGtDYF-f3J8IrUgZ43C7T488sXQ"
+    }
+  ]
+}
