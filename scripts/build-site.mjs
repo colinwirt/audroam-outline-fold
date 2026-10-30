@@ -4,7 +4,7 @@
  * Layout mirrors package paths so examples keep relative imports to ../dist or ../../dist.
  */
 import { cpSync, mkdirSync, rmSync, writeFileSync, existsSync, readdirSync, statSync, readFileSync } from 'node:fs';
-import { join, dirname } from 'node:path';
+import { join, dirname, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execSync } from 'node:child_process';
 
@@ -25,6 +25,31 @@ rmSync(site, { recursive: true, force: true });
 mkdirSync(join(site, 'examples'), { recursive: true });
 
 cpSync(join(root, 'dist'), join(site, 'dist'), { recursive: true });
+
+// 0.3.1: dist/ imports the bare specifier '@noble/ciphers/*.js' (ESM, 2.x subpaths). Static
+// pages have no bundler/import map, so vendor the package's .js files into site/vendor and
+// rewrite the specifier in the copied dist modules to a relative path.
+{
+  const nobleSrc = join(root, 'node_modules', '@noble', 'ciphers');
+  const nobleDst = join(site, 'vendor', 'noble-ciphers');
+  mkdirSync(nobleDst, { recursive: true });
+  for (const f of readdirSync(nobleSrc)) {
+    if (f.endsWith('.js') || f === 'LICENSE') cpSync(join(nobleSrc, f), join(nobleDst, f));
+  }
+  const walk = (dir) => {
+    for (const f of readdirSync(dir)) {
+      const full = join(dir, f);
+      if (statSync(full).isDirectory()) { walk(full); continue; }
+      if (!f.endsWith('.js')) continue;
+      const src = readFileSync(full, 'utf8');
+      const rel = relative(dirname(full), nobleDst).split('\\').join('/');
+      const out = src.replace(/(\bfrom\s*|\bimport\s*\(?\s*)(['"])@noble\/ciphers\/([\w.-]+\.js)\2/g,
+        (_m, pre, q, file) => `${pre}${q}${rel}/${file}${q}`);
+      if (out !== src) writeFileSync(full, out);
+    }
+  };
+  walk(join(site, 'dist'));
+}
 cpSync(join(root, 'examples', 'outline-demo.html'), join(site, 'examples', 'outline-demo.html'));
 cpSync(join(root, 'examples', 'outline-demo.md'), join(site, 'examples', 'outline-demo.md'));
 cpSync(join(root, 'examples', 'cafe-map.md'), join(site, 'examples', 'cafe-map.md'));
