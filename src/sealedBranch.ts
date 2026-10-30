@@ -11,7 +11,7 @@
  * Keys live in memory only (non-extractable CryptoKey); clearKeys() drops them.
  * Spec: docs/sealed-branches-approval.md §9.12 (OF-41..46).
  */
-import { xchacha20poly1305 } from '@noble/ciphers/chacha';
+import { xchacha20poly1305 } from '@noble/ciphers/chacha.js';
 import { parse } from './parse.js';
 import { serialize } from './serialize.js';
 import {
