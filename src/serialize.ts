@@ -1,6 +1,6 @@
-import { assertSealedSafe } from './sealedState.js';
+import { assertSealedSafe, isEncRef } from './sealedState.js';
 import { linkPayloadNodes } from './nodeAddress.js';
-import { collectLayouts, collectPayloads, formatLayoutBlock, formatPayloadsBlock, formatKeysBlock } from './payloads.js';
+import { collectLayouts, collectPayloads, formatLayoutBlock, formatPayloadsBlock, formatKeysBlock, formatKeyringBlock } from './payloads.js';
 import { spelledTag } from './tagSpelling.js';
 import { markdownLinkSpans, parseHopTarget } from './captionRich.js';
 import type { OutlineFoldDoc, OutlineNode, TaskState } from './types.js';
@@ -134,6 +134,7 @@ function formatTrailingSpans(
       else parts.push(`<${f}>`);
     }
   }
+  if (node.sealed?.kid && isEncRef(node.sealed)) parts.push(`<enc:${node.sealed.kid}>`);
   if (node.id && !node.autoId) parts.push(spelledTag(kept?.id, `<id:${node.id}>`));
   return parts.length ? ' ' + parts.join(' ') : '';
 }
@@ -225,6 +226,11 @@ export function serialize(doc: OutlineFoldDoc): string {
   if (block) {
     if (lines.length) lines.push('');
     lines.push(block);
+  }
+  const ringBlock = formatKeyringBlock(doc.keyring);
+  if (ringBlock) {
+    if (lines.length) lines.push('');
+    lines.push(ringBlock);
   }
   const keyBlock = formatKeysBlock(doc.keys);
   if (keyBlock) {

@@ -1,10 +1,32 @@
 import type { OutlineFoldDoc, OutlineNode, SealedPayload } from './types.js';
 
-export const SEAL_ALG = 'of-seal-v1';
+/** Current sealed-branch format (written). */
+export const SEAL_ALG = 'of-seal-v2';
+/** Legacy sealed-branch format: decrypt-only (migration). */
+export const SEAL_ALG_V1 = 'of-seal-v1';
+/** Key ids named by `<enc:KEYID>`. */
+export const KID_RE = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/;
 export const SEALED_PLACEHOLDER = 'Sealed branch';
 
 export function isSealedBranchPayload(p: SealedPayload | undefined): boolean {
-  return p?.alg === SEAL_ALG;
+  return p?.alg === SEAL_ALG || p?.alg === SEAL_ALG_V1;
+}
+
+/** of-seal-v2 payload, or a bare `<enc:KEYID>` reference whose payload is missing. */
+export function isEncRef(p: SealedPayload | undefined): boolean {
+  return Boolean(p?.kid && (p.alg === SEAL_ALG || (!p.ciphertext && !p.uri && !p.alg)));
+}
+
+/** Key id inside an of-seal-v2 payload header (structure only; never decrypts). */
+export function headerKid(p: SealedPayload | undefined): string | undefined {
+  if (p?.alg !== SEAL_ALG || !p.ciphertext) return undefined;
+  try {
+    const seg = p.ciphertext.split('.')[0]!.replace(/-/g, '+').replace(/_/g, '/');
+    const m = atob(seg + '='.repeat((4 - (seg.length % 4)) % 4)).match(/&kid=([A-Za-z0-9][A-Za-z0-9_-]{0,63})&/);
+    return m?.[1];
+  } catch {
+    return undefined;
+  }
 }
 
 /** Thrown by serialize() when saving could leak plaintext or lose ciphertext. */
@@ -83,7 +105,12 @@ export function reattachSealedOrphan(doc: OutlineFoldDoc, id: string, node: Outl
   if (!p) throw new Error(`no orphaned sealed payload ${id}`);
   node.id = id;
   delete node.autoId;
+  const tagKid = node.sealed?.kid;
   node.sealed = { ...p };
+  if (p.alg === SEAL_ALG && !node.sealed.kid) {
+    const k = tagKid ?? headerKid(p);
+    if (k) node.sealed.kid = k;
+  }
   node.title = p.pub ?? SEALED_PLACEHOLDER;
   node.children = [];
   discardSealedOrphan(doc, id);

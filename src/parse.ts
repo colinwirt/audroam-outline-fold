@@ -1,4 +1,10 @@
-import { findSealedOrphans } from './sealedState.js';
+import { findSealedOrphans, isEncRef, KID_RE } from './sealedState.js';
+
+/** `<enc:KEYID>` (of-seal-v2): the line names a key id only. */
+function encRef(body: string): SealedPayload | null {
+  const v = body.trim();
+  return KID_RE.test(v) ? { kid: v } : null;
+}
 import {
   attachLayouts,
   attachPayloads,
@@ -325,7 +331,7 @@ function parseTitleAndMeta(
 
     m = rest.match(ENC_SPAN);
     if (m) {
-      const parsed = parseEncBody(m[1]);
+      const parsed = parseEncBody(m[1]) ?? encRef(m[1]);
       if (parsed) sealed = parsed;
       rest = rest.slice(m[0].length);
       progressed = true;
@@ -458,7 +464,7 @@ function parseTitleAndMeta(
 
     m = rest.match(ENC_TRAILING);
     if (m) {
-      const parsed = parseEncBody(m[1]);
+      const parsed = parseEncBody(m[1]) ?? encRef(m[1]);
       if (parsed) sealed = parsed;
       rest = rest.slice(0, rest.length - m[0].length).trimEnd();
       progressed = true;
@@ -560,6 +566,7 @@ function parseTitleAndMeta(
   // `<enc:>` without private/encrypted implies encrypted chrome.
   if (
     sealed &&
+    !isEncRef(sealed) &&
     !flags.includes('private') &&
     !flags.includes('encrypted')
   ) {
@@ -754,6 +761,7 @@ export function parse(text: string, opts?: ParseOptions): OutlineFoldDoc {
     nodes: roots,
     fold: { mode, ids: [...ids] },
     ...(peeled.keys.length ? { keys: peeled.keys } : {}),
+    ...(peeled.keyring.length ? { keyring: peeled.keyring } : {}),
     ...(orphans ? { sealedOrphans: orphans } : {}),
   };
 }

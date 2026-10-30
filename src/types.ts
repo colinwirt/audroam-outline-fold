@@ -191,12 +191,28 @@ export interface SealKeyEntry {
   pub?: string;
 }
 
+/**
+ * Keyring entry (`--- keyring ---`, of-seal-v2). Holds only the wrapped branch secret:
+ * AEAD (a256gcm) under a KEK derived from the passphrase with `kdf` (own salt), key id in AAD.
+ */
+export interface SealKeyringEntry {
+  /** Key id named by `<enc:KEYID>` tags. Not secret. */
+  kid: string;
+  /** Canonical KEK KDF header (same grammar as SealKeyEntry.kdf). */
+  kdf: string;
+  /** `a256gcm.<b64u nonce 12B>.<b64u wrapped secret‖tag>`. */
+  wrap: string;
+  pub?: string;
+}
+
 export interface OutlineFoldDoc {
   frontmatter?: OutlineFrontmatter;
   nodes: OutlineNode[];
   fold: FoldState;
   /** Sealed-branch key list (public entries only). */
   keys?: SealKeyEntry[];
+  /** of-seal-v2 keyring (wrapped entries only). */
+  keyring?: SealKeyringEntry[];
   /** Sealed-branch payloads whose node id vanished from the text (kept; save refuses). */
   sealedOrphans?: Record<string, SealedPayload>;
 }

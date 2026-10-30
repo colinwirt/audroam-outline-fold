@@ -1,3 +1,4 @@
+import { KID_RE } from './sealedState.js';
 import { parse, type ParseOptions } from './parse.js';
 import { parseEncBody } from './sealed.js';
 import type { OutlineFoldDoc, OutlineNode } from './types.js';
@@ -226,6 +227,7 @@ function scanIgnoredEncTags(
   while ((m = re.exec(source)) !== null) {
     const body = m[1]!.trim();
     if (parseEncBody(body)) continue;
+    if (KID_RE.test(body)) continue; // of-seal-v2 `<enc:KEYID>` reference
     // Softened parse may still accept no-kid; check raw completeness.
     const parts = body.split(';').map((p) => p.trim()).filter(Boolean);
     const map = new Map<string, string>();

@@ -1,4 +1,4 @@
-import { isSealedBranchPayload } from './sealedState.js';
+import { headerKid, isSealedBranchPayload, SEAL_ALG } from './sealedState.js';
 import { parseEncBody } from './sealed.js';
 import { parseAutoWidth } from './mapFit.js';
 import type {
@@ -7,6 +7,7 @@ import type {
   OutlineNode,
   SealedPayload,
   SealKeyEntry,
+  SealKeyringEntry,
 } from './types.js';
 
 /** Fence labels accepted for the trailer payload map (case-insensitive). */
@@ -32,6 +33,7 @@ export function peelTrailingSections(body: string): {
   payloads: PayloadMap;
   layouts: LayoutMap;
   keys: SealKeyEntry[];
+  keyring: SealKeyringEntry[];
 } {
   let rest = body.replace(/\s+$/, '');
   const trailingFm: OutlineFrontmatter = {};
@@ -39,6 +41,7 @@ export function peelTrailingSections(body: string): {
   let layouts: LayoutMap = {};
   let layoutFm: OutlineFrontmatter | undefined;
   let keys: SealKeyEntry[] = [];
+  let keyring: SealKeyringEntry[] = [];
 
   const takeLayout = (inner: string) => {
     const parsed = parseLayoutBlock(inner);
@@ -63,6 +66,14 @@ export function peelTrailingSections(body: string): {
     if (layBol) {
       takeLayout(layBol[1]!);
       rest = '';
+      peeled = true;
+      continue;
+    }
+
+    const ringBlk = rest.match(/(?:^|\n)---\s*keyring\s*---\r?\n([\s\S]*?)\r?\n---\s*$/i);
+    if (ringBlk) {
+      keyring = [...parseKeyringBlock(ringBlk[1]!), ...keyring];
+      rest = rest.slice(0, ringBlk.index).replace(/\s+$/, '');
       peeled = true;
       continue;
     }
@@ -113,7 +124,45 @@ export function peelTrailingSections(body: string): {
     payloads,
     layouts,
     keys,
+    keyring,
   };
+}
+
+/** `--- keyring ---` body: `kid:` then `  kdf:`, `  wrap:` and optional `  pub: "…"`. */
+export function parseKeyringBlock(block: string): SealKeyringEntry[] {
+  const out: SealKeyringEntry[] = [];
+  let cur: SealKeyringEntry | null = null;
+  for (const raw of block.split(/\r?\n/)) {
+    if (!raw.trim() || raw.trim().startsWith('#')) continue;
+    const top = raw.match(/^([A-Za-z0-9][A-Za-z0-9_-]*):\s*$/);
+    if (top) {
+      cur = { kid: top[1]!, kdf: '', wrap: '' };
+      out.push(cur);
+      continue;
+    }
+    const f = raw.match(/^\s+(kdf|wrap|pub)\s*:\s*(.+)$/i);
+    if (f && cur) {
+      const v = f[2]!.trim();
+      const k = f[1]!.toLowerCase();
+      if (k === 'kdf') cur.kdf = v;
+      else if (k === 'wrap') cur.wrap = v;
+      else cur.pub = v.startsWith('"') ? JSON.parse(v) : unquote(v);
+    }
+  }
+  return out.filter((k) => k.kdf && k.wrap);
+}
+
+export function formatKeyringBlock(ring: SealKeyringEntry[] | undefined): string {
+  if (!ring?.length) return '';
+  const lines = ['--- keyring ---'];
+  for (const k of ring) {
+    lines.push(`${k.kid}:`);
+    lines.push(`  kdf: ${k.kdf}`);
+    lines.push(`  wrap: ${k.wrap}`);
+    if (k.pub) lines.push(`  pub: ${JSON.stringify(k.pub)}`);
+  }
+  lines.push('---');
+  return lines.join('\n');
 }
 
 /** `--- keys ---` body: `kid:` then `  kdf: …` and optional `  pub: "…"`. */
@@ -483,7 +532,13 @@ export function attachPayloads(
   const walk = (list: OutlineNode[]) => {
     for (const n of list) {
       if (n.id && payloads[n.id]) {
+        // of-seal-v2: the key id lives on the line (`<enc:KEYID>`), not in the payload.
+        const tagKid = n.sealed?.kid;
         n.sealed = { ...payloads[n.id] };
+        if (!n.sealed.kid && n.sealed.alg === SEAL_ALG) {
+          const k = tagKid ?? headerKid(n.sealed);
+          if (k) n.sealed.kid = k;
+        }
         const flags = n.flags ?? [];
         if (isSealedBranchPayload(n.sealed)) continue;
         if (!flags.includes('private') && !flags.includes('encrypted')) {
@@ -503,6 +558,7 @@ export function collectPayloads(nodes: OutlineNode[]): PayloadMap {
     for (const n of list) {
       if (n.id && n.sealed && (n.sealed.ciphertext || n.sealed.uri)) {
         out[n.id] = { ...n.sealed };
+        if (n.sealed.alg === SEAL_ALG) delete out[n.id]!.kid; // written as <enc:KEYID>
       }
       if (n.children) walk(n.children);
     }
