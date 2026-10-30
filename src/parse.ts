@@ -749,5 +749,6 @@ export function parse(text: string, opts?: ParseOptions): OutlineFoldDoc {
     frontmatter,
     nodes: roots,
     fold: { mode, ids: [...ids] },
+    ...(peeled.keys.length ? { keys: peeled.keys } : {}),
   };
 }

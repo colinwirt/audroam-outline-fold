@@ -1,5 +1,6 @@
+import { openBranches } from './sealedState.js';
 import { linkPayloadNodes } from './nodeAddress.js';
-import { collectLayouts, collectPayloads, formatLayoutBlock, formatPayloadsBlock } from './payloads.js';
+import { collectLayouts, collectPayloads, formatLayoutBlock, formatPayloadsBlock, formatKeysBlock } from './payloads.js';
 import { spelledTag } from './tagSpelling.js';
 import { markdownLinkSpans, parseHopTarget } from './captionRich.js';
 import type { OutlineFoldDoc, OutlineNode, TaskState } from './types.js';
@@ -142,6 +143,13 @@ function serializeNode(
   doc: OutlineFoldDoc,
   lines: string[],
 ): void {
+  const open = openBranches.get(node);
+  if (open) {
+    // Fail closed: never write the caption or inner branch of an unlocked sealed branch.
+    const indent = '  '.repeat(node.depth);
+    lines.push(`${indent}- ${open.lockedTitle} <id:${node.id}>`);
+    return;
+  }
   const collapsedMarker =
     doc.frontmatter?.collapsedMarker ?? DEFAULT_COLLAPSED;
   const expandedMarker = doc.frontmatter?.expandedMarker;
@@ -222,6 +230,11 @@ export function serialize(doc: OutlineFoldDoc): string {
   if (block) {
     if (lines.length) lines.push('');
     lines.push(block);
+  }
+  const keyBlock = formatKeysBlock(doc.keys);
+  if (keyBlock) {
+    if (lines.length) lines.push('');
+    lines.push(keyBlock);
   }
   // Document keys live in the layout trailer so a pilot_note summary is the
   // first outline line, not a leading `---` fence.

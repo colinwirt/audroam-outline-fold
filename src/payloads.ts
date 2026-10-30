@@ -1,3 +1,4 @@
+import { openBranches, isSealedBranchPayload } from './sealedState.js';
 import { parseEncBody } from './sealed.js';
 import { parseAutoWidth } from './mapFit.js';
 import type {
@@ -5,6 +6,7 @@ import type {
   OutlineFrontmatter,
   OutlineNode,
   SealedPayload,
+  SealKeyEntry,
 } from './types.js';
 
 /** Fence labels accepted for the trailer payload map (case-insensitive). */
@@ -29,12 +31,14 @@ export function peelTrailingSections(body: string): {
   trailingFm: OutlineFrontmatter;
   payloads: PayloadMap;
   layouts: LayoutMap;
+  keys: SealKeyEntry[];
 } {
   let rest = body.replace(/\s+$/, '');
   const trailingFm: OutlineFrontmatter = {};
   let payloads: PayloadMap = {};
   let layouts: LayoutMap = {};
   let layoutFm: OutlineFrontmatter | undefined;
+  let keys: SealKeyEntry[] = [];
 
   const takeLayout = (inner: string) => {
     const parsed = parseLayoutBlock(inner);
@@ -59,6 +63,14 @@ export function peelTrailingSections(body: string): {
     if (layBol) {
       takeLayout(layBol[1]!);
       rest = '';
+      peeled = true;
+      continue;
+    }
+
+    const keyBlk = rest.match(/(?:^|\n)---\s*keys\s*---\r?\n([\s\S]*?)\r?\n---\s*$/i);
+    if (keyBlk) {
+      keys = [...parseKeysBlock(keyBlk[1]!), ...keys];
+      rest = rest.slice(0, keyBlk.index).replace(/\s+$/, '');
       peeled = true;
       continue;
     }
@@ -100,7 +112,42 @@ export function peelTrailingSections(body: string): {
     trailingFm: mergeFrontmatter(trailingFm, layoutFm ?? {}),
     payloads,
     layouts,
+    keys,
   };
+}
+
+/** `--- keys ---` body: `kid:` then `  kdf: …` and optional `  pub: "…"`. */
+export function parseKeysBlock(block: string): SealKeyEntry[] {
+  const out: SealKeyEntry[] = [];
+  let cur: SealKeyEntry | null = null;
+  for (const raw of block.split(/\r?\n/)) {
+    if (!raw.trim() || raw.trim().startsWith('#')) continue;
+    const top = raw.match(/^([A-Za-z0-9_-]+):\s*$/);
+    if (top) {
+      cur = { kid: top[1]!, kdf: '' };
+      out.push(cur);
+      continue;
+    }
+    const f = raw.match(/^\s+(kdf|pub)\s*:\s*(.+)$/i);
+    if (f && cur) {
+      const v = f[2]!.trim();
+      if (f[1]!.toLowerCase() === 'kdf') cur.kdf = v;
+      else cur.pub = v.startsWith('"') ? JSON.parse(v) : unquote(v);
+    }
+  }
+  return out.filter((k) => k.kdf);
+}
+
+export function formatKeysBlock(keys: SealKeyEntry[] | undefined): string {
+  if (!keys?.length) return '';
+  const lines = ['--- keys ---'];
+  for (const k of keys) {
+    lines.push(`${k.kid}:`);
+    lines.push(`  kdf: ${k.kdf}`);
+    if (k.pub) lines.push(`  pub: ${JSON.stringify(k.pub)}`);
+  }
+  lines.push('---');
+  return lines.join('\n');
 }
 
 /**
@@ -129,9 +176,11 @@ export function parsePayloadMap(block: string): PayloadMap {
       current = top[1]!;
       continue;
     }
-    const field = raw.match(/^\s+(kid|alg|ct|uri)\s*:\s*(.+)$/i);
+    const field = raw.match(/^\s+(kid|alg|ct|uri|pub)\s*:\s*(.+)$/i);
     if (field && current) {
-      fields[field[1]!.toLowerCase()] = unquote(field[2]!.trim());
+      const v = field[2]!.trim();
+      const k = field[1]!.toLowerCase();
+      fields[k] = k === 'pub' && v.startsWith('"') ? JSON.parse(v) : unquote(v);
       continue;
     }
     const compact = raw.match(/^([A-Za-z0-9][A-Za-z0-9_-]*):\s*(.+)$/);
@@ -155,6 +204,7 @@ function fieldsToSealed(fields: Record<string, string>): SealedPayload | null {
   if (fields.ct) sealed.ciphertext = fields.ct;
   if (fields.uri) sealed.uri = fields.uri;
   if (fields.alg) sealed.alg = fields.alg;
+  if (fields.pub) sealed.pub = fields.pub;
   return sealed;
 }
 
@@ -369,6 +419,7 @@ export function collectLayouts(nodes: OutlineNode[]): LayoutMap {
       if (n.id && typeof n.layout?.w === 'number' && n.layout.w > 0) {
         out[n.id] = n.layout.wAuto ? { w: n.layout.w, wAuto: n.layout.wAuto } : { w: n.layout.w };
       }
+      if (openBranches.has(n)) continue;
       if (n.children?.length) walk(n.children);
     }
   };
@@ -435,6 +486,7 @@ export function attachPayloads(
       if (n.id && payloads[n.id]) {
         n.sealed = { ...payloads[n.id] };
         const flags = n.flags ?? [];
+        if (isSealedBranchPayload(n.sealed)) continue;
         if (!flags.includes('private') && !flags.includes('encrypted')) {
           n.flags = [...flags, 'encrypted'];
         }
@@ -450,6 +502,12 @@ export function collectPayloads(nodes: OutlineNode[]): PayloadMap {
   const out: PayloadMap = {};
   const walk = (list: OutlineNode[]) => {
     for (const n of list) {
+      const open = openBranches.get(n);
+      if (open) {
+        // Fail closed: an unlocked branch writes its stored ciphertext only.
+        if (n.id) out[n.id] = { ...open.payload };
+        continue;
+      }
       if (n.id && n.sealed && (n.sealed.ciphertext || n.sealed.uri)) {
         out[n.id] = { ...n.sealed };
       }
@@ -470,6 +528,7 @@ export function formatPayloadsBlock(payloads: PayloadMap): string {
     lines.push(`${id}:`);
     if (s.kid) lines.push(`  kid: ${s.kid}`);
     if (s.alg) lines.push(`  alg: ${s.alg}`);
+    if (s.pub) lines.push(`  pub: ${JSON.stringify(s.pub)}`);
     if (s.ciphertext) lines.push(`  ct: ${s.ciphertext}`);
     else if (s.uri) lines.push(`  uri: ${s.uri}`);
   }

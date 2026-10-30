@@ -479,3 +479,35 @@ export {
   type AltArbiter,
   type AltArbiterPhase,
 } from './altGesture.js';
+
+export {
+  SealError,
+  SEAL_ALG,
+  SEALED_PLACEHOLDER,
+  MAX_SEAL_DEPTH,
+  setArgon2Provider,
+  createKey,
+  unlockKey,
+  clearKeys,
+  unlockedKids,
+  isKeyUnlocked,
+  exportKeyEntry,
+  importKeyEntry,
+  countKidRefs,
+  removeKey,
+  sealBranch,
+  unsealBranch,
+  lockBranch,
+  resealBranch,
+  isBranchDirty,
+  isBranchOpen,
+  validateSealedBranches,
+  parseKdfHeader,
+  parseBranchCt,
+  type SealContext,
+  type SealResult,
+  type Argon2Provider,
+  type KdfParams,
+} from './sealedBranch.js';
+export type { SealKeyEntry } from './types.js';
+export { parseKeysBlock, formatKeysBlock } from './payloads.js';

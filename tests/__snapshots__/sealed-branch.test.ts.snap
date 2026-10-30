@@ -1,0 +1,3 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`KAT (independent reference via node:crypto) > ciphertext matches a PBKDF2 → HKDF → AES-256-GCM reference 1`] = `"3inmLykZdsBhz6Q_7OeBYWSvLDnyqhjQW47rrhO9rVE"`;

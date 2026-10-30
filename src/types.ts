@@ -43,6 +43,8 @@ export interface SealedPayload {
   /** Remote blob URI — host fetches after key release. */
   uri?: string;
   alg?: string;
+  /** Sealed branch only: an explicitly public label shown on the locked placeholder. */
+  pub?: string;
 }
 
 export interface OutlineNode {
@@ -176,10 +178,25 @@ export interface FoldState {
   ids: string[];
 }
 
+/**
+ * Key-list entry for sealed branches (`--- keys ---` trailer). Public data only:
+ * kid (random 128-bit), KDF header (params + salt) and an explicitly public label.
+ * Never a key-check value or verifier.
+ */
+export interface SealKeyEntry {
+  kid: string;
+  /** Canonical KDF header, e.g. `kdf=argon2id&m=65536&t=3&p=1&salt=…`. */
+  kdf: string;
+  /** Public label (shown to anyone who can read the document). */
+  pub?: string;
+}
+
 export interface OutlineFoldDoc {
   frontmatter?: OutlineFrontmatter;
   nodes: OutlineNode[];
   fold: FoldState;
+  /** Sealed-branch key list (public entries only). */
+  keys?: SealKeyEntry[];
 }
 
 /** Host-supplied hooks — package does not implement MFA/crypto. */
