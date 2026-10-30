@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.0 — 2026-10-30
 
 - Sealed branches: format bump to `of-seal-v2` (a256gcm / xc20p, HKDF labels, `<enc:KEYID>`, wrapped `--- keyring ---`); `of-seal-v1` is decrypt-only for migration (`migrateSealedV1`).
 - Dependency: `@noble/ciphers` 2.4.0 (exact pin) for XChaCha20-Poly1305; imported as `@noble/ciphers/chacha.js` (2.x ESM subpath).
