@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.1 — 2026-10-30
+
+- Fix: Pages/e2e site failed to load any page importing `dist/` (`Failed to resolve module specifier "@noble/ciphers/chacha.js"`). `build:site` now vendors `@noble/ciphers` into `site/vendor/noble-ciphers/` and rewrites the specifier in `site/dist/`. Library `dist/` unchanged.
+- Tests: Playwright per-test timeout lowered from 60 s to 15 s.
+
 ## 0.3.0 — 2026-10-30
 
 - Sealed branches: format bump to `of-seal-v2` (a256gcm / xc20p, HKDF labels, `<enc:KEYID>`, wrapped `--- keyring ---`); `of-seal-v1` is decrypt-only for migration (`migrateSealedV1`).
