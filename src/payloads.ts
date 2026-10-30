@@ -1,4 +1,4 @@
-import { openBranches, isSealedBranchPayload } from './sealedState.js';
+import { isSealedBranchPayload } from './sealedState.js';
 import { parseEncBody } from './sealed.js';
 import { parseAutoWidth } from './mapFit.js';
 import type {
@@ -419,7 +419,6 @@ export function collectLayouts(nodes: OutlineNode[]): LayoutMap {
       if (n.id && typeof n.layout?.w === 'number' && n.layout.w > 0) {
         out[n.id] = n.layout.wAuto ? { w: n.layout.w, wAuto: n.layout.wAuto } : { w: n.layout.w };
       }
-      if (openBranches.has(n)) continue;
       if (n.children?.length) walk(n.children);
     }
   };
@@ -502,12 +501,6 @@ export function collectPayloads(nodes: OutlineNode[]): PayloadMap {
   const out: PayloadMap = {};
   const walk = (list: OutlineNode[]) => {
     for (const n of list) {
-      const open = openBranches.get(n);
-      if (open) {
-        // Fail closed: an unlocked branch writes its stored ciphertext only.
-        if (n.id) out[n.id] = { ...open.payload };
-        continue;
-      }
       if (n.id && n.sealed && (n.sealed.ciphertext || n.sealed.uri)) {
         out[n.id] = { ...n.sealed };
       }

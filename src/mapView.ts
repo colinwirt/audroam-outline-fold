@@ -50,6 +50,7 @@ import {
   type PinchAnchor,
   type Pt,
 } from './mapGesture.js';
+import { regionHull, regionSvg, type MapRegion } from './mapRegion.js';
 import type { OutlineFoldDoc, OutlineNode } from './types.js';
 import {
   measurePill,
@@ -331,6 +332,8 @@ export interface PillSize {
 }
 
 export interface MapViewOptions {
+  /** Sub-instance regions (sealed viewer, separate record) drawn as clouds around a subtree. */
+  getRegions?: () => MapRegion[];
   getDoc: () => OutlineFoldDoc;
   setDoc: (d: OutlineFoldDoc) => void;
   getLayout: () => MapLayout;
@@ -3576,6 +3579,8 @@ export function createMapView(
         : undefined,
       nodes: structuredClone(doc.nodes),
       fold: { mode: doc.fold.mode, ids: [...doc.fold.ids] },
+    ...(doc.keys ? { keys: doc.keys } : {}),
+    ...(doc.sealedOrphans ? { sealedOrphans: { ...doc.sealedOrphans } } : {}),
     };
     patchNodeTitle(nextDoc.nodes, id, nextTitle);
     const nextNode = findNode(nextDoc.nodes, id)!;
@@ -4011,11 +4016,25 @@ export function createMapView(
       nodeMenu && typeof document !== 'undefined'
         ? nodeMenu.items.indexOf(document.activeElement as HTMLElement)
         : -1;
+    const regionLayer = (opts.getRegions?.() ?? [])
+      .map((rg) => {
+        const root = findNode(doc.nodes, rg.rootId);
+        if (!root) return '';
+        const ids = new Set<string>();
+        const walkR = (n: OutlineNode) => { if (n.id) ids.add(n.id); n.children?.forEach(walkR); };
+        walkR(root);
+        const hull = regionHull(
+          nodes.filter((p) => ids.has(p.key)).map((p) => ({ x: p.pos.x - p.w / 2, y: p.pos.y - p.h / 2, w: p.w, h: p.h })),
+        );
+        return hull ? regionSvg(rg, hull) : '';
+      })
+      .join('');
     host.innerHTML = `<svg class="map-svg" viewBox="0 0 ${Math.max(1, host.clientWidth || 1180)} ${Math.max(1, host.clientHeight || 520)}"
       preserveAspectRatio="xMidYMid meet" role="none" focusable="false">
       <rect width="100%" height="100%" fill="var(--map-bg)"/>
       <g id="mapViewport">
         <rect x="0" y="0" width="${vb.w}" height="${vb.h}" fill="var(--map-bg)" opacity="0"/>
+        ${regionLayer}
         ${edgeSvg}
         ${nodeSvg}
       </g>

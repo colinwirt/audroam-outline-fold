@@ -197,6 +197,8 @@ export interface OutlineFoldDoc {
   fold: FoldState;
   /** Sealed-branch key list (public entries only). */
   keys?: SealKeyEntry[];
+  /** Sealed-branch payloads whose node id vanished from the text (kept; save refuses). */
+  sealedOrphans?: Record<string, SealedPayload>;
 }
 
 /** Host-supplied hooks — package does not implement MFA/crypto. */

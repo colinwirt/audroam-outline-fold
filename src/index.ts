@@ -496,11 +496,12 @@ export {
   countKidRefs,
   removeKey,
   sealBranch,
-  unsealBranch,
-  lockBranch,
-  resealBranch,
-  isBranchDirty,
-  isBranchOpen,
+  openSealedBranch,
+  openViewerCount,
+  openViewerIds,
+  closeAllViewers,
+  type SealedViewer,
+  type SealedViewerMode,
   validateSealedBranches,
   parseKdfHeader,
   parseBranchCt,
@@ -511,3 +512,10 @@ export {
 } from './sealedBranch.js';
 export type { SealKeyEntry } from './types.js';
 export { parseKeysBlock, formatKeysBlock } from './payloads.js';
+export {
+  SealedSaveError,
+  sealedSaveProblems,
+  discardSealedOrphan,
+  reattachSealedOrphan,
+} from './sealedState.js';
+export { regionHull, regionSvg, type MapRegion, type MapRegionKind, type RegionBox } from './mapRegion.js';

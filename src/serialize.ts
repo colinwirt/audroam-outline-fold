@@ -1,4 +1,4 @@
-import { openBranches } from './sealedState.js';
+import { assertSealedSafe } from './sealedState.js';
 import { linkPayloadNodes } from './nodeAddress.js';
 import { collectLayouts, collectPayloads, formatLayoutBlock, formatPayloadsBlock, formatKeysBlock } from './payloads.js';
 import { spelledTag } from './tagSpelling.js';
@@ -143,13 +143,6 @@ function serializeNode(
   doc: OutlineFoldDoc,
   lines: string[],
 ): void {
-  const open = openBranches.get(node);
-  if (open) {
-    // Fail closed: never write the caption or inner branch of an unlocked sealed branch.
-    const indent = '  '.repeat(node.depth);
-    lines.push(`${indent}- ${open.lockedTitle} <id:${node.id}>`);
-    return;
-  }
   const collapsedMarker =
     doc.frontmatter?.collapsedMarker ?? DEFAULT_COLLAPSED;
   const expandedMarker = doc.frontmatter?.expandedMarker;
@@ -220,6 +213,8 @@ function linkJumpTargets(doc: OutlineFoldDoc): void {
 }
 
 export function serialize(doc: OutlineFoldDoc): string {
+  // Fail closed before anything is written (see sealedState.assertSealedSafe).
+  assertSealedSafe(doc);
   linkPayloadNodes(doc);
   linkJumpTargets(doc);
   const foldIds = layoutFoldIds(doc);

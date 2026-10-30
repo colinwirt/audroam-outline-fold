@@ -165,3 +165,19 @@ visible. Inner ids are not written while the branch is open.
 | Render | locked chrome + Decrypt button | `data-sealed-branch`, Lock button, `onRelock` | Map locked glyph; demo page | S |
 | Validation | payload diagnostics | `validateSealedBranches` | Merge it into `validate()` codes | S |
 | Tests | `sealed.test.ts` (grammar, demo) | `sealed-branch.test.ts` (26 tests) | e2e and CSP/Trusted Types | M |
+
+## Update: protected viewer (replaces unlock-in-place)
+
+- `openSealedBranch(host, branchId, ctx)` decrypts into a separate in-memory document
+  (`viewer.doc`, one root = the caption) for a 2nd outline-fold instance. The host doc
+  only ever holds the sealed line, so `serialize(host)` cannot see plaintext.
+- `viewer.save()` re-seals into that branch's payload only: fresh salt+nonce, same kid,
+  alg and AAD binding. Mode is fixed (`viewer.mode` frozen; save options rejected; host
+  payload or key entry changed behind the viewer → refused). Rotation is separate.
+- `viewer.close()`, `closeAllViewers()` and `clearKeys()` wipe the plaintext. Nested sealed
+  lines stay sealed in the viewer; `viewer.open(id)` opens a further viewer.
+- Map: `MapViewOptions.getRegions` draws a themeable rounded cloud (`--of-region-fill`,
+  `--of-region-stroke`, `--of-region-label`) with a lock icon around an open branch.
+- Save guard (`SealedSaveError`): a sealed line with children, a non-label caption, no id,
+  a duplicate id, or an orphaned payload (id removed / marker broken) refuses to save.
+  Orphans are kept in `doc.sealedOrphans`; `reattachSealedOrphan` / `discardSealedOrphan`.

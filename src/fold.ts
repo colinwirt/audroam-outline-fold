@@ -12,6 +12,8 @@ function cloneDoc(doc: OutlineFoldDoc): OutlineFoldDoc {
       : undefined,
     nodes: structuredClone(doc.nodes),
     fold: { mode: doc.fold.mode, ids: [...doc.fold.ids] },
+    ...(doc.keys ? { keys: doc.keys } : {}),
+    ...(doc.sealedOrphans ? { sealedOrphans: { ...doc.sealedOrphans } } : {}),
   };
 }
 

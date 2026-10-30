@@ -1,4 +1,4 @@
-import { openBranches, isSealedBranchPayload } from './sealedState.js';
+import { isSealedBranchPayload } from './sealedState.js';
 import { isCollapsed } from './fold.js';
 import { captionToHtml } from './captionRich.js';
 import { iconForNode, iconForTask } from './icons.js';
@@ -23,10 +23,8 @@ function renderNode(
   const p = opts.classPrefix;
   const collapsed = node.id ? isCollapsed(doc, node.id) : false;
   const flags = node.flags ?? [];
-  const branchOpen = openBranches.has(node);
   const locked =
     opts.lockedChrome &&
-    !branchOpen &&
     (flags.includes('private') || flags.includes('encrypted') || isSealedBranchPayload(node.sealed));
   const icon = iconForNode(node.kind, flags);
   const sealed = hasSealed(node);
@@ -41,8 +39,8 @@ function renderNode(
     flags.length ? `data-flags="${esc(flags.join(','))}"` : '',
     node.dbRef ? `data-db-ref="${esc(node.dbRef)}"` : '',
     sealed ? `data-sealed="true"` : '',
-    branchOpen || isSealedBranchPayload(node.sealed)
-      ? `data-sealed-branch="${branchOpen ? 'open' : 'locked'}"`
+    isSealedBranchPayload(node.sealed)
+      ? `data-sealed-branch="locked"`
       : '',
     sealed && node.sealed?.kid ? `data-kid="${esc(node.sealed.kid)}"` : '',
     sealed && node.sealed?.uri ? `data-sealed-uri="${esc(node.sealed.uri)}"` : '',
@@ -70,9 +68,7 @@ function renderNode(
     ? flags.includes('encrypted') || isSealedBranchPayload(node.sealed)
       ? `<button type="button" class="${p}-unlock" data-decrypt="${esc(node.id ?? '')}" data-testid="of-decrypt-${esc(node.id ?? '')}">Decrypt</button>`
       : `<button type="button" class="${p}-unlock" data-unlock="${esc(node.id ?? '')}" data-testid="of-unlock-${esc(node.id ?? '')}">Unlock (MFA)</button>`
-    : branchOpen
-      ? `<button type="button" class="${p}-unlock" data-relock="${esc(node.id ?? '')}" data-testid="of-relock-${esc(node.id ?? '')}" aria-label="Lock sealed branch">Lock</button>`
-      : '';
+    : '';
 
   // Task SVG lead — ASCII `[ ]`/`[x]` stripped from title at parse time.
   let taskChrome = '';

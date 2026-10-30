@@ -45,8 +45,6 @@ export interface AttachOutlineTreeOptions {
   onUnlock?: (id: string) => void;
   /** Host Decrypt stub. If omitted, announces that host handler is required. */
   onDecrypt?: (id: string) => void;
-  /** Re-lock an unlocked sealed branch (host calls lockBranch/resealBranch and re-renders). */
-  onRelock?: (id: string) => void;
   /** Task SVG toggle — host owns persist / side effects. */
   onTaskToggle?: (ev: TaskToggleEvent) => void;
   /** Optional action hook on open→done when node.action set. */
@@ -354,15 +352,6 @@ export function attachOutlineTree(
       const id = unlockBtn.getAttribute('data-unlock') || '';
       if (opts.onUnlock) opts.onUnlock(id);
       else announce(getLive(), 'Unlock requires host authentication');
-      return;
-    }
-
-    const relockBtn = target.closest<HTMLElement>('[data-relock]');
-    if (relockBtn && rootEl.contains(relockBtn)) {
-      e.preventDefault();
-      const id = relockBtn.getAttribute('data-relock') || '';
-      if (opts.onRelock) opts.onRelock(id);
-      else announce(getLive(), 'Lock requires host handler');
       return;
     }
 

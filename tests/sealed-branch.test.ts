@@ -12,10 +12,7 @@ import {
   importKeyEntry,
   removeKey,
   sealBranch,
-  unsealBranch,
-  lockBranch,
-  resealBranch,
-  isBranchDirty,
+  openSealedBranch,
   validateSealedBranches,
   parseKdfHeader,
   SealError,
@@ -102,43 +99,40 @@ describe('sealed branches: format', () => {
 });
 
 describe('sealed branches: unlock, re-lock, fail closed', () => {
-  it('unlock in place restores caption and subtree; serialize still writes ciphertext', async () => {
+  it('unlock opens a viewer; host keeps only the sealed line; edits never reach host text', async () => {
     const { text, kid } = await sealedDoc();
     clearKeys();
     const doc = parse(text);
     expect(await unlockKey(doc, kid, PASS)).toBe(1);
-    const v = find(doc, 'v');
-    await unsealBranch(doc, v, CTX);
-    expect(v.title).toBe('Vault');
-    expect(v.children![0]!.title).toBe('Secret caption child');
-    expect(v.children![0]!.children![0]!.depth).toBe(3);
-    // Plaintext is never saved, even while open, even after edits.
-    v.children![0]!.title = 'edited secret';
-    const out = serialize(doc);
-    expect(out).toBe(text);
-    expect(out).not.toMatch(/Vault|Secret|edited|deeper/);
-    expect(toHtml(doc)).toContain('data-sealed-branch="open"');
-    expect(isBranchDirty(v)).toBe(true);
-    lockBranch(v);
-    expect(v.children).toEqual([]);
+    const view = await openSealedBranch(doc, 'v', CTX);
+    const root = view.doc.nodes[0]!;
+    expect(root.title).toBe('Vault');
+    expect(root.children![0]!.title).toBe('Secret caption child');
+    expect(root.children![0]!.children![0]!.depth).toBe(2);
+    root.children![0]!.title = 'edited secret';
+    expect(serialize(doc)).toBe(text);
+    expect(find(doc, 'v').children ?? []).toEqual([]);
     expect(toHtml(doc)).toContain('data-sealed-branch="locked"');
+    expect(view.isDirty()).toBe(true);
+    view.close();
+    expect(view.doc.nodes).toEqual([]);
   });
 
-  it('reseal uses a fresh nonce; unchanged reseal is byte-identical', async () => {
-    const { doc, kid, text } = await sealedDoc();
-    const v = find(doc, 'v');
-    await unsealBranch(doc, v, CTX);
-    await resealBranch(doc, v, CTX);
+  it('viewer save uses a fresh nonce; unchanged save is byte-identical', async () => {
+    const { doc, text } = await sealedDoc();
+    const v1 = await openSealedBranch(doc, 'v', CTX);
+    await v1.save();
     expect(serialize(doc)).toBe(text);
-    await unsealBranch(doc, v, CTX);
-    v.title = 'Vault 2';
-    await resealBranch(doc, v, CTX);
+    v1.doc.nodes[0]!.title = 'Vault 2';
+    await v1.save();
+    v1.close();
     const t2 = serialize(doc);
     expect(t2).not.toBe(text);
     expect(t2).not.toContain('Vault 2');
     const nonce = (t: string) => t.match(/ct: \S+?\.(\S+?)\./)![1];
     expect(nonce(t2)).not.toBe(nonce(text));
-    expect(kid).toBeTruthy();
+    const v2 = await openSealedBranch(doc, 'v', CTX);
+    expect(v2.doc.nodes[0]!.title).toBe('Vault 2');
   });
 
   it('nonces are unique across many seals', async () => {
@@ -159,7 +153,7 @@ describe('sealed branches: unlock, re-lock, fail closed', () => {
     clearKeys();
     const doc = parse(text);
     await unlockKey(doc, kid, 'wrong');
-    await expect(unsealBranch(doc, find(doc, 'v'), CTX)).rejects.toThrow("Can't unlock");
+    await expect(openSealedBranch(doc, 'v', CTX)).rejects.toThrow("Can't unlock");
   });
 
   it('clearKeys drops keys from memory', async () => {
@@ -167,7 +161,7 @@ describe('sealed branches: unlock, re-lock, fail closed', () => {
     expect(unlockedKids()).toEqual([kid]);
     clearKeys();
     expect(unlockedKids()).toEqual([]);
-    await expect(unsealBranch(doc, find(doc, 'v'), CTX)).rejects.toBeInstanceOf(SealError);
+    await expect(openSealedBranch(doc, 'v', CTX)).rejects.toBeInstanceOf(SealError);
   });
 });
 
@@ -193,7 +187,7 @@ describe('sealed branches: tamper and binding', () => {
         doc.keys = [...(doc.keys ?? []), { kid: find(doc, 'v').sealed!.kid!, kdf: doc.keys![0]!.kdf }];
         await unlockKey(doc, find(doc, 'v').sealed!.kid!, PASS);
       }
-      await expect(unsealBranch(doc, find(doc, 'v'), CTX)).rejects.toThrow("Can't unlock");
+      await expect(openSealedBranch(doc, 'v', CTX)).rejects.toThrow("Can't unlock");
     });
   }
 
@@ -204,14 +198,14 @@ describe('sealed branches: tamper and binding', () => {
   ] as const) {
     it(`blob moved to ${name} fails`, async () => {
       const { doc } = await sealedDoc();
-      await expect(unsealBranch(doc, find(doc, 'v'), ctx)).rejects.toThrow("Can't unlock");
+      await expect(openSealedBranch(doc, 'v', ctx)).rejects.toThrow("Can't unlock");
     });
   }
 
   it('blob moved to another node id fails', async () => {
     const { text } = await sealedDoc();
     const doc = parse(text.replace(/<id:v>/, '<id:w>').replace(/^v:$/m, 'w:'));
-    await expect(unsealBranch(doc, find(doc, 'w'), CTX)).rejects.toThrow("Can't unlock");
+    await expect(openSealedBranch(doc, 'w', CTX)).rejects.toThrow("Can't unlock");
   });
 });
 
@@ -225,11 +219,11 @@ describe('key list: reuse across maps, remove guard', () => {
     clearKeys();
     await unlockKey(b, a.kid, PASS);
     await sealBranch(b, find(b, 'v'), a.kid, { ...CTX, noteId: 'note-2' });
-    await unsealBranch(b, find(b, 'v'), { ...CTX, noteId: 'note-2' });
-    expect(find(b, 'v').title).toBe('Vault');
+    const bv = await openSealedBranch(b, 'v', { ...CTX, noteId: 'note-2' });
+    expect(bv.doc.nodes[0]!.title).toBe('Vault');
     // Map A's blob pasted into map B fails.
     const moved = parse(a.text);
-    await expect(unsealBranch(moved, find(moved, 'v'), { ...CTX, noteId: 'note-2' })).rejects.toThrow("Can't unlock");
+    await expect(openSealedBranch(moved, 'v', { ...CTX, noteId: 'note-2' })).rejects.toThrow("Can't unlock");
   });
 
   it('same kid gives different subkeys in two maps (HKDF info binds note id)', async () => {
@@ -265,23 +259,25 @@ describe('nested sealed branches (encrypt-then-embed)', () => {
     clearKeys();
     const d = parse(text);
     await unlockKey(d, k1.kid, PASS);
-    const v = find(d, 'v');
-    await unsealBranch(d, v, CTX);
-    const inner = find(d, 'c1');
+    const outer = await openSealedBranch(d, 'v', CTX);
+    const inner = find(outer.doc, 'c1');
     expect(inner.title).toBe(SEALED_PLACEHOLDER);
     expect(serialize(d)).toBe(text);
-    await expect(unsealBranch(d, inner, { ...CTX, parentId: 'v' })).rejects.toThrow("Can't unlock");
+    await expect(outer.open('c1')).rejects.toThrow("Can't unlock");
     await unlockKey(d, k2.kid, 'other pass');
-    await unsealBranch(d, inner, { ...CTX, parentId: 'v' });
-    expect(inner.title).toBe('Secret caption child');
+    const iv = await outer.open('c1');
+    expect(iv.doc.nodes[0]!.title).toBe('Secret caption child');
+    expect(inner.title).toBe(SEALED_PLACEHOLDER);
     expect(serialize(d)).toBe(text);
+    outer.close();
+    expect(iv.closed).toBe(true);
 
     const d3 = parse(SRC);
     d3.keys = doc.keys;
     await unlockKey(d3, k1.kid, PASS);
     await sealBranch(d3, find(d3, 'v'), k1.kid, CTX);
-    await unsealBranch(d3, find(d3, 'v'), CTX);
-    const r = await sealBranch(d3, find(d3, 'c1'), k1.kid, { ...CTX, parentId: 'v' });
+    const ov = await openSealedBranch(d3, 'v', CTX);
+    const r = await sealBranch(ov.doc, find(ov.doc, 'c1'), k1.kid, { ...CTX, parentId: 'v', depth: 1 });
     expect(r.warnings[0]).toMatch(/no extra protection/);
   });
 });

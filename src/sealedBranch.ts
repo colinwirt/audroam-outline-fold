@@ -8,7 +8,6 @@
 import { parse } from './parse.js';
 import { serialize } from './serialize.js';
 import {
-  openBranches,
   SEAL_ALG,
   SEALED_PLACEHOLDER,
   isSealedBranchPayload,
@@ -32,6 +31,8 @@ export interface SealContext {
   ownerId: string;
   /** Id of the enclosing sealed branch, or undefined at top level. */
   parentId?: string;
+  /** Sealed nesting depth of the document this branch lives in (set by viewers). */
+  depth?: number;
 }
 
 export type Argon2Provider = (
@@ -156,6 +157,7 @@ const sessionUnlocked: string[] = []; // kids unlocked this session, most recent
 
 /** Drop every derived key from memory (host idle lock / logout). */
 export function clearKeys(): void {
+  closeAllViewers();
   masterKeys.clear();
   sessionUnlocked.length = 0;
 }
@@ -261,7 +263,7 @@ function walkAll(nodes: OutlineNode[], fn: (n: OutlineNode) => void): void {
 }
 
 function branchPayload(n: OutlineNode): SealedPayload | undefined {
-  return openBranches.get(n)?.payload ?? (isSealedBranchPayload(n.sealed) ? n.sealed : undefined);
+  return isSealedBranchPayload(n.sealed) ? n.sealed : undefined;
 }
 
 /** Visible references to a kid (inner branches of locked branches are not visible). */
@@ -281,7 +283,7 @@ export function removeKey(doc: OutlineFoldDoc, kid: string): { ok: boolean; reas
   if (countKidRefs(doc, kid) > 0) return { ok: false, reason: 'in-use' };
   let hidden = false;
   walkAll(doc.nodes, (n) => {
-    if (!openBranches.has(n) && isSealedBranchPayload(n.sealed)) hidden = true;
+    if (isSealedBranchPayload(n.sealed)) hidden = true;
   });
   if (hidden) return { ok: false, reason: 'locked-branches-may-reference' };
   doc.keys = (doc.keys ?? []).filter((k) => k.kid !== kid);
@@ -318,26 +320,11 @@ export async function __subkeyBitsForKat(kid: string, salt: Uint8Array<ArrayBuff
 function innerText(node: OutlineNode): string {
   const shift = (list: OutlineNode[], d: number): OutlineNode[] =>
     list.map((c) => ({ ...c, depth: d, children: c.children ? shift(c.children, d + 1) : undefined }));
-  // openBranches is keyed by identity: copy open inner nodes' state onto the copies.
-  const copy = shift(node.children ?? [], 0);
-  const relink = (orig: OutlineNode[], cp: OutlineNode[]) =>
-    orig.forEach((o, i) => {
-      const st = openBranches.get(o);
-      if (st) openBranches.set(cp[i]!, st);
-      if (o.children && cp[i]!.children) relink(o.children, cp[i]!.children!);
-    });
-  relink(node.children ?? [], copy);
-  const body = serialize({ nodes: copy, fold: { mode: '-', ids: [] } });
-  return JSON.stringify({ v: 1, caption: node.title, body });
+  return innerJson(node.title, serialize({ nodes: shift(node.children ?? [], 0), fold: { mode: '-', ids: [] } }));
 }
 
-function sealedDepth(ctx: SealContext, doc?: OutlineFoldDoc): number {
-  if (!ctx.parentId || !doc) return ctx.parentId ? 1 : 0;
-  let d = 0;
-  walkAll(doc.nodes, (n) => {
-    if (n.id === ctx.parentId) d = (openBranches.get(n)?.depth ?? 0) + 1;
-  });
-  return d;
+function sealedDepth(ctx: SealContext, _doc?: OutlineFoldDoc): number {
+  return ctx.depth ?? (ctx.parentId ? 1 : 0);
 }
 
 async function encryptFor(
@@ -390,29 +377,30 @@ export async function sealBranch(
     walkAll(doc.nodes, (n) => {
       if (n.id === ctx.parentId) parentKid = branchPayload(n)?.kid;
     });
+    if (!parentKid)
+      for (const v of liveViewers) if (v.doc === doc && v.branchId === ctx.parentId) parentKid = v.mode.kid;
     if (parentKid === kid) warnings.push('same-kid-as-parent: no extra protection');
   }
   const pt = innerText(node);
   const ct = await encryptFor(node, doc, kid, ctx, pt, __fixed);
   const payload: SealedPayload = { kid, alg: SEAL_ALG, ciphertext: ct };
   if (opts.pub) payload.pub = opts.pub;
-  openBranches.delete(node);
   node.sealed = payload;
   node.title = opts.pub ?? SEALED_PLACEHOLDER;
   node.children = [];
   return { warnings };
 }
 
-/**
- * Unlock in place: decrypt lazily (only this branch), restore caption and inner
- * branch. Inner sealed branches stay locked. serialize() keeps writing the
- * stored ciphertext until resealBranch() is called.
- */
-export async function unsealBranch(doc: OutlineFoldDoc, node: OutlineNode, ctx: SealContext): Promise<void> {
+// ---------- protected viewer (unlock never edits the main document) ----------
+function innerJson(caption: string, body: string): string {
+  return JSON.stringify({ v: 1, caption, body });
+}
+
+/** Decrypt one branch. Returns plaintext caption and body; never touches the doc. */
+async function decryptBranch(doc: OutlineFoldDoc, node: OutlineNode, ctx: SealContext): Promise<{ caption: string; body: string }> {
   const p = node.sealed;
   if (!node.id || !p || !isSealedBranchPayload(p) || !p.kid || !p.ciphertext) throw new SealError();
-  const depth = sealedDepth(ctx, doc);
-  if (depth >= MAX_SEAL_DEPTH) throw new SealError();
+  if (sealedDepth(ctx, doc) >= MAX_SEAL_DEPTH) throw new SealError();
   let text: string;
   try {
     const entry = findKey(doc, p.kid);
@@ -427,58 +415,170 @@ export async function unsealBranch(doc: OutlineFoldDoc, node: OutlineNode, ctx: 
   } catch {
     throw new SealError();
   }
-  let inner: { v: number; caption: string; body: string };
   try {
-    inner = JSON.parse(text);
+    const inner = JSON.parse(text);
     if (inner.v !== 1 || typeof inner.caption !== 'string' || typeof inner.body !== 'string') throw 0;
+    return { caption: inner.caption, body: inner.body };
   } catch {
     throw new SealError();
   }
-  const sub = parse(inner.body);
-  const reDepth = (list: OutlineNode[], d: number) => {
-    for (const c of list) {
-      c.depth = d;
-      if (c.children) reDepth(c.children, d + 1);
-    }
-  };
-  reDepth(sub.nodes, node.depth + 1);
-  openBranches.set(node, { payload: { ...p }, lockedTitle: node.title, snapshot: text, depth });
-  node.title = inner.caption;
-  node.children = sub.nodes;
 }
 
-/** True when an unlocked branch was edited since unlock (needs resealBranch before save). */
-export function isBranchDirty(node: OutlineNode): boolean {
-  const st = openBranches.get(node);
-  return !!st && innerText(node) !== st.snapshot;
+/** Fixed crypto mode of a viewer, taken from the branch it opened. Read-only. */
+export interface SealedViewerMode {
+  readonly kid: string;
+  readonly alg: string;
+  /** KDF header of the kid at open time (params + salt). */
+  readonly kdf: string;
 }
 
-export function isBranchOpen(node: OutlineNode): boolean {
-  return openBranches.has(node);
+export interface SealedViewer {
+  /** Branch id in the host document. */
+  readonly branchId: string;
+  /** In-memory only document: one root (the decrypted caption) with the inner branch. */
+  readonly doc: OutlineFoldDoc;
+  /** Locked encryption mode; save always re-seals with exactly this. */
+  readonly mode: SealedViewerMode;
+  readonly closed: boolean;
+  /** True when the viewer doc differs from what was decrypted. */
+  isDirty(): boolean;
+  /**
+   * Re-seal into the host branch payload: fresh salt+nonce, same kid/alg, same AAD binding.
+   * Only that payload changes. Options that try to change the mode are rejected.
+   */
+  save(opts?: Record<string, unknown>): Promise<void>;
+  /** Wipe the plaintext and close (and every nested viewer). */
+  close(): void;
+  /** Open a nested sealed branch inside this viewer in a further viewer. */
+  open(branchId: string): Promise<SealedViewer>;
 }
 
-/** Re-lock without saving changes: drops plaintext from the model. */
-export function lockBranch(node: OutlineNode): void {
-  const st = openBranches.get(node);
-  if (!st) return;
-  openBranches.delete(node);
-  node.title = st.lockedTitle;
-  node.children = [];
-  node.sealed = { ...st.payload };
+const liveViewers = new Set<SealedViewer>();
+
+/** Number of open viewers (all hold plaintext in memory). */
+export function openViewerCount(): number {
+  return liveViewers.size;
+}
+
+/** Branch ids (of a given host doc) that currently have an open viewer; for Map overlays. */
+export function openViewerIds(host: OutlineFoldDoc): string[] {
+  return [...liveViewers].filter((v) => (v as ViewerImpl).host === host).map((v) => v.branchId);
+}
+
+/** Close every viewer (idle lock / logout). clearKeys() calls this. */
+export function closeAllViewers(): void {
+  for (const v of [...liveViewers]) v.close();
+}
+
+function findById(nodes: OutlineNode[], id: string): OutlineNode | undefined {
+  let hit: OutlineNode | undefined;
+  walkAll(nodes, (n) => {
+    if (!hit && n.id === id) hit = n;
+  });
+  return hit;
+}
+
+function wipe(nodes: OutlineNode[]): void {
+  walkAll(nodes, (n) => {
+    n.title = '';
+    n.children = [];
+  });
+  nodes.length = 0;
+}
+
+interface ViewerImpl extends SealedViewer {
+  host: OutlineFoldDoc;
 }
 
 /**
- * Save edits of an unlocked branch: fresh salt and nonce, same kid. Unchanged
- * branches are left alone (byte-identical). Then re-locks.
+ * Unlock a sealed branch into a protected viewer (a separate in-memory document for a
+ * 2nd outline-fold instance). The host document is not modified: it keeps only the
+ * sealed line, so serialize(host) can never see plaintext.
  */
-export async function resealBranch(doc: OutlineFoldDoc, node: OutlineNode, ctx: SealContext): Promise<void> {
-  const st = openBranches.get(node);
-  if (!st) return;
-  if (!isBranchDirty(node)) {
-    lockBranch(node);
-    return;
-  }
-  await sealBranch(doc, node, st.payload.kid!, ctx, st.payload.pub ? { pub: st.payload.pub } : {});
+export async function openSealedBranch(
+  host: OutlineFoldDoc,
+  branchId: string,
+  ctx: SealContext,
+): Promise<SealedViewer> {
+  const node = findById(host.nodes, branchId);
+  if (!node || !isSealedBranchPayload(node.sealed)) throw new SealError();
+  const { caption, body } = await decryptBranch(host, node, ctx);
+  const opened: SealedPayload = { ...node.sealed! };
+  const entry = findKey(host, opened.kid!);
+  const mode: SealedViewerMode = Object.freeze({ kid: opened.kid!, alg: opened.alg!, kdf: entry.kdf });
+  const depth = sealedDepth(ctx, host) + 1;
+  const sub = parse(body);
+  const root: OutlineNode = { id: branchId, title: caption, depth: 0, children: sub.nodes } as OutlineNode;
+  const reDepth = (list: OutlineNode[], d: number) => list.forEach((c) => { c.depth = d; if (c.children) reDepth(c.children, d + 1); });
+  reDepth(sub.nodes, 1);
+  // The viewer shares the key list read-only (frozen copies) so nested branches can open.
+  const doc: OutlineFoldDoc = {
+    nodes: [root],
+    fold: { mode: '-', ids: [] },
+    keys: Object.freeze((host.keys ?? []).map((k) => Object.freeze({ ...k }))) as SealKeyEntry[],
+    ...(sub.sealedOrphans ? { sealedOrphans: sub.sealedOrphans } : {}),
+  };
+  const snapshot = () => {
+    const r = doc.nodes[0];
+    if (doc.nodes.length !== 1 || !r) throw new Error('Sealed viewer: the document must keep exactly one root');
+    const kids = (r.children ?? []).map((c) => c);
+    const shift = (list: OutlineNode[], d: number): OutlineNode[] =>
+      list.map((c) => ({ ...c, depth: d, children: c.children ? shift(c.children, d + 1) : undefined }));
+    return innerJson(r.title, serialize({ nodes: shift(kids, 0), fold: { mode: '-', ids: [] }, ...(doc.sealedOrphans ? { sealedOrphans: doc.sealedOrphans } : {}) }));
+  };
+  let original = innerJson(caption, body);
+  const children = new Set<SealedViewer>();
+  let closed = false;
+  const viewer: ViewerImpl = {
+    host,
+    branchId,
+    doc,
+    mode,
+    get closed() {
+      return closed;
+    },
+    isDirty() {
+      return !closed && snapshot() !== original;
+    },
+    async save(opts?: Record<string, unknown>) {
+      if (closed) throw new Error('Sealed viewer is closed');
+      if (opts && Object.keys(opts).length)
+        throw new Error('Sealed viewer: kid, alg and params are fixed; use an explicit key rotation instead');
+      const target = findById(host.nodes, branchId);
+      if (target !== node) throw new Error(`Sealed viewer: branch ${branchId} is no longer in the host document`);
+      const cur = node.sealed;
+      if (!cur || cur.kid !== mode.kid || cur.alg !== mode.alg || cur.ciphertext !== opened.ciphertext)
+        throw new Error(`Sealed viewer: branch ${branchId} payload changed outside the viewer; refusing to overwrite`);
+      const e = host.keys?.find((k) => k.kid === mode.kid);
+      if (!e || e.kdf !== mode.kdf) throw new Error('Sealed viewer: key entry changed; re-sealing refused');
+      if (doc.keys?.length !== host.keys?.length || doc.keys?.some((k, i) => k.kid !== host.keys![i]!.kid || k.kdf !== host.keys![i]!.kdf))
+        throw new Error('Sealed viewer: key list is read-only in the viewer');
+      for (const c of children) if (!c.closed && c.isDirty()) throw new Error('Sealed viewer: save or close the nested viewer first');
+      const pt = snapshot(); // also runs the fail-closed checks on the inner content
+      if (pt === original) return;
+      const ct = await encryptFor(node, host, mode.kid, ctx, pt);
+      const next: SealedPayload = { kid: mode.kid, alg: mode.alg, ciphertext: ct };
+      if (opened.pub) next.pub = opened.pub;
+      node.sealed = next;
+      opened.ciphertext = ct;
+      original = pt;
+    },
+    close() {
+      if (closed) return;
+      for (const c of children) c.close();
+      closed = true;
+      wipe(doc.nodes);
+      liveViewers.delete(viewer);
+    },
+    async open(innerId: string) {
+      if (closed) throw new Error('Sealed viewer is closed');
+      const v = await openSealedBranch(doc, innerId, { noteId: ctx.noteId, ownerId: ctx.ownerId, parentId: branchId, depth });
+      children.add(v);
+      return v;
+    },
+  };
+  liveViewers.add(viewer);
+  return viewer;
 }
 
 /** Sealed-branch validation diagnostics (structure only; never decrypts). */
@@ -493,7 +593,7 @@ export function validateSealedBranches(doc: OutlineFoldDoc): string[] {
     }
   }
   walkAll(doc.nodes, (n) => {
-    if (openBranches.has(n) || !isSealedBranchPayload(n.sealed)) return;
+    if (!isSealedBranchPayload(n.sealed)) return;
     const p = n.sealed!;
     if (!p.kid || !kids.has(p.kid)) errs.push(`${n.id}: unknown kid`);
     if (!p.ciphertext) errs.push(`${n.id}: missing ct`);

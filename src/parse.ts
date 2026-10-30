@@ -1,3 +1,4 @@
+import { findSealedOrphans } from './sealedState.js';
 import {
   attachLayouts,
   attachPayloads,
@@ -744,11 +745,15 @@ export function parse(text: string, opts?: ParseOptions): OutlineFoldDoc {
   }
   frontmatter.foldMode = mode;
   frontmatter.foldIds = ids;
+  // Sealed-branch payloads whose line lost its id are kept (never dropped):
+  // serialize() refuses to save until the id is restored or discarded explicitly.
+  const orphans = findSealedOrphans(roots, peeled.payloads);
 
   return {
     frontmatter,
     nodes: roots,
     fold: { mode, ids: [...ids] },
     ...(peeled.keys.length ? { keys: peeled.keys } : {}),
+    ...(orphans ? { sealedOrphans: orphans } : {}),
   };
 }
