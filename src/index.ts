@@ -533,3 +533,14 @@ export {
   reattachSealedOrphan,
 } from './sealedState.js';
 export { regionHull, regionSvg, type MapRegion, type MapRegionKind, type RegionBox } from './mapRegion.js';
+export {
+  createHostApi,
+  type HostApi,
+  type OFEvent,
+  type OFEventOf,
+  type OFCommand,
+  type OFCommandHandler,
+  type OFErrorCode,
+  type RegionId,
+  type ScopedId,
+} from './hostApi.js';
