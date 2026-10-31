@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased — sub-map regions, unseal lifecycle, editor, host API
+
+Spec: `docs/specs/20261101-submap-regions-editor-unseal.md`. Additive; existing exports unchanged.
+
+- P1 host API: `createHostApi()` with typed `on(event)` / `dispatch(command)` (`OFEvent`, `OFCommand`).
+- P2 sessions: `createSealSessions()` — one state machine per sealed region (`sealed → unlocking → unlocked → saving`, `error`); save re-seals with the same kid and mode; Lock now; auto-lock after 5 min idle (`autoLock: 5m|90s|off` in the layout block); unlock is per tab; nested branch with an unlocked key asks "Unlock this branch too?"; Remove seal always re-asks the passphrase.
+- P3 regions: `createMapView({ getRegionHosts })` / `map.mountRegion()` / `unmountRegion()` draw child instances as clouds and reserve auto-pack room so nothing overlaps; scoped ids `regionId:nodeId`; `resolveRegionRef` (`<r:REGION:N>` → region root while sealed, node once unsealed).
+- P4 editor: optional `@audroam/outline-fold/editor` (CodeMirror 6 peer deps) with the secure-zone widget; `loadOutlineEditor()` imports it lazily.
+
 ## 0.3.1 — 2026-10-30
 
 - Fix: Pages/e2e site failed to load any page importing `dist/` (`Failed to resolve module specifier "@noble/ciphers/chacha.js"`). `build:site` now vendors `@noble/ciphers` into `site/vendor/noble-ciphers/` and rewrites the specifier in `site/dist/`. Library `dist/` unchanged.

@@ -511,6 +511,19 @@ import { createMapView, autoPackPositions } from '@audroam/outline-fold';
 import { createMapView, autoPackPositions } from './vendor/outline-fold/index.js';
 ```
 
+## Sealed regions, sessions, editor (unreleased)
+
+```ts
+import { createSealSessions, regionHostsFromSessions, createMapView, loadOutlineEditor } from '@audroam/outline-fold';
+const sessions = createSealSessions({ getDoc, ctx: { noteId, ownerId }, confirmUnlockToo: (r) => confirm('Unlock this branch too?') });
+sessions.api.on('unlock', (e) => map.paint());
+await sessions.api.dispatch({ cmd: 'open', region: sessions.regionFor('b7'), passphrase });
+const map = createMapView(el, { ...opts, getRegionHosts: () => regionHostsFromSessions(sessions, getDoc()) });
+const { outlineEditor } = await loadOutlineEditor(); // CodeMirror 6 only loads here
+```
+
+Views render from `sessions.get(region).state` / `sessions.banner(region)`; never keep their own copy. Layout block: `autoLock: 5m` (default), `90s`, `off`. See the spec in `docs/specs/`.
+
 ## Document validation
 
 `parse` stays lenient (it only throws for conflicting `fold-` / `fold+`). Hosts that need a hard gate call **`validateDocument`**, which never throws for document problems — it returns a structured result:
