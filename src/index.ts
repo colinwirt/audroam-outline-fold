@@ -576,3 +576,4 @@ export {
   type RegionResolver,
   type ResolvedRef,
 } from './scopedId.js';
+export { loadOutlineEditor, type OutlineEditorModule } from './editorLoader.js';

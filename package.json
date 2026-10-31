@@ -10,7 +10,11 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
     },
-    "./outline-fold.css": "./dist/outline-fold.css"
+    "./outline-fold.css": "./dist/outline-fold.css",
+    "./editor": {
+      "types": "./dist/editor/index.d.ts",
+      "import": "./dist/editor/index.js"
+    }
   },
   "files": [
     "dist",
@@ -40,6 +44,8 @@
   "author": "Colin Wirt / Audroam",
   "license": "MIT",
   "devDependencies": {
+    "@codemirror/state": "^6.7.6",
+    "@codemirror/view": "^6.43.15",
     "@playwright/test": "^1.63.0",
     "typescript": "^5.6.3",
     "vitest": "^2.1.4"
@@ -56,5 +62,17 @@
   },
   "dependencies": {
     "@noble/ciphers": "2.4.0"
+  },
+  "peerDependencies": {
+    "@codemirror/state": "^6.4.0",
+    "@codemirror/view": "^6.26.0"
+  },
+  "peerDependenciesMeta": {
+    "@codemirror/state": {
+      "optional": true
+    },
+    "@codemirror/view": {
+      "optional": true
+    }
   }
 }
