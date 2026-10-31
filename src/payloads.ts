@@ -377,6 +377,12 @@ function readFmLine(
     if (v) fm.autoWidth = v;
     return true;
   }
+  const autoLock = line.match(/^autoLock\s*:\s*(\S+)\s*$/i);
+  if (autoLock) {
+    const v = parseAutoLock(autoLock[1]!);
+    if (v !== null) fm.autoLockMs = v;
+    return true;
+  }
   const fontSize = line.match(/^fontSize\s*:\s*(\d+(?:\.\d+)?)\s*$/i);
   if (fontSize) {
     fm.fontSize = Number(fontSize[1]);
@@ -425,6 +431,7 @@ export function mergeFrontmatter(
     out.expandedMarker = tail.expandedMarker;
   if (tail.fontSize !== undefined) out.fontSize = tail.fontSize;
   if (tail.autoWidth !== undefined) out.autoWidth = tail.autoWidth;
+  if (tail.autoLockMs !== undefined) out.autoLockMs = tail.autoLockMs;
   if (tail.noteUri !== undefined) out.noteUri = tail.noteUri;
   if (tail.noteMapUri !== undefined) out.noteMapUri = tail.noteMapUri;
   if (tail.noteDetailsUri !== undefined) out.noteDetailsUri = tail.noteDetailsUri;
@@ -502,6 +509,9 @@ export function formatLayoutBlock(
     }
     if (frontmatter.autoWidth && parseAutoWidth(frontmatter.autoWidth)) {
       lines.push(`autoWidth: ${parseAutoWidth(frontmatter.autoWidth)}`);
+    }
+    if (typeof frontmatter.autoLockMs === 'number' && frontmatter.autoLockMs >= 0) {
+      lines.push(`autoLock: ${formatAutoLock(frontmatter.autoLockMs)}`);
     }
     for (const key of ['noteUri', 'noteMapUri', 'noteDetailsUri'] as const) {
       const uri = frontmatter[key];
@@ -583,4 +593,25 @@ export function formatPayloadsBlock(payloads: PayloadMap): string {
   }
   lines.push('---');
   return lines.join('\n');
+}
+
+/** Default idle auto-lock for unlocked sealed branches (spec 20261101 §8.2). */
+export const DEFAULT_AUTO_LOCK_MS = 5 * 60_000;
+
+/** `5m`, `90s`, `300000ms`, `off` → ms (0 = off); null when unreadable. */
+export function parseAutoLock(v: string): number | null {
+  const t = v.trim().toLowerCase();
+  if (t === 'off' || t === 'never' || t === '0') return 0;
+  const m = t.match(/^(\d+(?:\.\d+)?)(ms|s|m|min|h)?$/);
+  if (!m) return null;
+  const n = Number(m[1]);
+  const mul = { ms: 1, s: 1000, m: 60_000, min: 60_000, h: 3_600_000 }[m[2] ?? 'm']!;
+  return Math.round(n * mul);
+}
+
+export function formatAutoLock(ms: number): string {
+  if (ms === 0) return 'off';
+  if (ms % 60_000 === 0) return `${ms / 60_000}m`;
+  if (ms % 1000 === 0) return `${ms / 1000}s`;
+  return `${ms}ms`;
 }

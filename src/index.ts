@@ -544,3 +544,13 @@ export {
   type RegionId,
   type ScopedId,
 } from './hostApi.js';
+export {
+  createSealSessions,
+  type SealSessions,
+  type SealSession,
+  type SealSessionSnapshot,
+  type SealSessionsOptions,
+  type SealState,
+  type LockReason,
+} from './sealSession.js';
+export { DEFAULT_AUTO_LOCK_MS, parseAutoLock, formatAutoLock } from './payloads.js';

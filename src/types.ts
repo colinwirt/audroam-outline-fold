@@ -171,6 +171,11 @@ export interface OutlineFrontmatter {
    * `none` hides the row. Unset: the `noteDetailsUri` option, then `/notes/{id}/details`.
    */
   noteDetailsUri?: string;
+  /**
+   * `autoLock:` in the layout block: idle time in ms before unlocked sealed branches lock
+   * (`5m` default, `90s`, `10m`, or `off` = 0). Unset means the 5 min default.
+   */
+  autoLockMs?: number;
 }
 
 export interface FoldState {
