@@ -121,6 +121,7 @@ export {
   type MapViewOptions,
   type MapKeyboardWire,
   type MapViewHandle,
+  type MapRegionHandle,
   type MapWidthStep,
   type NodeCopyResult,
   type MapFocusDirection,
@@ -552,5 +553,26 @@ export {
   type SealSessionsOptions,
   type SealState,
   type LockReason,
+  regionHostsFromSessions,
+  sessionResolver,
 } from './sealSession.js';
 export { DEFAULT_AUTO_LOCK_MS, parseAutoLock, formatAutoLock } from './payloads.js';
+export {
+  placeRegions,
+  anyOverlap,
+  REGION_PAD,
+  MAX_REGION_DEPTH,
+  type RegionHostSpec,
+  type PlacedRegion,
+  type PlacedBox,
+  type RegionLayoutDeps,
+} from './regionLayout.js';
+export {
+  scopeId,
+  parseScopedId,
+  parseRegionRef,
+  resolveRegionRef,
+  LOCKED_TARGET_LABEL,
+  type RegionResolver,
+  type ResolvedRef,
+} from './scopedId.js';

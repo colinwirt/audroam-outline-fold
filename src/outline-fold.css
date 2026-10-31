@@ -871,3 +871,19 @@
 .of-details .map-level-key,
 .of-details .map-level-count,
 .of-details .map-width-key { display: inline !important; }
+
+/* Cloud-region child instances (spec 20261101 §1). sealed = green secure zone, record = neutral. */
+.map-region-sealed {
+  --of-region-fill: rgba(46, 160, 67, 0.10);
+  --of-region-stroke: rgba(46, 160, 67, 0.60);
+  --of-region-label: #1f7a35;
+}
+.map-region-record {
+  --of-region-fill: rgba(120, 120, 120, 0.08);
+  --of-region-stroke: rgba(120, 120, 120, 0.45);
+  --of-region-label: #555;
+}
+.map-region-node rect { fill: var(--map-node-bg, #fff); stroke: var(--of-region-stroke, rgba(46, 160, 67, 0.6)); stroke-width: 1.2; }
+.map-region-node text { font-size: 13px; fill: currentColor; }
+.map-region-pill rect { fill: var(--of-region-fill, rgba(46, 160, 67, 0.14)); }
+.map-region-edge { stroke: var(--of-region-stroke, rgba(46, 160, 67, 0.6)); stroke-width: 1.4; }

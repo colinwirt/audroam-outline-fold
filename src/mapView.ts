@@ -51,6 +51,7 @@ import {
   type Pt,
 } from './mapGesture.js';
 import { regionHull, regionSvg, type MapRegion } from './mapRegion.js';
+import { placeRegions, type PlacedRegion, type RegionHostSpec } from './regionLayout.js';
 import type { OutlineFoldDoc, OutlineNode } from './types.js';
 import {
   measurePill,
@@ -334,6 +335,12 @@ export interface PillSize {
 export interface MapViewOptions {
   /** Sub-instance regions (sealed viewer, separate record) drawn as clouds around a subtree. */
   getRegions?: () => MapRegion[];
+  /**
+   * Cloud-region child instances (spec 20261101 §1). Each child lays out in its own frame
+   * and the parent auto-pack reserves room so no parent node overlaps a region. Hosts may
+   * also use `mountRegion` / `unmountRegion` on the handle instead of this option.
+   */
+  getRegionHosts?: () => RegionHostSpec[];
   getDoc: () => OutlineFoldDoc;
   setDoc: (d: OutlineFoldDoc) => void;
   getLayout: () => MapLayout;
@@ -472,6 +479,12 @@ export interface MapKeyboardWire {
   modeButton?: HTMLElement | null;
 }
 
+export interface MapRegionHandle {
+  relayout(): void;
+  setFolded(folded: boolean): void;
+  bbox(): { x: number; y: number; w: number; h: number } | null;
+}
+
 export interface MapViewHandle {
   paint: () => void;
   ensurePositions: () => void;
@@ -489,6 +502,12 @@ export interface MapViewHandle {
   findNode: (nodes: OutlineNode[], id: string) => OutlineNode | null;
   /** Gentle ensure edit node / caret region visible (host may call while typing). */
   ensureEditVisible: () => void;
+  /** Mount a cloud-region child instance under `host.anchor` (spec 20261101 §1). */
+  mountRegion: (host: RegionHostSpec) => MapRegionHandle;
+  /** Unmount a region; the host is expected to wipe the child (lock/close its session). */
+  unmountRegion: (id: string) => void;
+  /** Regions placed by the last auto-pack (parent frame). */
+  placedRegions: () => readonly PlacedRegion[];
   /**
    * Open the fold-to-level menu for a node (default: the selected node),
    * anchored at its fold handle, as a right-click or hold on the handle does.
@@ -3409,6 +3428,88 @@ export function createMapView(
     return layout?._source === 'auto-pack';
   }
 
+  const mounted = new Map<string, RegionHostSpec>();
+  let placed: PlacedRegion[] = [];
+  function regionHosts(): RegionHostSpec[] {
+    return [...(opts.getRegionHosts?.() ?? []), ...mounted.values()];
+  }
+  function quickSize(d: OutlineFoldDoc, n: OutlineNode, pos: MapPoint | undefined): { w: number; h: number } {
+    const label = captionWithoutLinks(displayCaption(n.title));
+    const sz = pillSize(label, {
+      reserveFold: hasKids(n),
+      reserveTask: !!resolveTask(n),
+      semibold: false,
+      wrapCh: pos?.wrapCh ?? autoCh(),
+      widthPx: pos?.w ?? n.layout?.w,
+      maxLines: pos?.maxLines,
+      fontSize: resolveFontPx(pos?.fontSize, getLayout().fontSize, d.frontmatter?.fontSize),
+    });
+    return { w: sz.w, h: sz.h };
+  }
+  function visibleKeyed(d: OutlineFoldDoc): { n: OutlineNode; key: string; parentKey: string | null }[] {
+    const order = indexOutline(d.nodes || []);
+    const out: { n: OutlineNode; key: string; parentKey: string | null }[] = [];
+    const walkV = (n: OutlineNode, parentKey: string | null) => {
+      const key = nodeMapKey(n, order.get(n) || 0);
+      out.push({ n, key, parentKey });
+      if (hasKids(n) && !(n.id && isCollapsed(d, n.id))) n.children!.forEach((c) => walkV(c, key));
+    };
+    (d.nodes || []).forEach((n) => walkV(n, null));
+    return out;
+  }
+  /** Reserve room for cloud regions in the auto-packed parent (no overlap by construction). */
+  function reserveRegions(doc: OutlineFoldDoc): void {
+    const hosts = regionHosts();
+    placed = [];
+    if (!hosts.length) return;
+    const layout = getLayout();
+    const vis = visibleKeyed(doc);
+    const boxes = new Map<string, { x: number; y: number; w: number; h: number }>();
+    const kids = new Map<string, string[]>();
+    for (const v of vis) {
+      const p = layout.nodes![v.key];
+      if (!p) continue;
+      const sz = quickSize(doc, v.n, p);
+      boxes.set(v.key, { x: p.x - sz.w / 2, y: p.y - sz.h / 2, ...sz });
+      if (v.parentKey) (kids.get(v.parentKey) ?? kids.set(v.parentKey, []).get(v.parentKey)!).push(v.key);
+    }
+    placed = placeRegions(boxes, (k) => kids.get(k) ?? [], '', hosts, {
+      pack: (d) => autoPackPositions(d, { isNodeCollapsed: (id) => isCollapsed(d, id), wrapCh: autoCh() }).nodes,
+      size: (n) => quickSize(doc, n, undefined),
+      visible: visibleKeyed,
+    });
+    let maxX = layout.viewBox?.w ?? 0, maxY = layout.viewBox?.h ?? 0;
+    for (const [k, b] of boxes) {
+      const p = layout.nodes![k]!;
+      p.y = b.y + b.h / 2;
+      maxY = Math.max(maxY, b.y + b.h + 40);
+    }
+    for (const r of placed) {
+      maxX = Math.max(maxX, r.hull.x + r.hull.w + 40);
+      maxY = Math.max(maxY, r.hull.y + r.hull.h + 40);
+    }
+    layout.viewBox = { ...(layout.viewBox ?? { w: maxX, h: maxY }), w: maxX, h: maxY };
+  }
+  function regionCloudSvg(): string {
+    const esc = (t: string) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    return placed
+      .map((r) => {
+        const cloud = regionSvg({ rootId: r.host.id, kind: r.host.kind, label: r.host.label }, r.hull);
+        const edges = r.edges
+          .map(([x1, y1, x2, y2]) => `<path class="map-region-edge" d="M${x1} ${y1} C${x1} ${(y1 + y2) / 2} ${x2 - 20} ${y2} ${x2} ${y2}" fill="none"/>`)
+          .join('');
+        const pills = r.boxes
+          .map((b) => {
+            const folded = b.key === r.host.id;
+            const t = folded ? (r.host.kind === 'sealed' ? '🔒 ' : '') + (r.host.label || (r.host.kind === 'sealed' ? 'Sealed branch' : 'Record')) : captionWithoutLinks(displayCaption(b.title));
+            return `<g class="map-region-node${folded ? ' map-region-pill' : ''}" data-scoped-id="${esc(b.key)}" data-region-id="${esc(r.host.id)}"><rect x="${b.x}" y="${b.y}" width="${b.w}" height="${b.h}" rx="${Math.min(14, b.h / 2)}"/><text x="${b.x + 12}" y="${b.y + b.h / 2 + 4}">${esc(t)}</text></g>`;
+          })
+          .join('');
+        return cloud + edges + pills;
+      })
+      .join('');
+  }
+
   function ensurePositions(): void {
     const layout = getLayout();
     const doc = getDoc();
@@ -3441,8 +3542,11 @@ export function createMapView(
       }
       layout.nodes = merged;
       layout.viewBox = packed.viewBox;
+      reserveRegions(doc);
       return;
     }
+    // Authored sidecar coordinates are never rewritten; regions only reserve room in auto-pack.
+    placed = [];
 
     const vb = layout.viewBox || { w: 1200, h: 960 };
     layout.viewBox = vb;
@@ -4029,7 +4133,7 @@ export function createMapView(
         );
         return hull ? regionSvg(rg, hull) : '';
       })
-      .join('');
+      .join('') + regionCloudSvg();
     host.innerHTML = `<svg class="map-svg" viewBox="0 0 ${Math.max(1, host.clientWidth || 1180)} ${Math.max(1, host.clientHeight || 520)}"
       preserveAspectRatio="xMidYMid meet" role="none" focusable="false">
       <rect width="100%" height="100%" fill="var(--map-bg)"/>
@@ -5951,6 +6055,23 @@ export function createMapView(
   }
 
   return {
+    mountRegion(h: RegionHostSpec): MapRegionHandle {
+      mounted.set(h.id, { ...h });
+      paint();
+      return {
+        relayout: () => paint(),
+        setFolded: (f: boolean) => {
+          const cur = mounted.get(h.id);
+          if (cur) { cur.folded = f; paint(); }
+        },
+        bbox: () => placed.find((p) => p.host.id === h.id)?.hull ?? null,
+      };
+    },
+    unmountRegion(id: string) {
+      mounted.delete(id);
+      paint();
+    },
+    placedRegions: () => placed,
     paint,
     ensurePositions,
     resetCam,

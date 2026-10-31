@@ -23,6 +23,8 @@ import { serialize } from './serialize.js';
 import { DEFAULT_AUTO_LOCK_MS } from './payloads.js';
 import { createHostApi, type HostApi, type OFErrorCode, type RegionId } from './hostApi.js';
 import type { OutlineFoldDoc, OutlineNode } from './types.js';
+import type { RegionHostSpec } from './regionLayout.js';
+import type { RegionResolver } from './scopedId.js';
 
 export type SealState = 'sealed' | 'unlocking' | 'unlocked' | 'saving' | 'error';
 export type LockReason = 'user' | 'close' | 'parent' | 'idle';
@@ -191,7 +193,8 @@ export function createSealSessions(opts: SealSessionsOptions): SealSessions {
     idleTimer = null;
     const ms = idleMs();
     if (!ms || ![...map.values()].some((s) => s.viewer && !s.viewer.closed)) return;
-    idleTimer = setTimeout(() => void self.lock('all', 'idle'), ms);
+    idleTimer = setTimeout(() => void self.lock("all", "idle"), ms);
+    (idleTimer as { unref?: () => void }).unref?.();
   };
 
   const descendants = (region: RegionId) => [...map.values()].filter((s) => s.region.startsWith(region + '/'));
@@ -372,4 +375,50 @@ export function createSealSessions(opts: SealSessionsOptions): SealSessions {
     lock: (c) => self.lock(c.region, 'user'),
   });
   return self;
+}
+
+// ---------- bridges: sessions → Map regions and link resolution ----------
+
+/**
+ * One region host per sealed branch (recursing into unlocked children). Locked branches
+ * render as a folded lock pill; unlocked ones mount their child doc as a cloud.
+ * `folded` overrides per view (never written into the payload).
+ */
+export function regionHostsFromSessions(
+  sessions: SealSessions,
+  rootDoc: OutlineFoldDoc,
+  folded: (region: RegionId) => boolean = () => false,
+): RegionHostSpec[] {
+  const out: RegionHostSpec[] = [];
+  const scan = (doc: OutlineFoldDoc, parent: RegionId, depth: number) => {
+    const visit = (l: OutlineNode[] | undefined) =>
+      l?.forEach((n) => {
+        if (n.id && isSealedBranchPayload(n.sealed)) {
+          const region = sessions.regionFor(n.id, parent);
+          const s = sessions.get(region);
+          out.push({ id: region, kind: 'sealed', parent, anchor: n.id, doc: s.doc, folded: s.locked || folded(region), label: n.sealed?.pub });
+          if (s.doc && depth < MAX_SEAL_DEPTH) scan(s.doc, region, depth + 1);
+        } else visit(n.children);
+      });
+    visit(doc.nodes);
+  };
+  scan(rootDoc, '', 1);
+  return out;
+}
+
+/** RegionResolver over sessions (sealed regions) for `resolveRegionRef`. */
+export function sessionResolver(sessions: SealSessions, rootDoc: OutlineFoldDoc): RegionResolver {
+  const docOf = (r: RegionId) => (r === '' ? rootDoc : sessions.get(r).doc);
+  return {
+    parentOf: (r) => (r === '' ? null : sessions.get(r).parent),
+    has: (r, id) => !!findNode(docOf(r)?.nodes, id),
+    isLocked: (r) => r !== '' && sessions.get(r).locked,
+    exists: (r) => {
+      if (r === '') return true;
+      if (!r.startsWith('s:')) return false;
+      const s = sessions.get(r);
+      const p = s.parent === '' ? rootDoc : sessions.get(s.parent).doc;
+      return p ? !!findNode(p.nodes, s.branchId) : true; // inside a locked parent: exists but unreadable
+    },
+  };
 }
