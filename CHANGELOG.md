@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.0 — 2026-11-01
+
+- Release of sub-map regions, region folding, unseal UX and seal drafts (merged feature/seal-draft). Host API exports: `parseScopedId`, `revealScopedId`, `composeOutlineDoc` (regionFold), `createSealSessions`, `openSealedBranch`, seal-draft helpers and `versionLabels`, `mountUnlockPrompt`; Map handle `setFocus`.
+
 
 ### Unreleased (feature/submap-regions-unseal, mockup pass 04/05)
 - Unlocked region cloud: solid 1.5px #3d8a5f border, green tint, radius 12, "🔓 k1" label (resolves the open border question).
