@@ -14,6 +14,8 @@ import { parse } from '../parse.js';
 import { serialize } from '../serialize.js';
 import type { SealSessions } from '../sealSession.js';
 import type { RegionId } from '../hostApi.js';
+import { secureZoneChrome } from '../sealUi.js';
+import type { FocusLink } from '../focusLink.js';
 
 export interface OutlineEditorOptions {
   sessions: SealSessions;
@@ -21,6 +23,15 @@ export interface OutlineEditorOptions {
   askPassphrase?: (region: RegionId) => string | null | Promise<string | null>;
   /** Extra extensions for the nested secure-zone editor. */
   childExtensions?: Extension[];
+  /**
+   * Wrap width in ch for the secure zone (host map's `autoWidth:` → `autoWrapCh`). Host doc
+   * wins over the inner doc's own layout block, which is kept untouched in the payload.
+   */
+  textWidthCh?: (region: RegionId) => number | undefined;
+  /** Shared focus (Map ⇄ Outline ⇄ editor). With `followInText` the cursor follows it. */
+  focus?: FocusLink;
+  /** "Follow in text": default on (`resolveFollowInText`). Pauses while the user types. */
+  followInText?: () => boolean;
 }
 
 const ENC_RE = /<enc:[A-Za-z0-9_.-]+>/;
@@ -63,31 +74,12 @@ class SecureZone extends WidgetType {
   toDOM(): HTMLElement {
     const { sessions } = this.opts;
     const region = this.region;
-    const wrap = document.createElement('div');
-    wrap.className = 'of-secure-zone';
-    wrap.dataset.region = region;
-    const bar = document.createElement('div');
-    bar.className = 'of-secure-zone-bar';
-    const status = document.createElement('span');
-    status.className = 'of-secure-zone-status';
-    const btn = (label: string, fn: () => void) => {
-      const b = document.createElement('button');
-      b.type = 'button';
-      b.textContent = label;
-      b.addEventListener('click', fn);
-      bar.appendChild(b);
-      return b;
-    };
-    btn('Save', () => void sessions.save(region));
-    btn('Lock', () => void sessions.lock(region, 'user'));
-    btn('Remove seal', async () => {
-      const pass = await this.opts.askPassphrase?.(region);
-      if (pass) await sessions.removeSeal(region, pass);
-    });
-    bar.appendChild(status);
     const host = document.createElement('div');
     host.className = 'of-secure-zone-editor';
-    wrap.append(bar, host);
+    const ch = this.opts.textWidthCh?.(region);
+    if (ch) host.style.maxWidth = `${ch}ch`;
+    const zone = secureZoneChrome(host, { sessions, region, askPassphrase: this.opts.askPassphrase });
+    const wrap = zone.el;
     const s = sessions.get(region);
     const child = s.doc;
     let applying = false;
@@ -104,18 +96,14 @@ class SecureZone extends WidgetType {
             const next = parse(u.state.doc.toString());
             d.nodes.splice(0, d.nodes.length, ...next.nodes); // keep viewer identity
             sessions.markChanged(region);
+            sessions.touch();
           }),
+          EditorView.lineWrapping,
         ],
       }),
     });
-    const show = () => {
-      const cur = sessions.get(region);
-      status.textContent = cur.state === 'saving' ? 'Saving…' : cur.state === 'error' ? (cur.error?.message ?? 'Error') : cur.saved ? 'Saved' : cur.dirty ? 'Unsaved changes' : '';
-    };
-    const off = s.subscribe(show);
-    show();
     (wrap as HTMLElement & { _ofDestroy?: () => void })._ofDestroy = () => {
-      off();
+      zone.destroy();
       applying = true;
       view.destroy(); // drops the nested undo history with the plaintext
     };
@@ -179,13 +167,34 @@ export function outlineEditor(opts: OutlineEditorOptions): Extension[] {
     const offs = (['unlock', 'lock', 'change', 'error'] as const).map((t) => sessions.api.on(t, kick));
     return { destroy: () => offs.forEach((o) => o()) };
   });
-  return [field, guard, marks, live, theme];
+  const follow = ViewPlugin.define((view) => {
+    let typedAt = 0;
+    const onKey = () => (typedAt = Date.now());
+    view.dom.addEventListener('keydown', onKey);
+    const off = opts.focus?.subscribe((id, source) => {
+      if (source === 'editor' || !(opts.followInText?.() ?? true)) return;
+      if (Date.now() - typedAt < 1500) return; // paused while typing
+      const local = id.includes(':') ? id.slice(id.lastIndexOf(':') + 1) : id;
+      const doc = view.state.doc;
+      for (let i = 1; i <= doc.lines; i++) {
+        const line = doc.line(i);
+        if (line.text.includes(`<id:${local}>`)) {
+          view.dispatch({ selection: { anchor: line.from }, effects: EditorView.scrollIntoView(line.from, { y: 'center' }) });
+          return;
+        }
+      }
+    });
+    return { destroy: () => { off?.(); view.dom.removeEventListener('keydown', onKey); } };
+  });
+  return [field, guard, marks, live, follow, theme];
 }
 
 const theme = EditorView.baseTheme({
   '.of-secure-zone': { border: '2px solid rgba(46,160,67,0.7)', borderRadius: '8px', margin: '4px 0 8px 1.5em', background: 'rgba(46,160,67,0.06)' },
-  '.of-secure-zone-bar': { display: 'flex', gap: '6px', padding: '4px 6px', alignItems: 'center', fontSize: '12px' },
+  '.of-secure-zone-bar': { display: 'flex', flexWrap: 'wrap', gap: '6px', padding: '4px 6px', alignItems: 'center', fontSize: '12px' },
   '.of-secure-zone-status': { marginLeft: 'auto', color: '#1f7a35' },
+  '.of-secure-zone-end': { borderTop: '1px dashed rgba(46,160,67,0.7)', margin: '0 6px' },
+  '.of-sz-btn': { minHeight: '44px' },
   '.of-cm-enc': { color: '#1f7a35', fontWeight: '600' },
   '.of-cm-id': { opacity: '0.55' },
   '.of-cm-r, .of-cm-t': { textDecoration: 'underline dotted' },

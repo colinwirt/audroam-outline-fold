@@ -13,6 +13,8 @@ export interface MapRegion {
   kind: MapRegionKind;
   /** Visible label (a sealed region uses its public label, never the caption). */
   label?: string;
+  /** Unlocked sealed region (adds `map-region-unlocked`; the dashed border stays as is). */
+  unlocked?: boolean;
 }
 
 export interface RegionBox {
@@ -47,10 +49,25 @@ function esc(s: string): string {
 /** SVG for one region (drawn under edges and pills). */
 export function regionSvg(region: MapRegion, hull: RegionBox): string {
   const r = Math.min(28, hull.h / 2);
-  const icon = region.kind === 'sealed' ? LOCK : DOC;
+  const icon = region.unlocked ? '' : region.kind === 'sealed' ? LOCK : DOC;
   const label = region.label ? `<text x="14" y="4" class="map-region-label">${esc(region.label)}</text>` : '';
-  return `<g class="map-region map-region-${region.kind}" data-region="${esc(region.rootId)}" data-region-kind="${region.kind}" aria-hidden="true">
+  return `<g class="map-region map-region-${region.kind}${region.unlocked ? ' map-region-unlocked' : ''}" data-region="${esc(region.rootId)}" data-region-kind="${region.kind}" aria-hidden="true">
   <rect x="${hull.x}" y="${hull.y}" width="${hull.w}" height="${hull.h}" rx="${r}" ry="${r}" fill="var(--of-region-fill, rgba(201,162,39,0.10))" stroke="var(--of-region-stroke, rgba(201,162,39,0.55))" stroke-width="1.5" stroke-dasharray="6 4"/>
   <g transform="translate(${hull.x + 18} ${hull.y + 14})" color="var(--of-region-label, #8a6d12)" style="fill: var(--of-region-label, #8a6d12)">${icon}${label}</g>
 </g>`;
+}
+
+/** Greedy word wrap at `ch` characters (region pill captions; matches the box sizing width). */
+export function wrapPlain(text: string, ch: number): string[] {
+  const max = Math.max(4, Math.floor(ch));
+  const out: string[] = [];
+  let cur = '';
+  for (const w of text.split(/\s+/).filter(Boolean)) {
+    if (!cur) cur = w;
+    else if ((cur + ' ' + w).length <= max) cur += ' ' + w;
+    else { out.push(cur); cur = w; }
+    while (cur.length > max) { out.push(cur.slice(0, max)); cur = cur.slice(max); }
+  }
+  if (cur) out.push(cur);
+  return out;
 }

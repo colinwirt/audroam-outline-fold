@@ -32,6 +32,8 @@ export interface RegionHostSpec {
   doc: OutlineFoldDoc | null;
   folded: boolean;
   label?: string;
+  /** Sealed key id (shown as the `k1` chip on the locked pill and `🔓 k1` on the open cloud). */
+  kid?: string | null;
 }
 
 export interface PlacedBox extends RegionBox {

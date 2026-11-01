@@ -176,6 +176,11 @@ export interface OutlineFrontmatter {
    * (`5m` default, `90s`, `10m`, or `off` = 0). Unset means the 5 min default.
    */
   autoLockMs?: number;
+  /**
+   * `follow: on|off` in the layout block: the document default for "Follow in text" (editor
+   * follows Map/Outline focus). Unset = on. A per-user resume value overrides it.
+   */
+  followText?: boolean;
 }
 
 export interface FoldState {

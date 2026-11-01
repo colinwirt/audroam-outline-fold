@@ -35,7 +35,31 @@ export interface MapResumeState {
   camera?: MapCameraState;
   nudges?: Record<string, MapNodeNudge>;
   focusId?: string;
+  /** Per-user "Follow in text" toggle; overrides the layout block `follow:` default. */
+  follow?: boolean;
   savedAt?: number;
+}
+
+/**
+ * "Follow in text" in effect. Order: the user's resume toggle, then the layout block
+ * `follow:` (document default), then on.
+ */
+export function resolveFollowInText(fm: { followText?: boolean } | undefined | null, resume?: MapResumeState | null): boolean {
+  if (typeof resume?.follow === 'boolean') return resume.follow;
+  if (typeof fm?.followText === 'boolean') return fm.followText;
+  return true;
+}
+
+/**
+ * Menu toggle: write the value to both the layout block (doc default, saved with the note)
+ * and the user's resume state (restored on reload). Returns the next frontmatter.
+ */
+export function setFollowInText<F extends { followText?: boolean }>(fm: F | undefined, on: boolean, resumeKey?: string | null): F {
+  if (resumeKey) {
+    const cur = loadMapResume(resumeKey) ?? { version: 1 as const };
+    saveMapResume(resumeKey, { ...cur, follow: on });
+  }
+  return { ...(fm ?? ({} as F)), followText: on };
 }
 
 export interface MapResumeKeyParts {
@@ -134,6 +158,7 @@ export function saveMapResume(key: string, state: MapResumeState): void {
       : undefined,
     nudges: state.nudges ? { ...state.nudges } : undefined,
     focusId: state.focusId,
+    follow: typeof state.follow === 'boolean' ? state.follow : undefined,
     savedAt: Date.now(),
   };
   lsSet(key, JSON.stringify(payload));

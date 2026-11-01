@@ -383,6 +383,11 @@ function readFmLine(
     if (v !== null) fm.autoLockMs = v;
     return true;
   }
+  const follow = line.match(/^follow\s*:\s*(on|off|true|false)\s*$/i);
+  if (follow) {
+    fm.followText = /^(on|true)$/i.test(follow[1]!);
+    return true;
+  }
   const fontSize = line.match(/^fontSize\s*:\s*(\d+(?:\.\d+)?)\s*$/i);
   if (fontSize) {
     fm.fontSize = Number(fontSize[1]);
@@ -432,6 +437,7 @@ export function mergeFrontmatter(
   if (tail.fontSize !== undefined) out.fontSize = tail.fontSize;
   if (tail.autoWidth !== undefined) out.autoWidth = tail.autoWidth;
   if (tail.autoLockMs !== undefined) out.autoLockMs = tail.autoLockMs;
+  if (tail.followText !== undefined) out.followText = tail.followText;
   if (tail.noteUri !== undefined) out.noteUri = tail.noteUri;
   if (tail.noteMapUri !== undefined) out.noteMapUri = tail.noteMapUri;
   if (tail.noteDetailsUri !== undefined) out.noteDetailsUri = tail.noteDetailsUri;
@@ -512,6 +518,9 @@ export function formatLayoutBlock(
     }
     if (typeof frontmatter.autoLockMs === 'number' && frontmatter.autoLockMs >= 0) {
       lines.push(`autoLock: ${formatAutoLock(frontmatter.autoLockMs)}`);
+    }
+    if (typeof frontmatter.followText === 'boolean') {
+      lines.push(`follow: ${frontmatter.followText ? 'on' : 'off'}`);
     }
     for (const key of ['noteUri', 'noteMapUri', 'noteDetailsUri'] as const) {
       const uri = frontmatter[key];

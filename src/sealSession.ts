@@ -38,6 +38,8 @@ export interface SealSessionSnapshot {
   readonly error: { code: OFErrorCode; message: string } | null;
   /** Ui status string after a successful save ("Saved"), cleared on the next edit. */
   readonly saved: boolean;
+  /** After a wrong passphrase: ms until the state recovers to `sealed` (MPE-1 back-off), else 0. */
+  readonly retryAfterMs: number;
 }
 
 export interface SealSession extends SealSessionSnapshot {
@@ -63,6 +65,10 @@ export interface SealSessionsOptions {
   confirmLockDirty?: (region: RegionId) => 'save' | 'discard' | 'cancel' | Promise<'save' | 'discard' | 'cancel'>;
   /** Remove seal confirmation (after the passphrase check). Default: proceed. */
   confirmRemoveSeal?: (region: RegionId) => boolean | Promise<boolean>;
+  /** Back-off after the n-th consecutive wrong passphrase (ms). Default 1s, 2s, 4s … capped at 30s. */
+  backoffMs?: (failures: number) => number;
+  /** `reveal` / `focus` / `setFocus` commands (FOLD-8): usually `map.setFocus` / `revealScoped`. */
+  onFocusCommand?: (id: string, cmd: 'reveal' | 'focus' | 'setFocus', view?: 'map' | 'outline' | 'text') => void | Promise<void>;
   /** Install a `pagehide` wipe (default true when `window` exists). */
   wipeOnPagehide?: boolean;
 }
@@ -82,6 +88,10 @@ export interface SealSessions {
   markChanged(region: RegionId): void;
   /** Reset the idle timer (host calls on input). */
   touch(): void;
+  /** Ms left before the idle auto-lock (null when off or nothing is unlocked). For the "Idle lock m:ss" countdown. */
+  idleRemainingMs(now?: number): number | null;
+  /** Idle-lock ms in effect (option, then layout-block `autoLock:`, then 5 min; 0 = off). */
+  autoLockMs(): number;
   /** Banner for a region, derived from state only. */
   banner(region: RegionId): { kind: 'locked' | 'error'; text: string } | null;
   destroy(): void;
@@ -95,6 +105,9 @@ interface Impl {
   error: { code: OFErrorCode; message: string } | null;
   viewer: SealedViewer | null;
   saved: boolean;
+  failures: number;
+  retryAt: number;
+  retryTimer: ReturnType<typeof setTimeout> | null;
   subs: Set<(s: SealSessionSnapshot) => void>;
 }
 
@@ -133,6 +146,8 @@ export function createSealSessions(opts: SealSessionsOptions): SealSessions {
   const api = opts.api ?? createHostApi();
   const map = new Map<RegionId, Impl>();
   let idleTimer: ReturnType<typeof setTimeout> | null = null;
+  let idleDeadline = 0;
+  const backoff = opts.backoffMs ?? ((n: number) => Math.min(30_000, 1000 * 2 ** Math.max(0, n - 1)));
   const idleMs = () => opts.autoLockMs ?? opts.getDoc().frontmatter?.autoLockMs ?? DEFAULT_AUTO_LOCK_MS;
 
   const docOf = (region: RegionId): OutlineFoldDoc | null =>
@@ -149,6 +164,7 @@ export function createSealSessions(opts: SealSessionsOptions): SealSessions {
       dirty: !!s.viewer && !s.viewer.closed && s.viewer.isDirty(),
       error: s.error,
       saved: s.saved,
+      retryAfterMs: s.state === 'error' && s.retryAt ? Math.max(0, s.retryAt - Date.now()) : 0,
       doc: s.viewer && !s.viewer.closed ? s.viewer.doc : null,
       locked: !s.viewer || s.viewer.closed,
       subscribe: (fn) => {
@@ -178,21 +194,47 @@ export function createSealSessions(opts: SealSessionsOptions): SealSessions {
     const path = region.slice(2).split('/');
     const branchId = path[path.length - 1]!;
     const parent = path.length > 1 ? `s:${path.slice(0, -1).join('/')}` : '';
-    const n: Impl = { region, parent, branchId, state: 'sealed', error: null, viewer: null, saved: false, subs: new Set() };
+    const n: Impl = { region, parent, branchId, state: 'sealed', error: null, viewer: null, saved: false, failures: 0, retryAt: 0, retryTimer: null, subs: new Set() };
     map.set(region, n);
     return n;
   };
 
   const fail = (s: Impl, code: OFErrorCode) => {
+    let retryAfterMs: number | undefined;
+    if (code === 'bad-pass' && (!s.viewer || s.viewer.closed)) {
+      // Wrong passphrase: back off, then recover error → sealed so the user can retry.
+      s.failures++;
+      retryAfterMs = backoff(s.failures);
+      s.retryAt = Date.now() + retryAfterMs;
+      if (s.retryTimer) clearTimeout(s.retryTimer);
+      const recover = () => {
+        s.retryTimer = null;
+        s.retryAt = 0;
+        if (s.state === 'error' && (!s.viewer || s.viewer.closed)) set(s, 'sealed');
+      };
+      if (retryAfterMs <= 0) recover();
+      else {
+        s.retryTimer = setTimeout(recover, retryAfterMs);
+        (s.retryTimer as { unref?: () => void }).unref?.();
+      }
+      if (retryAfterMs <= 0) {
+        set(s, 'error', { code, message: MESSAGES[code] });
+        api.emit({ type: 'error', region: s.region, code, message: MESSAGES[code], retryAfterMs: 0 });
+        recover();
+        return;
+      }
+    }
     set(s, 'error', { code, message: MESSAGES[code] });
-    api.emit({ type: 'error', region: s.region, code, message: MESSAGES[code] });
+    api.emit({ type: 'error', region: s.region, code, message: MESSAGES[code], ...(retryAfterMs !== undefined ? { retryAfterMs } : {}) });
   };
 
   const armIdle = () => {
     if (idleTimer) clearTimeout(idleTimer);
     idleTimer = null;
+    idleDeadline = 0;
     const ms = idleMs();
     if (!ms || ![...map.values()].some((s) => s.viewer && !s.viewer.closed)) return;
+    idleDeadline = Date.now() + ms;
     idleTimer = setTimeout(() => void self.lock("all", "idle"), ms);
     (idleTimer as { unref?: () => void }).unref?.();
   };
@@ -240,6 +282,7 @@ export function createSealSessions(opts: SealSessionsOptions): SealSessions {
     async open(region, passphrase) {
       const s = impl(region);
       if (s.state === 'unlocking' || s.state === 'saving' || (s.viewer && !s.viewer.closed)) return;
+      if (s.state === 'error' && s.retryAt > Date.now()) return; // still backing off
       const pdoc = docOf(s.parent);
       if (!pdoc) return fail(s, 'bad-pass'); // parent still locked
       const node = findNode(pdoc.nodes, s.branchId);
@@ -265,6 +308,8 @@ export function createSealSessions(opts: SealSessionsOptions): SealSessions {
         s.viewer = null;
         return fail(s, e instanceof SealError || !(e instanceof Error) ? 'bad-pass' : /depth/i.test(e.message) ? 'depth' : 'bad-pass');
       }
+      s.failures = 0;
+      s.retryAt = 0;
       set(s, 'unlocked');
       api.emit({ type: 'unlock', region });
       armIdle();
@@ -354,6 +399,8 @@ export function createSealSessions(opts: SealSessionsOptions): SealSessions {
     },
 
     touch: armIdle,
+    idleRemainingMs: (now = Date.now()) => (idleDeadline ? Math.max(0, idleDeadline - now) : null),
+    autoLockMs: idleMs,
 
     banner(region) {
       const s = impl(region);
@@ -364,6 +411,7 @@ export function createSealSessions(opts: SealSessionsOptions): SealSessions {
 
     destroy() {
       if (idleTimer) clearTimeout(idleTimer);
+      for (const s of map.values()) if (s.retryTimer) clearTimeout(s.retryTimer);
       if (typeof window !== 'undefined') window.removeEventListener('pagehide', onPagehide);
       onPagehide();
       map.clear();
@@ -373,6 +421,9 @@ export function createSealSessions(opts: SealSessionsOptions): SealSessions {
   api.handle({
     open: (c) => self.open(c.region, c.passphrase),
     lock: (c) => self.lock(c.region, 'user'),
+    reveal: (c) => opts.onFocusCommand?.(c.id, 'reveal'),
+    focus: (c) => opts.onFocusCommand?.(c.id, 'focus', c.view),
+    setFocus: (c) => opts.onFocusCommand?.(c.id, 'setFocus'),
   });
   return self;
 }
@@ -398,7 +449,7 @@ export function regionHostsFromSessions(
         if (n.id && isSealedBranchPayload(n.sealed)) {
           const region = sessions.regionFor(n.id, parent);
           const s = sessions.get(region);
-          out.push({ id: region, kind: 'sealed', parent, anchor: n.id, doc: s.doc, folded: s.locked || folded(region), label: n.sealed?.pub });
+          out.push({ id: region, kind: 'sealed', parent, anchor: n.id, doc: s.doc, folded: s.locked || folded(region), label: n.sealed?.pub, kid: s.kid });
           if (s.doc && depth < MAX_SEAL_DEPTH) scan(s.doc, region, depth + 1);
         } else visit(n.children);
       });

@@ -15,13 +15,20 @@ export type OFEvent =
   | { type: 'save'; region: RegionId; payload: string }
   | { type: 'select'; id: ScopedId }
   | { type: 'change'; region: RegionId; dirty: boolean }
-  | { type: 'error'; region?: RegionId; code: OFErrorCode; message: string };
+  | { type: 'error'; region?: RegionId; code: OFErrorCode; message: string; retryAfterMs?: number }
+  /** Shared focus moved (Map click/keys, Outline click/keys, or `setFocus`). */
+  | { type: 'focusChange'; id: ScopedId; source: FocusSource };
+
+/** Who moved the shared focus. */
+export type FocusSource = 'map' | 'outline' | 'editor' | 'command';
 
 export type OFCommand =
   | { cmd: 'open'; region: RegionId; passphrase: string }
   | { cmd: 'lock'; region: RegionId | 'all' }
   | { cmd: 'reveal'; id: ScopedId }
-  | { cmd: 'focus'; id: ScopedId; view?: 'map' | 'outline' | 'text' };
+  | { cmd: 'focus'; id: ScopedId; view?: 'map' | 'outline' | 'text' }
+  /** Move the shared focus (Map + Outline + editor) to a scoped id; stops at a sealed region root. */
+  | { cmd: 'setFocus'; id: ScopedId };
 
 export type OFEventOf<T extends OFEvent['type']> = Extract<OFEvent, { type: T }>;
 export type OFCommandHandler = { [K in OFCommand['cmd']]?: (c: Extract<OFCommand, { cmd: K }>) => void | Promise<void> };

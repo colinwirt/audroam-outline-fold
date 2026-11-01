@@ -59,6 +59,8 @@ export interface AttachOutlineTreeOptions {
    * the location hash is left alone. `from` is the row the link sits on.
    */
   onHop?: (id: string, node: OutlineNode, from: OutlineNode | null) => void;
+  /** Row focus moved by click or keys (scoped id when mounted through `regionOutlineBridge`). */
+  onFocusChange?: (id: string) => void;
   /** When false, task clicks are ignored. Default true. */
   allowTaskToggle?: boolean;
 }
@@ -66,6 +68,8 @@ export interface AttachOutlineTreeOptions {
 export interface AttachOutlineTreeHandle {
   /** Re-apply roving tabindex + restore focus after an external paint. */
   refresh: (focusId?: string | null) => void;
+  /** Follow an outside focus: repaint, focus the row and scroll it into view (no `onFocusChange`). */
+  focus: (id: string) => void;
   /** Remove listeners and live region created by the helper. */
   detach: () => void;
 }
@@ -252,6 +256,26 @@ export function attachOutlineTree(
     lastFocusId = focusId;
     refresh(focusId);
     if (message) announce(getLive(), message);
+  };
+
+  let following = false;
+  const onFocusShare = (e: FocusEvent) => {
+    if (following) return;
+    const li = (e.target as HTMLElement | null)?.closest?.<HTMLElement>('[role="treeitem"][data-id]');
+    const id = li?.getAttribute('data-id');
+    if (id && rootEl.contains(li!)) opts.onFocusChange?.(id);
+  };
+  rootEl.addEventListener('focusin', onFocusShare);
+  const focusFromOutside = (id: string) => {
+    following = true;
+    try {
+      lastFocusId = id;
+      refresh(id);
+      const li = findTree(rootEl, prefix)?.querySelector<HTMLElement>(`[data-id="${CSS.escape(id)}"]`);
+      li?.scrollIntoView?.({ block: 'nearest' });
+    } finally {
+      following = false;
+    }
   };
 
   const onClick = (e: MouseEvent) => {
@@ -562,7 +586,9 @@ export function attachOutlineTree(
 
   return {
     refresh,
+    focus: focusFromOutside,
     detach: () => {
+      rootEl.removeEventListener('focusin', onFocusShare);
       rootEl.removeEventListener('click', onClick);
       rootEl.removeEventListener('keydown', onKeyDown);
       rootEl.removeEventListener('focusin', onFocusIn);

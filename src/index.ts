@@ -375,6 +375,8 @@ export {
   type ResumeLayoutLike,
   type StaleCheckResult,
   type DebouncedSave,
+  resolveFollowInText,
+  setFollowInText,
 } from './mapResume.js';
 
 export {
@@ -544,6 +546,7 @@ export {
   type OFErrorCode,
   type RegionId,
   type ScopedId,
+  type FocusSource,
 } from './hostApi.js';
 export {
   createSealSessions,
@@ -595,3 +598,18 @@ export {
   type OutlineRegionHost,
 } from './regionFold.js';
 export { loadOutlineEditor, type OutlineEditorModule } from './editorLoader.js';
+export { createFocusLink, type FocusLink } from './focusLink.js';
+export { wireFocus, type FocusWiring, type FocusWiringMap, type FocusWiringOutline } from './focusWiring.js';
+export {
+  mountUnlockPrompt,
+  secureZoneChrome,
+  mountMemoryViewer,
+  mountSealStatusChip,
+  clampPromptBox,
+  formatIdle,
+  draftStatus,
+  type UnlockPromptOptions,
+  type UnlockPromptHandle,
+  type SecureZoneChromeOptions,
+} from './sealUi.js';
+export { wrapPlain } from './mapRegion.js';

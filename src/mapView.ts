@@ -50,7 +50,7 @@ import {
   type PinchAnchor,
   type Pt,
 } from './mapGesture.js';
-import { regionHull, regionSvg, type MapRegion } from './mapRegion.js';
+import { regionHull, regionSvg, wrapPlain, type MapRegion } from './mapRegion.js';
 import { placeRegions, type PlacedBox, type PlacedRegion, type RegionHostSpec } from './regionLayout.js';
 import { createRegionFoldStore, isMemoryOnlyRegion, revealScopedId, type RegionFoldStore } from './regionFold.js';
 import { parseScopedId } from './scopedId.js';
@@ -350,6 +350,8 @@ export interface MapViewOptions {
   regionFold?: RegionFoldStore;
   /** A locked sealed region's fold handle was activated: ask the host to unlock (§R1 d). */
   onRegionUnlock?: (region: string) => void;
+  /** Map focus moved (click, keys, `setFocus`): scoped id (`region:node` inside a region). */
+  onFocusChange?: (scopedId: string) => void;
   getDoc: () => OutlineFoldDoc;
   setDoc: (d: OutlineFoldDoc) => void;
   getLayout: () => MapLayout;
@@ -527,6 +529,10 @@ export interface MapViewHandle {
    * (`onRegionUnlock`). Use for `<r:REGION:N>` links and the `reveal` / `focus` commands.
    */
   revealScoped: (id: string) => string;
+  /** Move Map focus to a scoped id: unfold the path, follow with the camera, stop at a sealed root. */
+  setFocus: (id: string) => string;
+  /** Current Map focus as a scoped id (region focus wins over the root focus). */
+  focusedScopedId: () => string | null;
   /**
    * Open the fold-to-level menu for a node (default: the selected node),
    * anchored at its fold handle, as a right-click or hold on the handle does.
@@ -1479,12 +1485,24 @@ export function createMapView(
   opts: MapViewOptions,
 ): MapViewHandle {
   host.classList.toggle('of-details', !!opts.details);
+  let lastFocusEmit: string | null = null;
+  let regionFocusRef: () => string | null = () => null;
+  const emitFocus = () => {
+    const id = regionFocusRef() ?? opts.getFocusId();
+    if (!id || id === lastFocusEmit) return;
+    lastFocusEmit = id;
+    opts.onFocusChange?.(id);
+  };
+  const setFocusId = (id: string) => {
+    setFocusIdRaw(id);
+    emitFocus();
+  };
   const {
     getDoc,
     setDoc,
     getLayout,
     getFocusId,
-    setFocusId,
+    setFocusId: setFocusIdRaw,
     onChange,
     ariaLabel = 'Outline mind map, left to right. Pan and zoom enabled.',
     isActive = () => true,
@@ -3512,9 +3530,11 @@ export function createMapView(
     if (hit.b.root || !h.doc || !hit.b.localId) return null;
     return { region: h.id, local: hit.b.localId, doc: rfold.viewDoc(h.id, h.doc) };
   }
+  regionFocusRef = () => regionFocus;
   function setRegionFocus(key: string | null): void {
     regionFocus = key;
     syncRegionFocus();
+    if (key) emitFocus();
   }
   function syncRegionFocus(): void {
     for (const el of host.querySelectorAll('.map-region-node.is-focused, .map-region.is-focused')) el.classList.remove('is-focused');
@@ -3744,7 +3764,9 @@ export function createMapView(
     const esc = (t: string) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
     return placed
       .map((r) => {
-        const cloud = regionSvg({ rootId: r.host.id, kind: r.host.kind, label: r.host.label }, r.hull);
+        // Open sealed cloud reads "🔓 k1" (border style unchanged; open question in CHANGELOG).
+        const cloudLabel = r.host.kind === 'sealed' && r.host.doc ? `🔓 ${r.host.kid ?? 'key'}` : r.host.label;
+        const cloud = regionSvg({ rootId: r.host.id, kind: r.host.kind, label: cloudLabel, unlocked: r.host.kind === 'sealed' && !!r.host.doc }, r.hull);
         const expandedCloud = !(r.boxes.length === 1 && r.boxes[0]!.root);
         // Region root fold handle on the open cloud (top-right): folds the whole region (§R1 b).
         const cloudFold = expandedCloud
@@ -3766,7 +3788,14 @@ export function createMapView(
                 `<rect class="map-fold-hit" x="${foldHandleGeometry(boxRight).cx - 16}" y="${cy - 16}" width="32" height="32" fill="transparent" cursor="pointer"/>`
               : '';
             const aria = `${t}${b.foldable ? (b.collapsed ? `, collapsed${b.hidden ? `, ${foldCountLabel(b.hidden)}` : ''}${locked ? ', locked' : ''}` : ', expanded') : ''}`;
-            return `<g class="map-region-node${folded ? ' map-region-pill' : ''}${b.collapsed ? ' collapsed' : ''}" id="${esc(regionDomId(b.key))}" role="treeitem" aria-selected="false"${b.foldable ? ` aria-expanded="${b.collapsed ? 'false' : 'true'}"` : ''} aria-label="${esc(aria)}" data-scoped-id="${esc(b.key)}" data-region-id="${esc(r.host.id)}"><rect x="${b.x}" y="${b.y}" width="${Math.max(1, b.w - slot)}" height="${b.h}" rx="${Math.min(14, b.h / 2)}"/><text x="${b.x + 12}" y="${cy + 4}">${esc(t)}</text>${chrome}</g>`;
+            const kidChip = locked && r.host.kid
+              ? `<g class="map-region-kid"><rect x="${b.x + b.w - slot - 34}" y="${b.y - 8}" width="30" height="16" rx="8"/><text x="${b.x + b.w - slot - 19}" y="${b.y + 4}" text-anchor="middle">${esc(r.host.kid.slice(0, 4))}</text></g>`
+              : '';
+            const lines = wrapPlain(t, autoCh());
+            const textSvg = lines.length <= 1
+              ? `<text x="${b.x + 12}" y="${cy + 4}">${esc(t)}</text>`
+              : `<text x="${b.x + 12}" y="${cy + 4 - ((lines.length - 1) * 16) / 2}">${lines.map((l, i) => `<tspan x="${b.x + 12}"${i ? ' dy="16"' : ''}>${esc(l)}</tspan>`).join('')}</text>`;
+            return `<g class="map-region-node${folded ? ' map-region-pill' : ''}${b.collapsed ? ' collapsed' : ''}" id="${esc(regionDomId(b.key))}" role="treeitem" aria-selected="false"${b.foldable ? ` aria-expanded="${b.collapsed ? 'false' : 'true'}"` : ''} aria-label="${esc(aria)}" data-scoped-id="${esc(b.key)}" data-region-id="${esc(r.host.id)}"><rect x="${b.x}" y="${b.y}" width="${Math.max(1, b.w - slot)}" height="${b.h}" rx="${Math.min(14, b.h / 2)}"/>${textSvg}${chrome}${kidChip}</g>`;
           })
           .join('');
         return cloud + edges + pills + cloudFold;
@@ -4557,6 +4586,12 @@ export function createMapView(
     if (levelMenu) positionLevelMenu();
     if (linkPop) positionLinkPop();
     if (regionFocus) syncRegionFocus();
+    // Unlocked sealed anchors: tint the parent pill green.
+    for (const g of host.querySelectorAll('.map-node.is-unlocked-anchor')) g.classList.remove('is-unlocked-anchor');
+    for (const r of placed) {
+      if (r.host.kind !== 'sealed' || !r.host.doc || r.host.parent) continue;
+      host.querySelector(`.map-node[data-id="${CSS.escape(r.host.anchor)}"]`)?.classList.add('is-unlocked-anchor');
+    }
     for (const fn of [...paintListeners]) {
       try {
         fn();
@@ -6322,7 +6357,7 @@ export function createMapView(
     host.classList.toggle('of-details', !!on);
   }
 
-  return {
+  const handle: MapViewHandle = {
     mountRegion(h: RegionHostSpec): MapRegionHandle {
       // Fold state lives in the store keyed by region id, so it survives remount (§R1 c).
       mounted.set(h.id, { ...h, folded: false });
@@ -6346,6 +6381,17 @@ export function createMapView(
     placedRegions: () => placed,
     regionFold: rfold,
     focusRegionNode: (scoped: string | null) => setRegionFocus(scoped),
+    focusedScopedId: () => regionFocus ?? (getFocusId() || null),
+    setFocus: (id: string) => {
+      const t = handle.revealScoped(id);
+      // Camera: root targets follow via pendingFollow; region targets centre their box.
+      const b = placed.flatMap((r) => r.boxes).find((x) => x.key === t);
+      if (b) {
+        const rect = host.getBoundingClientRect();
+        panBy(rect.width / 2 - (b.x + b.w / 2) * cam.k - cam.x, rect.height / 2 - (b.y + b.h / 2) * cam.k - cam.y);
+      }
+      return t;
+    },
     revealScoped: (id: string) => {
       const res = revealScopedId(id, {
         store: rfold,
@@ -6420,6 +6466,7 @@ export function createMapView(
     },
     focusNode,
   };
+  return handle;
 }
 
 // Re-export shortLabel for tests that imported behaviour indirectly — not public API.
