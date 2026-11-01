@@ -21,6 +21,7 @@ import {
   KID_RE,
   isSealedBranchPayload,
 } from './sealedState.js';
+import { applyAutosave, applyDiscard, applyRestore, applySave, ctHash, draftStateOf, draftTime, type SealDraftState } from './sealDraft.js';
 import type { OutlineFoldDoc, OutlineNode, SealKeyEntry, SealKeyringEntry, SealedPayload } from './types.js';
 
 export { SEAL_ALG, SEAL_ALG_V1, SEALED_PLACEHOLDER };
@@ -54,9 +55,12 @@ export function setSealCipher(c: SealCipher | null): void {
 
 /** The one error every unlock failure raises (wrong key, tamper, moved blob, bad header). */
 export class SealError extends Error {
-  constructor() {
-    super("Can't unlock");
+  /** SEAL-DRAFT: `locked` (key gone, autosave refused) or `verify` (save did not decrypt back). */
+  readonly code?: 'locked' | 'verify';
+  constructor(code?: 'locked' | 'verify') {
+    super(code === 'locked' ? 'Locked' : code === 'verify' ? "Save could not be verified; nothing was changed" : "Can't unlock");
     this.name = 'SealError';
+    if (code) this.code = code;
   }
 }
 
@@ -720,8 +724,8 @@ function innerJson(caption: string, body: string): string {
 }
 
 /** Decrypt one branch. Returns plaintext caption and body; never touches the doc. */
-async function decryptBranch(doc: OutlineFoldDoc, node: OutlineNode, ctx: SealContext): Promise<{ caption: string; body: string }> {
-  const p = node.sealed;
+async function decryptBranch(doc: OutlineFoldDoc, node: OutlineNode, ctx: SealContext, ctOverride?: string): Promise<{ caption: string; body: string }> {
+  const p = node.sealed && ctOverride ? { ...node.sealed, ciphertext: ctOverride } : node.sealed;
   if (!node.id || !p || !isSealedBranchPayload(p) || !p.ciphertext) throw new SealError();
   if (p.alg === SEAL_ALG_V1 && !p.kid) throw new SealError();
   if (sealedDepth(ctx, doc) >= MAX_SEAL_DEPTH) throw new SealError();
@@ -770,7 +774,40 @@ export interface SealedViewer {
   close(): void;
   /** Open a nested sealed branch inside this viewer in a further viewer. */
   open(branchId: string): Promise<SealedViewer>;
+  /**
+   * SEAL-DRAFT: `clean` (no autosave), `unconfirmed` (opened on / wrote an autosave),
+   * `conflict` (can't tell which is newer: Save needs `resolve`).
+   */
+  readonly draftState: SealDraftState;
+  /** Set when an autosave slot exists but did not decrypt (the loaded text is shown). */
+  readonly draftError?: string;
+  /** True when the current autosave slot was written by this viewer (this device). */
+  readonly autosaveWrittenHere: boolean;
+  /** In-memory plaintexts for the version chooser (never persisted). */
+  draftTexts(): { loaded: string; autosave?: string };
+  /** Encrypt the current text into the autosave slot. Returns false when nothing was written. */
+  autosave(): Promise<boolean>;
+  /** Move the autosave to the discarded slot and show the loaded text. */
+  discardAutosave(): Promise<void>;
+  /** Bring the discarded slot back as the autosave (unconfirmed). */
+  restoreDiscarded(): Promise<void>;
 }
+
+/** Host hooks for a viewer (SEAL-DRAFT). */
+export interface SealedViewerHooks {
+  /** Called after the viewer changes the branch payload (autosave, save, discard, restore). */
+  onChange?: (payload: SealedPayload) => void;
+  /** Clock (tests). */
+  now?: () => Date;
+}
+
+let verifyTamper: ((text: string) => string) | null = null;
+/** Test-only: corrupt the verify decrypt in save() to exercise the fail-closed path. */
+export function __setSaveVerifyTamperForTest(fn: ((text: string) => string) | null): void {
+  verifyTamper = fn;
+}
+
+const V1_EDIT_ERR = 'Sealed viewer: of-seal-v1 is decrypt-only; migrate the document (migrateSealedV1) before editing';
 
 const liveViewers = new Set<SealedViewer>();
 
@@ -818,10 +855,26 @@ export async function openSealedBranch(
   host: OutlineFoldDoc,
   branchId: string,
   ctx: SealContext,
+  hooks: SealedViewerHooks = {},
 ): Promise<SealedViewer> {
   const node = findById(host.nodes, branchId);
   if (!node || !isSealedBranchPayload(node.sealed)) throw new SealError();
   const { caption, body } = await decryptBranch(host, node, ctx);
+  const now = () => draftTime(hooks.now?.() ?? new Date());
+  // SD-6: open on the autosave when present; conflict when its base is missing or stale.
+  let draftState: SealDraftState = draftStateOf(node.sealed);
+  let draftError: string | undefined;
+  let autoText: string | undefined;
+  if (node.sealed!.autosave) {
+    try {
+      const a = await decryptBranch(host, node, ctx, node.sealed!.autosave.ciphertext);
+      autoText = innerJson(a.caption, a.body);
+    } catch {
+      draftError = "Autosave can't be opened; showing the saved version";
+      draftState = 'conflict';
+    }
+  }
+  let autosaveWrittenHere = false;
   const opened: SealedPayload = { ...node.sealed! };
   const isV2 = opened.alg === SEAL_ALG;
   const kid = opened.kid ?? (isV2 ? parseBranchCtV2(opened.ciphertext!).kid : '');
@@ -835,8 +888,9 @@ export async function openSealedBranch(
     kdf: kdf0,
   });
   const depth = sealedDepth(ctx, host) + 1;
-  const sub = parse(body);
-  const root: OutlineNode = { id: branchId, title: caption, depth: 0, children: sub.nodes } as OutlineNode;
+  const shown = autoText ? (JSON.parse(autoText) as { caption: string; body: string }) : { caption, body };
+  const sub = parse(shown.body);
+  const root: OutlineNode = { id: branchId, title: shown.caption, depth: 0, children: sub.nodes } as OutlineNode;
   const reDepth = (list: OutlineNode[], d: number) => list.forEach((c) => { c.depth = d; if (c.children) reDepth(c.children, d + 1); });
   reDepth(sub.nodes, 1);
   // The viewer shares the key list read-only (frozen copies) so nested branches can open.
@@ -856,8 +910,36 @@ export async function openSealedBranch(
     return innerJson(r.title, serialize({ nodes: shift(kids, 0), fold: { mode: '-', ids: [] }, ...(doc.sealedOrphans ? { sealedOrphans: doc.sealedOrphans } : {}) }));
   };
   let original = innerJson(caption, body);
+  let lastAuto: string | undefined = autoText;
   const children = new Set<SealedViewer>();
   let closed = false;
+  /** Replace the viewer content (same root object) with an inner JSON text. */
+  const showText = (json: string) => {
+    const inner = JSON.parse(json) as { caption: string; body: string };
+    const r = doc.nodes[0]!;
+    const next = parse(inner.body);
+    reDepth(next.nodes, 1);
+    r.title = inner.caption;
+    r.children = next.nodes;
+    if (next.sealedOrphans) doc.sealedOrphans = next.sealedOrphans;
+    else delete doc.sealedOrphans;
+  };
+  /** SD-4: only the loaded ct (plus kid/alg/kdf) is compared; draft slots never trip it. */
+  const guard = () => {
+    if (closed) throw new Error('Sealed viewer is closed');
+    const target = findById(host.nodes, branchId);
+    if (target !== node) throw new Error(`Sealed viewer: branch ${branchId} is no longer in the host document`);
+    if (!mode.cipher) throw new Error(V1_EDIT_ERR);
+    const cur = node.sealed;
+    if (!cur || (cur.kid ?? mode.kid) !== mode.kid || cur.alg !== mode.alg || cur.ciphertext !== opened.ciphertext)
+      throw new Error(`Sealed viewer: branch ${branchId} payload changed outside the viewer; refusing to overwrite`);
+    if (kdfOf(host) !== mode.kdf) throw new Error('Sealed viewer: key entry changed; re-sealing refused');
+    return cur;
+  };
+  const commit = (next: SealedPayload) => {
+    node.sealed = next;
+    hooks.onChange?.(next);
+  };
   const viewer: ViewerImpl = {
     host,
     branchId,
@@ -866,34 +948,103 @@ export async function openSealedBranch(
     get closed() {
       return closed;
     },
+    get draftState() {
+      return draftState;
+    },
+    get draftError() {
+      return draftError;
+    },
+    get autosaveWrittenHere() {
+      return autosaveWrittenHere;
+    },
+    draftTexts() {
+      return lastAuto !== undefined ? { loaded: original, autosave: lastAuto } : { loaded: original };
+    },
     isDirty() {
       return !closed && snapshot() !== original;
     },
+    async autosave() {
+      if (closed || !isKeyUnlocked(mode.kid)) throw new SealError('locked');
+      const cur = guard();
+      // Never rebase a version we can't place: the user must choose first (SD-10).
+      if (draftState === 'conflict') return false;
+      const pt = snapshot();
+      if (pt === (lastAuto ?? original)) return false;
+      const ct = await encryptV2(mode.kid, mode.cipher!, branchId, ctx, pt);
+      if (closed || !isKeyUnlocked(mode.kid)) throw new SealError('locked');
+      commit(applyAutosave(guard(), ct, now()));
+      lastAuto = pt;
+      autosaveWrittenHere = true;
+      draftState = 'unconfirmed';
+      return true;
+    },
+    async discardAutosave() {
+      const cur = guard();
+      if (!cur.autosave) throw new Error('Sealed viewer: no autosave to discard');
+      commit(applyDiscard(cur, now()));
+      lastAuto = undefined;
+      autosaveWrittenHere = false;
+      draftState = 'clean';
+      draftError = undefined;
+      showText(original);
+    },
+    async restoreDiscarded() {
+      let cur = guard();
+      if (!cur.discarded) throw new Error('Sealed viewer: no discarded version to restore');
+      const g = await decryptBranch(host, node, ctx, cur.discarded.ciphertext);
+      // Keep unsaved typing: flush it into the autosave first so the swap loses nothing.
+      if (draftState !== 'conflict' && snapshot() !== (lastAuto ?? original)) {
+        await viewer.autosave();
+        cur = guard();
+      }
+      commit(applyRestore(cur, now()));
+      const text = innerJson(g.caption, g.body);
+      lastAuto = text;
+      autosaveWrittenHere = true;
+      draftState = 'unconfirmed';
+      draftError = undefined;
+      showText(text);
+    },
     async save(opts?: Record<string, unknown>) {
       if (closed) throw new Error('Sealed viewer is closed');
-      if (opts && Object.keys(opts).length)
+      const keys = Object.keys(opts ?? {});
+      const resolve = opts?.resolve;
+      if (keys.some((k) => k !== 'resolve') || (resolve !== undefined && resolve !== 'keep-autosave' && resolve !== 'keep-loaded'))
         throw new Error('Sealed viewer: kid, alg and params are fixed; use an explicit key rotation instead');
-      const target = findById(host.nodes, branchId);
-      if (target !== node) throw new Error(`Sealed viewer: branch ${branchId} is no longer in the host document`);
-      if (!mode.cipher)
-        throw new Error('Sealed viewer: of-seal-v1 is decrypt-only; migrate the document (migrateSealedV1) before editing');
-      const cur = node.sealed;
-      if (!cur || (cur.kid ?? mode.kid) !== mode.kid || cur.alg !== mode.alg || cur.ciphertext !== opened.ciphertext)
-        throw new Error(`Sealed viewer: branch ${branchId} payload changed outside the viewer; refusing to overwrite`);
-      if (kdfOf(host) !== mode.kdf) throw new Error('Sealed viewer: key entry changed; re-sealing refused');
+      const cur = guard();
+      if (draftState === 'conflict' && !resolve)
+        throw new Error("Sealed viewer: can't tell which version is newer; choose one (save({ resolve: 'keep-autosave' | 'keep-loaded' }))");
+      if (resolve === 'keep-loaded') {
+        if (cur.autosave) await viewer.discardAutosave();
+        return;
+      }
       const same = <T extends { kid: string; kdf: string }>(a: T[] | undefined, b: T[] | undefined) =>
         (a?.length ?? 0) === (b?.length ?? 0) && (a ?? []).every((k, i) => k.kid === b![i]!.kid && k.kdf === b![i]!.kdf);
       if (!same(doc.keys, host.keys) || !same(doc.keyring, host.keyring))
         throw new Error('Sealed viewer: key list is read-only in the viewer');
       for (const c of children) if (!c.closed && c.isDirty()) throw new Error('Sealed viewer: save or close the nested viewer first');
       const pt = snapshot(); // also runs the fail-closed checks on the inner content
-      if (pt === original) return;
-      const ct = await encryptV2(mode.kid, mode.cipher, branchId, ctx, pt);
-      const next: SealedPayload = { kid: mode.kid, alg: mode.alg, ciphertext: ct };
-      if (opened.pub) next.pub = opened.pub;
-      node.sealed = next;
+      if (pt === original && !cur.autosave) return;
+      const ct = await encryptV2(mode.kid, mode.cipher!, branchId, ctx, pt);
+      // SD-7 verify: decrypt the new ct back before anything moves; else both versions stay.
+      let back: string;
+      try {
+        const v = await decryptBranch(host, { ...node, sealed: { ...cur, ciphertext: ct } }, ctx);
+        back = innerJson(v.caption, v.body);
+        if (verifyTamper) back = verifyTamper(back);
+      } catch {
+        throw new SealError('verify');
+      }
+      if (back !== pt) throw new SealError('verify');
+      const base: SealedPayload = { ...cur, kid: mode.kid, alg: mode.alg };
+      if (opened.pub) base.pub = opened.pub;
+      commit(applySave(base, ct, now()));
       opened.ciphertext = ct;
       original = pt;
+      lastAuto = undefined;
+      autosaveWrittenHere = false;
+      draftState = 'clean';
+      draftError = undefined;
     },
     close() {
       if (closed) return;
