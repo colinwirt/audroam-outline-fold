@@ -519,6 +519,7 @@ export {
   closeAllViewers,
   type SealedViewer,
   type SealedViewerMode,
+  type SealedViewerHooks,
   validateSealedBranches,
   parseKdfHeader,
   parseBranchCt,
@@ -527,7 +528,17 @@ export {
   type Argon2Provider,
   type KdfParams,
 } from './sealedBranch.js';
-export type { SealKeyEntry, SealKeyringEntry } from './types.js';
+export type { SealKeyEntry, SealKeyringEntry, SealedDraftSlot, SealedDiscardedSlot } from './types.js';
+export {
+  ctHash,
+  draftStateOf,
+  draftTime,
+  applyAutosave,
+  applySave,
+  applyDiscard,
+  applyRestore,
+  type SealDraftState,
+} from './sealDraft.js';
 export { parseKeysBlock, formatKeysBlock, parseKeyringBlock, formatKeyringBlock } from './payloads.js';
 export {
   SealedSaveError,
@@ -610,6 +621,18 @@ export {
   clampPromptBox,
   formatIdle,
   draftStatus,
+  versionLabels,
+  versionDiff,
+  diffCounts,
+  sealMenuItems,
+  scheduleSealAutosave,
+  CANT_TELL_LABEL,
+  type VersionDiffOp,
+  type VersionLabels,
+  type VersionLabelOptions,
+  type SealMenuItem,
+  type SealAutosaveOptions,
+  type SealAutosaveScheduler,
   type UnlockPromptOptions,
   type UnlockPromptHandle,
   type SecureZoneChromeOptions,

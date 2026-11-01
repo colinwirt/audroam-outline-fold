@@ -11,6 +11,7 @@
 import type { RegionId } from './hostApi.js';
 import type { SealSessions, SealSessionSnapshot } from './sealSession.js';
 import { serialize } from './serialize.js';
+import { SealError, type SealedViewer } from './sealedBranch.js';
 
 const el = <K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: string): HTMLElementTagNameMap[K] => {
   const e = document.createElement(tag);
@@ -424,4 +425,270 @@ export function promptPassphrase(o: PassphrasePromptOptions): Promise<boolean> {
     if (o.initial) (h.el.querySelector('.of-unlock-pass') as HTMLInputElement).value = o.initial;
     void h.done.then(resolve);
   });
+}
+
+// ---------- SEAL-DRAFT (spec 20261101 SD-5, SD-9, SD-10) ----------
+
+/** One line op of a version preview. Text only; never persisted. */
+export interface VersionDiffOp {
+  op: 'same' | 'add' | 'del';
+  line: string;
+}
+
+/** Line diff (LCS) from `a` to `b`. Inputs are plaintexts held in memory. */
+export function versionDiff(a: string, b: string): VersionDiffOp[] {
+  const A = a.split('\n'), B = b.split('\n');
+  const n = A.length, m = B.length;
+  const L: number[][] = Array.from({ length: n + 1 }, () => new Array<number>(m + 1).fill(0));
+  for (let i = n - 1; i >= 0; i--)
+    for (let j = m - 1; j >= 0; j--) L[i]![j] = A[i] === B[j] ? L[i + 1]![j + 1]! + 1 : Math.max(L[i + 1]![j]!, L[i]![j + 1]!);
+  const out: VersionDiffOp[] = [];
+  let i = 0, j = 0;
+  while (i < n && j < m) {
+    if (A[i] === B[j]) { out.push({ op: 'same', line: A[i]! }); i++; j++; }
+    else if (L[i + 1]![j]! >= L[i]![j + 1]!) out.push({ op: 'del', line: A[i++]! });
+    else out.push({ op: 'add', line: B[j++]! });
+  }
+  while (i < n) out.push({ op: 'del', line: A[i++]! });
+  while (j < m) out.push({ op: 'add', line: B[j++]! });
+  return out;
+}
+
+/** Inner viewer JSON → readable lines (caption, then the outline body). */
+function versionLines(inner: string): string {
+  try {
+    const v = JSON.parse(inner) as { caption: string; body: string };
+    return `${v.caption}\n${v.body.replace(/\n+$/, '')}`;
+  } catch {
+    return inner;
+  }
+}
+
+/** `+3/−1 lines` between the loaded and autosave texts (counts only). */
+export function diffCounts(a: string, b: string): { add: number; del: number } {
+  let add = 0, del = 0;
+  for (const o of versionDiff(versionLines(a), versionLines(b))) {
+    if (o.op === 'add') add++;
+    else if (o.op === 'del') del++;
+  }
+  return { add, del };
+}
+
+export interface VersionLabelOptions {
+  now?: Date;
+  /** Host locale for times (default: runtime locale). */
+  locale?: string;
+  timeZone?: string;
+  /**
+   * Label for an autosave not written in this session, e.g. `other device` (the host decides,
+   * e.g. from its own 30-day cross-device lookback). Return undefined to show nothing.
+   */
+  otherDeviceLabel?: (viewer: SealedViewer) => string | undefined;
+}
+
+export interface VersionLabels {
+  saved: string;
+  autosave?: string;
+  discarded?: string;
+  /** True when Save needs an explicit choice. */
+  conflict: boolean;
+}
+
+export const CANT_TELL_LABEL = "Can't tell which is newer";
+
+function clock(iso: string | undefined, o: VersionLabelOptions): string | undefined {
+  if (!iso) return undefined;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return undefined;
+  const s = new Intl.DateTimeFormat(o.locale, { hour: 'numeric', minute: '2-digit', ...(o.timeZone ? { timeZone: o.timeZone } : {}) }).format(d);
+  return s.replace(/\s*([AaPp])\.?\s*[Mm]\.?$/, (_m, x: string) => `${x.toLowerCase()}m`);
+}
+
+/**
+ * Plain-string labels for the version chooser:
+ * `Autosave · 2:12pm · this device · +3 lines` and `Saved · 1:40pm`.
+ * In conflict both carry `Can't tell which is newer`.
+ */
+export function versionLabels(viewer: SealedViewer, o: VersionLabelOptions = {}): VersionLabels {
+  const p = findPayload(viewer);
+  const conflict = viewer.draftState === 'conflict';
+  const join = (...xs: (string | undefined)[]) => xs.filter(Boolean).join(' · ');
+  const saved = join('Saved', clock(p?.at, o), conflict ? CANT_TELL_LABEL : undefined);
+  const out: VersionLabels = { saved, conflict };
+  if (p?.autosave) {
+    const t = viewer.draftTexts();
+    let delta: string | undefined;
+    if (t.autosave !== undefined) {
+      const { add, del } = diffCounts(t.loaded, t.autosave);
+      const parts = [add ? `+${add}` : '', del ? `\u2212${del}` : ''].filter(Boolean);
+      delta = parts.length ? `${parts.join('/')} line${add + del === 1 ? '' : 's'}` : 'no changes';
+    }
+    const where = viewer.autosaveWrittenHere ? 'this device' : o.otherDeviceLabel?.(viewer);
+    out.autosave = join('Autosave', clock(p.autosave.at, o), where, conflict ? CANT_TELL_LABEL : delta);
+  }
+  if (p?.discarded) out.discarded = join('Discarded', clock(p.discarded.at, o));
+  return out;
+}
+
+function findPayload(viewer: SealedViewer) {
+  const host = (viewer as SealedViewer & { host?: import('./types.js').OutlineFoldDoc }).host;
+  let hit: import('./types.js').SealedPayload | undefined;
+  const walk = (ns: import('./types.js').OutlineNode[] | undefined) => {
+    for (const n of ns ?? []) {
+      if (hit) return;
+      if (n.id === viewer.branchId && n.sealed) hit = n.sealed;
+      walk(n.children);
+    }
+  };
+  walk(host?.nodes);
+  return hit;
+}
+
+export interface SealMenuItem {
+  id: 'restore-discarded' | 'discard-autosave';
+  label: string;
+  run: () => Promise<void>;
+}
+
+/** More ▾ items for a viewer. `Restore discarded version` shows only while a discarded slot exists. */
+export function sealMenuItems(viewer: SealedViewer): SealMenuItem[] {
+  const p = findPayload(viewer);
+  const items: SealMenuItem[] = [];
+  if (viewer.closed || !p) return items;
+  if (p.autosave) items.push({ id: 'discard-autosave', label: 'Discard autosave', run: () => viewer.discardAutosave() });
+  if (p.discarded) items.push({ id: 'restore-discarded', label: 'Restore discarded version', run: () => viewer.restoreDiscarded() });
+  return items;
+}
+
+/** Minimal event target (window / document). */
+interface Listenable {
+  addEventListener(type: string, fn: () => void): void;
+  removeEventListener(type: string, fn: () => void): void;
+}
+
+export interface SealAutosaveOptions {
+  /** Typing pause before a flush (default 1500 ms). */
+  idleMs?: number;
+  /** Cap during continuous typing (default 10 s). */
+  maxMs?: number;
+  /** Minimum gap between flushes when saves are fast (default 5 s). */
+  minGapMs?: number;
+  /** Back-off ceiling on slow or failed saves (default 30 s). */
+  maxGapMs?: number;
+  /** A save slower than this counts as slow (default 1000 ms). */
+  slowMs?: number;
+  now?: () => number;
+  setTimer?: (fn: () => void, ms: number) => unknown;
+  clearTimer?: (h: unknown) => void;
+  /** `pagehide` source (window). */
+  win?: Listenable;
+  /** `visibilitychange` source (document); flushes when `visibilityState` is hidden. */
+  doc?: Listenable & { visibilityState?: string };
+  /** Called with the error when a flush throws (locked stops the scheduler). */
+  onError?: (e: unknown) => void;
+}
+
+export interface SealAutosaveScheduler {
+  /** Call on every edit. */
+  edit(): void;
+  /** Flush now (ignores the gap). */
+  flush(): Promise<void>;
+  /** Flush, then stop (call before clearKeys / auto-lock). */
+  lock(): Promise<void>;
+  stop(): void;
+  /** Host hook: how long the host's persistence of the last autosave took, and whether it worked. */
+  reportSaveResult(ms: number, ok: boolean): void;
+  readonly gapMs: number;
+  readonly stopped: boolean;
+}
+
+/**
+ * Autosave cadence for a sealed viewer (host-owned). Debounces on a typing pause, caps at
+ * `maxMs` during continuous typing, and keeps at least `gapMs` between flushes. The gap is
+ * `minGapMs` (~5 s) while saves are fast and doubles on slow or failed saves up to `maxGapMs`
+ * (30 s); fast saves bring it back down. Lock, `pagehide` and a hidden tab flush at once.
+ */
+export function scheduleSealAutosave(viewer: SealedViewer, o: SealAutosaveOptions = {}): SealAutosaveScheduler {
+  const idleMs = o.idleMs ?? 1500, maxMs = o.maxMs ?? 10_000;
+  const minGap = o.minGapMs ?? 5000, maxGap = o.maxGapMs ?? 30_000, slowMs = o.slowMs ?? 1000;
+  const now = o.now ?? (() => Date.now());
+  const setTimer = o.setTimer ?? ((fn, ms) => setTimeout(fn, ms));
+  const clearTimer = o.clearTimer ?? ((h) => clearTimeout(h as ReturnType<typeof setTimeout>));
+  let gap = minGap;
+  let timer: unknown = null;
+  let firstEdit: number | null = null;
+  let lastEdit = 0;
+  let lastFlush = -Infinity;
+  let pending = false;
+  let inflight: Promise<void> | null = null;
+  let stopped = false;
+
+  const backoff = () => { gap = Math.min(maxGap, gap * 2); };
+  const arm = () => {
+    if (timer !== null) clearTimer(timer);
+    timer = null;
+    if (stopped || !pending || firstEdit === null) return;
+    const due = Math.max(Math.min(lastEdit + idleMs, firstEdit + maxMs), lastFlush + gap);
+    timer = setTimer(() => { timer = null; void run(); }, Math.max(0, due - now()));
+  };
+  const run = async (): Promise<void> => {
+    if (stopped && !pending) return;
+    if (inflight) { await inflight; if (!pending) return; }
+    pending = false;
+    firstEdit = null;
+    lastFlush = now();
+    inflight = (async () => {
+      try {
+        await viewer.autosave();
+      } catch (e) {
+        if (e instanceof SealError && e.code === 'locked') stop();
+        else backoff();
+        o.onError?.(e);
+      }
+    })();
+    try { await inflight; } finally { inflight = null; }
+    arm();
+  };
+  const onHide = () => { if (!o.doc || o.doc.visibilityState === 'hidden') void api.flush(); };
+  const onPagehide = () => void api.flush();
+  o.win?.addEventListener('pagehide', onPagehide);
+  o.doc?.addEventListener('visibilitychange', onHide);
+  function stop() {
+    stopped = true;
+    pending = false;
+    if (timer !== null) clearTimer(timer);
+    timer = null;
+    o.win?.removeEventListener('pagehide', onPagehide);
+    o.doc?.removeEventListener('visibilitychange', onHide);
+  }
+  const api: SealAutosaveScheduler = {
+    edit() {
+      if (stopped) return;
+      const t = now();
+      lastEdit = t;
+      if (firstEdit === null) firstEdit = t;
+      pending = true;
+      arm();
+    },
+    async flush() {
+      if (stopped) return;
+      if (timer !== null) clearTimer(timer);
+      timer = null;
+      pending = true;
+      await run();
+    },
+    async lock() {
+      if (!stopped) await api.flush();
+      stop();
+    },
+    stop,
+    reportSaveResult(ms: number, ok: boolean) {
+      if (!ok || ms > slowMs) backoff();
+      else gap = Math.max(minGap, gap / 2);
+      arm();
+    },
+    get gapMs() { return gap; },
+    get stopped() { return stopped; },
+  };
+  return api;
 }

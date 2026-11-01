@@ -90,6 +90,7 @@ ins-remote:
 | Inline code | Nothing between backticks is read as a tag, id, note link or fold marker |
 | `<private>` / `<encrypted>` | Lock chrome (Unlock vs Decrypt) |
 | `--- payloads ---` | Trailer map keyed by node **id** → `{ kid, ct? \| uri?, alg? }` |
+| Draft keys (ct only) | `at`, `base`; `auto-ct`, `auto-at`, `auto-base`; `gone-ct`, `gone-at`, `gone-by` (`save`\|`discard`), `gone-from` (`loaded`\|`autosave`). `base` = `h:` + b64u(SHA-256(ct)[0..16]). Clear text never persists; ct-only notes round-trip byte-identical |
 | Fence aliases | `payloads` / `sealed` / `enc` accepted on parse |
 | Inline `<enc:…>` | Still parsed (compat); **serialize writes trailer only** |
 | Exactly one of `ct` \| `uri` | Inline ciphertext **or** remote blob URI |
