@@ -52,7 +52,8 @@ Sources: README sections, CHANGELOG, `src/index.ts` exports, and the branch spec
 | F24 | Lazy CM6 editor with secure zone (`./editor` export) | editor/, editorLoader | `editor` (lazy) |
 | F25 | CSS export `./outline-fold.css` and paint tokens | outline-fold.css | `styles` (same export path) |
 | F26 | Keyboard: directional nav, fold keys, focus ownership, selection vs pan | mapView (`mapKeyboard*`, `resolveMapFocus`) | `a11y/keyboard` |
-| F27 | Text mode: plain text, font-size A−/A+ buttons, no folding, never unseals (sealed line shows only `<enc:KEYID>`). Text folding is only a proposal; see §3.8 | editor/ | `editor` |
+| F27 | Text mode: plain text, font-size A−/A+ buttons, no folding (text folding is only a proposal, §3.8) | editor/ | `editor` |
+| F28 | Inline unsealed editors in CM6: green secure-zone block widget, same unlock prompt, nested memory-only editor, save re-seals into the parent payload, nested zones, per-tab unlock and 5-min auto-lock; raw/static views show only `<enc:KEYID>` | editor/ (secure-zone widget), sealSession | `editor/secureZone` via bus → `seal` |
 
 **Export inventory.** About 450 named exports from 33 modules. v1 sorts each one into a group:
 - **Public**: types, parse/serialize/validate/toHtml, fold ops, ids, the bus, `createOutlineFold`, renderer factories, seal API, persistence API.
@@ -93,13 +94,15 @@ flowchart TB
   map & outline & html & regions & editor & persist --> core
   a11y --> core
   regions -.postMessage.-> worker
+  editor -- "open / save / lock via bus" --> bus
+  bus -. session events .-> regions
   worker --> core
 ```
 
 ### 3.2 Dependency rules (enforced by `scripts/check-deps.mjs` in CI, no test runner needed)
 1. `core/**` imports only `core/**`. It does not use DOM globals, `window`, `localStorage`, timers or `crypto`.
 2. `bus` imports only `core` types.
-3. Feature modules import `core` and `bus`. They never import each other. Map and Outline talk only through bus events and the shared fold store.
+3. Feature modules import `core` and `bus`. They never import each other. For example, the editor reaches the seal module only through bus commands (`open`, `save`, `lock`) and events (`unlock`, `lock`, `error`). Map and Outline talk only through bus events and the shared fold store.
 4. Only `host` composes modules. Only `host` and `editor/loader` use dynamic `import()`.
 5. Crypto lives only in `seal/worker`. The main thread holds no plaintext key material after `lock`. A non-worker fallback (Node and tests) uses the same `SealPort` interface.
 6. The editor package is reached only through `import('./editor')`. A static import of CM6 from anywhere else fails the dep check.
@@ -147,7 +150,15 @@ type OFCommand =
 `editor/` contains the CM6 views, the secure zone and the A−/A+ font-size buttons (plus the text fold controls only if §3.8 is adopted). It is loaded only by `dispatch({cmd:'editor', open:true})`. The peer dependencies stay optional.
 
 ### 3.8 Text mode (corrected 1 Nov 2026)
-**Parity (current behaviour, kept as is):** Text-only mode is plain text. Its only controls are the font-size buttons **A− / A+**, which scale the text and have nothing to do with folding. Today's text editor has **no folding**. Text mode **never unseals**: a sealed line shows only its `<enc:KEYID>` tag, and nothing else from the sealed branch.
+**Parity:** Text mode is plain text. Its only toolbar controls are the font-size buttons **A− / A+**, which scale the text and are not fold controls. Today's editor has **no folding**.
+
+**Inline unsealed editors (Colin, 1 Nov 2026; this reverses the earlier "Text never unseals" rule):**
+- In the CodeMirror editor, a sealed line renders as a **block widget, the green secure zone**. It unlocks through the **same prompt** as Map and Outline (`dispatch({cmd:'open'})` → `seal/session`).
+- Once unlocked, the zone hosts a **nested, memory-only CM6 editor** for the inner text. Plaintext never enters the parent document state, undo history or clipboard of the outer editor.
+- **Save re-seals** (same kid and mode) into the parent payload, so the main document text only ever holds the `<enc:KEYID>` line.
+- **Nested sealed lines** inside an unlocked zone open their own nested zone and editor. The existing rules apply: "Unlock this branch too?" for a key that is already unlocked, and locking a parent locks its children.
+- The same **per-tab unlock** and **5-minute idle auto-lock** (`autoLock` in the layout block) apply. On lock, the nested editor is destroyed and its memory wiped.
+- A **plain raw or static view** (no CodeMirror, e.g. `toHtml`, a textarea fallback, copy of the main text) still shows **only the `<enc:KEYID>` tag**.
 
 **Proposed, Colin to decide: folding in Text mode.** This is not part of parity and does not ship unless Colin adopts it.
 - Fold controls sit at the **right end of each line that has children**, never in the left gutter.
@@ -156,7 +167,7 @@ type OFCommand =
 - **30 px** tap target on touch.
 - Not selectable (a CM6 widget decoration with `user-select:none`), so copy never picks them up.
 - Must look **visually distinct from the A− / A+ font-size buttons**: for example, inline at the end of the line rather than in the toolbar, a different shape and weight, and no button chrome.
-- A sealed line still shows only `<enc:KEYID>` and has no fold control.
+- A sealed line (secure-zone widget) gets no fold control.
 - If adopted, a click dispatches `{cmd:'fold'}` using the same store and events as Map and Outline.
 
 ### 3.9 Keyboard / a11y and persistence
@@ -228,3 +239,5 @@ Total is about 7–9 weeks of focused work. Phases V3–V7 can overlap once V2 h
 6. Should `createOutlineFold` own all three views (Map, Outline, Text), or can hosts mount views independently?
 7. Text-mode folding (§3.8): should it be adopted at all? If so, should +N count all hidden descendants (as the Map chip does) or only direct children?
 8. Are there any 0.x features that can be dropped rather than ported (for example `demoCrypto` in the main entry, the scrapbook pack, or the legacy width-pick kinds)?
+9. Inline secure zones: should undo history in a nested editor survive a re-lock and unlock (we propose it is wiped), and is there a cap on nesting depth in Text (we propose the same `MAX_SEAL_DEPTH`)?
+10. Should unsaved edits in a nested editor block auto-lock, auto-save and re-seal, or be discarded with a warning?
