@@ -961,17 +961,3 @@
 .map-region-kid > rect { fill: #eef2fa; stroke: #b5c6e6; stroke-width: 1; }
 .map-region-kid > text { font-size: 10px; fill: #244a8a; }
 .map-region-unlocked .map-region-label { fill: #245c3c; }
-
-/* Minimal unlocked chrome: one 🔒 icon + ⋯ per zone. */
-.of-secure-zone-bar { min-height: 24px; }
-.of-secure-zone-dot { opacity: .7; }
-.of-sz-icon { min-width: 24px; min-height: 24px; padding: 0 4px; border: 0; background: none; border-radius: 5px; font-size: 13px; line-height: 1; cursor: pointer; color: #245c3c; }
-.of-sz-icon:hover, .of-sz-icon:focus-visible { background: rgba(61,138,95,.15); outline: none; box-shadow: 0 0 0 2px #d4e1f5; }
-.of-secure-zone-bar .of-sz-save { min-height: 22px; padding: 1px 8px; font-size: 11px; }
-.of-secure-zone-bar .of-sz-menu { top: calc(100% + 4px); bottom: auto; }
-.of-sz-confirm { margin: 4px 16px; }
-@media (pointer: coarse) { .of-sz-icon { min-width: 44px; min-height: 44px; } }
-.map-region-lock { cursor: pointer; }
-.map-region-lock > rect { fill: transparent; }
-.map-region-lock:hover > rect, .map-region-lock:focus-visible > rect { fill: rgba(61,138,95,.15); }
-.map-region-lock:focus { outline: none; }

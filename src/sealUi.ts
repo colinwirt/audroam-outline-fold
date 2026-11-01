@@ -215,12 +215,13 @@ export interface SecureZoneChromeOptions {
 }
 
 /**
- * Secure zone, minimal chrome (one control per zone):
- *   header  "Secure zone ……… ● [Save & re-seal] [🔒] [⋯]"
- *     - ● faint unsaved dot; Save & re-seal only while there are unsaved edits.
- *     - 🔒 icon button (aria-label "Lock"); its tooltip holds the key id and idle countdown.
- *     - ⋯ More menu: "Remove seal…" → confirm ("This stores the branch as plain text") → passphrase.
- *   body, then a dashed end line. No "Unlocked · k1" chip, no "Lock now" text button.
+ * Secure zone (seal-edit 05), top to bottom:
+ *   header  "🔓 Secure zone [k1] ……… memory only (?)"
+ *   body    (editor lines / viewer)
+ *   hint    "↵ new child stays in zone · ⇧Tab at edge leaves zone" (editor only)
+ *   bar     [🔓 Unlocked · k1] Idle lock 4:32 · status ……… More ▾ (Remove seal… → confirm → passphrase) · Lock now · [Save & re-seal]
+ *   end     dashed line labelled "zone end"
+ * The mockup puts the bar in the app footer; hosts can move `.of-secure-zone-actions` there.
  */
 export function secureZoneChrome(body: HTMLElement, o: SecureZoneChromeOptions & { hint?: boolean }): { el: HTMLElement; destroy: () => void } {
   const { sessions, region } = o;
@@ -229,25 +230,38 @@ export function secureZoneChrome(body: HTMLElement, o: SecureZoneChromeOptions &
   const wrap = el('div', 'of-secure-zone');
   wrap.dataset.region = region;
   wrap.setAttribute('role', 'region');
-  wrap.setAttribute('aria-label', `Secure zone, ${kid}, memory only`);
+  wrap.setAttribute('aria-label', `Secure zone · ${kid} · memory only`);
   const head = el('div', 'of-secure-zone-bar');
-  const title = el('span', 'of-secure-zone-title', 'Secure zone');
+  const title = el('span', 'of-secure-zone-title', '🔓 Secure zone');
+  const kchip = el('span', 'of-chip of-chip-k', kid);
   const sp = el('span', 'of-sp');
-  const dot = el('span', 'of-dot of-secure-zone-dot');
-  dot.setAttribute('role', 'status');
-  const save = o.canSave === false ? null : el('button', 'of-sz-btn of-sz-save of-btn-p', 'Save & re-seal');
-  if (save) { save.type = 'button'; save.addEventListener('click', () => void sessions.save(region)); }
-  const lock = el('button', 'of-sz-icon of-sz-lock', '🔒');
-  lock.type = 'button';
-  lock.setAttribute('aria-label', 'Lock');
-  lock.addEventListener('click', () => void sessions.lock(region, 'user'));
+  const mem = el('span', 'of-mut', 'memory only');
+  const help = el('button', 'of-q of-secure-zone-help', '?');
+  help.type = 'button';
+  help.setAttribute('aria-label', 'About the secure zone');
+  const note = el('div', 'of-secure-zone-note', 'Plaintext lives in this tab only. Save re-seals it into the parent; the note text only ever holds the <enc> tag. Draft autosave and search exclude the zone. Locks when idle.');
+  note.hidden = true;
+  help.addEventListener('click', () => (o.onHelp ? o.onHelp() : (note.hidden = !note.hidden)));
+  head.append(title, kchip, sp, mem, help);
 
-  // ⋯ More: the rare, destructive Remove seal behind a confirm step.
+  const hint = o.hint === false || o.canSave === false ? null : el('div', 'of-secure-zone-hint of-mut', '↵ new child stays in zone · ⇧Tab at edge leaves zone');
+  const actions = el('div', 'of-secure-zone-actions');
+  const chip = el('span', 'of-chip of-chip-g', `🔓 Unlocked · ${kid}`);
+  const idle = el('span', 'of-secure-zone-idle of-mut');
+  const status = el('span', 'of-secure-zone-status');
+  status.setAttribute('aria-live', 'polite');
+  const btns = el('span', 'of-secure-zone-btns');
+  const btn = (label: string, cls: string, fn: () => void) => {
+    const b = el('button', `of-sz-btn ${cls}`, label);
+    b.type = 'button';
+    b.addEventListener('click', fn);
+    btns.appendChild(b);
+    return b;
+  };
+  // More ▾ holds the rare, destructive action (Remove seal) behind a confirm step.
   const more = el('span', 'of-sz-more');
-  const moreBtn = el('button', 'of-sz-icon of-sz-more-btn', '⋯');
-  moreBtn.type = 'button';
-  moreBtn.title = 'More';
-  moreBtn.setAttribute('aria-label', 'More');
+  const moreBtn = btn('More ▾', 'of-sz-more-btn', () => (menu.hidden ? openMenu() : closeMenu(true)));
+  more.appendChild(moreBtn);
   const menuId = `of-sz-menu-${region.replace(/[^A-Za-z0-9_-]/g, '_')}`;
   moreBtn.setAttribute('aria-haspopup', 'menu');
   moreBtn.setAttribute('aria-expanded', 'false');
@@ -261,10 +275,9 @@ export function secureZoneChrome(body: HTMLElement, o: SecureZoneChromeOptions &
   removeItem.type = 'button';
   removeItem.setAttribute('role', 'menuitem');
   menu.appendChild(removeItem);
-  more.append(moreBtn, menu);
+  more.appendChild(menu);
   const openMenu = () => { menu.hidden = false; moreBtn.setAttribute('aria-expanded', 'true'); removeItem.focus(); };
   const closeMenu = (refocus: boolean) => { menu.hidden = true; moreBtn.setAttribute('aria-expanded', 'false'); if (refocus) moreBtn.focus(); };
-  moreBtn.addEventListener('click', () => (menu.hidden ? openMenu() : closeMenu(true)));
   moreBtn.addEventListener('keydown', (e) => { if (e.key === 'ArrowDown') { e.preventDefault(); openMenu(); } });
   menu.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' || e.key === 'Tab') { if (e.key === 'Escape') e.preventDefault(); closeMenu(e.key === 'Escape'); }
@@ -273,11 +286,14 @@ export function secureZoneChrome(body: HTMLElement, o: SecureZoneChromeOptions &
   const onDocDown = (e: Event) => { if (!menu.hidden && !more.contains(e.target as Node)) closeMenu(false); };
   document.addEventListener('pointerdown', onDocDown);
 
+  // Confirm step: "This stores the branch as plain text", red confirm, then the passphrase.
   const confirm = el('div', 'of-sz-confirm');
   confirm.setAttribute('role', 'alertdialog');
+  confirm.setAttribute('aria-modal', 'false');
+  const cmsgId = `${menuId}-confirm`;
   const cmsg = el('p', 'of-sz-confirm-msg', 'Remove seal? This stores the branch as plain text.');
-  cmsg.id = `${menuId}-confirm`;
-  confirm.setAttribute('aria-labelledby', cmsg.id);
+  cmsg.id = cmsgId;
+  confirm.setAttribute('aria-labelledby', cmsgId);
   const cRow = el('div', 'of-sz-confirm-row');
   const cCancel = el('button', 'of-sz-btn of-sz-confirm-cancel', 'Keep sealed');
   cCancel.type = 'button';
@@ -297,21 +313,25 @@ export function secureZoneChrome(body: HTMLElement, o: SecureZoneChromeOptions &
     else moreBtn.focus();
   });
 
-  head.append(title, sp, dot, ...(save ? [save] : []), lock, more);
+  btns.removeChild(moreBtn);
+  btns.append(more);
+  btn('Lock now', 'of-sz-lock', () => void sessions.lock(region, 'user'));
+  const save = o.canSave === false ? null : btn('Save & re-seal', 'of-sz-save of-btn-p', () => void sessions.save(region));
+  actions.append(chip, idle, status, el('span', 'of-sp'), btns, confirm);
+
   const end = el('div', 'of-secure-zone-end');
+  end.append(el('span', undefined, 'zone end'));
   end.setAttribute('aria-hidden', 'true');
-  wrap.append(head, confirm, body, end);
+  wrap.append(head, note, body, ...(hint ? [hint] : []), actions, end);
 
   const show = () => {
     const cur = sessions.get(region);
     const st = draftStatus(cur);
-    const dirty = st === 'unsaved' || st === 'saving' || st === 'error';
-    dot.hidden = !dirty;
-    dot.setAttribute('aria-label', st === 'error' ? (cur.error?.message ?? 'Save failed') : dirty ? 'Unsaved changes' : '');
-    dot.title = st === 'error' ? (cur.error?.message ?? 'Save failed') : 'Unsaved';
-    if (save) { save.hidden = !dirty; save.disabled = cur.state === 'saving'; }
+    status.textContent = st === 'saving' ? 'Saving…' : st === 'error' ? (cur.error?.message ?? 'Error') : st === 'unsaved' ? '● Unsaved' : st === 'saved' ? 'Saved' : '';
+    status.dataset.status = st;
+    if (save) save.disabled = cur.state === 'saving';
     const left = sessions.idleRemainingMs();
-    lock.title = `Lock ${kid}${left == null ? '' : ` · idle lock in ${formatIdle(left)}`}`;
+    idle.textContent = left == null ? '' : `Idle lock ${formatIdle(left)}`;
   };
   const off = s0.subscribe(show);
   const timer = setInterval(show, 1000);
@@ -331,19 +351,23 @@ export function mountMemoryViewer(host: HTMLElement, o: Omit<SecureZoneChromeOpt
   return () => { offs.forEach((f) => f()); z.destroy(); z.el.remove(); pre.textContent = ''; };
 }
 
-/** Global status: a faint unsaved dot only while an unlocked region has unsaved edits. No "Unlocked · k1" chip. */
+/** Global chip: "Unlocked · k1 · re-seals on save", plus unsaved / saved. Hidden while all locked. */
 export function mountSealStatusChip(host: HTMLElement, sessions: SealSessions): () => void {
   const wrapEl = el('span', 'of-seal-status');
-  const dot = el('span', 'of-dot');
-  wrapEl.setAttribute('role', 'status');
-  wrapEl.appendChild(dot);
+  const st = el('span', 'of-seal-draft');
+  const chip = el('span', 'of-chip of-chip-g of-seal-chip');
+  chip.setAttribute('role', 'status');
+  wrapEl.append(st, chip);
   host.appendChild(wrapEl);
   const show = () => {
-    const dirty = sessions.list().some((s) => !s.locked && s.dirty);
-    wrapEl.hidden = !dirty;
-    wrapEl.title = dirty ? 'Unsaved' : '';
-    wrapEl.setAttribute('aria-label', dirty ? 'Unsaved changes' : '');
-    wrapEl.dataset.status = dirty ? 'unsaved' : '';
+    const open = sessions.list().filter((s) => !s.locked);
+    wrapEl.hidden = !open.length;
+    if (!open.length) return void (chip.textContent = st.textContent = '');
+    const kids = [...new Set(open.map((s) => s.kid ?? 'key'))].join(', ');
+    const d = open.some((s) => s.dirty) ? 'unsaved' : open.some((s) => s.saved) ? 'saved' : '';
+    st.innerHTML = d === 'unsaved' ? '<span class="of-dot"></span><span class="of-mut">Unsaved</span>' : d === 'saved' ? '<span class="of-mut">Saved</span>' : '';
+    chip.textContent = `🔓 Unlocked · ${kids} · re-seals on save`;
+    wrapEl.dataset.status = d;
   };
   const offs = (['unlock', 'lock', 'change', 'save', 'error'] as const).map((t) => sessions.api.on(t, show));
   show();

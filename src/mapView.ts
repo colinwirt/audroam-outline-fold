@@ -351,8 +351,6 @@ export interface MapViewOptions {
   regionFold?: RegionFoldStore;
   /** A locked sealed region's fold handle was activated: ask the host to unlock (§R1 d). */
   onRegionUnlock?: (region: string) => void;
-  /** Lock an open sealed region (the cloud's 🔒 icon button). No handler: no icon. */
-  onRegionLock?: (region: string) => void;
   /** Map focus moved (click, keys, `setFocus`): scoped id (`region:node` inside a region). */
   onFocusChange?: (scopedId: string) => void;
   getDoc: () => OutlineFoldDoc;
@@ -3529,17 +3527,7 @@ export function createMapView(
   rfold.subscribe(() => {
     if (host.isConnected) paint();
   });
-  const lockHit = (e: Event): boolean => {
-    const lk = (e.target as Element | null)?.closest?.('.map-region-lock') as Element | null;
-    if (!lk || !host.contains(lk)) return false;
-    e.preventDefault();
-    e.stopPropagation();
-    opts.onRegionLock?.(lk.getAttribute('data-lock-region') || '');
-    return true;
-  };
-  host.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') lockHit(e); }, { capture: true });
   host.addEventListener('click', (e) => {
-    if (lockHit(e)) return;
     const t = e.target as Element | null;
     const g = t?.closest?.('.map-region-node');
     if (!g || !host.contains(g)) {
@@ -3815,12 +3803,7 @@ export function createMapView(
     return placed
       .map((r) => {
         // Open sealed cloud reads "🔓 k1" with a solid green border (seal-edit 05).
-        // Open sealed cloud: no key label; one 🔒 Lock icon at the header (when the host can lock).
-        const openSealed = r.host.kind === 'sealed' && !!r.host.doc;
-        const cloudLabel = openSealed ? '' : r.host.label;
-        const lockBtn = openSealed && opts.onRegionLock
-          ? `<g class="map-region-lock" role="button" tabindex="0" aria-label="Lock" data-lock-region="${esc(r.host.id)}"><title>Lock</title><rect x="${r.hull.x + 4}" y="${r.hull.y + 2}" width="24" height="24" rx="5"/><text x="${r.hull.x + 16}" y="${r.hull.y + 19}" text-anchor="middle" font-size="13">🔒</text></g>`
-          : '';
+        const cloudLabel = r.host.kind === 'sealed' && r.host.doc ? `🔓 ${r.host.kid ?? 'key'}` : r.host.label;
         const cloud = regionSvg({ rootId: r.host.id, kind: r.host.kind, label: cloudLabel, unlocked: r.host.kind === 'sealed' && !!r.host.doc }, r.hull);
         const expandedCloud = !(r.boxes.length === 1 && r.boxes[0]!.root);
         // Region root fold handle on the open cloud (top-right): folds the whole region (§R1 b).
@@ -3853,7 +3836,7 @@ export function createMapView(
             return `<g class="map-region-node${folded ? ' map-region-pill' : ''}${locked && r.host.kind === 'sealed' ? ' map-region-locked' : ''}${b.collapsed ? ' collapsed' : ''}" id="${esc(regionDomId(b.key))}" role="treeitem" aria-selected="false"${b.foldable ? ` aria-expanded="${b.collapsed ? 'false' : 'true'}"` : ''} aria-label="${esc(aria)}" data-scoped-id="${esc(b.key)}" data-region-id="${esc(r.host.id)}"><rect x="${b.x}" y="${b.y}" width="${Math.max(1, b.w - slot)}" height="${b.h}" rx="${Math.min(14, b.h / 2)}"/>${textSvg}${chrome}${kidChip}</g>`;
           })
           .join('');
-        return cloud + edges + pills + cloudFold + lockBtn;
+        return cloud + edges + pills + cloudFold;
       })
       .join('');
   }
