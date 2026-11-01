@@ -10,6 +10,7 @@ import type { OutlineFoldDoc, OutlineNode } from './types.js';
 import type { RegionBox } from './mapRegion.js';
 import { scopeId } from './scopedId.js';
 import { isCollapsed } from './fold.js';
+import { resolveTask, type TaskState } from './taskChrome.js';
 
 function countAll(nodes: OutlineNode[] | undefined): number {
   let c = 0;
@@ -40,6 +41,8 @@ export interface PlacedBox extends RegionBox {
   /** Scoped id (`regionId:nodeId`) or the region id itself for a folded pill. */
   key: string;
   title: string;
+  /** 0.4.10: task state from the same resolveTask the main Map uses (null: not a task). */
+  task?: TaskState | null;
   depth: number;
   /** Region the box belongs to. */
   region?: RegionId;
@@ -203,6 +206,7 @@ function layoutLocal(host: RegionHostSpec, all: RegionHostSpec[], deps: RegionLa
         ...b,
         key: scopeId(host.id, id),
         title: mt.title,
+        task: resolveTask(mt.n),
         depth: mt.depth,
         region: host.id,
         localId: id,

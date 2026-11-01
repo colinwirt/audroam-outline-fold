@@ -12,6 +12,7 @@
  * - Edits past the first trailing fence (payloads, keyring, layout…) are kept above it.
  * - `setRegions()` still accepts host block widgets (e.g. notes) keyed by a line substring.
  */
+import { zoneTab } from './zoneIndent.js';
 import { Compartment, EditorState, StateEffect, StateField, type Extension, type Text } from '@codemirror/state';
 import { EditorView, Decoration, WidgetType, keymap, drawSelection, type DecorationSet } from '@codemirror/view';
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
@@ -185,6 +186,12 @@ function buildEditor(host: HTMLElement, initial: string, opts: TextEditorOptions
     { key: 'Tab', run: (v: EditorView) => !!opts.onTab?.(v, false) },
     { key: 'Shift-Tab', run: (v: EditorView) => !!opts.onTab?.(v, true) },
   ];
+  // Zone keys: Enter as the main editor; Tab/Shift-Tab never leave the zone (zoneTab fallback).
+  const zoneKeys = [
+    lineKeys[0]!,
+    { key: 'Tab', run: zoneTab(opts.onTab, false) },
+    { key: 'Shift-Tab', run: zoneTab(opts.onTab, true) },
+  ];
   const ext: Extension[] = [
     history(),
     drawSelection(),
@@ -238,7 +245,7 @@ function buildEditor(host: HTMLElement, initial: string, opts: TextEditorOptions
     ext.push(outlineEditor({
       sessions: opts.sessions,
       askPassphrase: opts.askPassphrase,
-      childExtensions: [history(), keymap.of(lineKeys), keymap.of([...defaultKeymap, ...historyKeymap]), ...(opts.childExtensions ?? [])],
+      childExtensions: [history(), keymap.of(zoneKeys), keymap.of([...defaultKeymap, ...historyKeymap]), ...(opts.childExtensions ?? [])],
       textWidthCh: widthCh,
       focus: opts.focus,
       followInText: opts.followInText,

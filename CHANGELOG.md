@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.10 — 2026-11-02
+
+- Fix (anchor id): a payload never carries the anchor's `<id:N>`. `stripAnchorId` runs on seal (`innerText`), on viewer load and in the re-seal snapshot; a legacy payload that has it opens clean, reads dirty, and the next re-seal writes it without the id.
+- Fix (zone Tab): Tab / Shift+Tab in a secure zone always indent / outdent with the zone's own indent unit (`zoneIndentUnit`, `zoneTab`). The host `onTab` goes first; when it declines (null) the built-in edit runs. Neither key ever leaves the zone or moves focus.
+- Fix (Map region tasks): rows in an unlocked region draw `- [ ]` / `- [x]` with the main Map's task glyph and hit target (`resolveTask` + `taskGlyphSvg`, now carried on `PlacedBox.task`), and a click toggles through `applyTaskToggle` → `onRegionTaskToggle` (the re-seal path).
+- Tests: `anchor-strip-0410` (pure strip, load, re-seal), `zone-tab-0410` (pure unit/changes, no host onTab, host returning null, focus kept), `map-region-task-0410` (glyphs, aria state, click toggles by scoped id).
+
 ## 0.4.9 — 2026-11-02
 
 - Fix (C, ids): one id allocator in the doc owner (`createIdAllocator`, `doc.mintId()`, `doc.idsInUse()`) over the root doc, every unlocked region and the anchor ids. A region root row mirrors its anchor and is exempt; any other duplicate (hand-typed in Text or in a zone, or arriving on unlock) keeps the older node's id and renumbers the newer one, or is flagged and left alone when a `<r:…>` / `#id` link names it. New `ids` event (`IdDiagnostic`). Minted ids are never reused.

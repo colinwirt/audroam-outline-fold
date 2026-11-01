@@ -653,10 +653,34 @@ export async function deriveShareKeyBits(kid: string, salt: Uint8Array<ArrayBuff
 }
 
 // ---------- seal ----------
+/**
+ * 0.4.10 (Colin): the anchor's `<id:N>` belongs to the host line only. A payload (caption or any
+ * row) must never carry it; legacy payloads that do are cleaned on load and on the next re-seal.
+ */
+export function stripAnchorId<T extends { id?: string; children?: T[] }>(caption: string, nodes: T[], anchorId: string): { caption: string; nodes: T[] } {
+  const esc = anchorId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const tag = new RegExp(`\\s*<\\s*id\\s*:\\s*${esc}\\s*>`, 'gi');
+  const walk = (list: T[]): T[] =>
+    list.map((c) => {
+      const { id, ...rest } = c as T & { id?: string };
+      const out = (id === anchorId ? rest : { ...rest, id }) as T;
+      if (id === undefined) delete (out as { id?: string }).id;
+      if (c.children) out.children = walk(c.children);
+      return out;
+    });
+  return { caption: caption.replace(tag, '').trimEnd(), nodes: walk(nodes) };
+}
+let legacyInnerTextForTest: ((node: OutlineNode) => string) | null = null;
+/** Test seam: seal a payload the way an old build wrote it (e.g. with the anchor id inside). */
+export function __setLegacyInnerTextForTest(fn: ((node: OutlineNode) => string) | null): void {
+  legacyInnerTextForTest = fn;
+}
 function innerText(node: OutlineNode): string {
+  if (legacyInnerTextForTest) return legacyInnerTextForTest(node);
   const shift = (list: OutlineNode[], d: number): OutlineNode[] =>
     list.map((c) => ({ ...c, depth: d, children: c.children ? shift(c.children, d + 1) : undefined }));
-  return innerJson(node.title, serialize({ nodes: shift(node.children ?? [], 0), fold: { mode: '-', ids: [] } }));
+  const clean = node.id ? stripAnchorId(node.title, shift(node.children ?? [], 0), node.id) : { caption: node.title, nodes: shift(node.children ?? [], 0) };
+  return innerJson(clean.caption, serialize({ nodes: clean.nodes, fold: { mode: '-', ids: [] } }));
 }
 
 function sealedDepth(ctx: SealContext, _doc?: OutlineFoldDoc): number {
@@ -890,7 +914,9 @@ export async function openSealedBranch(
   const depth = sealedDepth(ctx, host) + 1;
   const shown = autoText ? (JSON.parse(autoText) as { caption: string; body: string }) : { caption, body };
   const sub = parse(shown.body);
-  const root: OutlineNode = { id: branchId, title: shown.caption, depth: 0, children: sub.nodes } as OutlineNode;
+  const cleaned = stripAnchorId(shown.caption, sub.nodes, branchId);
+  sub.nodes = cleaned.nodes;
+  const root: OutlineNode = { id: branchId, title: cleaned.caption, depth: 0, children: sub.nodes } as OutlineNode;
   const reDepth = (list: OutlineNode[], d: number) => list.forEach((c) => { c.depth = d; if (c.children) reDepth(c.children, d + 1); });
   reDepth(sub.nodes, 1);
   // The viewer shares the key list read-only (frozen copies) so nested branches can open.
@@ -907,7 +933,8 @@ export async function openSealedBranch(
     const kids = (r.children ?? []).map((c) => c);
     const shift = (list: OutlineNode[], d: number): OutlineNode[] =>
       list.map((c) => ({ ...c, depth: d, children: c.children ? shift(c.children, d + 1) : undefined }));
-    return innerJson(r.title, serialize({ nodes: shift(kids, 0), fold: { mode: '-', ids: [] }, ...(doc.sealedOrphans ? { sealedOrphans: doc.sealedOrphans } : {}) }));
+    const clean = stripAnchorId(r.title, shift(kids, 0), branchId);
+    return innerJson(clean.caption, serialize({ nodes: clean.nodes, fold: { mode: '-', ids: [] }, ...(doc.sealedOrphans ? { sealedOrphans: doc.sealedOrphans } : {}) }));
   };
   let original = innerJson(caption, body);
   let lastAuto: string | undefined = autoText;

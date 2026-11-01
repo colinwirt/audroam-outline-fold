@@ -3582,7 +3582,12 @@ export function createMapView(
     const key = g.getAttribute('data-scoped-id') || '';
     e.preventDefault();
     e.stopPropagation();
-    if (t?.closest?.('.map-fold-hit, .map-fold-indicator') || g.classList.contains('map-region-root')) activateRegionFold(key);
+    if (t?.closest?.('.map-task-hit, .map-task-glyph')) {
+      // Same toggle as a main Map row: applyTaskToggle → onRegionTaskToggle (re-seal path).
+      focusMapForKeys();
+      setRegionFocus(key);
+      applyTaskToggle(key);
+    } else if (t?.closest?.('.map-fold-hit, .map-fold-indicator') || g.classList.contains('map-region-root')) activateRegionFold(key);
     else {
       focusMapForKeys();
       setRegionFocus(key);
@@ -3914,9 +3919,16 @@ export function createMapView(
             const lh = lineBox(fpx);
             const fa = `font-size="${fpx}" font-family="${LABEL_FONT_FAMILY}"`;
             const tip = locked && r.host.kind === 'sealed' ? `<title>Unlock ${esc(r.host.kid ?? 'key')}</title>` : '';
-            const textSvg = tip + (lines.length <= 1
-              ? `<text x="${b.x + 12}" y="${cy + fpx * 0.35}" ${fa}>${esc(t)}</text>`
-              : `<text x="${b.x + 12}" y="${cy + fpx * 0.35 - ((lines.length - 1) * lh) / 2}" ${fa}>${lines.map((l, i) => `<tspan x="${b.x + 12}"${i ? ` dy="${lh}"` : ''}>${esc(l)}</tspan>`).join('')}</text>`);
+            // 0.4.10 (Colin): region rows draw tasks with the main Map's glyph and hit target.
+            const task = !folded ? b.task ?? null : null;
+            const tx = b.x + 12 + (task ? TASK_LEAD : 0);
+            const taskSvg = task
+              ? taskGlyphSvg(task, b.x + TASK_INSET + TASK_BOX / 2, cy) +
+                `<rect class="map-task-hit" x="${b.x + 2}" y="${b.y}" width="${TASK_LEAD + 8}" height="${b.h}" fill="transparent" cursor="pointer" role="checkbox" aria-checked="${task === 'done' ? 'true' : task === 'pending' ? 'mixed' : 'false'}"/>`
+              : '';
+            const textSvg = tip + taskSvg + (lines.length <= 1
+              ? `<text x="${tx}" y="${cy + fpx * 0.35}" ${fa}>${esc(t)}</text>`
+              : `<text x="${tx}" y="${cy + fpx * 0.35 - ((lines.length - 1) * lh) / 2}" ${fa}>${lines.map((l, i) => `<tspan x="${tx}"${i ? ` dy="${lh}"` : ''}>${esc(l)}</tspan>`).join('')}</text>`);
             return `<g class="map-region-node${folded ? ' map-region-pill' : ''}${locked && r.host.kind === 'sealed' ? ' map-region-locked' : ''}${b.collapsed ? ' collapsed' : ''}" id="${esc(regionDomId(b.key))}" role="treeitem" aria-selected="false"${b.foldable ? ` aria-expanded="${b.collapsed ? 'false' : 'true'}"` : ''} aria-label="${esc(aria)}" data-scoped-id="${esc(b.key)}" data-region-id="${esc(r.host.id)}"><rect x="${b.x}" y="${b.y}" width="${Math.max(1, b.w - slot)}" height="${b.h}" rx="${Math.min(14, b.h / 2)}"/>${textSvg}${chrome}${kidChip}</g>`;
           })
           .join('');
