@@ -242,11 +242,14 @@ Total is about 7–9 weeks of focused work. Phases V3–V7 can overlap once V2 h
 9. Inline secure zones: should undo history in a nested editor survive a re-lock and unlock (we propose it is wiped), and is there a cap on nesting depth in Text (we propose the same `MAX_SEAL_DEPTH`)?
 10. Should unsaved edits in a nested editor block auto-lock, auto-save and re-seal, or be discarded with a warning?
 
-## Decision: versioned ciphertext for unlocked edits (Colin, 1 Nov 2026 ~2:11pm)
+## Decision: loaded ct + one rolling autosave (Colin, 1 Nov 2026 ~2:12pm)
 
-- A payload entry holds first-class ciphertext versions, each `{ ct, at, base }`, where `at` is the updated timestamp and `base` is the hash of the version it was edited from. The latest `at` is current. There is no separate "draft" slot.
-- Edits in an unlocked zone autosave a new version (same kid/alg, fresh nonce) inside the note, through the host's existing autosave. Clear text is never stored and never lost.
-- On an approved Save, verify the latest version decrypts to the edited text, then drop the older versions in the same write. Nothing is copied or renamed. If verification fails, keep everything.
-- If two versions share a `base` (edited elsewhere at the same time), flag the conflict and never drop either one silently.
-- The viewer's guard ignores version appends from this session.
-- Tests: an edit survives lock, then unlock and the latest is shown; Save drops older versions only after verifying; a failed verify keeps all versions; a conflict is flagged.
+- A payload entry holds at most two first-class ciphertext versions, each `{ ct, at, base }`, where `at` is the timestamp and `base` is the hash of the version it was edited from:
+  1. **Loaded**: the confirmed ct. It is never changed by autosave.
+  2. **Autosave**: the latest unconfirmed edit (same kid/alg, fresh nonce). Each autosave replaces the previous one, so autosaves never pile up.
+- Autosave goes through the host's existing note autosave. Clear text is never stored and never lost on lock, reload or tab close.
+- Only the user's confirmed Save accepts the autosave. Verify it decrypts to the edited text, then drop the loaded version in the same write. Nothing is copied or renamed. If verification fails, keep both.
+- On unlock with an autosave present, show the autosave and mark it unconfirmed. Discard drops the autosave and keeps the loaded version.
+- If the autosave's `base` doesn't match the loaded version (it changed elsewhere), flag the conflict and never drop either one silently.
+- The viewer's guard ignores autosave replacements from this session.
+- Tests: an edit survives lock, then unlock and the autosave is shown; repeated autosaves keep one; confirmed Save drops the loaded version only after verifying; a failed verify keeps both; Discard keeps the loaded version; a base mismatch is flagged.
