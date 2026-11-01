@@ -1,6 +1,6 @@
 {
   "name": "@audroam/outline-fold",
-  "version": "0.4.3",
+  "version": "0.4.4",
   "description": "Pure TS outline language: parse/serialize, fold-/fold+, sealed payloads, demo crypto, toHtml, createMapView/autoPack. Host owns MFA/key release.",
   "type": "module",
   "main": "./dist/index.js",
@@ -53,6 +53,7 @@
     "@codemirror/view": "^6.43.15",
     "@playwright/test": "^1.63.0",
     "esbuild": "^0.25.12",
+    "happy-dom": "^15.11.7",
     "typescript": "^5.6.3",
     "vitest": "^2.1.4"
   },

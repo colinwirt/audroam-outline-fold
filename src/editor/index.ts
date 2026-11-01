@@ -53,7 +53,7 @@ interface EncLine {
   region: RegionId | null;
 }
 
-function scanEnc(doc: Text, sessions: SealSessions): EncLine[] {
+export function scanEnc(doc: Text, sessions: SealSessions): EncLine[] {
   const out: EncLine[] = [];
   // Track the enclosing sealed id per indent to build nested region ids.
   const stack: { indent: number; region: RegionId }[] = [];

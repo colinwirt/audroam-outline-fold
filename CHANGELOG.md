@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.4 — 2026-11-01
+
+- Fix (Text): unlocking a sealed branch now shows the nested secure-zone editor. `secureZoneChrome` called `btns.removeChild(moreBtn)` after `moreBtn` had already been moved into the More wrapper, so `SecureZone.toDOM` threw, the refresh transaction was dropped, and the line stayed in the locked green style. Covered with a task-marker line (`- [-] Sealed branch <enc:k1> <id:16>`) happy-dom test.
+- Fix (Map): the unlocked sealed anchor pill was a blank white box with a white square. `.map-node.is-unlocked-anchor > rect` painted every rect (pill and fold hit box) a pale fill that hid the light caption. Now only `.map-pill` is styled: the normal dark pill with a green stroke, and the caption reads `🔓 <caption>` while open.
+- Dev: happy-dom devDependency for DOM tests; `scanEnc` exported for tests.
+
 ## 0.4.3 — 2026-11-01
 
 - Fix (P0): typing in Text no longer jumps the caret. `mountTextEditor`'s `setDoc` (also behind the textarea `value` setter) now applies a minimal prefix/suffix diff (`minimalChange`) instead of replacing the whole doc, so selection and history survive a host round-trip.

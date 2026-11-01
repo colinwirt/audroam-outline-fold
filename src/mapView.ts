@@ -4663,10 +4663,26 @@ export function createMapView(
     if (linkPop) positionLinkPop();
     if (regionFocus) syncRegionFocus();
     // Unlocked sealed anchors: tint the parent pill green.
-    for (const g of host.querySelectorAll('.map-node.is-unlocked-anchor')) g.classList.remove('is-unlocked-anchor');
+    for (const g of host.querySelectorAll('.map-node.is-unlocked-anchor')) {
+      g.classList.remove('is-unlocked-anchor');
+      const m = g.querySelector('[data-of-unlock-mark]');
+      if (m) {
+        m.removeAttribute('data-of-unlock-mark');
+        if (m.firstChild?.nodeType === 3 && m.firstChild.textContent === '🔓 ') m.removeChild(m.firstChild);
+      }
+    }
     for (const r of placed) {
       if (r.host.kind !== 'sealed' || !r.host.doc || r.host.parent) continue;
-      host.querySelector(`.map-node[data-id="${CSS.escape(r.host.anchor)}"]`)?.classList.add('is-unlocked-anchor');
+      const g = host.querySelector(`.map-node[data-id="${CSS.escape(r.host.anchor)}"]`);
+      if (!g) continue;
+      g.classList.add('is-unlocked-anchor');
+      // 0.4.4: caption reads "🔓 Sealed branch" while open.
+      const label = g.querySelector('.map-label');
+      const first = label?.querySelector('tspan') ?? label;
+      if (first && !first.hasAttribute('data-of-unlock-mark')) {
+        first.setAttribute('data-of-unlock-mark', '');
+        first.insertBefore(document.createTextNode('🔓 '), first.firstChild);
+      }
     }
     for (const fn of [...paintListeners]) {
       try {

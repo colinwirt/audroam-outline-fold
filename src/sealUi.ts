@@ -314,7 +314,6 @@ export function secureZoneChrome(body: HTMLElement, o: SecureZoneChromeOptions &
     else moreBtn.focus();
   });
 
-  btns.removeChild(moreBtn);
   btns.append(more);
   btn('Lock now', 'of-sz-lock', () => void sessions.lock(region, 'user'));
   const save = o.canSave === false ? null : btn('Save & re-seal', 'of-sz-save of-btn-p', () => void sessions.save(region));
