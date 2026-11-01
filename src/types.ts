@@ -88,6 +88,13 @@ export interface OutlineNode {
   dbRef?: string;
   /** Sealed / encrypted payload (`<enc:…>`). Demo or host crypto opens it. */
   sealed?: SealedPayload;
+  /**
+   * Set only on nodes of a composed Outline doc (`composeOutlineDoc`, never serialized):
+   * `'open'` on a sealed anchor whose region is unlocked (no locked chrome / Decrypt),
+   * and on the region-root row (`regionRoot`) the kind of zone it heads.
+   */
+  regionState?: 'open';
+  regionRoot?: 'sealed' | 'record';
   /** Leading `[ ]` / `[x]` / `[-]` → task chrome (ASCII stripped from visible label). */
   task?: TaskState;
   /**

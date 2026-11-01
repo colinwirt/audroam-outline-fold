@@ -896,8 +896,8 @@
    Palette from the mockups: zone #eef8f2 / #e1f1e7 / #3d8a5f / ink #245c3c; primary #2b5cab;
    key chip #eef2fa / #b5c6e6 / #244a8a; locked pill #eef0f3 / #9aa5b1. */
 .of-chip { display: inline-block; font: 11px Inter, system-ui, sans-serif; border-radius: 10px; padding: 1px 8px; border: 1px solid #cfd5dc; background: #f6f7f9; color: #3d4752; vertical-align: middle; white-space: nowrap; }
-.of-chip-k { background: #eef2fa; border-color: #b5c6e6; color: #244a8a; }
-.of-chip-g { background: #e3f2e9; border-color: #9cc9ad; color: #245c3c; }
+.of-chip-k { background: var(--of-chip-k-bg, #eef2fa); border-color: var(--of-chip-k-stroke, #b5c6e6); color: var(--of-chip-k-ink, #244a8a); }
+.of-chip-g { background: var(--of-chip-g-bg, #e3f2e9); border-color: var(--of-chip-g-stroke, #9cc9ad); color: var(--of-chip-g-ink, #245c3c); }
 .of-mut { color: #7b858f; font-size: 11.5px; }
 .of-sp { flex: 1; }
 .of-dot { width: 8px; height: 8px; border-radius: 50%; background: #e8a33d; display: inline-block; margin-right: 4px; }
@@ -905,14 +905,14 @@
 .of-btn-p, .of-unlock-ok { background: #2b5cab; color: #fff; border: 1px solid #2b5cab; }
 
 /* 04 unlock card */
-.of-unlock { position: fixed; z-index: 1000; box-sizing: border-box; max-width: calc(100vw - 16px); padding: 10px 16px 12px; background: #eef8f2; border-left: 3px solid #3d8a5f; border-radius: 0 8px 8px 0; color: #1f2933; box-shadow: 0 8px 24px rgba(20,30,40,.14); font: 13px/1.45 Inter, system-ui, sans-serif; }
-.of-unlock-inline { position: static; box-shadow: none; border-radius: 0; margin: 2px 0; padding-left: 42px; max-width: none; }
-.of-unlock-sheet { border-radius: 12px 12px 8px 8px; border-left-width: 0; border-top: 3px solid #3d8a5f; }
+div.of-unlock { position: fixed; z-index: 1000; box-sizing: border-box; max-width: calc(100vw - 16px); padding: 10px 16px 12px; background: var(--of-seal-bg, #eef8f2); border-left: 3px solid var(--of-seal-stroke, #3d8a5f); border-radius: 0 8px 8px 0; color: var(--of-seal-ink, #1f2933); box-shadow: 0 8px 24px rgba(20,30,40,.14); font: 13px/1.45 Inter, system-ui, sans-serif; }
+div.of-unlock.of-unlock-inline { position: static; box-shadow: none; border-radius: 0; margin: 2px 0; padding-left: 42px; max-width: none; }
+div.of-unlock.of-unlock-sheet { border-radius: 12px 12px 8px 8px; border-left-width: 0; border-top: 3px solid #3d8a5f; }
 .of-unlock-title { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
 .of-unlock-field { display: flex; gap: 6px; }
-.of-unlock-pass { box-sizing: border-box; flex: 1; min-width: 0; min-height: 36px; border: 1px solid #cfd5dc; border-radius: 6px; padding: 6px 8px; font: 16px Inter, system-ui, sans-serif; }
+.of-unlock-pass { box-sizing: border-box; flex: 1; min-width: 0; min-height: 36px; border: 1px solid var(--of-seal-btn-stroke, #cfd5dc); border-radius: 6px; padding: 6px 8px; font: 16px Inter, system-ui, sans-serif; background: var(--of-seal-input-bg, #fff); color: var(--of-seal-btn-ink, #1f2933); }
 .of-unlock-row { display: flex; gap: 8px; align-items: center; margin-top: 10px; }
-.of-unlock button:not(.of-q) { min-height: 36px; border-radius: 6px; padding: 4px 10px; font-size: 12px; border: 1px solid #cfd5dc; background: #fff; }
+.of-unlock button:not(.of-q) { min-height: 36px; border-radius: 6px; padding: 4px 10px; font-size: 12px; border: 1px solid var(--of-seal-btn-stroke, #cfd5dc); background: var(--of-seal-btn-bg, #fff); color: var(--of-seal-btn-ink, #1f2933); }
 .of-unlock button.of-unlock-ok { background: #2b5cab; color: #fff; border-color: #2b5cab; }
 .of-unlock button:disabled { opacity: .5; }
 .of-unlock-msg { min-width: 0; }
@@ -961,3 +961,10 @@
 .map-region-kid > rect { fill: #eef2fa; stroke: #b5c6e6; stroke-width: 1; }
 .map-region-kid > text { font-size: 10px; fill: #244a8a; }
 .map-region-unlocked .map-region-label { fill: #245c3c; }
+
+/* 0.4.2: Outline region rows (composeOutlineDoc). Key pill on sealed anchors; the
+   region root heads a green secure zone. Hosts theme through the --of-seal-* / --of-chip-*
+   variables (light defaults from the mockups). */
+.of-kid-chip { margin-left: 0.35rem; flex: none; }
+.of-node.of-region-sealed { border-left: 3px solid var(--of-seal-stroke, #3d8a5f); background: var(--of-seal-zone-bg, rgba(46, 160, 67, 0.08)); border-radius: 0 6px 6px 0; margin: 2px 0; }
+.of-node.of-region-sealed > .of-row .of-title::before { content: '🔓 '; }

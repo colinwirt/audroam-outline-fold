@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.2 — 2026-11-01
+
+- Fix: an unlocked sealed branch no longer renders the locked chrome (`•••• locked ••••`, Decrypt chip) above its plaintext. `composeOutlineDoc` marks the anchor clone `regionState: 'open'` and the region root `regionRoot`; `toHtml` draws the key pill (`🔓 k1`) and the green unlocked zone (`of-region-sealed`).
+- Fix: the unlock card rules are scoped to `div.of-unlock`, so they no longer restyle the Decrypt chip button; card, button (Cancel label), input and key chips use host-themable `--of-seal-*` / `--of-chip-*` variables.
+- Fix: Map Fit and the pan clamp include open region clouds.
+- Map: the (+) on a locked sealed pill carries `aria-label`/title `Unlock <kid>`.
+
 ## 0.4.1 — 2026-11-01
 
 - Fix: the Map node menu's `Follow in text` item is opt-in (`createMapView({ followMenu: true })`). In 0.4.0 it was on for every host, which put a checkbox first in the menu (Shift+F10 / ContextMenu focused it instead of the first action, Enter toggled it) and opened a menu on read-only lines without an id. The value itself still resolves resume → layout → on.

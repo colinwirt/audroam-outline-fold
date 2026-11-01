@@ -23,8 +23,10 @@ function renderNode(
   const p = opts.classPrefix;
   const collapsed = node.id ? isCollapsed(doc, node.id) : false;
   const flags = node.flags ?? [];
+  const open = node.regionState === 'open';
   const locked =
     opts.lockedChrome &&
+    !open &&
     (flags.includes('private') || flags.includes('encrypted') || isSealedBranchPayload(node.sealed));
   const icon = iconForNode(node.kind, flags);
   const sealed = hasSealed(node);
@@ -40,13 +42,14 @@ function renderNode(
     node.dbRef ? `data-db-ref="${esc(node.dbRef)}"` : '',
     sealed ? `data-sealed="true"` : '',
     isSealedBranchPayload(node.sealed)
-      ? `data-sealed-branch="locked"`
+      ? `data-sealed-branch="${open ? 'unlocked' : 'locked'}"`
       : '',
     sealed && node.sealed?.kid ? `data-kid="${esc(node.sealed.kid)}"` : '',
     sealed && node.sealed?.uri ? `data-sealed-uri="${esc(node.sealed.uri)}"` : '',
     sealed
       ? `data-sealed-mode="${node.sealed?.uri && !node.sealed?.ciphertext ? 'remote' : 'inline'}"`
       : '',
+    node.regionRoot ? `data-region-root="${esc(node.regionRoot)}"` : '',
     node.task ? `data-task="${esc(node.task)}"` : '',
     node.action ? `data-action="${esc(node.action)}"` : '',
     node.thread ? `data-thread="${esc(node.thread)}"` : '',
@@ -68,6 +71,12 @@ function renderNode(
     ? flags.includes('encrypted') || isSealedBranchPayload(node.sealed)
       ? `<button type="button" class="${p}-unlock" data-decrypt="${esc(node.id ?? '')}" data-testid="of-decrypt-${esc(node.id ?? '')}">Decrypt</button>`
       : `<button type="button" class="${p}-unlock" data-unlock="${esc(node.id ?? '')}" data-testid="of-unlock-${esc(node.id ?? '')}">Unlock (MFA)</button>`
+    : '';
+
+  // Key-name pill on a sealed anchor: blue while locked, green "🔓 k1" while open.
+  const kid = isSealedBranchPayload(node.sealed) ? node.sealed?.kid : undefined;
+  const kidChip = kid
+    ? `<span class="${p}-chip ${p}-chip-${open ? 'g' : 'k'} ${p}-kid-chip" data-testid="of-kid-${esc(node.id ?? '')}">${open ? '🔓 ' : ''}${esc(kid)}</span>`
     : '';
 
   // Task SVG lead — ASCII `[ ]`/`[x]` stripped from title at parse time.
@@ -134,8 +143,8 @@ function renderNode(
     ? ` aria-expanded="${collapsed ? 'false' : 'true'}"`
     : '';
 
-  return `<li role="treeitem" class="${p}-node${collapsed ? ` ${p}-collapsed` : ''}${locked ? ` ${p}-locked` : ''}${node.task ? ` ${p}-has-task` : ''}" tabindex="-1" aria-level="${ariaLevel}"${ariaExpanded} ${dataAttrs}>
-  <div class="${p}-row">${foldBtn}${taskChrome}${icon}<span class="${p}-title">${caption}</span>${threadChip}${noteChips}${jumpChips}${unlockBtn}</div>
+  return `<li role="treeitem" class="${p}-node${collapsed ? ` ${p}-collapsed` : ''}${locked ? ` ${p}-locked` : ''}${open ? ` ${p}-region-open` : ''}${node.regionRoot ? ` ${p}-region ${p}-region-${node.regionRoot}` : ''}${node.task ? ` ${p}-has-task` : ''}" tabindex="-1" aria-level="${ariaLevel}"${ariaExpanded} ${dataAttrs}>
+  <div class="${p}-row">${foldBtn}${taskChrome}${icon}<span class="${p}-title">${caption}</span>${threadChip}${noteChips}${jumpChips}${kidChip}${unlockBtn}</div>
   ${body}${kids}
 </li>`;
 }

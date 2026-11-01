@@ -335,7 +335,11 @@ export function composeOutlineDoc(root: OutlineFoldDoc, hosts: readonly OutlineR
       id: h.id,
       title: h.label || (h.kind === 'sealed' ? 'Sealed branch' : 'Record'),
       children: kids,
+      regionRoot: h.kind,
     } as OutlineNode;
+    // The anchor is a clone: mark it open so `toHtml` drops the locked chrome and the
+    // Decrypt chip while the region is readable (the ciphertext stays on the root doc).
+    if (h.kind === 'sealed') anchor.regionState = 'open';
     anchor.children = [...(anchor.children ?? []), rootNode];
     byId.set(h.id, rootNode);
     index(kids);

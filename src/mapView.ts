@@ -1644,6 +1644,9 @@ export function createMapView(
       }
     }
     for (const root of doc.nodes || []) walk(root);
+    // Cloud regions (unlocked / record) live outside the root doc: their hulls count
+    // toward Fit and the pan clamp, or the camera cannot reach an opened region.
+    for (const r of placed) rects.push({ x: r.hull.x, y: r.hull.y, w: r.hull.w, h: r.hull.h });
     return { rects, byId };
   }
 
@@ -3763,6 +3766,7 @@ export function createMapView(
   function reserveRegions(doc: OutlineFoldDoc): void {
     const hosts = regionHosts();
     placed = [];
+    invalidateContentUnion();
     if (!hosts.length) return;
     const layout = getLayout();
     const vis = visibleKeyed(doc);
@@ -3825,7 +3829,9 @@ export function createMapView(
             const locked = folded && !r.host.doc;
             const chrome = b.foldable
               ? foldChromeSvg(boxRight, cy, !!b.collapsed, FOLD_SLOT, { hiddenCount: b.hidden || 0 }) +
-                `<rect class="map-fold-hit" x="${foldHandleGeometry(boxRight).cx - 16}" y="${cy - 16}" width="32" height="32" fill="transparent" cursor="pointer"/>`
+                (locked && r.host.kind === 'sealed'
+                  ? `<rect class="map-fold-hit" x="${foldHandleGeometry(boxRight).cx - 16}" y="${cy - 16}" width="32" height="32" fill="transparent" cursor="pointer" aria-label="Unlock ${esc(r.host.kid ?? 'key')}"><title>Unlock ${esc(r.host.kid ?? 'key')}</title></rect>`
+                  : `<rect class="map-fold-hit" x="${foldHandleGeometry(boxRight).cx - 16}" y="${cy - 16}" width="32" height="32" fill="transparent" cursor="pointer"/>`)
               : '';
             const aria = `${t}${b.foldable ? (b.collapsed ? `, collapsed${b.hidden ? `, ${foldCountLabel(b.hidden)}` : ''}${locked ? ', locked' : ''}` : ', expanded') : ''}`;
             const kidChip = locked && r.host.kid
