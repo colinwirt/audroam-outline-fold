@@ -259,8 +259,8 @@ Total is about 7–9 weeks of focused work. Phases V3–V7 can overlap once V2 h
 - Version labels are plain text, not just red/green: "Autosave · 2:12pm · this device · +3 lines" vs "Saved · 1:40pm", with a diff preview. If `base` is missing or inconsistent, show "Can't tell which is newer" rather than guessing.
 - Whichever version is discarded or replaced (Discard, or a confirmed Save) moves to a third slot, `discarded: { ct, at, replacedBy }`, still sealed. Only one is kept, and each new discard replaces it.
 - More ▾ → **Restore discarded version** brings it back as the autosave, unconfirmed, so the user confirms it with Save as usual.
-- Hold: 7 days, or until a later confirmed Save (proposed default; open question for Colin). Clear text never leaves memory.
-- Tests: discard then restore round-trips; a confirmed Save keeps the replaced version restorable; a new discard replaces the slot; the slot expires after the hold; a base mismatch shows the "can't tell" label.
+- Hold: until the next confirmed Save (Colin, 1 Nov 2026 ~3:07pm; supersedes the 7-day proposal). Clear text never leaves memory.
+- Tests: discard then restore round-trips; a confirmed Save keeps the replaced version restorable; a new discard replaces the slot; the slot is held until the next confirmed Save; a base mismatch shows the "can't tell" label.
 
 ## SEAL-DRAFT: build-ready spec (1 Nov 2026)
 
@@ -270,7 +270,7 @@ Turns the two decisions above into requirements. Docs only; nothing here is buil
 - `SealedPayload` (src/types.ts:38) is `{ kid?, ciphertext?, uri?, alg?, pub? }`. The trailer field is `ct:` in the file and `ciphertext` in memory.
 - The trailer is parsed by `parsePayloadMap` (src/payloads.ts:207, field regex `kid|alg|ct|uri|pub` at :228), written by `formatPayloadsBlock`, and validated raw by `parsePayloadEntriesRaw` (src/validate.ts:97, regex `kid|alg|ct|uri` at :131).
 - The guard is in `ViewerImpl.save` (src/sealedBranch.ts:882): `cur.ciphertext !== opened.ciphertext` → "payload changed outside the viewer".
-- `src/sealUi.ts` and `tests/unseal-edit.test.ts` **do not exist on this branch**. The seal UI and its tests are new files below. The test style follows `tests/sealed-branch.test.ts`: vitest, `__installSecretForKat` as the fake KDF (no Argon2/PBKDF2 cost), and `CTX = { noteId, ownerId }`.
+- `src/sealUi.ts` and `tests/unseal-edit.test.ts` exist on branch `feature/submap-regions-unseal` (not yet on `draft/v1-rebuild`). **Build starts from `feature/submap-regions-unseal`**: it extends the existing `sealUi.ts` and adds cases in the `tests/unseal-edit.test.ts` style, which follows `tests/sealed-branch.test.ts`: vitest, `__installSecretForKat` as the fake KDF (no Argon2/PBKDF2 cost), and `CTX = { noteId, ownerId }`.
 
 ### SD-1 Payload grammar
 Flat keys under the node id so the existing one-level field reader still works. Old readers skip unknown keys.
@@ -345,8 +345,8 @@ These are warnings, not errors, so a note still opens. The worst case falls back
 ### SD-9 Restore discarded (More ▾)
 - `viewer.restoreDiscarded()` copies `gone-ct` to `autosave` (`base` = hash(current loaded), `at` = now) and clears `discarded`. The viewer then shows it as unconfirmed, and the user's Save confirms it through SD-7.
 - If an autosave already exists, it swaps: the current autosave becomes the gone slot. Nothing is lost.
-- The More ▾ item **Restore discarded version** shows only when a non-expired `discarded` exists (`sealMenuItems(viewer, now)` in the new `src/sealUi.ts`).
-- Tests, 5: discard then restore round-trips the text and the state is unconfirmed; save, restore, then save again brings back the previous loaded text; restore with an existing autosave swaps; the menu item is hidden with no slot and shown with one; restoring an expired slot throws and the menu hides it.
+- The More ▾ item **Restore discarded version** shows only when a `discarded` slot exists (`sealMenuItems(viewer)` in `src/sealUi.ts`).
+- Tests, 5: discard then restore round-trips the text and the state is unconfirmed; save, restore, then save again brings back the previous loaded text; restore with an existing autosave swaps; the menu item is hidden with no slot and shown with one; restoring when no slot exists throws and the menu hides it.
 
 ### SD-10 Labels, diff and base mismatch
 - `versionLabels(viewer, { now, deviceId })` returns plain strings: `Autosave · 2:12pm · this device · +3 lines` and `Saved · 1:40pm`. Times use the host locale. "this device" shows only when the autosave was written in this session. `+N/−N` comes from a line diff of the two plaintexts in memory.
@@ -355,12 +355,11 @@ These are warnings, not errors, so a note still opens. The worst case falls back
 - Note: `save(opts)` currently rejects any opts (line ~875). The `resolve` key is the one allowed exception.
 - Tests (`tests/seal-ui.test.ts`), 6: label strings exact with a fixed clock; the +3/−1 counts; the diff ops for a simple edit; missing base gives "Can't tell which is newer"; a mismatched base gives the same label; a plain save in conflict throws, and `resolve` saves with the gone slot holding the old loaded.
 
-### SD-11 Hold (default, pending Colin)
-- `discarded` is kept until `gone-at + 7 days`, **or** until a later confirmed Save after it was made. Whichever comes first.
+### SD-11 Hold (decided: until the next confirmed Save)
+- `discarded` is kept with no time limit until the next confirmed Save after it was made. Discard and Restore do not end the hold.
 - When a Save itself creates the gone slot, that slot survives that Save. The *next* confirmed Save replaces it.
-- Expiry is lazy: it is checked on parse, open, menu or save via an injected `now`. An expired slot is removed at the next write.
-- `SEAL_DISCARD_HOLD_MS = 7 * 864e5` is exported so Colin can change it.
-- Tests, 3: at 6d23h it is restorable; at 7d+1s it is hidden and dropped at the next write; a later confirmed Save replaces it.
+- No time-based expiry; the slot is replaced only by a confirmed Save or a new discard.
+- Tests, 3: a slot 30 days old (fake clock) is still restorable; after the next confirmed Save the earlier slot is gone (replaced by the one that Save creates); Discard then autosave ×3 leaves the slot unchanged.
 
 ### SD-12 Backward compatibility
 - A note with only `kid/alg/ct(/pub)` opens, edits and saves exactly as today. Its first autosave adds `auto-*`. Its first confirmed Save adds `at`/`base` and `gone-*`.
@@ -377,9 +376,8 @@ These are warnings, not errors, so a note still opens. The worst case falls back
   - new `autosave`, `discardAutosave` and `restoreDiscarded`
   - `openSealedBranch` (draftState)
   - `ctHash`
-  - `SEAL_DISCARD_HOLD_MS`
-- **new** `src/sealDraft.ts`: pure slot transitions (`applyAutosave`, `applySave`, `applyDiscard`, `applyRestore`, `expire`), so the tests need no DOM.
-- **new** `src/sealUi.ts`: `versionLabels`, `versionDiff`, `sealMenuItems`, `scheduleSealAutosave`.
+- **new** `src/sealDraft.ts`: pure slot transitions (`applyAutosave`, `applySave`, `applyDiscard`, `applyRestore`), so the tests need no DOM.
+- `src/sealUi.ts` (exists on `feature/submap-regions-unseal`; extend): `versionLabels`, `versionDiff`, `sealMenuItems`, `scheduleSealAutosave`.
 - `src/index.ts`: the exports.
 - `README.md`: the trailer rule row.
 
@@ -400,6 +398,5 @@ New tests: `tests/seal-draft-grammar.test.ts`, `tests/seal-draft-viewer.test.ts`
 - SD-12 4
 
 ### Open for Colin
-1. The hold: is 7 days or a later save right? (SD-11)
-2. In conflict, should Save need an explicit choice (proposed), or default to keeping the autosave? (SD-10)
-3. Autosave cadence: is 1.5 s idle with a 10 s cap right? (SD-5)
+1. In conflict, should Save need an explicit choice (proposed), or default to keeping the autosave? (SD-10)
+2. Autosave cadence: is 1.5 s idle with a 10 s cap right? (SD-5)
