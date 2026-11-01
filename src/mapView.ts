@@ -2531,18 +2531,21 @@ export function createMapView(
   function applyFoldLevel(id: string, level: FoldLevelKey): void {
     const fc = foldCtx(id);
     if (!fc) return;
+    if (fc.region) {
+      // Same picker and helper, region fold store instead of the root doc (§R1 a).
+      const rp = foldLevelPicker(fc.doc, fc.local);
+      const rit = rp?.items.find((it) => it.key === level);
+      if (!rp || !rit || rit.disabled) return;
+      rfold.commitView(fc.region, setExpandLevel(fc.doc, level, { under: fc.local }));
+      announce(foldLevelAnnouncement(rp, level));
+      return;
+    }
     const doc = fc.doc;
-    const picker = foldLevelPicker(doc, fc.local);
+    const picker = foldLevelPicker(doc, id);
     if (!picker) return;
     const item = picker.items.find((it) => it.key === level);
     if (!item || item.disabled) return;
-    const next = setExpandLevel(doc, level, { under: fc.local });
-    if (fc.region) {
-      // Same picker and helper, region fold store instead of the root doc (§R1 a).
-      rfold.commitView(fc.region, next);
-      announce(foldLevelAnnouncement(picker, level));
-      return;
-    }
+    const next = setExpandLevel(doc, level, { under: id });
     const r = handleRect(id);
     pendingLevelAnchor = r
       ? {
@@ -6065,7 +6068,8 @@ export function createMapView(
         }
       }
       const handle = t?.closest?.('.map-fold-hit, .map-fold-indicator') ?? null;
-      const g = handle?.closest?.('.map-node, .map-region-node') ?? null;
+      // Region nodes (§R1 a) carry a scoped id instead of data-id.
+      const g = handle?.closest?.('.map-node') ?? handle?.closest?.('.map-region-node') ?? null;
       const id = g?.getAttribute('data-id') || g?.getAttribute('data-scoped-id') || '';
       const pt = (e as PointerEvent).pointerType || '';
       const fcx = id ? foldCtx(id) : null;
