@@ -8,8 +8,9 @@
  * Scrapbook (0.2.8+): multi-line wrap, task lead SVG, text click ≠ fold; label text selectable (0.2.10); pan clears selection (0.2.11); keyboard only when Map focused (0.2.12); rich caption breaks+HTML + focus-on-click + camera follow/clamp (0.2.13); proportion follow + cameraRecentre + edit ensure (0.2.14); focusId is-focused ring (0.2.15); single stable focus owner = host tabindex=0 + aria-activedescendant, keydown on host (0.2.16).
  * Sealed nodes: omitted until unlocked (no gray stubs) — caller filters doc if needed.
  */
+import { resolveFollowInText, setFollowInText, loadMapResume } from './mapResume.js';
 import { ALT_HOLD_MS, altDragCommits, altPressKind } from './altGesture.js';
-import { captionLinks, captionWithoutLinks } from './captionRich.js';
+import { captionLinks, captionWithoutLinks, captionRegionRefs } from './captionRich.js';
 import {
   captionLinkRows,
   noteLinkRows,
@@ -448,6 +449,14 @@ export interface MapViewOptions {
    */
   nodeMenu?: boolean;
   /**
+   * `Follow in text` checkbox in the node menu's View group (on by default). The value
+   * resolves per-user resume (`followResumeKey`) → layout block `follow:` → on; toggling
+   * writes both (`setFollowInText`) and calls `onFollowInText`. `false` hides the item.
+   */
+  followMenu?: boolean;
+  followResumeKey?: string | null;
+  onFollowInText?: (on: boolean) => void;
+  /**
    * 0.2.39 Copy link: the URL that opens the map focused on a node. A template
    * with `{id}` (http(s) or root-relative; made absolute against the page), or
    * a function `({ id, node }) => url`. Unset: the current page with
@@ -497,6 +506,10 @@ export interface MapRegionHandle {
 }
 
 export interface MapViewHandle {
+  /** `Follow in text` as resolved now (resume → layout → on). */
+  followInText(): boolean;
+  /** Set it (writes layout block + resume, like the menu toggle). */
+  setFollowInText(on: boolean): void;
   paint: () => void;
   ensurePositions: () => void;
   resetCam: () => void;
@@ -1021,6 +1034,8 @@ function nodeChips(n: OutlineNode, doc?: OutlineFoldDoc): MapChipSpec {
   const notes = resolveNoteLinks(n);
   for (const l of captionLinks(n.title || '')) if (l.pnid && !notes.includes(l.pnid)) notes.push(l.pnid);
   const jumps = resolveJumps(n).map((id) => ({ id, label: jumpChipLabel(doc, id) }));
+  // `<r:REGION:N>` chips: the click goes through setFocus → revealScoped.
+  for (const id of captionRegionRefs(n.title || '')) jumps.push({ id, label: jumpChipLabel(null, id) });
   return { thread: !!resolveThread(n), noteLinks: notes, jumps };
 }
 
@@ -1523,6 +1538,9 @@ export function createMapView(
     canPersistWidths: canPersistWidthsOpt,
     onWidthStep,
     nodeMenu: nodeMenuOn = false,
+    followMenu = true,
+    followResumeKey = null,
+    onFollowInText,
     canMintIds: canMintIdsOpt,
     onCopy,
   } = opts;
@@ -1997,6 +2015,11 @@ export function createMapView(
    * Hop or `<r:x>` jump (0.2.34): select `target`, unfolding any folded
    * ancestor so it shows, and let the camera follow. False when it is not here.
    */
+  /** A scoped id inside a drawn region (or the region itself): `<r:>` targets it via setFocus. */
+  function isRegionTarget(t: string): boolean {
+    return !!t && regionHosts().some((h) => t === h.id || t.startsWith(h.id + ':') || t.startsWith(h.id + '/'));
+  }
+
   function jumpTo(target: string, from: string): boolean {
     let doc = getDoc();
     const node = target ? findNode(doc.nodes, target) : null;
@@ -2730,9 +2753,20 @@ export function createMapView(
     });
   }
 
+  function followInText(): boolean {
+    return resolveFollowInText(getDoc().frontmatter, followResumeKey ? loadMapResume(followResumeKey) : null);
+  }
+  function toggleFollowInText(on = !followInText()): void {
+    const doc = getDoc();
+    setDoc({ ...doc, frontmatter: setFollowInText(doc.frontmatter, on, followResumeKey) });
+    onFollowInText?.(on);
+    onChange?.();
+  }
+
   function nodeMenuEntries(key: string): NodeMenuEntry[] {
     const entries: NodeMenuEntry[] = [];
     if (foldLevelPicker(getDoc(), key)) entries.push({ key: 'levels', label: 'Levels…', group: 'View', popup: true });
+    if (followMenu) entries.push({ key: 'follow', label: 'Follow in text', group: 'View', checked: followInText() });
     for (const it of copyItemsFor(key)) {
       if (it.hidden) continue;
       entries.push({ key: it.kind === 'jump' ? 'copy-jump' : 'copy-link', label: it.label, group: 'Open' });
@@ -2773,6 +2807,10 @@ export function createMapView(
     closeNodeMenu(true);
     if (entry.key === 'levels') {
       openLevelMenu(key);
+      return;
+    }
+    if (entry.key === 'follow') {
+      toggleFollowInText();
       return;
     }
     void copyNode(key, entry.key === 'copy-jump' ? 'jump' : 'link');
@@ -3764,7 +3802,7 @@ export function createMapView(
     const esc = (t: string) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
     return placed
       .map((r) => {
-        // Open sealed cloud reads "🔓 k1" (border style unchanged; open question in CHANGELOG).
+        // Open sealed cloud reads "🔓 k1" with a solid green border (seal-edit 05).
         const cloudLabel = r.host.kind === 'sealed' && r.host.doc ? `🔓 ${r.host.kid ?? 'key'}` : r.host.label;
         const cloud = regionSvg({ rootId: r.host.id, kind: r.host.kind, label: cloudLabel, unlocked: r.host.kind === 'sealed' && !!r.host.doc }, r.hull);
         const expandedCloud = !(r.boxes.length === 1 && r.boxes[0]!.root);
@@ -3795,7 +3833,7 @@ export function createMapView(
             const textSvg = lines.length <= 1
               ? `<text x="${b.x + 12}" y="${cy + 4}">${esc(t)}</text>`
               : `<text x="${b.x + 12}" y="${cy + 4 - ((lines.length - 1) * 16) / 2}">${lines.map((l, i) => `<tspan x="${b.x + 12}"${i ? ' dy="16"' : ''}>${esc(l)}</tspan>`).join('')}</text>`;
-            return `<g class="map-region-node${folded ? ' map-region-pill' : ''}${b.collapsed ? ' collapsed' : ''}" id="${esc(regionDomId(b.key))}" role="treeitem" aria-selected="false"${b.foldable ? ` aria-expanded="${b.collapsed ? 'false' : 'true'}"` : ''} aria-label="${esc(aria)}" data-scoped-id="${esc(b.key)}" data-region-id="${esc(r.host.id)}"><rect x="${b.x}" y="${b.y}" width="${Math.max(1, b.w - slot)}" height="${b.h}" rx="${Math.min(14, b.h / 2)}"/>${textSvg}${chrome}${kidChip}</g>`;
+            return `<g class="map-region-node${folded ? ' map-region-pill' : ''}${locked && r.host.kind === 'sealed' ? ' map-region-locked' : ''}${b.collapsed ? ' collapsed' : ''}" id="${esc(regionDomId(b.key))}" role="treeitem" aria-selected="false"${b.foldable ? ` aria-expanded="${b.collapsed ? 'false' : 'true'}"` : ''} aria-label="${esc(aria)}" data-scoped-id="${esc(b.key)}" data-region-id="${esc(r.host.id)}"><rect x="${b.x}" y="${b.y}" width="${Math.max(1, b.w - slot)}" height="${b.h}" rx="${Math.min(14, b.h / 2)}"/>${textSvg}${chrome}${kidChip}</g>`;
           })
           .join('');
         return cloud + edges + pills + cloudFold;
@@ -4056,7 +4094,10 @@ export function createMapView(
       // `<r:x>`: select and pan to that node, as a hop row does. A broken one is inert.
       e.preventDefault();
       const target = (t.closest('.map-jump-hit') as Element).getAttribute('data-jump') || '';
-      jumpTo(target, id);
+      // `<r:REGION:N>` / `<r:s:x>`: reveal through regions (stops at a sealed root, which asks
+      // to unlock) and move focus + camera there; emits focusChange like any Map focus move.
+      if (!findNode(getDoc().nodes, target) && isRegionTarget(target)) handle.setFocus(target);
+      else jumpTo(target, id);
       return;
     }
     if (t?.closest?.('.map-note-link-hit')) {
@@ -4352,7 +4393,7 @@ export function createMapView(
           </g>`;
               }
               if (piece.kind === 'jump') {
-                const ok = !!findNode(doc.nodes, piece.id);
+                const ok = !!findNode(doc.nodes, piece.id) || isRegionTarget(piece.id);
                 const g = `<g class="map-jump-hit${ok ? '' : ' is-broken'}" data-jump="${esc(piece.id)}"${ok ? '' : ' aria-disabled="true"'} transform="translate(${at} ${textCentreY})" cursor="${ok ? 'pointer' : 'default'}">
             <title>${esc(piece.id)}</title>
             <rect x="0" y="-11" width="${piece.w}" height="20" fill="transparent"/>
@@ -6358,6 +6399,8 @@ export function createMapView(
   }
 
   const handle: MapViewHandle = {
+    followInText,
+    setFollowInText: (on: boolean) => toggleFollowInText(on),
     mountRegion(h: RegionHostSpec): MapRegionHandle {
       // Fold state lives in the store keyed by region id, so it survives remount (§R1 c).
       mounted.set(h.id, { ...h, folded: false });

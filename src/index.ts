@@ -605,6 +605,8 @@ export {
   secureZoneChrome,
   mountMemoryViewer,
   mountSealStatusChip,
+  promptPassphrase,
+  type PassphrasePromptOptions,
   clampPromptBox,
   formatIdle,
   draftStatus,

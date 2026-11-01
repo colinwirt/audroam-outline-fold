@@ -67,6 +67,10 @@ export interface UnlockPromptOptions {
   onClose?: (unlocked: boolean) => void;
   /** Mount point (default document.body). */
   container?: HTMLElement;
+  /** Render in flow inside `container` (the text-pane card of seal-edit 04) instead of a floating card. */
+  inline?: boolean;
+  /** "?" help click. */
+  onHelp?: () => void;
 }
 
 export interface UnlockPromptHandle {
@@ -84,17 +88,28 @@ export function mountUnlockPrompt(o: UnlockPromptOptions): UnlockPromptHandle {
   card.setAttribute('aria-modal', 'false');
   card.dataset.region = region;
   const s0 = sessions.get(region);
-  const title = el('div', 'of-unlock-title', `🔒 Unlock · ${s0.kid ?? 'key'}`);
-  title.id = `of-unlock-t-${Math.random().toString(36).slice(2, 8)}`;
-  card.setAttribute('aria-labelledby', title.id);
-  const sub = el('div', 'of-unlock-sub', o.label || 'Sealed branch');
+  // seal-edit 04: "🔒 Unlock k1 (?)" / [passphrase][Paste from 1Password] / Deriving… ▬▬ [Unlock]
+  const title = el('div', 'of-unlock-title');
+  const tt = el('b', undefined, `Unlock ${s0.kid ?? 'key'}`);
+  title.append('🔒 ', tt);
+  tt.id = `of-unlock-t-${Math.random().toString(36).slice(2, 8)}`;
+  card.setAttribute('aria-labelledby', tt.id);
+  if (o.label) card.setAttribute('aria-description', o.label);
+  const qh = el('button', 'of-q', '?');
+  qh.type = 'button';
+  qh.setAttribute('aria-label', 'About unlocking');
+  qh.addEventListener('click', () => o.onHelp?.());
+  title.append(qh);
   const form = el('form', 'of-unlock-form');
   const input = el('input', 'of-unlock-pass');
   input.type = 'password';
   input.autocomplete = 'current-password';
   input.setAttribute('aria-label', 'Passphrase');
   input.placeholder = 'Passphrase';
+  const row1 = el('div', 'of-unlock-field');
   const row = el('div', 'of-unlock-row');
+  const bar = el('div', 'of-unlock-bar');
+  bar.append(el('i'));
   const paste = o.onPasteFromManager ? el('button', 'of-unlock-paste', 'Paste from 1Password') : null;
   if (paste) paste.type = 'button';
   const cancel = el('button', 'of-unlock-cancel', 'Cancel');
@@ -104,10 +119,12 @@ export function mountUnlockPrompt(o: UnlockPromptOptions): UnlockPromptHandle {
   const msg = el('div', 'of-unlock-msg');
   msg.setAttribute('role', 'status');
   msg.setAttribute('aria-live', 'polite');
-  if (paste) row.append(paste);
-  row.append(cancel, ok);
-  form.append(input, row, msg);
-  card.append(title, sub, form);
+  row1.append(input);
+  if (paste) row1.append(paste);
+  row.append(msg, bar, cancel, ok);
+  form.append(row1, row);
+  card.append(title, form);
+  if (o.inline) card.classList.add('of-unlock-inline');
   (o.container ?? document.body).appendChild(card);
 
   let resolve!: (v: boolean) => void;
@@ -116,6 +133,7 @@ export function mountUnlockPrompt(o: UnlockPromptOptions): UnlockPromptHandle {
   let tick: ReturnType<typeof setInterval> | null = null;
 
   const place = () => {
+    if (o.inline) return;
     const r = o.anchorEl?.getBoundingClientRect?.() ?? null;
     const vp = { w: window.visualViewport?.width ?? window.innerWidth, h: window.visualViewport?.height ?? window.innerHeight };
     const box = clampPromptBox(r, { w: 320, h: card.offsetHeight || 170 }, vp);
@@ -129,14 +147,17 @@ export function mountUnlockPrompt(o: UnlockPromptOptions): UnlockPromptHandle {
     ok.disabled = deriving || backing;
     input.disabled = deriving;
     card.classList.toggle('is-deriving', deriving);
+    card.classList.toggle('is-error', s.state === 'error');
     if (deriving) msg.textContent = 'Deriving…';
     else if (s.state === 'error' && s.error) {
-      msg.textContent = backing ? `${s.error.message}. Try again in ${Math.ceil(s.retryAfterMs / 1000)}s` : s.error.message;
+      msg.textContent = s.error.code === 'bad-pass'
+        ? (backing ? `Couldn't unlock. Try again in ${Math.ceil(s.retryAfterMs / 1000)}s.` : "Couldn't unlock. Try again.")
+        : s.error.message;
       if (!tick && backing) tick = setInterval(() => show(sessions.get(region)), 500);
     } else if (s.state === 'sealed') {
       if (tick) { clearInterval(tick); tick = null; }
       if (msg.textContent?.startsWith('Deriving')) msg.textContent = '';
-      else if (msg.textContent?.includes('Try again')) msg.textContent = 'Wrong passphrase. Try again';
+      else if (msg.textContent?.includes('Try again in')) msg.textContent = "Couldn't unlock. Try again.";
     } else if (s.state === 'unlocked') close(true);
   };
   const off = sessions.get(region).subscribe(show);
@@ -193,23 +214,40 @@ export interface SecureZoneChromeOptions {
   canSave?: boolean;
 }
 
-/** Secure-zone header + dashed end line around `body`. Returns the wrapper and a destroy fn. */
-export function secureZoneChrome(body: HTMLElement, o: SecureZoneChromeOptions): { el: HTMLElement; destroy: () => void } {
+/**
+ * Secure zone (seal-edit 05), top to bottom:
+ *   header  "🔓 Secure zone [k1] ……… memory only (?)"
+ *   body    (editor lines / viewer)
+ *   hint    "↵ new child stays in zone · ⇧Tab at edge leaves zone" (editor only)
+ *   bar     [🔓 Unlocked · k1] Idle lock 4:32 · status ……… Remove seal · Lock now · [Save & re-seal]
+ *   end     dashed line labelled "zone end"
+ * The mockup puts the bar in the app footer; hosts can move `.of-secure-zone-actions` there.
+ */
+export function secureZoneChrome(body: HTMLElement, o: SecureZoneChromeOptions & { hint?: boolean }): { el: HTMLElement; destroy: () => void } {
   const { sessions, region } = o;
+  const s0 = sessions.get(region);
+  const kid = s0.kid ?? 'key';
   const wrap = el('div', 'of-secure-zone');
   wrap.dataset.region = region;
   wrap.setAttribute('role', 'region');
+  wrap.setAttribute('aria-label', `Secure zone · ${kid} · memory only`);
   const head = el('div', 'of-secure-zone-bar');
-  const s0 = sessions.get(region);
-  const title = el('span', 'of-secure-zone-title', `Secure zone · ${s0.kid ?? 'key'} · memory only`);
-  wrap.setAttribute('aria-label', title.textContent!);
-  const help = el('button', 'of-secure-zone-help', '?');
+  const title = el('span', 'of-secure-zone-title', '🔓 Secure zone');
+  const kchip = el('span', 'of-chip of-chip-k', kid);
+  const sp = el('span', 'of-sp');
+  const mem = el('span', 'of-mut', 'memory only');
+  const help = el('button', 'of-q of-secure-zone-help', '?');
   help.type = 'button';
   help.setAttribute('aria-label', 'About the secure zone');
-  const note = el('div', 'of-secure-zone-note', 'Plaintext lives in this tab only. Save re-seals it into the parent; the note text only ever holds the <enc> tag. Locks when idle.');
+  const note = el('div', 'of-secure-zone-note', 'Plaintext lives in this tab only. Save re-seals it into the parent; the note text only ever holds the <enc> tag. Draft autosave and search exclude the zone. Locks when idle.');
   note.hidden = true;
   help.addEventListener('click', () => (o.onHelp ? o.onHelp() : (note.hidden = !note.hidden)));
-  const idle = el('span', 'of-secure-zone-idle');
+  head.append(title, kchip, sp, mem, help);
+
+  const hint = o.hint === false || o.canSave === false ? null : el('div', 'of-secure-zone-hint of-mut', '↵ new child stays in zone · ⇧Tab at edge leaves zone');
+  const actions = el('div', 'of-secure-zone-actions');
+  const chip = el('span', 'of-chip of-chip-g', `🔓 Unlocked · ${kid}`);
+  const idle = el('span', 'of-secure-zone-idle of-mut');
   const status = el('span', 'of-secure-zone-status');
   status.setAttribute('aria-live', 'polite');
   const btns = el('span', 'of-secure-zone-btns');
@@ -220,21 +258,23 @@ export function secureZoneChrome(body: HTMLElement, o: SecureZoneChromeOptions):
     btns.appendChild(b);
     return b;
   };
-  btn('Lock now', 'of-sz-lock', () => void sessions.lock(region, 'user'));
-  const save = o.canSave === false ? null : btn('Save & re-seal', 'of-sz-save', () => void sessions.save(region));
   btn('Remove seal', 'of-sz-remove', async () => {
     const pass = await o.askPassphrase?.(region);
     if (pass) await sessions.removeSeal(region, pass);
   });
-  head.append(title, help, idle, status, btns);
+  btn('Lock now', 'of-sz-lock', () => void sessions.lock(region, 'user'));
+  const save = o.canSave === false ? null : btn('Save & re-seal', 'of-sz-save of-btn-p', () => void sessions.save(region));
+  actions.append(chip, idle, status, el('span', 'of-sp'), btns);
+
   const end = el('div', 'of-secure-zone-end');
+  end.append(el('span', undefined, 'zone end'));
   end.setAttribute('aria-hidden', 'true');
-  wrap.append(head, note, body, end);
+  wrap.append(head, note, body, ...(hint ? [hint] : []), actions, end);
 
   const show = () => {
     const cur = sessions.get(region);
     const st = draftStatus(cur);
-    status.textContent = st === 'saving' ? 'Saving…' : st === 'error' ? (cur.error?.message ?? 'Error') : st;
+    status.textContent = st === 'saving' ? 'Saving…' : st === 'error' ? (cur.error?.message ?? 'Error') : st === 'unsaved' ? '● Unsaved' : st === 'saved' ? 'Saved' : '';
     status.dataset.status = st;
     if (save) save.disabled = cur.state === 'saving';
     const left = sessions.idleRemainingMs();
@@ -260,19 +300,75 @@ export function mountMemoryViewer(host: HTMLElement, o: Omit<SecureZoneChromeOpt
 
 /** Global chip: "Unlocked · k1 · re-seals on save", plus unsaved / saved. Hidden while all locked. */
 export function mountSealStatusChip(host: HTMLElement, sessions: SealSessions): () => void {
-  const chip = el('span', 'of-seal-chip');
+  const wrapEl = el('span', 'of-seal-status');
+  const st = el('span', 'of-seal-draft');
+  const chip = el('span', 'of-chip of-chip-g of-seal-chip');
   chip.setAttribute('role', 'status');
-  host.appendChild(chip);
+  wrapEl.append(st, chip);
+  host.appendChild(wrapEl);
   const show = () => {
     const open = sessions.list().filter((s) => !s.locked);
-    chip.hidden = !open.length;
-    if (!open.length) return void (chip.textContent = '');
+    wrapEl.hidden = !open.length;
+    if (!open.length) return void (chip.textContent = st.textContent = '');
     const kids = [...new Set(open.map((s) => s.kid ?? 'key'))].join(', ');
-    const st = open.some((s) => s.dirty) ? 'unsaved' : open.some((s) => s.saved) ? 'saved' : '';
-    chip.textContent = `🔓 Unlocked · ${kids} · re-seals on save${st ? ` · ${st}` : ''}`;
-    chip.dataset.status = st;
+    const d = open.some((s) => s.dirty) ? 'unsaved' : open.some((s) => s.saved) ? 'saved' : '';
+    st.innerHTML = d === 'unsaved' ? '<span class="of-dot"></span><span class="of-mut">Unsaved</span>' : d === 'saved' ? '<span class="of-mut">Saved</span>' : '';
+    chip.textContent = `🔓 Unlocked · ${kids} · re-seals on save`;
+    wrapEl.dataset.status = d;
   };
   const offs = (['unlock', 'lock', 'change', 'save', 'error'] as const).map((t) => sessions.api.on(t, show));
   show();
-  return () => { offs.forEach((f) => f()); chip.remove(); };
+  return () => { offs.forEach((f) => f()); wrapEl.remove(); };
+}
+
+export interface PassphrasePromptOptions {
+  /** Key id shown in the title ("🔒 Unlock k1"). */
+  kid?: string | null;
+  label?: string;
+  anchorEl?: Element | null;
+  container?: HTMLElement;
+  inline?: boolean;
+  /** Prefill (demo password only). */
+  initial?: string;
+  /** Try the passphrase; resolve true when it opened. "Deriving…" shows while pending. */
+  attempt: (pass: string) => Promise<boolean>;
+  onPasteFromManager?: () => string | null | Promise<string | null>;
+  /** Back-off after the nth failure (ms). Default 0. */
+  backoffMs?: (failures: number) => number;
+}
+
+/**
+ * Session-free variant of the unlock card (same DOM and look as `mountUnlockPrompt`) for hosts
+ * and demos that open payloads directly. Resolves true on success, false on cancel.
+ */
+export function promptPassphrase(o: PassphrasePromptOptions): Promise<boolean> {
+  return new Promise((resolve) => {
+    let state: SealSessionSnapshot['state'] = 'sealed';
+    let failures = 0;
+    let retryAt = 0;
+    const subs = new Set<(s: SealSessionSnapshot) => void>();
+    const snap = (): SealSessionSnapshot => ({
+      region: 'prompt', kid: o.kid ?? null, state, locked: state !== 'unlocked', dirty: false, saved: false, doc: null,
+      error: state === 'error' ? { code: 'bad-pass', message: "Couldn't unlock" } : null,
+      retryAfterMs: Math.max(0, retryAt - Date.now()),
+    } as unknown as SealSessionSnapshot);
+    const set = (s: typeof state) => { state = s; subs.forEach((f) => f(snap())); };
+    const fake = {
+      get: () => ({ ...snap(), subscribe: (f: (s: SealSessionSnapshot) => void) => { subs.add(f); return () => subs.delete(f); } }),
+      open: async (_r: string, pass: string) => {
+        if (Date.now() < retryAt) return;
+        set('unlocking');
+        let ok = false;
+        try { ok = await o.attempt(pass); } catch { ok = false; }
+        if (ok) { failures = 0; return set('unlocked'); }
+        const wait = o.backoffMs?.(++failures) ?? 0;
+        retryAt = Date.now() + wait;
+        set('error');
+        if (wait > 0) setTimeout(() => state === 'error' && set('sealed'), wait);
+      },
+    } as unknown as SealSessions;
+    const h = mountUnlockPrompt({ sessions: fake, region: 'prompt' as RegionId, anchorEl: o.anchorEl, label: o.label, container: o.container, inline: o.inline, onPasteFromManager: o.onPasteFromManager });
+    if (o.initial) (h.el.querySelector('.of-unlock-pass') as HTMLInputElement).value = o.initial;
+    void h.done.then(resolve);
+  });
 }

@@ -1,5 +1,13 @@
 # Changelog
 
+
+### Unreleased (feature/submap-regions-unseal, mockup pass 04/05)
+- Unlocked region cloud: solid 1.5px #3d8a5f border, green tint, radius 12, "🔓 k1" label (resolves the open border question).
+- Map node menu: "Follow in text" checkbox item (menuitemcheckbox, ✓), persisted via setFollowInText.
+- Inline unlock card per 04; secure zone chrome reordered per 05; status chip "🔓 Unlocked · k1 · re-seals on save".
+- New `promptPassphrase()`; examples and react-live use it instead of window.prompt.
+- `<r:REGION:N>` refs draw as Map jump chips; click calls setFocus → revealScoped.
+
 ## Unreleased — sub-map regions, unseal lifecycle, editor, host API
 
 Spec: `docs/specs/20261101-submap-regions-editor-unseal.md`. Additive; existing exports unchanged.

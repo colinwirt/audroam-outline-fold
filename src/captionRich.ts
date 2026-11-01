@@ -435,8 +435,17 @@ export function isLoneLinkLine(line: string): boolean {
  * (captionLinks). A link inside a sentence stays where it is: a bare URL keeps
  * its text, a markdown link keeps its label. Images show their alt text.
  */
+/** `<r:REGION:N>` / `<r:s:x>` region refs (body has a `:`); plain `<r:x>` is the parser's. */
+export const REGION_REF_TAG = /[ \t]*<\s*r\s*:\s*([sn]:[^\s>]+)\s*>/gi;
+/** Region-ref targets in a caption, in order, unique. */
+export function captionRegionRefs(title: string): string[] {
+  const out: string[] = [];
+  for (const m of String(title).matchAll(new RegExp(REGION_REF_TAG.source, 'gi'))) if (!out.includes(m[1]!)) out.push(m[1]!);
+  return out;
+}
+
 export function captionWithoutLinks(title: string): string {
-  return normalizeCaptionBreaks(displayTags(title))
+  return normalizeCaptionBreaks(displayTags(String(title).replace(new RegExp(REGION_REF_TAG.source, 'gi'), '')))
     .split('\n')
     .map((line) => {
       if (isLoneLinkLine(line)) return '';

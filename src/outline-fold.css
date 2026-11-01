@@ -892,37 +892,61 @@
 .map-region-root.is-focused .map-fold-indicator circle { stroke-width: 2.6; }
 .map-region-edge { stroke: var(--of-region-stroke, rgba(46, 160, 67, 0.6)); stroke-width: 1.4; }
 
-/* ---------- Unsealed editing (seal-edit 04/05, mpe1 Unlock card) ---------- */
-.of-unlock { position: fixed; z-index: 1000; box-sizing: border-box; max-width: calc(100vw - 16px); padding: 12px; border-radius: 12px; background: var(--map-node-bg, #fff); color: inherit; box-shadow: 0 6px 24px rgba(0,0,0,0.18); border: 1px solid rgba(201,162,39,0.55); font-size: 14px; }
-.of-unlock-sheet { border-radius: 12px 12px 8px 8px; }
-.of-unlock-title { font-weight: 600; }
-.of-unlock-sub { opacity: 0.7; font-size: 12px; margin: 2px 0 8px; overflow-wrap: anywhere; }
-.of-unlock-pass { box-sizing: border-box; width: 100%; min-height: 44px; font-size: 16px; padding: 6px 10px; }
-.of-unlock-row { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; margin-top: 8px; }
-.of-unlock-row button { min-height: 44px; padding: 0 12px; }
-.of-unlock-paste { margin-right: auto; }
-.of-unlock-msg { min-height: 1.2em; margin-top: 6px; font-size: 12px; color: #b3261e; }
-.of-unlock.is-deriving .of-unlock-msg { color: inherit; }
-.of-unlock.is-deriving .of-unlock-msg::after { content: ''; display: block; height: 3px; margin-top: 4px; background: linear-gradient(90deg, rgba(46,160,67,0.7) 30%, transparent 30%); background-size: 200% 100%; animation: of-derive 1s linear infinite; }
-@keyframes of-derive { to { background-position: -200% 0; } }
+/* ---------- Unsealed editing (seal-edit 04 / 05, mpe1 Unlock card) ----------
+   Palette from the mockups: zone #eef8f2 / #e1f1e7 / #3d8a5f / ink #245c3c; primary #2b5cab;
+   key chip #eef2fa / #b5c6e6 / #244a8a; locked pill #eef0f3 / #9aa5b1. */
+.of-chip { display: inline-block; font: 11px Inter, system-ui, sans-serif; border-radius: 10px; padding: 1px 8px; border: 1px solid #cfd5dc; background: #f6f7f9; color: #3d4752; vertical-align: middle; white-space: nowrap; }
+.of-chip-k { background: #eef2fa; border-color: #b5c6e6; color: #244a8a; }
+.of-chip-g { background: #e3f2e9; border-color: #9cc9ad; color: #245c3c; }
+.of-mut { color: #7b858f; font-size: 11.5px; }
+.of-sp { flex: 1; }
+.of-dot { width: 8px; height: 8px; border-radius: 50%; background: #e8a33d; display: inline-block; margin-right: 4px; }
+.of-q { display: inline-flex; width: 16px; height: 16px; padding: 0; border-radius: 50%; border: 1px solid #aab3bd; background: none; font-size: 10px; align-items: center; justify-content: center; color: #6b7580; cursor: pointer; }
+.of-btn-p, .of-unlock-ok { background: #2b5cab; color: #fff; border: 1px solid #2b5cab; }
 
-.of-secure-zone { border: 2px solid rgba(46,160,67,0.7); border-radius: 8px; background: rgba(46,160,67,0.06); margin: 4px 0 8px; }
-.of-secure-zone-bar { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 4px 6px; font-size: 12px; }
-.of-secure-zone-title { font-weight: 600; color: #1f7a35; }
-.of-secure-zone-help { width: 22px; height: 22px; border-radius: 50%; padding: 0; }
-.of-secure-zone-idle { opacity: 0.75; font-variant-numeric: tabular-nums; }
-.of-secure-zone-status { margin-left: auto; color: #1f7a35; }
-.of-secure-zone-status[data-status='unsaved'] { color: #9a6700; }
+/* 04 unlock card */
+.of-unlock { position: fixed; z-index: 1000; box-sizing: border-box; max-width: calc(100vw - 16px); padding: 10px 16px 12px; background: #eef8f2; border-left: 3px solid #3d8a5f; border-radius: 0 8px 8px 0; color: #1f2933; box-shadow: 0 8px 24px rgba(20,30,40,.14); font: 13px/1.45 Inter, system-ui, sans-serif; }
+.of-unlock-inline { position: static; box-shadow: none; border-radius: 0; margin: 2px 0; padding-left: 42px; max-width: none; }
+.of-unlock-sheet { border-radius: 12px 12px 8px 8px; border-left-width: 0; border-top: 3px solid #3d8a5f; }
+.of-unlock-title { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
+.of-unlock-field { display: flex; gap: 6px; }
+.of-unlock-pass { box-sizing: border-box; flex: 1; min-width: 0; min-height: 36px; border: 1px solid #cfd5dc; border-radius: 6px; padding: 6px 8px; font: 16px Inter, system-ui, sans-serif; }
+.of-unlock-row { display: flex; gap: 8px; align-items: center; margin-top: 10px; }
+.of-unlock button:not(.of-q) { min-height: 36px; border-radius: 6px; padding: 4px 10px; font-size: 12px; border: 1px solid #cfd5dc; background: #fff; }
+.of-unlock button.of-unlock-ok { background: #2b5cab; color: #fff; border-color: #2b5cab; }
+.of-unlock button:disabled { opacity: .5; }
+.of-unlock-msg { min-width: 0; }
+.of-unlock-bar { flex: 1; height: 4px; background: #e3e6ea; border-radius: 2px; overflow: hidden; visibility: hidden; }
+.of-unlock-bar i { display: block; height: 100%; width: 62%; background: #2b5cab; animation: of-derive 1.2s ease-in-out infinite alternate; }
+.of-unlock.is-deriving .of-unlock-bar { visibility: visible; }
+.of-unlock.is-error .of-unlock-msg { color: #a33; }
+@keyframes of-derive { from { width: 15%; } to { width: 85%; } }
+@media (pointer: coarse) { .of-unlock button:not(.of-q), .of-unlock-pass { min-height: 44px; } }
+
+/* 05 secure zone */
+.of-secure-zone { background: #eef8f2; border-left: 3px solid #3d8a5f; margin: 2px 0; }
+.of-secure-zone-bar { display: flex; gap: 6px; align-items: center; padding: 2px 16px; background: #e1f1e7; font: 11px Inter, system-ui, sans-serif; color: #245c3c; }
+.of-secure-zone-hint { padding: 2px 16px; font: 11px Inter, system-ui, sans-serif; }
+.of-secure-zone-actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; padding: 4px 16px 6px; font-size: 12px; }
+.of-secure-zone-idle { font-variant-numeric: tabular-nums; }
+.of-secure-zone-status[data-status='unsaved'] { color: #7a5414; }
 .of-secure-zone-btns { display: flex; flex-wrap: wrap; gap: 6px; }
-.of-sz-btn { min-height: 44px; }
-.of-secure-zone-note { font-size: 12px; padding: 0 8px 4px; opacity: 0.8; }
-.of-secure-zone-view { margin: 0; padding: 6px 10px; white-space: pre-wrap; overflow-wrap: anywhere; }
-.of-secure-zone-end { border-top: 1px dashed rgba(46,160,67,0.7); margin: 0 6px; }
+.of-sz-btn { min-height: 32px; border: 1px solid #cfd5dc; background: #fff; border-radius: 6px; padding: 4px 10px; font-size: 12px; }
+.of-sz-btn.of-btn-p { background: #2b5cab; color: #fff; border-color: #2b5cab; }
+@media (pointer: coarse) { .of-sz-btn { min-height: 44px; } }
+.of-secure-zone-note { font-size: 12px; padding: 2px 16px 4px; color: #245c3c; }
+.of-secure-zone-view { margin: 0; padding: 6px 16px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.of-secure-zone-end { border-top: 1.5px dashed #3d8a5f; margin: 0 10px; position: relative; height: 0; }
+.of-secure-zone-end > span { position: absolute; right: 6px; top: -9px; background: #fff; font: 10.5px Inter, system-ui, sans-serif; color: #245c3c; padding: 0 4px; }
 
-.of-seal-chip { display: inline-flex; align-items: center; gap: 4px; padding: 2px 10px; border-radius: 999px; font-size: 12px; background: rgba(46,160,67,0.14); color: #1f7a35; border: 1px solid rgba(46,160,67,0.5); }
-.of-seal-chip[data-status='unsaved'] { border-color: #9a6700; }
+/* 05 top bar: "● Unsaved  [🔓 Unlocked · k1 · re-seals on save]" */
+.of-seal-status { display: inline-flex; gap: 8px; align-items: center; }
+.of-seal-draft { display: inline-flex; align-items: center; }
 
-/* Map: unlocked parent pill tinted green; locked pill k1 chip. Open cloud keeps its dashed border (open question). */
-.map-node.is-unlocked-anchor > rect, .map-node.is-unlocked-anchor .map-node-bg { fill: rgba(46,160,67,0.16); stroke: rgba(46,160,67,0.7); }
-.map-region-kid > rect { fill: var(--map-node-bg, #fff); stroke: rgba(201,162,39,0.7); stroke-width: 1; }
-.map-region-kid > text { font-size: 10px; fill: #8a6d12; }
+/* Map: locked pill grey + blue key chip (04); unlocked anchor green + green chip; solid green cloud (05). */
+.map-region-locked > rect:not(.map-fold-hit) { fill: #eef0f3; stroke: #9aa5b1; }
+.map-region-locked > text { fill: #4a5560; }
+.map-node.is-unlocked-anchor > rect, .map-node.is-unlocked-anchor .map-node-bg { fill: #eaf5ef; stroke: #3d8a5f; }
+.map-region-kid > rect { fill: #eef2fa; stroke: #b5c6e6; stroke-width: 1; }
+.map-region-kid > text { font-size: 10px; fill: #244a8a; }
+.map-region-unlocked .map-region-label { fill: #245c3c; }

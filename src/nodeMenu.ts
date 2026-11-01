@@ -215,6 +215,8 @@ export interface NodeMenuEntry {
   group: NodeMenuGroup;
   /** Opens a picker (`Levels…`): `aria-haspopup=menu`. */
   popup?: boolean;
+  /** Toggle item (`Follow in text`): `menuitemcheckbox` with a ✓ when on. */
+  checked?: boolean;
 }
 
 export interface NodeMenuView {
@@ -267,10 +269,12 @@ export function renderNodeMenu(opts: { title: string; entries: NodeMenuEntry[]; 
     label.id = labelId;
     group.appendChild(label);
     for (const e of list) {
-      const b = mk('button', 'map-node-menu-item', e.label);
+      const b = mk('button', 'map-node-menu-item', e.checked === undefined ? e.label : `${e.checked ? '✓ ' : ''}${e.label}`);
       b.type = 'button';
       b.tabIndex = -1;
       b.setAttribute('role', 'menuitem');
+      if (e.checked !== undefined) b.setAttribute('role', 'menuitemcheckbox');
+      if (e.checked !== undefined) b.setAttribute('aria-checked', e.checked ? 'true' : 'false');
       b.dataset.item = e.key;
       if (e.popup) b.setAttribute('aria-haspopup', 'menu');
       group.appendChild(b);

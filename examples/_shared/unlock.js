@@ -3,6 +3,7 @@
  */
 import {
   demoOpen,
+  promptPassphrase,
   isCollapsed,
   toggleFold,
 } from '../../dist/index.js';
@@ -72,9 +73,22 @@ export async function tryUnlock({
     window.alert('Stored remotely: ' + node.sealed.uri);
     return;
   }
-  const pass = window.prompt('Password', demoPassword ?? '');
-  if (pass == null) return;
-  await openAll({ getDoc, setDoc, ids: [id], revealed, refresh, password: pass });
+  // Inline unlock card (seal-edit 04) instead of window.prompt.
+  const anchorEl = document.querySelector(`[data-id="${CSS.escape(id)}"]`);
+  await promptPassphrase({
+    kid: node.sealed.kid ?? null,
+    anchorEl,
+    initial: demoPassword ?? '',
+    backoffMs: (n) => Math.min(30_000, 1000 * 2 ** (n - 1)),
+    attempt: async (pass) => {
+      try { revealed[id] = await demoOpen(node.sealed, pass); } catch { return false; }
+      let doc = getDoc();
+      if (isCollapsed(doc, id)) doc = toggleFold(doc, id);
+      setDoc(doc);
+      refresh();
+      return true;
+    },
+  });
 }
 
 /**
