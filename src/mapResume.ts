@@ -5,6 +5,7 @@
  */
 
 import type { FoldState } from './types.js';
+import { isMemoryOnlyRegion } from './regionFold.js';
 
 export interface MapCameraState {
   x: number;
@@ -26,10 +27,39 @@ export interface MapNodeNudge {
 export interface MapResumeState {
   version: 1;
   fold?: FoldState;
+  /**
+   * Region fold state keyed by scoped id (`regionId:nodeId`, `regionId` for the root), §R1 c.
+   * Record regions only: sealed (memory-only) entries are dropped on save.
+   */
+  regionFold?: Record<string, boolean>;
   camera?: MapCameraState;
   nudges?: Record<string, MapNodeNudge>;
   focusId?: string;
+  /** Per-user "Follow in text" toggle; overrides the layout block `follow:` default. */
+  follow?: boolean;
   savedAt?: number;
+}
+
+/**
+ * "Follow in text" in effect. Order: the user's resume toggle, then the layout block
+ * `follow:` (document default), then on.
+ */
+export function resolveFollowInText(fm: { followText?: boolean } | undefined | null, resume?: MapResumeState | null): boolean {
+  if (typeof resume?.follow === 'boolean') return resume.follow;
+  if (typeof fm?.followText === 'boolean') return fm.followText;
+  return true;
+}
+
+/**
+ * Menu toggle: write the value to both the layout block (doc default, saved with the note)
+ * and the user's resume state (restored on reload). Returns the next frontmatter.
+ */
+export function setFollowInText<F extends { followText?: boolean }>(fm: F | undefined, on: boolean, resumeKey?: string | null): F {
+  if (resumeKey) {
+    const cur = loadMapResume(resumeKey) ?? { version: 1 as const };
+    saveMapResume(resumeKey, { ...cur, follow: on });
+  }
+  return { ...(fm ?? ({} as F)), followText: on };
 }
 
 export interface MapResumeKeyParts {
@@ -122,14 +152,26 @@ export function saveMapResume(key: string, state: MapResumeState): void {
     fold: state.fold
       ? { mode: state.fold.mode, ids: [...state.fold.ids] }
       : undefined,
+    regionFold: state.regionFold ? persistableRegionFold(state.regionFold) : undefined,
     camera: state.camera
       ? { x: state.camera.x, y: state.camera.y, k: state.camera.k }
       : undefined,
     nudges: state.nudges ? { ...state.nudges } : undefined,
     focusId: state.focusId,
+    follow: typeof state.follow === 'boolean' ? state.follow : undefined,
     savedAt: Date.now(),
   };
   lsSet(key, JSON.stringify(payload));
+}
+
+/** Record-region entries only; never sealed fold state. */
+function persistableRegionFold(e: Record<string, boolean>): Record<string, boolean> {
+  const out: Record<string, boolean> = {};
+  for (const [k, v] of Object.entries(e)) {
+    const region = k.match(/^((?:[sn]:[^:/]+)(?:\/[sn]:[^:/]+)*)/)?.[1] ?? '';
+    if (region && !isMemoryOnlyRegion(region) && typeof v === 'boolean') out[k] = v;
+  }
+  return out;
 }
 
 export function clearMapResume(key: string): void {

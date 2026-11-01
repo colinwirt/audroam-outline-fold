@@ -192,3 +192,30 @@ orphan:
     expect(r.issues.every((i) => i.severity === 'warning')).toBe(true);
   });
 });
+
+describe('SEAL-DRAFT validator codes (SD-3)', () => {
+  const CT = 'ZHVtbXk.AAAAAAAAAAAAAAAA.bG9hZGVk';
+  const H = 'h:AAAAAAAAAAAAAAAAAAAAAA';
+  const doc = (fields: string) => `- Sealed branch <id:v>\n\n--- payloads ---\nv:\n  kid: k1\n  alg: demo-aes-gcm\n${fields}\n---\n`;
+  const codes = (fields: string) => validateDocument(doc(fields)).issues.filter((i) => i.code.startsWith('payload_draft')).map((i) => [i.code, i.severity]);
+  it('payload_draft_without_loaded', () => {
+    expect(codes(`  auto-ct: ${CT}\n  auto-base: ${H}`)).toContainEqual(['payload_draft_without_loaded', 'warning']);
+  });
+  it('payload_draft_on_uri', () => {
+    expect(codes(`  uri: https://x.test/b\n  gone-ct: ${CT}`)).toContainEqual(['payload_draft_on_uri', 'warning']);
+  });
+  it('payload_draft_bad_time', () => {
+    expect(codes(`  ct: ${CT}\n  auto-ct: ${CT}\n  auto-at: yesterday`)).toEqual([['payload_draft_bad_time', 'warning']]);
+  });
+  it('payload_draft_bad_hash', () => {
+    expect(codes(`  ct: ${CT}\n  base: sha:abc`)).toEqual([['payload_draft_bad_hash', 'warning']]);
+  });
+  it('payload_draft_bad_reason', () => {
+    expect(codes(`  ct: ${CT}\n  gone-ct: ${CT}\n  gone-from: nowhere`)).toEqual([['payload_draft_bad_reason', 'warning']]);
+  });
+  it('a clean full entry gives zero issues and still opens', () => {
+    const r = validateDocument(doc(`  ct: ${CT}\n  at: 2026-11-01T01:40:00Z\n  base: ${H}\n  auto-ct: ${CT}\n  auto-at: 2026-11-01T03:12:00Z\n  auto-base: ${H}\n  gone-ct: ${CT}\n  gone-at: 2026-11-01T03:20:00Z\n  gone-by: save\n  gone-from: loaded`));
+    expect(r.issues).toEqual([]);
+    expect(r.ok).toBe(true);
+  });
+});

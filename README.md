@@ -90,6 +90,7 @@ ins-remote:
 | Inline code | Nothing between backticks is read as a tag, id, note link or fold marker |
 | `<private>` / `<encrypted>` | Lock chrome (Unlock vs Decrypt) |
 | `--- payloads ---` | Trailer map keyed by node **id** → `{ kid, ct? \| uri?, alg? }` |
+| Draft keys (ct only) | `at`, `base`; `auto-ct`, `auto-at`, `auto-base`; `gone-ct`, `gone-at`, `gone-by` (`save`\|`discard`), `gone-from` (`loaded`\|`autosave`). `base` = `h:` + b64u(SHA-256(ct)[0..16]). Clear text never persists; ct-only notes round-trip byte-identical |
 | Fence aliases | `payloads` / `sealed` / `enc` accepted on parse |
 | Inline `<enc:…>` | Still parsed (compat); **serialize writes trailer only** |
 | Exactly one of `ct` \| `uri` | Inline ciphertext **or** remote blob URI |
@@ -510,6 +511,19 @@ import { createMapView, autoPackPositions } from '@audroam/outline-fold';
 // or from vendor dist:
 import { createMapView, autoPackPositions } from './vendor/outline-fold/index.js';
 ```
+
+## Sealed regions, sessions, editor (unreleased)
+
+```ts
+import { createSealSessions, regionHostsFromSessions, createMapView, loadOutlineEditor } from '@audroam/outline-fold';
+const sessions = createSealSessions({ getDoc, ctx: { noteId, ownerId }, confirmUnlockToo: (r) => confirm('Unlock this branch too?') });
+sessions.api.on('unlock', (e) => map.paint());
+await sessions.api.dispatch({ cmd: 'open', region: sessions.regionFor('b7'), passphrase });
+const map = createMapView(el, { ...opts, getRegionHosts: () => regionHostsFromSessions(sessions, getDoc()) });
+const { outlineEditor } = await loadOutlineEditor(); // CodeMirror 6 only loads here
+```
+
+Views render from `sessions.get(region).state` / `sessions.banner(region)`; never keep their own copy. Layout block: `autoLock: 5m` (default), `90s`, `off`. See the spec in `docs/specs/`.
 
 ## Document validation
 

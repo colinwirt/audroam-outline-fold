@@ -1,5 +1,29 @@
 # Changelog
 
+
+### Unreleased (feature/submap-regions-unseal, mockup pass 04/05)
+- Unlocked region cloud: solid 1.5px #3d8a5f border, green tint, radius 12, "🔓 k1" label (resolves the open border question).
+- Map node menu: "Follow in text" checkbox item (menuitemcheckbox, ✓), persisted via setFollowInText.
+- Inline unlock card per 04; secure zone chrome reordered per 05; status chip "🔓 Unlocked · k1 · re-seals on save".
+- New `promptPassphrase()`; examples and react-live use it instead of window.prompt.
+- `<r:REGION:N>` refs draw as Map jump chips; click calls setFocus → revealScoped.
+- Secure zone: Remove seal moved behind "More ▾", with a confirm step ("This stores the branch as plain text", red confirm), then the passphrase. Keyboard accessible; fits 390px.
+
+## Unreleased — sub-map regions, unseal lifecycle, editor, host API
+
+Spec: `docs/specs/20261101-submap-regions-editor-unseal.md`. Additive; existing exports unchanged.
+
+- P1 host API: `createHostApi()` with typed `on(event)` / `dispatch(command)` (`OFEvent`, `OFCommand`).
+- P2 sessions: `createSealSessions()` — one state machine per sealed region (`sealed → unlocking → unlocked → saving`, `error`); save re-seals with the same kid and mode; Lock now; auto-lock after 5 min idle (`autoLock: 5m|90s|off` in the layout block); unlock is per tab; nested branch with an unlocked key asks "Unlock this branch too?"; Remove seal always re-asks the passphrase.
+- P3 regions: `createMapView({ getRegionHosts })` / `map.mountRegion()` / `unmountRegion()` draw child instances as clouds and reserve auto-pack room so nothing overlaps; scoped ids `regionId:nodeId`; `resolveRegionRef` (`<r:REGION:N>` → region root while sealed, node once unsealed).
+- R1 region folding: region nodes get the normal fold slot, circle-+ handle, folded-count chip, fold-to-level menu and fold keys (←/→, Enter/Space/`.`, `*`, digits, Home/End, Esc back to the anchor) via the existing helpers; an open region gets a root handle that collapses it to its root pill with a count chip and restores the inner fold on unfold. One fold store `createRegionFoldStore()` keyed by scoped id (`regionId:nodeId`, `regionId` for the root), shared by Map (`createMapView({ regionFold })`, `map.regionFold`) and Outline (`regionOutlineBridge` / `composeOutlineDoc` / `commitOutlineFold`); never written into any payload. Record regions (`n:`) persist and resume (`MapResumeState.regionFold`); sealed regions always draw as the root pill (clicking it calls `onRegionUnlock`), and fold state inside an unlocked region is memory-only and wiped on re-lock (`bindRegionFoldToSessions`). `revealInRegions` / `revealScopedId` / `map.revealScoped(id)` unfold the path to a target and stop at the region root while sealed. `regionHostsFromSessions` accepts the store in place of the `folded` callback.
+- Unsealed editing UX (seal-edit 04/05, mpe1 Unlock card): `mountUnlockPrompt()` replaces `window.prompt` — key-id title, password field, optional "Paste from 1Password" host callback (no secret handling), Unlock disabled while "Deriving…", back-off message after a wrong passphrase (`backoffMs`, default 1s→30s; `error` event carries `retryAfterMs`; state recovers `error → sealed`), Esc cancels; on screen at 390px (`clampPromptBox`: bottom sheet under 480px, clamped beside the anchor otherwise). Secure zone (`secureZoneChrome`, editor and `mountMemoryViewer`): "Secure zone · k1 · memory only" + `?` help, `Idle lock m:ss` countdown (`sessions.idleRemainingMs()`), unsaved/saved draft status, Lock now / Save & re-seal / Remove seal (always re-asks), dashed zone end. Global chip `mountSealStatusChip`: "🔓 Unlocked · k1 · re-seals on save". Map: unlocked anchor pill tinted green (`.is-unlocked-anchor`), open cloud labelled `🔓 k1`, `k1` chip on the locked pill.
+- Text width: region pills, cloud captions and the secure zone wrap at the **host** map's `autoWidth:` (there is no separate `textWidth` key; `autoWidth` is it). An inner document's own layout block is kept byte-for-byte in the sealed payload but ignored for display — the host width wins. Region boxes size from the wrapped heights.
+- Focus: `setFocus` command and `focusChange` event (`source: map|outline|editor|command`); `map.setFocus(id)` reveals the path (stops at a sealed region's root) and pans; `createFocusLink()` / `wireFocus()` share one focus state keyed by scoped id between Map, Outline (`attachOutlineTree({ onFocusChange }).focus(id)`) and the editor, with a loop guard. `reveal` / `focus` / `setFocus` commands go to `onFocusCommand`.
+- Follow in text: on by default; the editor moves to the focused node and pauses 1.5s while typing (`followInText: false` turns it off). Persisted as `follow: on|off` in the layout block and `MapResumeState.follow`; precedence per-user resume → layout block → on (`resolveFollowInText`, `setFollowInText` writes both). The menu toggle itself is not yet drawn in the map menu.
+- Open question: the open cloud keeps its existing dashed border; mockups may want a solid green one.
+- P4 editor: optional `@audroam/outline-fold/editor` (CodeMirror 6 peer deps) with the secure-zone widget; `loadOutlineEditor()` imports it lazily.
+
 ## 0.3.1 — 2026-10-30
 
 - Fix: Pages/e2e site failed to load any page importing `dist/` (`Failed to resolve module specifier "@noble/ciphers/chacha.js"`). `build:site` now vendors `@noble/ciphers` into `site/vendor/noble-ciphers/` and rewrites the specifier in `site/dist/`. Library `dist/` unchanged.

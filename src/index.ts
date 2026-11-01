@@ -121,6 +121,7 @@ export {
   type MapViewOptions,
   type MapKeyboardWire,
   type MapViewHandle,
+  type MapRegionHandle,
   type MapWidthStep,
   type NodeCopyResult,
   type MapFocusDirection,
@@ -374,6 +375,8 @@ export {
   type ResumeLayoutLike,
   type StaleCheckResult,
   type DebouncedSave,
+  resolveFollowInText,
+  setFollowInText,
 } from './mapResume.js';
 
 export {
@@ -516,6 +519,7 @@ export {
   closeAllViewers,
   type SealedViewer,
   type SealedViewerMode,
+  type SealedViewerHooks,
   validateSealedBranches,
   parseKdfHeader,
   parseBranchCt,
@@ -524,7 +528,17 @@ export {
   type Argon2Provider,
   type KdfParams,
 } from './sealedBranch.js';
-export type { SealKeyEntry, SealKeyringEntry } from './types.js';
+export type { SealKeyEntry, SealKeyringEntry, SealedDraftSlot, SealedDiscardedSlot } from './types.js';
+export {
+  ctHash,
+  draftStateOf,
+  draftTime,
+  applyAutosave,
+  applySave,
+  applyDiscard,
+  applyRestore,
+  type SealDraftState,
+} from './sealDraft.js';
 export { parseKeysBlock, formatKeysBlock, parseKeyringBlock, formatKeyringBlock } from './payloads.js';
 export {
   SealedSaveError,
@@ -533,3 +547,94 @@ export {
   reattachSealedOrphan,
 } from './sealedState.js';
 export { regionHull, regionSvg, type MapRegion, type MapRegionKind, type RegionBox } from './mapRegion.js';
+export {
+  createHostApi,
+  type HostApi,
+  type OFEvent,
+  type OFEventOf,
+  type OFCommand,
+  type OFCommandHandler,
+  type OFErrorCode,
+  type RegionId,
+  type ScopedId,
+  type FocusSource,
+} from './hostApi.js';
+export {
+  createSealSessions,
+  type SealSessions,
+  type SealSession,
+  type SealSessionSnapshot,
+  type SealSessionsOptions,
+  type SealState,
+  type LockReason,
+  regionHostsFromSessions,
+  sessionResolver,
+} from './sealSession.js';
+export { DEFAULT_AUTO_LOCK_MS, parseAutoLock, formatAutoLock } from './payloads.js';
+export {
+  placeRegions,
+  anyOverlap,
+  REGION_PAD,
+  MAX_REGION_DEPTH,
+  type RegionHostSpec,
+  type PlacedRegion,
+  type PlacedBox,
+  type RegionLayoutDeps,
+} from './regionLayout.js';
+export {
+  scopeId,
+  parseScopedId,
+  parseRegionRef,
+  resolveRegionRef,
+  LOCKED_TARGET_LABEL,
+  type RegionResolver,
+  type ResolvedRef,
+} from './scopedId.js';
+export {
+  createRegionFoldStore,
+  bindRegionFoldToSessions,
+  isMemoryOnlyRegion,
+  revealInRegions,
+  revealContextFromHosts,
+  revealScopedId,
+  composeOutlineDoc,
+  commitOutlineFold,
+  regionOutlineBridge,
+  countNodes,
+  type RegionFoldStore,
+  type RegionFoldStoreOptions,
+  type RegionFoldEntries,
+  type RegionRevealContext,
+  type RegionRevealResult,
+  type OutlineRegionHost,
+} from './regionFold.js';
+export { loadOutlineEditor, type OutlineEditorModule } from './editorLoader.js';
+export { createFocusLink, type FocusLink } from './focusLink.js';
+export { wireFocus, type FocusWiring, type FocusWiringMap, type FocusWiringOutline } from './focusWiring.js';
+export {
+  mountUnlockPrompt,
+  secureZoneChrome,
+  mountMemoryViewer,
+  mountSealStatusChip,
+  promptPassphrase,
+  type PassphrasePromptOptions,
+  clampPromptBox,
+  formatIdle,
+  draftStatus,
+  versionLabels,
+  versionDiff,
+  diffCounts,
+  sealMenuItems,
+  scheduleSealAutosave,
+  CANT_TELL_LABEL,
+  type VersionDiffOp,
+  type VersionLabels,
+  type VersionLabelOptions,
+  type SealMenuItem,
+  type SealAutosaveOptions,
+  type SealAutosaveScheduler,
+  type UnlockPromptOptions,
+  type UnlockPromptHandle,
+  type SecureZoneChromeOptions,
+} from './sealUi.js';
+export { wrapPlain } from './mapRegion.js';

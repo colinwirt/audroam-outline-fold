@@ -58,6 +58,53 @@ interface RawPayloadEntry {
   uri?: string;
   alg?: string;
   line?: number;
+  /** SEAL-DRAFT keys as written (`at`, `base`, `auto-*`, `gone-*`). */
+  draft?: Record<string, string>;
+}
+
+const DRAFT_KEYS = ['at', 'base', 'auto-ct', 'auto-at', 'auto-base', 'gone-ct', 'gone-at', 'gone-by', 'gone-from'];
+const ISO_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,9})?)?(?:Z|[+-]\d{2}:?\d{2})$/;
+const HASH_RE = /^h:[A-Za-z0-9_-]{22}$/;
+
+/** SEAL-DRAFT (SD-3) warnings for one entry's draft keys. A note still opens on the loaded ct. */
+function draftIssues(
+  d: Record<string, string>,
+  hasCt: boolean,
+  hasUri: boolean,
+  extra: Partial<ValidationIssue>,
+): ValidationIssue[] {
+  const out: ValidationIssue[] = [];
+  const id = extra.nodeId ?? '?';
+  const slots = Boolean(d['auto-ct'] || d['gone-ct']);
+  if (slots && hasUri) out.push(issue('warning', 'payload_draft_on_uri', `Sealed entry "${id}": uri entries have no draft slots`, extra));
+  else if (slots && !hasCt) out.push(issue('warning', 'payload_draft_without_loaded', `Sealed entry "${id}": auto-ct/gone-ct without a loaded ct`, extra));
+  for (const k of ['at', 'auto-at', 'gone-at'])
+    if (d[k] !== undefined && !ISO_RE.test(d[k]!)) out.push(issue('warning', 'payload_draft_bad_time', `Sealed entry "${id}": ${k} is not an ISO-8601 time`, extra));
+  for (const k of ['base', 'auto-base'])
+    if (d[k] !== undefined && !HASH_RE.test(d[k]!)) out.push(issue('warning', 'payload_draft_bad_hash', `Sealed entry "${id}": ${k} is not h:<22 b64u chars>`, extra));
+  if (d['gone-by'] !== undefined && d['gone-by'] !== 'save' && d['gone-by'] !== 'discard')
+    out.push(issue('warning', 'payload_draft_bad_reason', `Sealed entry "${id}": gone-by must be save or discard`, extra));
+  if (d['gone-from'] !== undefined && d['gone-from'] !== 'loaded' && d['gone-from'] !== 'autosave')
+    out.push(issue('warning', 'payload_draft_bad_reason', `Sealed entry "${id}": gone-from must be loaded or autosave`, extra));
+  return out;
+}
+
+function sealedDraftFields(p: import('./types.js').SealedPayload): Record<string, string> {
+  const d: Record<string, string> = {};
+  if (p.at) d.at = p.at;
+  if (p.base) d.base = p.base;
+  if (p.autosave) {
+    d['auto-ct'] = p.autosave.ciphertext;
+    if (p.autosave.at) d['auto-at'] = p.autosave.at;
+    if (p.autosave.base) d['auto-base'] = p.autosave.base;
+  }
+  if (p.discarded) {
+    d['gone-ct'] = p.discarded.ciphertext;
+    if (p.discarded.at) d['gone-at'] = p.discarded.at;
+    if (p.discarded.replacedBy) d['gone-by'] = p.discarded.replacedBy;
+    if (p.discarded.from) d['gone-from'] = p.discarded.from;
+  }
+  return d;
 }
 
 function issue(
@@ -111,6 +158,7 @@ export function parsePayloadEntriesRaw(
     if (fields.ct) entry.ct = fields.ct;
     if (fields.uri) entry.uri = fields.uri;
     if (fields.alg) entry.alg = fields.alg;
+    for (const k of DRAFT_KEYS) if (fields[k] !== undefined) (entry.draft ??= {})[k] = fields[k]!;
     out.push(entry);
     current = null;
     currentLine = undefined;
@@ -128,7 +176,7 @@ export function parsePayloadEntriesRaw(
       currentLine = lineNo;
       continue;
     }
-    const field = raw.match(/^\s+(kid|alg|ct|uri)\s*:\s*(.+)$/i);
+    const field = raw.match(/^\s+(kid|alg|ct|uri|at|base|auto-ct|auto-at|auto-base|gone-ct|gone-at|gone-by|gone-from)\s*:\s*(.+)$/i);
     if (field && current) {
       fields[field[1]!.toLowerCase()] = unquote(field[2]!.trim());
       continue;
@@ -394,6 +442,16 @@ function validateDocTree(
       }
     }
   }
+  for (const entry of rawEntries)
+    if (entry.draft)
+      issues.push(...draftIssues(entry.draft, Boolean(entry.ct), Boolean(entry.uri), { nodeId: entry.id, path: `payloads.${entry.id}`, line: entry.line }));
+  // Structured path: docs passed in without trailer text.
+  walkNodes(doc.nodes, (n) => {
+    if (!n.sealed || (n.id && seenRawIds.has(n.id))) return;
+    const d = sealedDraftFields(n.sealed);
+    if (Object.keys(d).length)
+      issues.push(...draftIssues(d, Boolean(n.sealed.ciphertext), Boolean(n.sealed.uri), { nodeId: n.id, path: n.id ? `payloads.${n.id}` : undefined }));
+  });
   void seenRawIds;
 
   // Kid / alg policy across sealed refs with usable ct|uri.

@@ -16,6 +16,7 @@ import {
   hasSealed,
   isRemoteSealed,
   demoOpen,
+  promptPassphrase,
   validateDocument,
   createMapView,
   seedColdStartFold,
@@ -496,15 +497,23 @@ export default function App() {
         window.alert(`Stored remotely: ${node.sealed?.uri}`);
         return;
       }
-      const pass = window.prompt('Password', demoValues.password ?? '');
-      if (pass == null) return;
-      try {
-        const plaintext = await demoOpen(node.sealed!, pass);
-        setRevealed((r) => ({ ...r, [id]: plaintext }));
-        if (isCollapsed(current, id)) onToggleFold(id);
-      } catch {
-        window.alert('Wrong password');
-      }
+      // Inline unlock card (seal-edit 04) instead of window.prompt.
+      await promptPassphrase({
+        kid: (node.sealed as { kid?: string } | undefined)?.kid ?? null,
+        anchorEl: document.querySelector(`[data-id="${CSS.escape(id)}"]`),
+        initial: demoValues.password ?? '',
+        backoffMs: (n) => Math.min(30_000, 1000 * 2 ** (n - 1)),
+        attempt: async (pass) => {
+          try {
+            const plaintext = await demoOpen(node.sealed!, pass);
+            setRevealed((r) => ({ ...r, [id]: plaintext }));
+            if (isCollapsed(current, id)) onToggleFold(id);
+            return true;
+          } catch {
+            return false;
+          }
+        },
+      });
     },
     [onToggleFold],
   );

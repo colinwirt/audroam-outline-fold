@@ -871,3 +871,93 @@
 .of-details .map-level-key,
 .of-details .map-level-count,
 .of-details .map-width-key { display: inline !important; }
+
+/* Cloud-region child instances (spec 20261101 §1). sealed = green secure zone, record = neutral. */
+.map-region-sealed {
+  --of-region-fill: rgba(46, 160, 67, 0.10);
+  --of-region-stroke: rgba(46, 160, 67, 0.60);
+  --of-region-label: #1f7a35;
+}
+.map-region-record {
+  --of-region-fill: rgba(120, 120, 120, 0.08);
+  --of-region-stroke: rgba(120, 120, 120, 0.45);
+  --of-region-label: #555;
+}
+.map-region-node > rect:not(.map-fold-hit) { fill: var(--map-node-bg, #fff); stroke: var(--of-region-stroke, rgba(46, 160, 67, 0.6)); stroke-width: 1.2; }
+.map-region-node > text { font-size: 13px; fill: currentColor; }
+.map-region-pill > rect:not(.map-fold-hit) { fill: var(--of-region-fill, rgba(46, 160, 67, 0.14)); }
+/* §R1 region folding: same fold chrome as root nodes; selection ring on the focused node. */
+.map-region-node .map-fold-hit { fill: transparent; stroke: none; }
+.map-region-node.is-focused > rect:not(.map-fold-hit) { stroke: var(--map-focus, #c9a227); stroke-width: 2.4; }
+.map-region-root.is-focused .map-fold-indicator circle { stroke-width: 2.6; }
+.map-region-edge { stroke: var(--of-region-stroke, rgba(46, 160, 67, 0.6)); stroke-width: 1.4; }
+
+/* ---------- Unsealed editing (seal-edit 04 / 05, mpe1 Unlock card) ----------
+   Palette from the mockups: zone #eef8f2 / #e1f1e7 / #3d8a5f / ink #245c3c; primary #2b5cab;
+   key chip #eef2fa / #b5c6e6 / #244a8a; locked pill #eef0f3 / #9aa5b1. */
+.of-chip { display: inline-block; font: 11px Inter, system-ui, sans-serif; border-radius: 10px; padding: 1px 8px; border: 1px solid #cfd5dc; background: #f6f7f9; color: #3d4752; vertical-align: middle; white-space: nowrap; }
+.of-chip-k { background: #eef2fa; border-color: #b5c6e6; color: #244a8a; }
+.of-chip-g { background: #e3f2e9; border-color: #9cc9ad; color: #245c3c; }
+.of-mut { color: #7b858f; font-size: 11.5px; }
+.of-sp { flex: 1; }
+.of-dot { width: 8px; height: 8px; border-radius: 50%; background: #e8a33d; display: inline-block; margin-right: 4px; }
+.of-q { display: inline-flex; width: 16px; height: 16px; padding: 0; border-radius: 50%; border: 1px solid #aab3bd; background: none; font-size: 10px; align-items: center; justify-content: center; color: #6b7580; cursor: pointer; }
+.of-btn-p, .of-unlock-ok { background: #2b5cab; color: #fff; border: 1px solid #2b5cab; }
+
+/* 04 unlock card */
+.of-unlock { position: fixed; z-index: 1000; box-sizing: border-box; max-width: calc(100vw - 16px); padding: 10px 16px 12px; background: #eef8f2; border-left: 3px solid #3d8a5f; border-radius: 0 8px 8px 0; color: #1f2933; box-shadow: 0 8px 24px rgba(20,30,40,.14); font: 13px/1.45 Inter, system-ui, sans-serif; }
+.of-unlock-inline { position: static; box-shadow: none; border-radius: 0; margin: 2px 0; padding-left: 42px; max-width: none; }
+.of-unlock-sheet { border-radius: 12px 12px 8px 8px; border-left-width: 0; border-top: 3px solid #3d8a5f; }
+.of-unlock-title { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
+.of-unlock-field { display: flex; gap: 6px; }
+.of-unlock-pass { box-sizing: border-box; flex: 1; min-width: 0; min-height: 36px; border: 1px solid #cfd5dc; border-radius: 6px; padding: 6px 8px; font: 16px Inter, system-ui, sans-serif; }
+.of-unlock-row { display: flex; gap: 8px; align-items: center; margin-top: 10px; }
+.of-unlock button:not(.of-q) { min-height: 36px; border-radius: 6px; padding: 4px 10px; font-size: 12px; border: 1px solid #cfd5dc; background: #fff; }
+.of-unlock button.of-unlock-ok { background: #2b5cab; color: #fff; border-color: #2b5cab; }
+.of-unlock button:disabled { opacity: .5; }
+.of-unlock-msg { min-width: 0; }
+.of-unlock-bar { flex: 1; height: 4px; background: #e3e6ea; border-radius: 2px; overflow: hidden; visibility: hidden; }
+.of-unlock-bar i { display: block; height: 100%; width: 62%; background: #2b5cab; animation: of-derive 1.2s ease-in-out infinite alternate; }
+.of-unlock.is-deriving .of-unlock-bar { visibility: visible; }
+.of-unlock.is-error .of-unlock-msg { color: #a33; }
+@keyframes of-derive { from { width: 15%; } to { width: 85%; } }
+@media (pointer: coarse) { .of-unlock button:not(.of-q), .of-unlock-pass { min-height: 44px; } }
+
+/* 05 secure zone */
+.of-secure-zone { background: #eef8f2; border-left: 3px solid #3d8a5f; margin: 2px 0; }
+.of-secure-zone-bar { display: flex; gap: 6px; align-items: center; padding: 2px 16px; background: #e1f1e7; font: 11px Inter, system-ui, sans-serif; color: #245c3c; }
+.of-secure-zone-hint { padding: 2px 16px; font: 11px Inter, system-ui, sans-serif; }
+.of-secure-zone-actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; padding: 4px 16px 6px; font-size: 12px; }
+.of-secure-zone-idle { font-variant-numeric: tabular-nums; }
+.of-secure-zone-status[data-status='unsaved'] { color: #7a5414; }
+.of-secure-zone-btns { display: flex; flex-wrap: wrap; gap: 6px; }
+.of-sz-btn { min-height: 32px; border: 1px solid #cfd5dc; background: #fff; border-radius: 6px; padding: 4px 10px; font-size: 12px; }
+.of-sz-btn.of-btn-p { background: #2b5cab; color: #fff; border-color: #2b5cab; }
+@media (pointer: coarse) { .of-sz-btn, .of-sz-menu-item { min-height: 44px; } }
+.of-secure-zone-btns { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.of-sz-more { position: relative; }
+.of-sz-menu { position: absolute; right: 0; bottom: calc(100% + 4px); z-index: 20; min-width: 160px; max-width: calc(100vw - 24px); background: #fff; border: 1px solid #d5dbe1; border-radius: 8px; box-shadow: 0 8px 24px rgba(20,30,40,.14); padding: 4px; }
+.of-sz-menu-item { display: block; width: 100%; text-align: left; min-height: 32px; border: 0; background: none; border-radius: 5px; padding: 6px 10px; font-size: 13px; color: #a33; }
+.of-sz-menu-item:hover, .of-sz-menu-item:focus-visible { background: #fbeaea; outline: none; }
+.of-sz-btn:focus-visible, .of-sz-menu-item:focus-visible { box-shadow: 0 0 0 2px #d4e1f5; }
+.of-sz-confirm { flex-basis: 100%; box-sizing: border-box; max-width: 100%; border: 1px solid #e6b8b8; background: #fdf3f3; border-radius: 8px; padding: 8px 10px; }
+.of-sz-confirm-msg { margin: 0 0 8px; font-size: 12.5px; color: #5a1f1f; overflow-wrap: anywhere; }
+.of-sz-confirm-row { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; }
+.of-sz-btn.of-btn-danger { background: #b42318; color: #fff; border-color: #b42318; }
+@media (max-width: 420px) { .of-secure-zone-actions { padding: 4px 8px 6px; gap: 6px; } .of-secure-zone-btns { width: 100%; justify-content: flex-end; } }
+.of-secure-zone-note { font-size: 12px; padding: 2px 16px 4px; color: #245c3c; }
+.of-secure-zone-view { margin: 0; padding: 6px 16px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.of-secure-zone-end { border-top: 1.5px dashed #3d8a5f; margin: 0 10px; position: relative; height: 0; }
+.of-secure-zone-end > span { position: absolute; right: 6px; top: -9px; background: #fff; font: 10.5px Inter, system-ui, sans-serif; color: #245c3c; padding: 0 4px; }
+
+/* 05 top bar: "● Unsaved  [🔓 Unlocked · k1 · re-seals on save]" */
+.of-seal-status { display: inline-flex; gap: 8px; align-items: center; }
+.of-seal-draft { display: inline-flex; align-items: center; }
+
+/* Map: locked pill grey + blue key chip (04); unlocked anchor green + green chip; solid green cloud (05). */
+.map-region-locked > rect:not(.map-fold-hit) { fill: #eef0f3; stroke: #9aa5b1; }
+.map-region-locked > text { fill: #4a5560; }
+.map-node.is-unlocked-anchor > rect, .map-node.is-unlocked-anchor .map-node-bg { fill: #eaf5ef; stroke: #3d8a5f; }
+.map-region-kid > rect { fill: #eef2fa; stroke: #b5c6e6; stroke-width: 1; }
+.map-region-kid > text { font-size: 10px; fill: #244a8a; }
+.map-region-unlocked .map-region-label { fill: #245c3c; }

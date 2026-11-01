@@ -250,6 +250,8 @@ export function serialize(doc: OutlineFoldDoc): string {
     !fm?.expandedMarker &&
     fm?.fontSize == null &&
     !fm?.autoWidth &&
+    fm?.autoLockMs == null &&
+    fm?.followText == null &&
     !fm?.noteUri &&
     !fm?.noteMapUri &&
     !fm?.noteDetailsUri;
@@ -260,6 +262,8 @@ export function serialize(doc: OutlineFoldDoc): string {
     expandedMarker: fm?.expandedMarker,
     fontSize: fm?.fontSize,
     autoWidth: fm?.autoWidth,
+    autoLockMs: fm?.autoLockMs,
+    followText: fm?.followText,
     noteUri: fm?.noteUri,
     noteMapUri: fm?.noteMapUri,
     noteDetailsUri: fm?.noteDetailsUri,

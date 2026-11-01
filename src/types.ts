@@ -45,6 +45,30 @@ export interface SealedPayload {
   alg?: string;
   /** Sealed branch only: an explicitly public label shown on the locked placeholder. */
   pub?: string;
+  /** SEAL-DRAFT: ISO time the loaded (confirmed) ct was saved. */
+  at?: string;
+  /** SEAL-DRAFT: `h:` hash of the ct the loaded ct replaced (absent on legacy notes). */
+  base?: string;
+  /** SEAL-DRAFT: unconfirmed autosave slot (same kid/alg as the entry). */
+  autosave?: SealedDraftSlot;
+  /** SEAL-DRAFT: the one discarded slot, held until the next confirmed Save. */
+  discarded?: SealedDiscardedSlot;
+}
+
+/** Autosave slot (`auto-ct`, `auto-at`, `auto-base`). Ciphertext only, never clear text. */
+export interface SealedDraftSlot {
+  ciphertext: string;
+  at?: string;
+  /** Hash of the loaded ct this autosave was edited from. */
+  base?: string;
+}
+
+/** Discarded slot (`gone-ct`, `gone-at`, `gone-by`, `gone-from`). */
+export interface SealedDiscardedSlot {
+  ciphertext: string;
+  at?: string;
+  replacedBy?: 'save' | 'discard';
+  from?: 'loaded' | 'autosave';
 }
 
 export interface OutlineNode {
@@ -171,6 +195,16 @@ export interface OutlineFrontmatter {
    * `none` hides the row. Unset: the `noteDetailsUri` option, then `/notes/{id}/details`.
    */
   noteDetailsUri?: string;
+  /**
+   * `autoLock:` in the layout block: idle time in ms before unlocked sealed branches lock
+   * (`5m` default, `90s`, `10m`, or `off` = 0). Unset means the 5 min default.
+   */
+  autoLockMs?: number;
+  /**
+   * `follow: on|off` in the layout block: the document default for "Follow in text" (editor
+   * follows Map/Outline focus). Unset = on. A per-user resume value overrides it.
+   */
+  followText?: boolean;
 }
 
 export interface FoldState {
