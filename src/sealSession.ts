@@ -71,6 +71,20 @@ export interface SealSessionsOptions {
   onFocusCommand?: (id: string, cmd: 'reveal' | 'focus' | 'setFocus', view?: 'map' | 'outline' | 'text') => void | Promise<void>;
   /** Install a `pagehide` wipe (default true when `window` exists). */
   wipeOnPagehide?: boolean;
+  /** 0.4.13: a zone re-seal that has not settled after this many ms fails (default 15 s). */
+  saveTimeoutMs?: number;
+}
+
+export const DEFAULT_SAVE_TIMEOUT_MS = 15_000;
+
+/** Resolve / reject with `p`, or reject after `ms` (the UI never waits on a stuck promise). */
+export function settleWithin<T>(p: Promise<T>, ms: number): Promise<T> {
+  if (!(ms > 0) || !isFinite(ms)) return p;
+  return new Promise<T>((res, rej) => {
+    const t = setTimeout(() => rej(new Error(`outline-fold: re-seal did not settle in ${ms} ms`)), ms);
+    (t as { unref?: () => void }).unref?.();
+    p.then((v) => { clearTimeout(t); res(v); }, (e) => { clearTimeout(t); rej(e); });
+  });
 }
 
 export interface SealSessions {
@@ -159,6 +173,12 @@ export function createSealSessions(opts: SealSessionsOptions): SealSessions {
   const docOf = (region: RegionId): OutlineFoldDoc | null =>
     region === '' ? opts.getDoc() : (map.get(region)?.viewer?.doc ?? null);
 
+  /** 0.4.13: a viewer that cannot snapshot (invalid tree) counts as dirty, never throws. */
+  const dirtyOf = (s: Impl): boolean => {
+    if (!s.viewer || s.viewer.closed) return false;
+    try { return s.viewer.isDirty(); } catch { return true; }
+  };
+  const saveMs = opts.saveTimeoutMs ?? DEFAULT_SAVE_TIMEOUT_MS;
   const snap = (s: Impl): SealSession => {
     const pdoc = docOf(s.parent);
     return {
@@ -167,7 +187,7 @@ export function createSealSessions(opts: SealSessionsOptions): SealSessions {
       branchId: s.branchId,
       state: s.state,
       kid: kidOf(pdoc ? findNode(pdoc.nodes, s.branchId) : undefined),
-      dirty: !!s.viewer && !s.viewer.closed && s.viewer.isDirty(),
+      dirty: dirtyOf(s),
       error: s.error,
       saved: s.saved,
       retryAfterMs: s.state === 'error' && s.retryAt ? Math.max(0, s.retryAt - Date.now()) : 0,
@@ -255,15 +275,18 @@ export function createSealSessions(opts: SealSessionsOptions): SealSessions {
     // Deepest first, so a parent never wipes under an open child.
     for (const d of descendants(s.region).sort((a, b) => b.region.length - a.region.length))
       if (!(await doLock(d, 'parent'))) return false;
-    if (s.viewer.isDirty()) {
+    if (dirtyOf(s)) {
       let choice: 'save' | 'discard' | 'cancel' = 'save';
-      if (reason === 'user' && opts.confirmLockDirty) choice = await opts.confirmLockDirty(s.region);
+      try {
+        if (reason === 'user' && opts.confirmLockDirty) choice = await opts.confirmLockDirty(s.region);
+      } catch { choice = 'cancel'; }
       if (choice === 'cancel') return false;
       if (choice === 'save') {
-        await self.save(s.region);
-        if (s.state === 'error') return false; // keep edits, user retries
+        await self.save(s.region); // settles: saved, or state 'error' (never throws)
+        if (s.state === 'error' || !s.viewer || dirtyOf(s)) return false; // keep edits, user retries
       }
     }
+    if (!s.viewer) return true;
     s.viewer.close(); // wipes doc nodes; nested viewers close too
     s.viewer = null;
     s.saved = false;
@@ -326,7 +349,10 @@ export function createSealSessions(opts: SealSessionsOptions): SealSessions {
       if (!s.viewer || s.viewer.closed || s.state === 'saving') return;
       set(s, 'saving');
       try {
-        await s.viewer.save(); // same kid + mode, fresh salt/nonce, AAD rebuilt (sealedBranch)
+        // 0.4.13: never hang. A re-seal that does not settle in time fails visibly; the
+        // plaintext stays open in the viewer (and its last encrypted autosave) for a retry.
+        const viewer = s.viewer;
+        await settleWithin(Promise.resolve().then(() => viewer.save()), saveMs); // same kid + mode, fresh salt/nonce, AAD rebuilt (sealedBranch)
         // Nested: the parent's child doc changed; save it outward to the root.
         if (s.parent) {
           await self.save(s.parent);
@@ -334,12 +360,17 @@ export function createSealSessions(opts: SealSessionsOptions): SealSessions {
           if (p.state === 'error') throw new Error('parent save failed');
         }
       } catch {
+        // Keep the draft: best-effort encrypted autosave of the open plaintext, then a visible error.
+        const v = s.viewer;
+        if (v && !v.closed) await settleWithin(Promise.resolve().then(() => v.autosave()), saveMs).catch(() => false);
         return fail(s, 'save-failed');
       }
       s.saved = true;
       set(s, 'unlocked');
-      if (!s.parent) api.emit({ type: 'save', region, payload: serialize(opts.getDoc()) });
-      api.emit({ type: 'change', region, dirty: false });
+      try {
+        if (!s.parent) api.emit({ type: 'save', region, payload: serialize(opts.getDoc()) });
+        api.emit({ type: 'change', region, dirty: false });
+      } catch { /* a broken listener must not undo a confirmed re-seal */ }
     },
 
     async autosave(region) {
@@ -352,7 +383,9 @@ export function createSealSessions(opts: SealSessionsOptions): SealSessions {
 
     async lock(region, reason = 'user') {
       const targets = region === 'all' ? [...map.values()].filter((s) => !s.parent) : [impl(region)];
-      for (const s of targets) await doLock(s, reason);
+      for (const s of targets) {
+        try { await doLock(s, reason); } catch { fail(s, 'save-failed'); } // edits kept, visible error
+      }
       armIdle();
     },
 

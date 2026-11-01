@@ -42,7 +42,9 @@ it('zoneIndentUnit / zoneIndentChanges (pure)', () => {
   expect(zoneIndentUnit('- a\n    - b\n        - c')).toBe(4);
   expect(zoneIndentUnit('- a')).toBe(2);
   const t = '- a\n    - b';
-  expect(zoneIndentChanges(t, 6, 6, false)).toEqual([{ from: 4, to: 4, insert: '    ' }]);
+  expect(zoneIndentChanges(t, 6, 6, false)).toEqual([]); // 0.4.13: already a + 1
+  expect(zoneIndentChanges('- a\n    - b\n    - c', 14, 14, false)).toEqual([{ from: 12, to: 12, insert: '    ' }]);
+  expect(zoneIndentChanges('- a\n    - b', 1, 1, false)).toEqual([]); // the root never indents
   expect(zoneIndentChanges(t, 6, 6, true)).toEqual([{ from: 4, to: 8, insert: '' }]);
   expect(zoneIndentChanges('- a', 1, 1, true)).toEqual([]);
 });

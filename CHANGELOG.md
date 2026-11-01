@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.4.13 — 2026-11-02
+
+- Fix (zone Tab broke the Map, Save / Lock hung): the zone's `updateListener` re-parsed the zone text with no ids, so every new row was keyed by its preorder position in the Map; position 4 collided with the anchor id `4`, drew `t` as the region root and dropped the header. A zone line as shallow as the root (or above it) also gave the child doc two roots, and `viewer.isDirty()` / `snapshot()` threw inside `sessions.save` before its `try` and inside `lock`; the sealUi buttons `void` those promises, so the status stuck on Unsaved. New pure `parseZoneText` (`src/zoneText.ts`): always one root (malformed lines nest under the nearest shallower line, extra roots under the anchor row), root keeps the anchor id, every id-less row gets a session id (`zN`, `autoId`, never serialised) carried by preorder position while typing.
+- Save / Lock always settle: `snap()` never throws (an unsnapshottable viewer reads dirty), `save` runs fully inside `try` with a timeout (`saveTimeoutMs`, default 15 s, `settleWithin` exported); a failed or stuck re-seal tries an encrypted autosave of the open plaintext, then shows `save-failed` with the viewer still open. `lock` never rejects; a failed save keeps the zone open with the edits.
+- Zone Tab is the built-in edit only: exactly one unit, never deeper than the previous line + 1 unit, the root line never indents (a host hook built for the main text indented blindly).
+- Fix (↑ skipped the zone): the main view's `zoneNav` and the zone's leave keys ran after `defaultKeymap` (same precedence, later in order), so CM's line motion won. Both are `Prec.high` now: ↑ on the first line below an open zone enters its last line, ↑ on the zone's first line goes to the anchor line.
+- Fix (Tab below the zone): main-text Tab is owned by the package. The host edit runs first and is refused when it nests a line two levels under its parent or under a sealed `<enc:…>` line (whose children live in the zone); no host edit → built-in one-unit edit. Tab is always handled, so the browser never moves focus into the zone widget.
+- Fix (Backspace on an empty item): `backspaceEmptyItem` (high precedence, main + zone): marker → outdent one unit → join the previous line; never a no-op.
+- CSS: `.map-region-locked > rect:not(.map-fold-hit)` also excludes `.map-task-hit`.
+- Tests: `zone-keys-0413` (pure zone parse; Tab on a zone task + Save + Lock settle; malformed zone saves; unsnapshottable viewer fails visibly and keeps edits; `settleWithin`; ↑ both ways; Tab below the zone; Backspace sequence; CSS rect guard on src + dist), all through `mountTextEditor(container, doc)` with Audroam's own Enter / Tab hooks.
+
 ## 0.4.12 — 2026-11-02
 
 - Fix (Map region tasks, dark square): the zone CSS rule `.map-region-node > rect:not(.map-fold-hit)` painted every rect in a region pill, including the full-height task hit rect, as a bordered dark pill that covered the checkbox glyph. The pill body now carries `.map-region-body` and only it is painted; task/fold hit rects stay transparent.

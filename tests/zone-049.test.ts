@@ -112,15 +112,17 @@ describe('secure zone in Text (0.4.9)', () => {
     fh.unmount();
   });
 
-  it('B4: Tab / Shift-Tab in the zone indent the zone line through the host onTab', async () => {
+  it('B4: Tab / Shift-Tab in the zone indent the zone line (0.4.13: never deeper than parent + 1)', async () => {
     const { zone, fh } = await mountZone();
     const z = zone();
-    const ln = z.state.doc.line(3); // "    - [ ] tomato"
+    const ln = z.state.doc.line(3); // "    - [ ] tomato" — already seeds' child: Tab is clamped
     z.focus();
     z.dispatch({ selection: { anchor: ln.from + 6 } });
     key(z, 'Tab');
-    expect(zone().state.doc.line(3).text).toBe('      - [ ] tomato <id:6>');
+    expect(zone().state.doc.line(3).text).toBe('    - [ ] tomato <id:6>');
     key(zone(), 'Tab', true);
+    expect(zone().state.doc.line(3).text).toBe('  - [ ] tomato <id:6>');
+    key(zone(), 'Tab');
     expect(zone().state.doc.line(3).text).toBe('    - [ ] tomato <id:6>');
     // The child doc follows (the edit went through the zone, not the main text): bean → under tomato.
     const z2 = zone();

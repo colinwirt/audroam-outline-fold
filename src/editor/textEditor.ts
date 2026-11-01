@@ -12,8 +12,11 @@
  * - Edits past the first trailing fence (payloads, keyring, layout…) are kept above it.
  * - `setRegions()` still accepts host block widgets (e.g. notes) keyed by a line substring.
  */
-import { zoneTab } from './zoneIndent.js';
-import { Compartment, EditorState, StateEffect, StateField, type Extension, type Text } from '@codemirror/state';
+import { backspaceEmptyItem } from './emptyItem.js';
+import { zoneTab, zoneIndentChanges, indentBreaksTree } from './zoneIndent.js';
+
+const isSealedLine = (line: string): boolean => /<enc:[A-Za-z0-9_.-]+>/.test(line);
+import { Compartment, EditorState, Prec, StateEffect, StateField, type Extension, type Text } from '@codemirror/state';
 import { EditorView, Decoration, WidgetType, keymap, drawSelection, type DecorationSet } from '@codemirror/view';
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
 import { taskGlyphs, outlineEditor, refreshZones, missingZones, zoneRenderFailures, ZONE_ERROR_EVENT, type OutlineEditorOptions } from './index.js';
@@ -189,13 +192,14 @@ function buildEditor(host: HTMLElement, initial: string, opts: TextEditorOptions
   // Zone keys: Enter as the main editor; Tab/Shift-Tab never leave the zone (zoneTab fallback).
   const zoneKeys = [
     lineKeys[0]!,
-    { key: 'Tab', run: zoneTab(opts.onTab, false) },
-    { key: 'Shift-Tab', run: zoneTab(opts.onTab, true) },
+    { key: 'Tab', run: zoneTab(false) },
+    { key: 'Shift-Tab', run: zoneTab(true) },
   ];
   const ext: Extension[] = [
     history(),
     drawSelection(),
     taskGlyphs,
+    Prec.high(keymap.of([{ key: 'Backspace', run: backspaceEmptyItem }])),
     keymap.of([
       ...lineKeys,
       { key: 'Escape', run: () => { opts.onEsc?.(); return !!opts.onEsc; } },
@@ -246,7 +250,7 @@ function buildEditor(host: HTMLElement, initial: string, opts: TextEditorOptions
     ext.push(outlineEditor({
       sessions: opts.sessions,
       askPassphrase: opts.askPassphrase,
-      childExtensions: [history(), keymap.of(zoneKeys), keymap.of([...defaultKeymap, ...historyKeymap]), ...(opts.childExtensions ?? [])],
+      childExtensions: [history(), Prec.high(keymap.of([{ key: 'Backspace', run: backspaceEmptyItem }])), keymap.of(zoneKeys), keymap.of([...defaultKeymap, ...historyKeymap]), ...(opts.childExtensions ?? [])],
       textWidthCh: widthCh,
       focus: opts.focus,
       followInText: opts.followInText,
@@ -328,12 +332,34 @@ export function mountTextEditor(
     applyEditTo(v, edit);
     return true;
   };
+  /**
+   * 0.4.13 (Colin, bug 5): Tab / Shift+Tab in the main text always stay in the main text and
+   * keep the caret on its line. The host edit runs first; an edit that would nest a line two
+   * levels under its parent, or under a sealed `<enc:…>` line (its children live in the zone),
+   * is refused. No host edit → the built-in one-unit edit. Never falls through to the browser
+   * (which moved focus into the zone widget).
+   */
+  const mainTab = (v: EditorView, shift: boolean): boolean => {
+    const text = v.state.doc.toString();
+    const { from, to } = v.state.selection.main;
+    const edit = o.onTab ? o.onTab(text, from, to, shift) : null;
+    if (edit) {
+      const after = text.slice(0, edit.start) + (edit.text || '') + text.slice(edit.end);
+      if (!shift && indentBreaksTree(text, after, from, Math.max(from, to), isSealedLine)) return true;
+      return keyEdit(v, () => edit);
+    }
+    if (edit === false || !o.onTab || edit == null) {
+      const changes = zoneIndentChanges(text, from, to, shift, isSealedLine);
+      if (changes.length) v.dispatch({ changes, scrollIntoView: true, userEvent: shift ? 'delete.dedent' : 'input.indent' });
+    }
+    return true;
+  };
   const core = buildEditor(host, doc.getText(), {
     ...o,
     sessions: doc.sessions,
     focus: o.focus ?? doc.focusLink,
     onEnter: o.onEnter ? (v) => keyEdit(v, () => o.onEnter!(v.state.doc.toString(), v.state.selection.main.from, v.state.selection.main.to)) : undefined,
-    onTab: o.onTab ? (v, shift) => keyEdit(v, () => o.onTab!(v.state.doc.toString(), v.state.selection.main.from, v.state.selection.main.to, shift)) : undefined,
+    onTab: (v, shift) => mainTab(v, shift),
   }, {
     onLocal: (next) => doc.setText(next, { source: 'text', reason: 'text' }),
     onSelection: (head) => doc.setCaret(head),

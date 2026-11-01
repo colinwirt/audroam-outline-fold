@@ -653,3 +653,4 @@ export {
 } from './outlineDoc.js';
 export { createIdAllocator, linksTo, type IdAllocator, type IdScope, type IdDiagnostic } from './idAllocator.js';
 export { mergeKeeping } from './textMerge.js';
+export { parseZoneText, oneZoneRoot, pinZoneIds } from './zoneText.js';

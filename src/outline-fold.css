@@ -965,7 +965,7 @@ div.of-unlock.of-unlock-sheet { border-radius: 12px 12px 8px 8px; border-left-wi
 .of-seal-draft { display: inline-flex; align-items: center; }
 
 /* Map: locked pill grey + blue key chip (04); unlocked anchor green + green chip; solid green cloud (05). */
-.map-svg .map-region-locked > rect:not(.map-fold-hit) { fill: var(--of-seal-bg, #eef0f3); stroke: var(--of-seal-btn-stroke, #9aa5b1); }
+.map-svg .map-region-locked > rect:not(.map-fold-hit):not(.map-task-hit) { fill: var(--of-seal-bg, #eef0f3); stroke: var(--of-seal-btn-stroke, #9aa5b1); }
 .map-svg .map-region-locked > text { fill: var(--of-seal-ink, #4a5560); }
 /* 0.4.4: only the pill is tinted (a bare `> rect` also filled the fold hit box white, and the
    light caption vanished on the pale fill). Normal dark pill, green accent stroke. */

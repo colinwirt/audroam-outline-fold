@@ -8,9 +8,9 @@
  * The main document only ever holds the `<enc>` tag, so copy, paste and undo in the main
  * editor never contain plaintext. The `<enc>` tag is atomic and cannot be edited by hand.
  */
-import { EditorState, RangeSetBuilder, StateEffect, StateField, type Extension, type Text } from '@codemirror/state';
+import { EditorState, Prec, RangeSetBuilder, StateEffect, StateField, type Extension, type Text } from '@codemirror/state';
 import { Decoration, EditorView, ViewPlugin, WidgetType, drawSelection, keymap, type DecorationSet } from '@codemirror/view';
-import { parse } from '../parse.js';
+import { parseZoneText } from '../zoneText.js';
 import { normalizeTaskMarkers } from '../taskChrome.js';
 import { serialize } from '../serialize.js';
 import type { SealSessions } from '../sealSession.js';
@@ -210,17 +210,18 @@ class SecureZone extends WidgetType {
           zoneCaret,
           taskGlyphs,
           // 0.4.5: ↑ on the first zone line / ↓ on the last leave the zone to the main lines around it.
-          keymap.of([
+          // 0.4.13 (bug 2): high precedence, ahead of the child defaultKeymap's line motion.
+          Prec.high(keymap.of([
             { key: 'ArrowUp', run: (v) => leave(v, -1) },
             { key: 'ArrowDown', run: (v) => leave(v, 1) },
-          ]),
+          ])),
           EditorView.updateListener.of((u) => {
             if (!u.docChanged || applying) return;
             const d = sessions.get(region).doc;
             if (!d) return;
-            const next = parse(joinZoneText(u.state.doc.toString(), split.trailer));
+            // 0.4.13: always one root (malformed indents nest under it) and every row keyed.
+            const next = parseZoneText(joinZoneText(u.state.doc.toString(), split.trailer), anchorId, d);
             normalizeTaskMarkers(next.nodes); // a typed ☑ / ☐ is stored as [x] / [ ]
-            zoneRootId(next, anchorId);
             d.nodes.splice(0, d.nodes.length, ...next.nodes); // keep viewer identity
             ownText = serialize(d);
             sessions.markChanged(region);
@@ -420,7 +421,8 @@ export function outlineEditor(opts: OutlineEditorOptions): Extension[] {
   // 0.4.5 (Colin): ↑ on the line right after an open zone goes into the zone's last line,
   // and ↓ on the zone's `<enc>` line goes to its first line. CM's vertical motion skipped the
   // whole block widget (ignoreEvent) and landed on the anchor or above it.
-  const zoneNav = keymap.of([
+  // 0.4.13 (bug 2): high precedence — the host's defaultKeymap ArrowUp ran first and skipped the zone.
+  const zoneNav = Prec.high(keymap.of([
     { key: 'ArrowUp', run: (view) => {
       const sel = view.state.selection.main;
       if (!sel.empty) return false;
@@ -441,7 +443,7 @@ export function outlineEditor(opts: OutlineEditorOptions): Extension[] {
       z.dispatch({ selection: { anchor: 0 }, scrollIntoView: true });
       return true;
     } },
-  ]);
+  ]));
   const zoneAbove = (state: EditorState, lineNo: number): EditorView | null => {
     const line = state.doc.line(lineNo);
     if (!ENC_RE.test(line.text)) return null;
