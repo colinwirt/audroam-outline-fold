@@ -83,6 +83,9 @@ import {
   autoTextWidth,
 } from './mapLabel.js';
 import { LABEL_FONT_FAMILY } from './svgTextMeasure.js';
+
+/** 0.4.4: caption prefix on an unlocked sealed anchor pill. */
+export const UNLOCK_MARK = '🔓 ';
 import {
   W_AUTO_SINGLE_LINE,
   WIDTHS_REDONE,
@@ -3752,8 +3755,18 @@ export function createMapView(
   function regionHosts(): RegionHostSpec[] {
     return [...(opts.getRegionHosts?.() ?? []), ...mounted.values()];
   }
-  function quickSize(d: OutlineFoldDoc, n: OutlineNode, pos: MapPoint | undefined): { w: number; h: number } {
-    const label = captionWithoutLinks(displayCaption(n.title));
+  // 0.4.4: an open top-level sealed region's anchor pill reads "🔓 <caption>"; the mark is part of
+  // the caption so pillSize counts it in the pill width.
+  function unlockedAnchorKeys(): Set<string> {
+    const out = new Set<string>();
+    for (const r of placed) if (r.host.kind === 'sealed' && r.host.doc && !r.host.parent) out.add(r.host.anchor);
+    return out;
+  }
+  function anchorCaption(key: string | undefined, label: string, anchors: Set<string> = unlockedAnchorKeys()): string {
+    return key !== undefined && anchors.has(key) ? UNLOCK_MARK + label : label;
+  }
+  function quickSize(d: OutlineFoldDoc, n: OutlineNode, pos: MapPoint | undefined, key?: string): { w: number; h: number } {
+    const label = anchorCaption(key, captionWithoutLinks(displayCaption(n.title)));
     const sz = pillSize(label, {
       reserveFold: hasKids(n),
       reserveTask: !!resolveTask(n),
@@ -3790,7 +3803,7 @@ export function createMapView(
     for (const v of vis) {
       const p = layout.nodes![v.key];
       if (!p) continue;
-      const sz = quickSize(doc, v.n, p);
+      const sz = quickSize(doc, v.n, p, v.key);
       boxes.set(v.key, { x: p.x - sz.w / 2, y: p.y - sz.h / 2, ...sz });
       if (v.parentKey) (kids.get(v.parentKey) ?? kids.set(v.parentKey, []).get(v.parentKey)!).push(v.key);
     }
@@ -3865,9 +3878,13 @@ export function createMapView(
               ? `<g class="map-region-kid"><rect x="${b.x + b.w - slot - 34}" y="${b.y - 8}" width="30" height="16" rx="8"/><text x="${b.x + b.w - slot - 19}" y="${b.y + 4}" text-anchor="middle">${esc(r.host.kid.slice(0, 4))}</text></g>`
               : '';
             const lines = wrapPlain(t, autoCh());
+            // 0.4.4 (Colin): same font size as normal map nodes (pills are sized with it via quickSize).
+            const fpx = resolveFontPx(undefined, getLayout().fontSize, getDoc().frontmatter?.fontSize);
+            const lh = lineBox(fpx);
+            const fa = `font-size="${fpx}" font-family="${LABEL_FONT_FAMILY}"`;
             const textSvg = lines.length <= 1
-              ? `<text x="${b.x + 12}" y="${cy + 4}">${esc(t)}</text>`
-              : `<text x="${b.x + 12}" y="${cy + 4 - ((lines.length - 1) * 16) / 2}">${lines.map((l, i) => `<tspan x="${b.x + 12}"${i ? ' dy="16"' : ''}>${esc(l)}</tspan>`).join('')}</text>`;
+              ? `<text x="${b.x + 12}" y="${cy + fpx * 0.35}" ${fa}>${esc(t)}</text>`
+              : `<text x="${b.x + 12}" y="${cy + fpx * 0.35 - ((lines.length - 1) * lh) / 2}" ${fa}>${lines.map((l, i) => `<tspan x="${b.x + 12}"${i ? ` dy="${lh}"` : ''}>${esc(l)}</tspan>`).join('')}</text>`;
             return `<g class="map-region-node${folded ? ' map-region-pill' : ''}${locked && r.host.kind === 'sealed' ? ' map-region-locked' : ''}${b.collapsed ? ' collapsed' : ''}" id="${esc(regionDomId(b.key))}" role="treeitem" aria-selected="false"${b.foldable ? ` aria-expanded="${b.collapsed ? 'false' : 'true'}"` : ''} aria-label="${esc(aria)}" data-scoped-id="${esc(b.key)}" data-region-id="${esc(r.host.id)}"><rect x="${b.x}" y="${b.y}" width="${Math.max(1, b.w - slot)}" height="${b.h}" rx="${Math.min(14, b.h / 2)}"/>${textSvg}${chrome}${kidChip}</g>`;
           })
           .join('');
@@ -4233,10 +4250,11 @@ export function createMapView(
     const nodes: NodePaint[] = [];
     const order = indexOutline(doc.nodes);
 
+    const anchors = unlockedAnchorKeys();
     function walk(n: OutlineNode): void {
       const key = nodeMapKey(n, order.get(n) || 0);
       const pos = layout.nodes![key] || { x: 100, y: 100 };
-      const label = captionWithoutLinks(displayCaption(n.title));
+      const label = anchorCaption(key, captionWithoutLinks(displayCaption(n.title)), anchors);
       const foldable = hasKids(n);
       const col = foldable && !!n.id && isCollapsed(doc, n.id);
       const taskParsed = resolveTask(n);
@@ -4287,7 +4305,7 @@ export function createMapView(
         for (const c of n.children!) {
           const cKey = nodeMapKey(c, order.get(c) || 0);
           const cpos = layout.nodes![cKey] || { x: pos.x + 200, y: pos.y };
-          const clabel = captionWithoutLinks(displayCaption(c.title));
+          const clabel = anchorCaption(cKey, captionWithoutLinks(displayCaption(c.title)), anchors);
           const cTask = resolveTask(c);
           const cs = pillSize(clabel, timeLeafPaintOpts(c, cpos, layout.fontSize, doc.frontmatter?.fontSize, doc) ?? {
             reserveFold: hasKids(c),
@@ -4663,26 +4681,10 @@ export function createMapView(
     if (linkPop) positionLinkPop();
     if (regionFocus) syncRegionFocus();
     // Unlocked sealed anchors: tint the parent pill green.
-    for (const g of host.querySelectorAll('.map-node.is-unlocked-anchor')) {
-      g.classList.remove('is-unlocked-anchor');
-      const m = g.querySelector('[data-of-unlock-mark]');
-      if (m) {
-        m.removeAttribute('data-of-unlock-mark');
-        if (m.firstChild?.nodeType === 3 && m.firstChild.textContent === '🔓 ') m.removeChild(m.firstChild);
-      }
-    }
+    for (const g of host.querySelectorAll('.map-node.is-unlocked-anchor')) g.classList.remove('is-unlocked-anchor');
     for (const r of placed) {
       if (r.host.kind !== 'sealed' || !r.host.doc || r.host.parent) continue;
-      const g = host.querySelector(`.map-node[data-id="${CSS.escape(r.host.anchor)}"]`);
-      if (!g) continue;
-      g.classList.add('is-unlocked-anchor');
-      // 0.4.4: caption reads "🔓 Sealed branch" while open.
-      const label = g.querySelector('.map-label');
-      const first = label?.querySelector('tspan') ?? label;
-      if (first && !first.hasAttribute('data-of-unlock-mark')) {
-        first.setAttribute('data-of-unlock-mark', '');
-        first.insertBefore(document.createTextNode('🔓 '), first.firstChild);
-      }
+      host.querySelector(`.map-node[data-id="${CSS.escape(r.host.anchor)}"]`)?.classList.add('is-unlocked-anchor');
     }
     for (const fn of [...paintListeners]) {
       try {

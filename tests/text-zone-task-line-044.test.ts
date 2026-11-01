@@ -30,5 +30,22 @@ it('0.4.4: unlocked anchor CSS tints only the pill, never every rect', async () 
   expect(css).not.toMatch(/is-unlocked-anchor\s*>\s*rect/);
   expect(css).toMatch(/\.map-node\.is-unlocked-anchor \.map-pill \{ fill: var\(--pill-fill/);
   const src = readFileSync('src/mapView.ts', 'utf8');
-  expect(src).toContain("data-of-unlock-mark");
+  // the 🔓 mark is part of the caption pillSize measures (pill width includes it), not a DOM patch
+  expect(src).not.toContain('data-of-unlock-mark');
+  expect(src).toMatch(/const label = anchorCaption\(key, captionWithoutLinks/);
+  expect(src).toMatch(/const label = anchorCaption\(key, captionWithoutLinks\(displayCaption\(n\.title\)\)\);\n    const sz = pillSize\(label/);
+});
+
+it('0.4.4: region pill text uses the node font size, not a fixed 13px', async () => {
+  const { readFileSync } = await import('node:fs');
+  const css = readFileSync('src/outline-fold.css', 'utf8');
+  expect(css).not.toMatch(/\.map-region-node > text \{[^}]*font-size/);
+  const src = readFileSync('src/mapView.ts', 'utf8');
+  expect(src).toMatch(/const fa = `font-size="\$\{fpx\}"/);
+});
+
+it('0.4.4: pillSize width grows with the unlock mark', async () => {
+  const { pillSize, UNLOCK_MARK } = await import('../src/mapView.js');
+  const o = { reserveFold: true, reserveTask: true, semibold: false, wrapCh: 40 };
+  expect(pillSize(UNLOCK_MARK + 'Sealed branch', o).w).toBeGreaterThan(pillSize('Sealed branch', o).w);
 });

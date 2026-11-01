@@ -888,7 +888,8 @@
 /* 0.4.3 (Colin, tablet): region nodes use the normal map pill (--pill-fill / --text), only the
    stroke is the green zone accent; never a white pill with light text on a dark host. */
 .map-svg .map-region-node > rect:not(.map-fold-hit) { fill: var(--pill-fill, #0c222c); stroke: var(--of-unlocked-stroke, var(--of-region-stroke, rgba(46, 160, 67, 0.75))); stroke-width: 1.4; }
-.map-svg .map-region-node > text { font-size: 13px; fill: var(--text, var(--of-text, #e7ecf1)); }
+/* 0.4.4: font size comes from the node font (font-size attribute), as normal map pills. */
+.map-svg .map-region-node > text { fill: var(--text, var(--of-text, #e7ecf1)); }
 .map-svg .map-region-pill > rect:not(.map-fold-hit) { fill: var(--of-region-fill, rgba(46, 160, 67, 0.14)); }
 /* §R1 region folding: same fold chrome as root nodes; selection ring on the focused node. */
 .map-region-node .map-fold-hit { fill: transparent; stroke: none; }
