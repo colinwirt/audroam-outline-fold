@@ -10,6 +10,40 @@ Builds on: `src/mapRegion.ts`, `src/sealedBranch.ts`, `src/sealedState.ts`, `doc
 
 **Principle:** one sealed branch maps to one memory-only child instance, with one state machine and one source of truth. Every view (Map, Outline, Text, banner) renders from that state and never computes its own.
 
+## R1. Region folding (requirement #1, top priority)
+**Priority:** this is the #1 requirement of this spec (Colin, 1 Nov 2026). The package is `outline-fold`, so folding is the core feature. Region work in §1–§6 is not done until this section passes. Each phase in §6 must keep these checks green.
+
+**What the code does today (P3, commit `bc8d602`):**
+- Region nodes render through `regionCloudSvg()` as plain `<g class="map-region-node">` rect and text. They have no fold slot, no folded-count chip, no fold halo and no keyboard handling. The `foldHandleSvg` / `foldCountSvg` path in `mapView.ts` only runs for root-doc nodes.
+- `layoutLocal` / `visibleKeyed` do skip children that `isCollapsed(childDoc, id)` reports as collapsed. But nothing in the UI can set that state, so inner folding cannot be reached.
+- **Whole-region collapse works only through code, not in the UI.** `RegionHandle.setFolded(b)` (for regions mounted with `mountRegion`) and the `folded(region)` callback of `regionHostsFromSessions` both make `layoutLocal` return a single pill. Nothing calls them from a click, a tap or a key. The pill has no fold handle. Mounted fold state lives in the `mounted` map and is lost on unmount or remount. A locked session is always forced to fold (`folded: s.locked || …`). Outline has no region folding at all.
+
+**(a) Same fold controls inside regions.** Every node inside a region that has children gets the same reserved fold slot, circle-+ handle, halo, folded-count chip, fold-to-level menu (right-click or hold) and keyboard fold keys as a node outside a region. It uses the same render helpers and key map, with no fork. Keyboard focus and selection move into, through and out of a region using the scoped id.
+
+**(b) Whole-region collapse.** A region root (the cloud) has its own fold handle. Folding the root collapses the whole region to its root pill: a lock icon for `sealed`, a cloud icon for `record`, the label, and a count chip for the hidden nodes. Unfolding restores the inner fold state as it was. The anchor's fold key and handle act on the region the same way, and folding the anchor hides the region like any other subtree. "Fold all" and "fold to level N" count region levels as normal depth.
+
+**(c) Fold state keyed by scoped id.** Fold state for region nodes is stored under the scoped id `regionId:nodeId`, and for the region root under `regionId`. It can never clash with root ids (region `""`) or with another region's ids. Fold state is never written into the child payload, so sealed ciphertext does not change when you fold. For `record` regions, fold state persists and resumes through the same per-view store and session resume path as normal fold state, keyed by scoped id.
+
+**(d) Sealed regions.**
+- A sealed region that is locked is always collapsed to its root pill and cannot be unfolded. Activating the handle asks the host to unlock (`unlock` event / `open` command).
+- Fold state inside an unlocked sealed region is held in memory only, in the `SealSession`. It is never persisted. It is wiped together with the doc when the region locks again (Lock now, close, auto-lock, a parent lock or `pagehide`). On the next unlock the region opens with its default fold, not the previous one.
+- An `<r:…>` link, `reveal` or `focus` that targets a node in a region unfolds every ancestor on the path. That includes the region root and any enclosing regions, which are unlocked first if needed (§8 Q3). The target ends up visible and selected. When the target region is still sealed, it unfolds only to the region root.
+
+**(e) Map and Outline parity.** Outline renders regions as nested blocks with the same fold toggles, count chips and keys (including the `attachOutlineTree` expand-level keys and live-region announcements). Map and Outline read the same fold state by scoped id from one store. Text shows fold markers only for the root doc and never for sealed contents.
+
+**(f) Acceptance (manual checks).**
+| QA | Check |
+|---|---|
+| FOLD-1 | Unlock a sealed branch that has nested children. In Map, each inner parent node shows the fold slot. Clicking it collapses its children and shows a count chip, exactly like a node outside the region. |
+| FOLD-2 | Select an inner region node and use the fold keys (collapse, expand, fold-to-level). The result matches the same keys on a root node, and focus never jumps out of the region. |
+| FOLD-3 | Click the region root's fold handle. The cloud collapses to one pill with a count chip and the parent relayouts with no overlap. Unfolding brings back the earlier inner fold state. |
+| FOLD-4 | Give a root node and a region node the same local id (e.g. `3` and `s:b7:3`). Folding one does not fold the other, in either Map or Outline. |
+| FOLD-5 | Fold nodes in a `record` region, then reload. The fold state comes back the same as root fold state does. |
+| FOLD-6 | Fold nodes in an unlocked sealed region, then Lock now and unlock again. The region opens with its default fold, and Text and the payload are unchanged by the fold. |
+| FOLD-7 | While a sealed region is locked, its pill cannot be expanded, and clicking the handle prompts for unlock. |
+| FOLD-8 | With the path collapsed (anchor, region root and inner parent all folded), follow `<r:REGION:N>`. Every level on the path unfolds and N is selected. If the region is sealed, the link stops at the region root. |
+| FOLD-9 | Fold a region node in Map, then switch to Outline. The same node is folded there, and the reverse also holds. |
+
 ## 1. Sub-map cloud regions (renderer API)
 ```ts
 interface RegionHost {
@@ -85,6 +119,7 @@ instance.dispatch(c: OFCommand): Promise<void>;
 6. **P6 – Delete:** remove the legacy mjs decrypt and wiring code.
 
 Each phase ships behind a flag and can be reverted on its own.
+Region folding (§R1) is requirement #1. P3 and later phases are not complete until FOLD-1 to FOLD-9 pass.
 
 ## 7. Acceptance (what the screen shows)
 | QA | Check |
