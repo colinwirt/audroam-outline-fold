@@ -9,6 +9,13 @@ import type { RegionId } from './hostApi.js';
 import type { OutlineFoldDoc, OutlineNode } from './types.js';
 import type { RegionBox } from './mapRegion.js';
 import { scopeId } from './scopedId.js';
+import { isCollapsed } from './fold.js';
+
+function countAll(nodes: OutlineNode[] | undefined): number {
+  let c = 0;
+  for (const n of nodes ?? []) c += 1 + countAll(n.children);
+  return c;
+}
 
 export const REGION_PAD = 14;
 const LABEL_H = 14;
@@ -32,6 +39,18 @@ export interface PlacedBox extends RegionBox {
   key: string;
   title: string;
   depth: number;
+  /** Region the box belongs to. */
+  region?: RegionId;
+  /** Local node id inside the region (absent for the region root pill). */
+  localId?: string;
+  /** True for the region root pill (whole region folded / sealed). */
+  root?: boolean;
+  /** Node has children (or the pill is a region root): draws the fold slot + handle. */
+  foldable?: boolean;
+  /** Collapsed: circle-+ and the count chip. */
+  collapsed?: boolean;
+  /** Hidden-count chip value when collapsed (0 = no chip). */
+  hidden?: number;
 }
 
 export interface PlacedRegion {
@@ -43,12 +62,18 @@ export interface PlacedRegion {
 }
 
 export interface RegionLayoutDeps {
-  /** Auto-pack a doc: centre points keyed by local node key. */
-  pack(doc: OutlineFoldDoc): Record<string, { x: number; y: number }>;
+  /** Auto-pack a doc: centre points keyed by local node key (region-aware fold). */
+  pack(doc: OutlineFoldDoc, region?: RegionId): Record<string, { x: number; y: number }>;
   /** Pill size of a node at key. */
   size(n: OutlineNode, key: string): { w: number; h: number };
   /** Ordered visible nodes with their position key. */
-  visible(doc: OutlineFoldDoc): { n: OutlineNode; key: string; parentKey: string | null }[];
+  visible(doc: OutlineFoldDoc, region?: RegionId): { n: OutlineNode; key: string; parentKey: string | null }[];
+  /** Region root folded (§R1 b). Default: `host.folded`. Locked / missing doc always folds. */
+  regionFolded?(host: RegionHostSpec): boolean;
+  /** Node collapsed inside a region (§R1 a). Default: the child doc's own fold. */
+  nodeCollapsed?(region: RegionId, doc: OutlineFoldDoc, id: string): boolean;
+  /** Hidden-count chip for a folded region root (default: node count; none while locked). */
+  rootHidden?(host: RegionHostSpec): number;
   gapY?: number;
   foldedPill?: { w: number; h: number };
 }
@@ -134,19 +159,28 @@ export function placeRegions(
 /** Local frame layout of one region (top-left at 0,0). */
 function layoutLocal(host: RegionHostSpec, all: RegionHostSpec[], deps: RegionLayoutDeps, depth: number): Local {
   const pill = deps.foldedPill ?? { w: 170, h: 30 };
-  if (host.folded || !host.doc || depth > MAX_REGION_DEPTH) {
-    return { boxes: [{ key: host.id, title: host.label ?? '', depth: 0, x: 0, y: 0, ...pill }], regions: [], w: pill.w, h: pill.h };
+  const folded = deps.regionFolded ? deps.regionFolded(host) : host.folded;
+  if (folded || !host.doc || depth > MAX_REGION_DEPTH) {
+    const hidden = host.doc ? (deps.rootHidden ? deps.rootHidden(host) : countAll(host.doc.nodes)) : 0;
+    return {
+      boxes: [{ key: host.id, title: host.label ?? '', depth: 0, x: 0, y: 0, ...pill, region: host.id, root: true, foldable: true, collapsed: true, hidden }],
+      regions: [],
+      w: pill.w,
+      h: pill.h,
+    };
   }
-  const pts = deps.pack(host.doc);
-  const vis = deps.visible(host.doc);
+  const doc = host.doc;
+  const collapsedIn = (id: string) => (deps.nodeCollapsed ? deps.nodeCollapsed(host.id, doc, id) : isCollapsed(doc, id));
+  const pts = deps.pack(doc, host.id);
+  const vis = deps.visible(doc, host.id);
   const boxes = new Map<string, RegionBox>();
   const kids = new Map<string, string[]>();
-  const meta = new Map<string, { title: string; depth: number }>();
+  const meta = new Map<string, { title: string; depth: number; n: OutlineNode }>();
   for (const v of vis) {
     const p = pts[v.key] ?? { x: 0, y: 0 };
     const s = deps.size(v.n, v.key);
     boxes.set(v.key, { x: p.x - s.w / 2, y: p.y - s.h / 2, ...s });
-    meta.set(v.key, { title: v.n.title, depth: v.parentKey === null ? 0 : 1 });
+    meta.set(v.key, { title: v.n.title, depth: v.parentKey === null ? 0 : 1, n: v.n });
     if (v.parentKey !== null) (kids.get(v.parentKey) ?? kids.set(v.parentKey, []).get(v.parentKey)!).push(v.key);
   }
   const nested = placeRegions(boxes, (k) => kids.get(k) ?? [], host.id, all, deps, depth);
@@ -156,7 +190,23 @@ function layoutLocal(host: RegionHostSpec, all: RegionHostSpec[], deps: RegionLa
   nested.forEach((r) => grow(r.hull));
   if (!isFinite(x0)) { x0 = y0 = 0; x1 = pill.w; y1 = pill.h; }
   const out: Local = {
-    boxes: [...boxes].map(([k, b]) => ({ ...b, key: scopeId(host.id, k), title: meta.get(k)!.title, depth: meta.get(k)!.depth })),
+    boxes: [...boxes].map(([k, b]) => {
+      const mt = meta.get(k)!;
+      const id = mt.n.id ?? k;
+      const foldable = !!mt.n.children?.length;
+      const collapsed = foldable && !!mt.n.id && collapsedIn(mt.n.id);
+      return {
+        ...b,
+        key: scopeId(host.id, id),
+        title: mt.title,
+        depth: mt.depth,
+        region: host.id,
+        localId: id,
+        foldable,
+        collapsed,
+        hidden: collapsed ? mt.n.children!.length : 0,
+      };
+    }),
     regions: nested,
     w: x1 - x0,
     h: y1 - y0,

@@ -883,7 +883,11 @@
   --of-region-stroke: rgba(120, 120, 120, 0.45);
   --of-region-label: #555;
 }
-.map-region-node rect { fill: var(--map-node-bg, #fff); stroke: var(--of-region-stroke, rgba(46, 160, 67, 0.6)); stroke-width: 1.2; }
-.map-region-node text { font-size: 13px; fill: currentColor; }
-.map-region-pill rect { fill: var(--of-region-fill, rgba(46, 160, 67, 0.14)); }
+.map-region-node > rect:not(.map-fold-hit) { fill: var(--map-node-bg, #fff); stroke: var(--of-region-stroke, rgba(46, 160, 67, 0.6)); stroke-width: 1.2; }
+.map-region-node > text { font-size: 13px; fill: currentColor; }
+.map-region-pill > rect:not(.map-fold-hit) { fill: var(--of-region-fill, rgba(46, 160, 67, 0.14)); }
+/* §R1 region folding: same fold chrome as root nodes; selection ring on the focused node. */
+.map-region-node .map-fold-hit { fill: transparent; stroke: none; }
+.map-region-node.is-focused > rect:not(.map-fold-hit) { stroke: var(--map-focus, #c9a227); stroke-width: 2.4; }
+.map-region-root.is-focused .map-fold-indicator circle { stroke-width: 2.6; }
 .map-region-edge { stroke: var(--of-region-stroke, rgba(46, 160, 67, 0.6)); stroke-width: 1.4; }

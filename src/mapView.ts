@@ -51,7 +51,9 @@ import {
   type Pt,
 } from './mapGesture.js';
 import { regionHull, regionSvg, type MapRegion } from './mapRegion.js';
-import { placeRegions, type PlacedRegion, type RegionHostSpec } from './regionLayout.js';
+import { placeRegions, type PlacedBox, type PlacedRegion, type RegionHostSpec } from './regionLayout.js';
+import { createRegionFoldStore, isMemoryOnlyRegion, revealScopedId, type RegionFoldStore } from './regionFold.js';
+import { parseScopedId } from './scopedId.js';
 import type { OutlineFoldDoc, OutlineNode } from './types.js';
 import {
   measurePill,
@@ -341,6 +343,13 @@ export interface MapViewOptions {
    * also use `mountRegion` / `unmountRegion` on the handle instead of this option.
    */
   getRegionHosts?: () => RegionHostSpec[];
+  /**
+   * Region fold store (§R1), keyed by scoped id. Share the same store with Outline so both
+   * views read one fold state. Default: a private in-memory store.
+   */
+  regionFold?: RegionFoldStore;
+  /** A locked sealed region's fold handle was activated: ask the host to unlock (§R1 d). */
+  onRegionUnlock?: (region: string) => void;
   getDoc: () => OutlineFoldDoc;
   setDoc: (d: OutlineFoldDoc) => void;
   getLayout: () => MapLayout;
@@ -508,6 +517,16 @@ export interface MapViewHandle {
   unmountRegion: (id: string) => void;
   /** Regions placed by the last auto-pack (parent frame). */
   placedRegions: () => readonly PlacedRegion[];
+  /** The region fold store this view reads (shared with Outline when passed in). */
+  regionFold: RegionFoldStore;
+  /** Select a node inside a region by scoped id (keyboard focus stays in the region). */
+  focusRegionNode: (scoped: string | null) => void;
+  /**
+   * Unfold the path to a scoped id (anchor, region root, inner parents; enclosing regions
+   * too) and select it. A sealed region on the path stops at its root and asks to unlock
+   * (`onRegionUnlock`). Use for `<r:REGION:N>` links and the `reveal` / `focus` commands.
+   */
+  revealScoped: (id: string) => string;
   /**
    * Open the fold-to-level menu for a node (default: the selected node),
    * anchored at its fold handle, as a right-click or hold on the handle does.
@@ -2264,7 +2283,10 @@ export function createMapView(
   }
 
   function nodeEl(id: string): Element | null {
-    return host.querySelector(`.map-node[data-id="${CSS.escape(id)}"]`);
+    return (
+      host.querySelector(`.map-node[data-id="${CSS.escape(id)}"]`) ??
+      host.querySelector(`.map-region-node[data-scoped-id="${CSS.escape(id)}"]`)
+    );
   }
 
   /** Handle rect in host-local px (the 32×32 hit, scaled by the camera). */
@@ -2421,14 +2443,16 @@ export function createMapView(
   /** Open the menu for `id` (L1, L9). Returns false when the node has no children. */
   function openLevelMenu(id: string, how: { fine?: boolean; dragPointer?: number | null } = {}): boolean {
     closeLevelMenu(false);
-    const doc = getDoc();
-    const picker = foldLevelPicker(doc, id);
-    if (!picker || !nodeEl(id)) return false;
+    const fc = foldCtx(id);
+    const picker = fc ? foldLevelPicker(fc.doc, fc.local) : null;
+    if (!fc || !picker || !nodeEl(id)) return false;
     // One menu at a time: the node menu, link and width popovers close first.
     closeNodeMenu(false);
     dismissLinkPop(false);
     dismissWidthPopHook?.();
-    if (getFocusId() !== id) {
+    if (fc.region) {
+      setRegionFocus(id);
+    } else if (getFocusId() !== id) {
       setFocusId(id);
       userCamGesture = true;
       pendingFollow = null;
@@ -2505,12 +2529,20 @@ export function createMapView(
    * screen point (L10), and the live-region text (L13). Fold state only.
    */
   function applyFoldLevel(id: string, level: FoldLevelKey): void {
-    const doc = getDoc();
-    const picker = foldLevelPicker(doc, id);
+    const fc = foldCtx(id);
+    if (!fc) return;
+    const doc = fc.doc;
+    const picker = foldLevelPicker(doc, fc.local);
     if (!picker) return;
     const item = picker.items.find((it) => it.key === level);
     if (!item || item.disabled) return;
-    const next = setExpandLevel(doc, level, { under: id });
+    const next = setExpandLevel(doc, level, { under: fc.local });
+    if (fc.region) {
+      // Same picker and helper, region fold store instead of the root doc (§R1 a).
+      rfold.commitView(fc.region, next);
+      announce(foldLevelAnnouncement(picker, level));
+      return;
+    }
     const r = handleRect(id);
     pendingLevelAnchor = r
       ? {
@@ -3430,6 +3462,212 @@ export function createMapView(
 
   const mounted = new Map<string, RegionHostSpec>();
   let placed: PlacedRegion[] = [];
+  const rfold: RegionFoldStore = opts.regionFold ?? createRegionFoldStore();
+  /** Selected node inside a region (scoped id) or a region root (region id); null = root doc. */
+  let regionFocus: string | null = null;
+  rfold.subscribe(() => {
+    if (host.isConnected) paint();
+  });
+  host.addEventListener('click', (e) => {
+    const t = e.target as Element | null;
+    const g = t?.closest?.('.map-region-node');
+    if (!g || !host.contains(g)) {
+      if (t?.closest?.('.map-node')) setRegionFocus(null);
+      return;
+    }
+    const key = g.getAttribute('data-scoped-id') || '';
+    e.preventDefault();
+    e.stopPropagation();
+    if (t?.closest?.('.map-fold-hit, .map-fold-indicator') || g.classList.contains('map-region-root')) activateRegionFold(key);
+    else {
+      focusMapForKeys();
+      setRegionFocus(key);
+    }
+  });
+  function hostOf(region: string): RegionHostSpec | undefined {
+    return regionHosts().find((h) => h.id === region);
+  }
+  function regionLocked(h: RegionHostSpec | undefined): boolean {
+    return !h || !h.doc;
+  }
+  function regionIsFolded(h: RegionHostSpec): boolean {
+    return regionLocked(h) || h.folded || rfold.isRegionFolded(h.id);
+  }
+  /** Placed box for a scoped id / region id. */
+  function regionBox(key: string): { r: PlacedRegion; b: PlacedBox } | null {
+    for (const r of placed) for (const b of r.boxes) if (b.key === key) return { r, b };
+    return null;
+  }
+  /**
+   * Fold context for an id: the root doc for plain ids, or a store-backed view doc for a
+   * node inside a region (scoped id). Same helpers either way, no fork (§R1 a).
+   */
+  function foldCtx(id: string): { region: string; local: string; doc: OutlineFoldDoc } | null {
+    const hit = regionBox(id);
+    if (!hit) return { region: '', local: id, doc: getDoc() };
+    const h = hit.r.host;
+    if (hit.b.root || !h.doc || !hit.b.localId) return null;
+    return { region: h.id, local: hit.b.localId, doc: rfold.viewDoc(h.id, h.doc) };
+  }
+  function setRegionFocus(key: string | null): void {
+    regionFocus = key;
+    syncRegionFocus();
+  }
+  function syncRegionFocus(): void {
+    for (const el of host.querySelectorAll('.map-region-node.is-focused, .map-region.is-focused')) el.classList.remove('is-focused');
+    if (!regionFocus) return;
+    const el = host.querySelector(`.map-region-node[data-scoped-id="${CSS.escape(regionFocus)}"]`);
+    if (!el) {
+      regionFocus = null;
+      return;
+    }
+    el.classList.add('is-focused');
+    el.setAttribute('aria-selected', 'true');
+    if (el.id) host.setAttribute('aria-activedescendant', el.id);
+  }
+  /** Activate a region fold handle: inner node toggle, region root fold / unfold, or unlock. */
+  function activateRegionFold(key: string): void {
+    const hit = regionBox(key);
+    const h = hit ? hit.r.host : hostOf(key);
+    if (!h) return;
+    focusMapForKeys();
+    if (!hit || hit.b.root || key === h.id) {
+      setRegionFocus(h.id);
+      if (regionLocked(h)) {
+        // A locked sealed region never unfolds; ask the host to unlock (§R1 d / FOLD-7).
+        opts.onRegionUnlock?.(h.id);
+        announce(h.kind === 'sealed' ? 'Sealed branch is locked' : 'Region is not loaded');
+        return;
+      }
+      const was = regionIsFolded(h);
+      if (h.folded && was) {
+        const m = mounted.get(h.id);
+        if (m) m.folded = false;
+      }
+      rfold.setRegionFolded(h.id, !was);
+      announce(`${was ? 'Expanded' : 'Collapsed'}: ${h.label || (h.kind === 'sealed' ? 'Sealed branch' : 'Record')}`);
+      return;
+    }
+    setRegionFocus(key);
+    if (!hit.b.foldable || !hit.b.localId || !h.doc) return;
+    const nowCollapsed = rfold.toggleNode(h.id, h.doc, hit.b.localId);
+    announce(`${nowCollapsed ? 'Collapsed' : 'Expanded'}: ${captionWithoutLinks(displayCaption(hit.b.title))}`);
+  }
+  /** Ordered region keys for arrow navigation inside one region (cloud root first). */
+  function regionOrder(region: string): string[] {
+    const r = placed.find((p) => p.host.id === region);
+    if (!r) return [];
+    const h = r.host;
+    if (r.boxes.length === 1 && r.boxes[0]!.root) return [h.id];
+    const out = [h.id];
+    if (!h.doc) return out;
+    const view = rfold.viewDoc(h.id, h.doc);
+    const walkO = (l: OutlineNode[] | undefined) =>
+      l?.forEach((n) => {
+        if (!n.id) return;
+        out.push(`${h.id}:${n.id}`);
+        if (hasKids(n) && !isCollapsed(view, n.id)) walkO(n.children);
+      });
+    walkO(h.doc.nodes);
+    return out.filter((k) => k === h.id || !!regionBox(k));
+  }
+  function regionParentKey(region: string, local: string): string {
+    const h = hostOf(region);
+    const path: string[] = [];
+    const find = (l: OutlineNode[] | undefined): boolean =>
+      !!l?.some((n) => {
+        if (n.id === local) return true;
+        if (find(n.children)) {
+          if (n.id) path.unshift(n.id);
+          return true;
+        }
+        return false;
+      });
+    find(h?.doc?.nodes);
+    return path.length ? `${region}:${path[path.length - 1]}` : region;
+  }
+  /** Fold / nav keys on a selected region node: same key map as root nodes (§R1 a, FOLD-2). */
+  function onRegionKey(e: KeyboardEvent): void {
+    if (!regionFocus || e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey) return;
+    if (levelMenu || (e.target as Element | null)?.closest?.('input, textarea, [contenteditable="true"], .map-level-menu, .map-node-menu')) return;
+    const key = regionFocus;
+    const hit = regionBox(key);
+    const h = hit ? hit.r.host : hostOf(key);
+    if (!h) {
+      regionFocus = null;
+      return;
+    }
+    const isRoot = key === h.id || !!hit?.b.root;
+    const local = hit?.b.localId;
+    const doc = h.doc;
+    const collapsed = isRoot ? regionIsFolded(h) : !!hit?.b.collapsed;
+    const foldable = isRoot || !!hit?.b.foldable;
+    const order = regionOrder(h.id);
+    const i = order.indexOf(isRoot ? h.id : key);
+    const stop = () => {
+      e.preventDefault();
+      e.stopPropagation();
+      e.stopImmediatePropagation();
+    };
+    switch (e.key) {
+      case 'ArrowDown':
+      case 'ArrowUp':
+      case 'Home':
+      case 'End': {
+        stop();
+        const j = e.key === 'Home' ? 0 : e.key === 'End' ? order.length - 1 : i + (e.key === 'ArrowDown' ? 1 : -1);
+        if (j >= 0 && j < order.length) setRegionFocus(order[j]!);
+        return;
+      }
+      case 'ArrowRight':
+        stop();
+        if (foldable && collapsed) activateRegionFold(key);
+        else if (i + 1 < order.length) setRegionFocus(order[i + 1]!);
+        return;
+      case 'ArrowLeft':
+        stop();
+        if (foldable && !collapsed) activateRegionFold(key);
+        else if (!isRoot && local) setRegionFocus(regionParentKey(h.id, local));
+        return;
+      case 'Escape': {
+        // Leave the region explicitly: back to the anchor in the parent.
+        stop();
+        regionFocus = null;
+        syncRegionFocus();
+        const parent = h.parent ?? '';
+        if (parent) setRegionFocus(`${parent}:${h.anchor}`);
+        else {
+          setFocusId(h.anchor);
+          onChange?.();
+        }
+        return;
+      }
+      case 'Enter':
+      case ' ':
+      case '.':
+        stop();
+        if (foldable) activateRegionFold(key);
+        return;
+      default:
+        break;
+    }
+    if (e.key === '*' || (e.key >= '0' && e.key <= '9')) {
+      stop();
+      if (!doc || regionLocked(h)) {
+        if (isRoot) activateRegionFold(h.id);
+        return;
+      }
+      const level = e.key === '*' ? '*' : (Number(e.key) as 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9);
+      if (isRoot) {
+        // Region root counts as one level: 0 folds the cloud, N shows N-1 levels inside it.
+        if (level === 0) rfold.setRegionFolded(h.id, true);
+        else {
+          rfold.setRegionFolded(h.id, false);
+          rfold.setLevel(h.id, doc, level === '*' ? '*' : ((level - 1) as 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8));
+        }
+      } else if (local) rfold.setLevel(h.id, doc, level, local);
+    }
+  }
   function regionHosts(): RegionHostSpec[] {
     return [...(opts.getRegionHosts?.() ?? []), ...mounted.values()];
   }
@@ -3446,7 +3684,8 @@ export function createMapView(
     });
     return { w: sz.w, h: sz.h };
   }
-  function visibleKeyed(d: OutlineFoldDoc): { n: OutlineNode; key: string; parentKey: string | null }[] {
+  function visibleKeyed(d0: OutlineFoldDoc, region?: string): { n: OutlineNode; key: string; parentKey: string | null }[] {
+    const d = region ? rfold.viewDoc(region, d0) : d0;
     const order = indexOutline(d.nodes || []);
     const out: { n: OutlineNode; key: string; parentKey: string | null }[] = [];
     const walkV = (n: OutlineNode, parentKey: string | null) => {
@@ -3474,9 +3713,14 @@ export function createMapView(
       if (v.parentKey) (kids.get(v.parentKey) ?? kids.set(v.parentKey, []).get(v.parentKey)!).push(v.key);
     }
     placed = placeRegions(boxes, (k) => kids.get(k) ?? [], '', hosts, {
-      pack: (d) => autoPackPositions(d, { isNodeCollapsed: (id) => isCollapsed(d, id), wrapCh: autoCh() }).nodes,
+      pack: (d0, region) => {
+        const d = region ? rfold.viewDoc(region, d0) : d0;
+        return autoPackPositions(d, { isNodeCollapsed: (id) => isCollapsed(d, id), wrapCh: autoCh() }).nodes;
+      },
       size: (n) => quickSize(doc, n, undefined),
       visible: visibleKeyed,
+      regionFolded: regionIsFolded,
+      nodeCollapsed: (region, d, id) => rfold.isNodeCollapsed(region, d, id),
     });
     let maxX = layout.viewBox?.w ?? 0, maxY = layout.viewBox?.h ?? 0;
     for (const [k, b] of boxes) {
@@ -3490,11 +3734,19 @@ export function createMapView(
     }
     layout.viewBox = { ...(layout.viewBox ?? { w: maxX, h: maxY }), w: maxX, h: maxY };
   }
+  function regionDomId(key: string): string {
+    return `${domPrefix}-rg-${key.replace(/[^A-Za-z0-9_-]/g, '_')}`;
+  }
   function regionCloudSvg(): string {
     const esc = (t: string) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
     return placed
       .map((r) => {
         const cloud = regionSvg({ rootId: r.host.id, kind: r.host.kind, label: r.host.label }, r.hull);
+        const expandedCloud = !(r.boxes.length === 1 && r.boxes[0]!.root);
+        // Region root fold handle on the open cloud (top-right): folds the whole region (§R1 b).
+        const cloudFold = expandedCloud
+          ? `<g class="map-region-node map-region-root" id="${esc(regionDomId(r.host.id))}" role="treeitem" aria-expanded="true" aria-selected="false" aria-label="${esc((r.host.label || (r.host.kind === 'sealed' ? 'Sealed branch' : 'Record')) + ', expanded')}" data-scoped-id="${esc(r.host.id)}" data-region-id="${esc(r.host.id)}">${foldHandleSvg(r.hull.x + r.hull.w - 44, r.hull.y + 16, false)}<rect class="map-fold-hit" x="${r.hull.x + r.hull.w - 27 - 16}" y="${r.hull.y}" width="32" height="32" fill="transparent" cursor="pointer"/></g>`
+          : '';
         const edges = r.edges
           .map(([x1, y1, x2, y2]) => `<path class="map-region-edge" d="M${x1} ${y1} C${x1} ${(y1 + y2) / 2} ${x2 - 20} ${y2} ${x2} ${y2}" fill="none"/>`)
           .join('');
@@ -3502,10 +3754,19 @@ export function createMapView(
           .map((b) => {
             const folded = b.key === r.host.id;
             const t = folded ? (r.host.kind === 'sealed' ? '🔒 ' : '') + (r.host.label || (r.host.kind === 'sealed' ? 'Sealed branch' : 'Record')) : captionWithoutLinks(displayCaption(b.title));
-            return `<g class="map-region-node${folded ? ' map-region-pill' : ''}" data-scoped-id="${esc(b.key)}" data-region-id="${esc(r.host.id)}"><rect x="${b.x}" y="${b.y}" width="${b.w}" height="${b.h}" rx="${Math.min(14, b.h / 2)}"/><text x="${b.x + 12}" y="${b.y + b.h / 2 + 4}">${esc(t)}</text></g>`;
+            const cy = b.y + b.h / 2;
+            const slot = b.foldable ? FOLD_SLOT : 0;
+            const boxRight = b.x + Math.max(1, b.w - slot);
+            const locked = folded && !r.host.doc;
+            const chrome = b.foldable
+              ? foldChromeSvg(boxRight, cy, !!b.collapsed, FOLD_SLOT, { hiddenCount: b.hidden || 0 }) +
+                `<rect class="map-fold-hit" x="${foldHandleGeometry(boxRight).cx - 16}" y="${cy - 16}" width="32" height="32" fill="transparent" cursor="pointer"/>`
+              : '';
+            const aria = `${t}${b.foldable ? (b.collapsed ? `, collapsed${b.hidden ? `, ${foldCountLabel(b.hidden)}` : ''}${locked ? ', locked' : ''}` : ', expanded') : ''}`;
+            return `<g class="map-region-node${folded ? ' map-region-pill' : ''}${b.collapsed ? ' collapsed' : ''}" id="${esc(regionDomId(b.key))}" role="treeitem" aria-selected="false"${b.foldable ? ` aria-expanded="${b.collapsed ? 'false' : 'true'}"` : ''} aria-label="${esc(aria)}" data-scoped-id="${esc(b.key)}" data-region-id="${esc(r.host.id)}"><rect x="${b.x}" y="${b.y}" width="${Math.max(1, b.w - slot)}" height="${b.h}" rx="${Math.min(14, b.h / 2)}"/><text x="${b.x + 12}" y="${cy + 4}">${esc(t)}</text>${chrome}</g>`;
           })
           .join('');
-        return cloud + edges + pills;
+        return cloud + edges + pills + cloudFold;
       })
       .join('');
   }
@@ -4292,6 +4553,7 @@ export function createMapView(
     if (anchored) settleCam();
     if (levelMenu) positionLevelMenu();
     if (linkPop) positionLinkPop();
+    if (regionFocus) syncRegionFocus();
     for (const fn of [...paintListeners]) {
       try {
         fn();
@@ -5803,14 +6065,15 @@ export function createMapView(
         }
       }
       const handle = t?.closest?.('.map-fold-hit, .map-fold-indicator') ?? null;
-      const g = handle?.closest?.('.map-node') ?? null;
-      const id = g?.getAttribute('data-id') || '';
+      const g = handle?.closest?.('.map-node, .map-region-node') ?? null;
+      const id = g?.getAttribute('data-id') || g?.getAttribute('data-scoped-id') || '';
       const pt = (e as PointerEvent).pointerType || '';
+      const fcx = id ? foldCtx(id) : null;
       const act = levelContextAction({
         inMenu: !!t?.closest?.('.map-level-menu'),
         inOverlay: !!t?.closest?.('.map-link-pop, .map-width-pop, .of-map-controls, .map-toast, .map-copied'),
         onHandle: !!g,
-        foldable: !!id && !!foldLevelPicker(getDoc(), id),
+        foldable: !!fcx && !!foldLevelPicker(fcx.doc, fcx.local),
         menuOpen: packageMenuOpen(),
         holding: !!levelHold,
         pointerType: pt,
@@ -6044,6 +6307,7 @@ export function createMapView(
     };
     // Keydown on the stable focus owner (host) — events from any descendant
     // bubble here. Mode button kept so keys work right after clicking "Map".
+    host.addEventListener('keydown', onRegionKey, { capture: true });
     host.addEventListener('keydown', onKey);
     if (modeButton && !host.contains(modeButton)) {
       modeButton.addEventListener('keydown', onKey);
@@ -6056,22 +6320,49 @@ export function createMapView(
 
   return {
     mountRegion(h: RegionHostSpec): MapRegionHandle {
-      mounted.set(h.id, { ...h });
+      // Fold state lives in the store keyed by region id, so it survives remount (§R1 c).
+      mounted.set(h.id, { ...h, folded: false });
+      if (h.folded) rfold.setRegionFolded(h.id, true);
       paint();
       return {
         relayout: () => paint(),
         setFolded: (f: boolean) => {
-          const cur = mounted.get(h.id);
-          if (cur) { cur.folded = f; paint(); }
+          if (mounted.has(h.id)) rfold.setRegionFolded(h.id, f);
         },
         bbox: () => placed.find((p) => p.host.id === h.id)?.hull ?? null,
       };
     },
     unmountRegion(id: string) {
       mounted.delete(id);
+      // Sealed fold state is memory-only and goes with the child; record state is kept.
+      if (isMemoryOnlyRegion(id)) rfold.wipe(id);
+      if (regionFocus && (regionFocus === id || regionFocus.startsWith(id + ':') || regionFocus.startsWith(id + '/'))) regionFocus = null;
       paint();
     },
     placedRegions: () => placed,
+    regionFold: rfold,
+    focusRegionNode: (scoped: string | null) => setRegionFocus(scoped),
+    revealScoped: (id: string) => {
+      const res = revealScopedId(id, {
+        store: rfold,
+        hosts: regionHosts(),
+        getRootDoc: getDoc,
+        setRootDoc: setDoc,
+        parse: parseScopedId,
+        onLocked: (r) => opts.onRegionUnlock?.(r),
+      });
+      const t = res.target;
+      if (regionHosts().some((h) => t === h.id || t.startsWith(h.id + ':'))) {
+        paint();
+        setRegionFocus(t);
+      } else {
+        setRegionFocus(null);
+        setFocusId(t);
+        pendingFollow = { kind: 'focus' };
+        onChange?.();
+      }
+      return t;
+    },
     paint,
     ensurePositions,
     resetCam,
