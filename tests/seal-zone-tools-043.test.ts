@@ -27,7 +27,7 @@ describe('0.4.3 zone header tools (QA C)', () => {
     const src = readFileSync(new URL('../src/editor/index.ts', import.meta.url), 'utf8');
     expect(src).toContain('of-cm-sealed-line');
     expect(src).toContain('onUnlockZone');
-    expect(src).toMatch(/if \(dead \|\| !view\.dom\.isConnected\) return;/);
+    expect(src).toContain('if (dead) return;');
     expect(src).toContain('if (gone) return;');
   });
 });

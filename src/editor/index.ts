@@ -186,7 +186,7 @@ export function outlineEditor(opts: OutlineEditorOptions): Extension[] {
       queued = true;
       queueMicrotask(() => {
         queued = false;
-        if (dead || !view.dom.isConnected) return;
+        if (dead) return; // hidden panes still refresh, so the zone is there when Text opens
         try { view.dispatch({ effects: refresh.of(null) }); } catch { /* view torn down mid-flight */ }
       });
     };

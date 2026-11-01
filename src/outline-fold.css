@@ -885,9 +885,11 @@
 }
 /* 0.4.3 (QA E): pills inside an open zone read on the zone, light or dark: ink and fill come
    from the --of-seal-* host vars, so a dark host never gets light text on a white pill. */
-.map-region-node > rect:not(.map-fold-hit) { fill: var(--of-seal-bg, var(--map-node-bg, #fff)); stroke: var(--of-region-stroke, rgba(46, 160, 67, 0.6)); stroke-width: 1.2; }
-.map-region-node > text { font-size: 13px; fill: var(--of-seal-ink, #1f2328); }
-.map-region-pill > rect:not(.map-fold-hit) { fill: var(--of-region-fill, rgba(46, 160, 67, 0.14)); }
+/* 0.4.3 (Colin, tablet): region nodes use the normal map pill (--pill-fill / --text), only the
+   stroke is the green zone accent; never a white pill with light text on a dark host. */
+.map-svg .map-region-node > rect:not(.map-fold-hit) { fill: var(--pill-fill, #0c222c); stroke: var(--of-unlocked-stroke, var(--of-region-stroke, rgba(46, 160, 67, 0.75))); stroke-width: 1.4; }
+.map-svg .map-region-node > text { font-size: 13px; fill: var(--text, var(--of-text, #e7ecf1)); }
+.map-svg .map-region-pill > rect:not(.map-fold-hit) { fill: var(--of-region-fill, rgba(46, 160, 67, 0.14)); }
 /* §R1 region folding: same fold chrome as root nodes; selection ring on the focused node. */
 .map-region-node .map-fold-hit { fill: transparent; stroke: none; }
 .map-region-node.is-focused > rect:not(.map-fold-hit) { stroke: var(--map-focus, #c9a227); stroke-width: 2.4; }
@@ -957,11 +959,11 @@ div.of-unlock.of-unlock-sheet { border-radius: 12px 12px 8px 8px; border-left-wi
 .of-seal-draft { display: inline-flex; align-items: center; }
 
 /* Map: locked pill grey + blue key chip (04); unlocked anchor green + green chip; solid green cloud (05). */
-.map-region-locked > rect:not(.map-fold-hit) { fill: #eef0f3; stroke: #9aa5b1; }
-.map-region-locked > text { fill: #4a5560; }
+.map-svg .map-region-locked > rect:not(.map-fold-hit) { fill: var(--of-seal-bg, #eef0f3); stroke: var(--of-seal-btn-stroke, #9aa5b1); }
+.map-svg .map-region-locked > text { fill: var(--of-seal-ink, #4a5560); }
 .map-node.is-unlocked-anchor > rect, .map-node.is-unlocked-anchor .map-node-bg { fill: #eaf5ef; stroke: #3d8a5f; }
-.map-region-kid > rect { fill: #eef2fa; stroke: #b5c6e6; stroke-width: 1; }
-.map-region-kid > text { font-size: 10px; fill: #244a8a; }
+.map-region-kid > rect { fill: var(--of-chip-k-bg, #eef2fa); stroke: var(--of-chip-k-stroke, #b5c6e6); stroke-width: 1; }
+.map-region-kid > text { font-size: 10px; fill: var(--of-chip-k-ink, #244a8a); }
 .map-region-unlocked .map-region-label { fill: var(--of-unlocked-ink, #245c3c); }
 
 /* 0.4.2: Outline region rows (composeOutlineDoc). Key pill on sealed anchors; the
