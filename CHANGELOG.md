@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.6
+
+- Text secure zone (data safety): a zone that cannot render no longer throws out of CodeMirror (that aborted the post-unlock refresh and left Text on the raw `<enc>` line while the Map showed the open branch). It renders a recoverable "saving is paused" error with Retry, fires `of-zone-error`, and `TextEditorHandle.zoneProblems()` lists unlocked regions with no working zone so hosts hold saves. Zones also refresh on `save`.
+
 ## 0.4.5 — 2026-11-01
 
 - Fix (Text, secure zone): caret visible in the nested zone editor. The main editor's `drawSelection` hides the native caret for every `.cm-content` under it, and the nested view drew none; it now has its own `drawSelection` and `--of-caret` colour.

@@ -15,7 +15,8 @@
 import { EditorState, StateEffect, StateField, type Extension, type Text } from '@codemirror/state';
 import { EditorView, Decoration, WidgetType, keymap, drawSelection, type DecorationSet } from '@codemirror/view';
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
-import { outlineEditor, refreshZones, type OutlineEditorOptions } from './index.js';
+import { outlineEditor, refreshZones, missingZones, zoneRenderFailures, ZONE_ERROR_EVENT, type OutlineEditorOptions } from './index.js';
+export { missingZones, zoneRenderFailures, ZONE_ERROR_EVENT };
 import { autoWrapCh } from '../mapFit.js';
 import { DEFAULT_WRAP_CH } from '../mapLabel.js';
 import type { RegionId } from '../hostApi.js';
@@ -62,6 +63,11 @@ export interface TextEditorHandle {
   setRegions(list: HostRegion[]): void;
   /** Re-scan secure zones (session state or autoWidth changed). */
   refresh(): void;
+  /**
+   * 0.4.6: unlocked regions with an `<enc>` line here but no working secure zone. Non-empty
+   * means the Text pane cannot show an open branch: the host must hold saves and autosaves.
+   */
+  zoneProblems(): RegionId[];
   dispatchText(edit: { start: number; end: number; text?: string; selStart: number }): void;
   destroy(): void;
 }
@@ -234,6 +240,7 @@ export function mountTextEditor(textarea: HTMLTextAreaElement, opts: TextEditorO
     markLine(from, to) { view.dispatch({ selection: { anchor: clamp(from), head: clamp(to) }, scrollIntoView: true }); },
     setRegions(list) { view.dispatch({ effects: setHostRegions.of(list || []) }); },
     refresh() { view.dispatch({ effects: refreshZones.of(null) }); },
+    zoneProblems() { return opts.sessions ? missingZones(view.state.doc, opts.sessions) : []; },
     dispatchText(edit) {
       writing = true;
       try {

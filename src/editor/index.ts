@@ -100,9 +100,19 @@ class SecureZone extends WidgetType {
     super();
   }
   eq(o: SecureZone): boolean {
-    return o.region === this.region && o.ch === this.ch;
+    return o.region === this.region && o.ch === this.ch && !zoneRenderFailures.has(this.region);
   }
   toDOM(outer?: EditorView): HTMLElement {
+    // 0.4.6 (Colin QA, data safety): a zone that cannot render never throws out of CM (that
+    // aborted the refresh and left the Text pane on the raw <enc> line while the Map showed
+    // the open branch). It shows a recoverable error instead and tells the host to hold saves.
+    try {
+      return this.render(outer);
+    } catch (err) {
+      return zoneErrorDom(this.region, err, outer);
+    }
+  }
+  private render(outer?: EditorView): HTMLElement {
     const { sessions } = this.opts;
     const region = this.region;
     const host = document.createElement('div');
@@ -156,6 +166,7 @@ class SecureZone extends WidgetType {
       }),
     });
     zoneViews.set(region, view);
+    zoneRenderFailures.delete(region);
     let gone = false;
     (wrap as HTMLElement & { _ofDestroy?: () => void })._ofDestroy = () => {
       if (gone) return; // CM may destroy a widget DOM twice across a fast lock/unlock
@@ -173,6 +184,48 @@ class SecureZone extends WidgetType {
   ignoreEvent(): boolean {
     return true;
   }
+}
+
+/**
+ * 0.4.6: unlocked regions on `<enc>` lines of this doc that have no live zone editor
+ * (render failed, or the refresh after unlock never landed). Hosts hold saves while any.
+ */
+export function missingZones(doc: Text, sessions: SealSessions): RegionId[] {
+  const out: RegionId[] = [];
+  for (const e of scanEnc(doc, sessions)) {
+    if (!e.region || sessions.get(e.region).locked) continue;
+    const v = zoneViews.get(e.region);
+    if (!v || zoneRenderFailures.has(e.region) || !v.dom.isConnected) out.push(e.region);
+  }
+  return out;
+}
+
+/** Regions whose Text zone failed to render (host: hold saves while non-empty). */
+export const zoneRenderFailures = new Map<RegionId, string>();
+export const ZONE_ERROR_EVENT = 'of-zone-error';
+
+function zoneErrorDom(region: RegionId, err: unknown, outer?: EditorView): HTMLElement {
+  const msg = err instanceof Error ? err.message : String(err);
+  zoneRenderFailures.set(region, msg);
+  const box = document.createElement('div');
+  box.className = 'of-secure-zone of-secure-zone-error';
+  box.setAttribute('role', 'alert');
+  box.setAttribute('data-region', region);
+  const p = document.createElement('span');
+  p.textContent = 'Could not show this sealed branch here. The encrypted text is unchanged; saving is paused. ';
+  const retry = document.createElement('button');
+  retry.type = 'button';
+  retry.className = 'of-sz-btn of-sz-retry';
+  retry.textContent = 'Retry';
+  retry.addEventListener('click', () => {
+    zoneRenderFailures.delete(region);
+    try { outer?.dispatch({ effects: refresh.of(null) }); } catch { /* view gone */ }
+  });
+  box.append(p, retry);
+  queueMicrotask(() => {
+    try { (outer?.dom ?? box).dispatchEvent(new CustomEvent(ZONE_ERROR_EVENT, { bubbles: true, detail: { region, message: msg } })); } catch { /* no DOM */ }
+  });
+  return box;
 }
 
 /** CM6 extensions: syntax marks, atomic `<enc>` tags, and the secure-zone widget. */
@@ -238,7 +291,7 @@ export function outlineEditor(opts: OutlineEditorOptions): Extension[] {
         try { view.dispatch({ effects: refresh.of(null) }); } catch { /* view torn down mid-flight */ }
       });
     };
-    const offs = (['unlock', 'lock', 'change', 'error'] as const).map((t) => sessions.api.on(t, kick));
+    const offs = (['unlock', 'lock', 'change', 'error', 'save'] as const).map((t) => sessions.api.on(t, kick));
     return { destroy: () => { dead = true; offs.forEach((o) => o()); } };
   });
   const follow = ViewPlugin.define((view) => {
