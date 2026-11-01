@@ -1,6 +1,6 @@
 {
   "name": "@audroam/outline-fold",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "Pure TS outline language: parse/serialize, fold-/fold+, sealed payloads, demo crypto, toHtml, createMapView/autoPack. Host owns MFA/key release.",
   "type": "module",
   "main": "./dist/index.js",
@@ -14,6 +14,10 @@
     "./editor": {
       "types": "./dist/editor/index.d.ts",
       "import": "./dist/editor/index.js"
+    },
+    "./editor.bundle": {
+      "types": "./dist/editor.bundle.d.ts",
+      "import": "./dist/editor.bundle.js"
     }
   },
   "files": [
@@ -23,7 +27,7 @@
     "LICENSE"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.json && node scripts/copy-style.mjs",
+    "build": "tsc -p tsconfig.json && node scripts/copy-style.mjs && node scripts/build-editor-bundle.mjs",
     "test": "vitest run",
     "smoke:autopack": "node scripts/smoke-autopack.mjs",
     "test:watch": "vitest",
@@ -44,9 +48,11 @@
   "author": "Colin Wirt / Audroam",
   "license": "MIT",
   "devDependencies": {
+    "@codemirror/commands": "^6.11.1",
     "@codemirror/state": "^6.7.6",
     "@codemirror/view": "^6.43.15",
     "@playwright/test": "^1.63.0",
+    "esbuild": "^0.25.12",
     "typescript": "^5.6.3",
     "vitest": "^2.1.4"
   },

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.4.1 — 2026-11-01
+
+- Fix: the Map node menu's `Follow in text` item is opt-in (`createMapView({ followMenu: true })`). In 0.4.0 it was on for every host, which put a checkbox first in the menu (Shift+F10 / ContextMenu focused it instead of the first action, Enter toggled it) and opened a menu on read-only lines without an id. The value itself still resolves resume → layout → on.
+- New `dist/editor.bundle.js` (`@audroam/outline-fold/editor.bundle`, `loadEditorBundle(url?)`): the text editor with CodeMirror 6 bundled in, so a host imports only outline-fold. `mountTextEditor(textarea, opts)` mounts over a host textarea (value/focus/`input` kept in sync), draws secure zones for unlocked `<enc>` lines (`sessions`, `askPassphrase`), wraps zones at the layout's `autoWidth:` (`autoWidth()`), keeps edits above the trailing fences, and still takes host block widgets via `setRegions()`. The build fails if the bundle keeps any external or CodeMirror import.
+
 ## 0.4.0 — 2026-11-01
 
 - Release of sub-map regions, region folding, unseal UX and seal drafts (merged feature/seal-draft). Host API exports: `parseScopedId`, `revealScopedId`, `composeOutlineDoc` (regionFold), `createSealSessions`, `openSealedBranch`, seal-draft helpers and `versionLabels`, `mountUnlockPrompt`; Map handle `setFocus`.

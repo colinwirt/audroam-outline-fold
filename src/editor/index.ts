@@ -36,7 +36,9 @@ export interface OutlineEditorOptions {
 
 const ENC_RE = /<enc:[A-Za-z0-9_.-]+>/;
 const ID_RE = /<id:([^>\s]+)>/;
-const refresh = StateEffect.define<null>();
+/** Re-scan zones (session state or wrap width changed). */
+export const refreshZones = StateEffect.define<null>();
+const refresh = refreshZones;
 
 interface EncLine {
   /** Line end (widget position). */
@@ -65,18 +67,18 @@ function scanEnc(doc: Text, sessions: SealSessions): EncLine[] {
 }
 
 class SecureZone extends WidgetType {
-  constructor(readonly region: RegionId, readonly opts: OutlineEditorOptions) {
+  constructor(readonly region: RegionId, readonly opts: OutlineEditorOptions, readonly ch?: number) {
     super();
   }
   eq(o: SecureZone): boolean {
-    return o.region === this.region;
+    return o.region === this.region && o.ch === this.ch;
   }
   toDOM(): HTMLElement {
     const { sessions } = this.opts;
     const region = this.region;
     const host = document.createElement('div');
     host.className = 'of-secure-zone-editor';
-    const ch = this.opts.textWidthCh?.(region);
+    const ch = this.ch;
     if (ch) host.style.maxWidth = `${ch}ch`;
     const zone = secureZoneChrome(host, { sessions, region, askPassphrase: this.opts.askPassphrase });
     const wrap = zone.el;
@@ -127,7 +129,7 @@ export function outlineEditor(opts: OutlineEditorOptions): Extension[] {
     for (const e of enc) {
       tb.add(e.tagFrom, e.tagTo, Decoration.mark({ class: 'of-cm-enc', atomic: true }));
       const st = e.region ? sessions.get(e.region) : null;
-      if (st && !st.locked) zb.add(e.to, e.to, Decoration.widget({ widget: new SecureZone(e.region!, opts), block: true, side: 1 }));
+      if (st && !st.locked) zb.add(e.to, e.to, Decoration.widget({ widget: new SecureZone(e.region!, opts, opts.textWidthCh?.(e.region!)), block: true, side: 1 }));
     }
     return { zones: zb.finish(), tags: tb.finish() };
   };

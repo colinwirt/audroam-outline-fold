@@ -608,7 +608,7 @@ export {
   type RegionRevealResult,
   type OutlineRegionHost,
 } from './regionFold.js';
-export { loadOutlineEditor, type OutlineEditorModule } from './editorLoader.js';
+export { loadOutlineEditor, loadEditorBundle, type OutlineEditorModule, type EditorBundleModule } from './editorLoader.js';
 export { createFocusLink, type FocusLink } from './focusLink.js';
 export { wireFocus, type FocusWiring, type FocusWiringMap, type FocusWiringOutline } from './focusWiring.js';
 export {

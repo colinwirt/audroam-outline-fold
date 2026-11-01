@@ -449,9 +449,11 @@ export interface MapViewOptions {
    */
   nodeMenu?: boolean;
   /**
-   * `Follow in text` checkbox in the node menu's View group (on by default). The value
-   * resolves per-user resume (`followResumeKey`) → layout block `follow:` → on; toggling
-   * writes both (`setFollowInText`) and calls `onFollowInText`. `false` hides the item.
+   * `Follow in text` checkbox in the node menu's View group. Opt-in (0.4.1): the item
+   * shows only when `followMenu: true`, so a plain node menu keeps its 0.3 items, focus
+   * order and the read-only "no id, no menu" rule. The value resolves per-user resume
+   * (`followResumeKey`) → layout block `follow:` → on; toggling writes both
+   * (`setFollowInText`) and calls `onFollowInText`.
    */
   followMenu?: boolean;
   followResumeKey?: string | null;
@@ -1538,7 +1540,7 @@ export function createMapView(
     canPersistWidths: canPersistWidthsOpt,
     onWidthStep,
     nodeMenu: nodeMenuOn = false,
-    followMenu = true,
+    followMenu = false,
     followResumeKey = null,
     onFollowInText,
     canMintIds: canMintIdsOpt,
