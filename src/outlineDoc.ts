@@ -10,6 +10,7 @@
  * A zone "Save & re-seal" is only `confirmed` in `status()` after `saved(rev)`; a failure keeps
  * the doc dirty, keeps the auto-ct slot in the text, and schedules a retry `save-needed`.
  */
+import { createIdAllocator, type IdDiagnostic, type IdScope } from './idAllocator.js';
 import { parse } from './parse.js';
 import { serialize } from './serialize.js';
 import type { OutlineFoldDoc, OutlineNode } from './types.js';
@@ -28,8 +29,9 @@ import { mountUnlockPrompt } from './sealUi.js';
 import { sealBranch } from './sealedBranch.js';
 import { parseScopedId } from './scopedId.js';
 
+export type { IdDiagnostic } from './idAllocator.js';
 export type SaveReason = 'text' | 'map' | 'zone' | 'seal' | 'host' | 'retry';
-export type TextSource = 'text' | 'map' | 'zone' | 'seal' | 'host' | 'load' | 'serialise';
+export type TextSource = 'text' | 'map' | 'zone' | 'seal' | 'host' | 'load' | 'serialise' | 'ids';
 
 export class SealedStateError extends Error {
   readonly regions: RegionId[];
@@ -60,6 +62,8 @@ type Events = {
   caret: { pos: number };
   reveal: RevealRequest;
   seal: { type: string; region?: RegionId; [k: string]: unknown };
+  /** 0.4.9: a duplicate id was renumbered or flagged (bug C). */
+  ids: IdDiagnostic;
 };
 
 export interface Timers {
@@ -90,6 +94,10 @@ export interface OutlineDocOptions {
 
 export interface OutlineDocHandle {
   getText(): string;
+  /** 0.4.9: a fresh id unique across the root, every open region and the anchors. */
+  mintId(): string;
+  /** 0.4.9: every id in use (root, open regions, anchors). */
+  idsInUse(): Set<string>;
   /** Replace the text. `source: 'load'` resets the clean baseline and locks open zones. */
   setText(text: string, o?: { source?: TextSource; reason?: SaveReason }): void;
   readonly rev: number;
@@ -284,11 +292,34 @@ export function createOutlineDoc(o: OutlineDocOptions): OutlineDocHandle {
     return true;
   };
 
+  // 0.4.9 (bug C): one allocator for every id in the note.
+  const ids = createIdAllocator();
+  const scopes = (): IdScope[] => {
+    const out: IdScope[] = [{ region: '', doc: rootNow() }];
+    for (const s of sessions.list()) if (!s.locked && s.doc) out.push({ region: s.region, doc: s.doc, anchorId: s.branchId });
+    return out;
+  };
+  let checking = false;
+  /** Renumber newer duplicates (or flag linked ones) and write the fixes back. */
+  const checkIds = (): void => {
+    if (checking) return;
+    checking = true;
+    try {
+      const sc = scopes();
+      const links = [text, ...sc.slice(1).map((x) => { try { return serialize(x.doc!); } catch { return ''; } })].join('\n');
+      const { changed, diagnostics } = ids.reconcile(sc, links);
+      if (changed.has('')) { rev++; if (writeRoot('ids')) schedule('text'); else rev--; }
+      for (const r of changed) if (r) { sessions.markChanged(r); }
+      for (const d of diagnostics) emit('ids', d);
+    } finally { checking = false; }
+  };
+
   const offs: (() => void)[] = [];
   offs.push(sessions.api.on('unlock', (e) => {
     const s = sessions.get(e.region);
     if (!s.parent) { const n = find(rootNow().nodes, s.branchId); if (n) pinned.set(e.region, n); }
     pinIds(s.doc);
+    checkIds();
     emit('seal', e as Events['seal']);
   }));
   offs.push(sessions.api.on('lock', (e) => { pinned.delete(e.region); emit('seal', e as Events['seal']); }));
@@ -317,12 +348,15 @@ export function createOutlineDoc(o: OutlineDocOptions): OutlineDocHandle {
       const top = e.region.split('/')[0]!;
       confirmed.delete(top);
       schedule('zone');
+      checkIds();
     }
     emitStatus();
   }));
 
   const handle: OutlineDocHandle = {
     getText: () => text,
+    mintId: () => ids.mint(scopes()),
+    idsInUse: () => ids.inUse(scopes()),
     get rev() { return rev; },
     setText(next, opt = {}) {
       const value = next == null ? '' : String(next);
@@ -339,6 +373,7 @@ export function createOutlineDoc(o: OutlineDocOptions): OutlineDocHandle {
         lastError = null;
         emit('change', { text, rev, source });
         emitStatus();
+        checkIds();
         return;
       }
       if (value === text) return;
@@ -347,6 +382,7 @@ export function createOutlineDoc(o: OutlineDocOptions): OutlineDocHandle {
       emit('change', { text, rev, source });
       schedule(opt.reason ?? (source === 'map' ? 'map' : source === 'zone' ? 'zone' : 'text'));
       emitStatus();
+      checkIds();
     },
     async serialise() {
       const problems = zoneProbe?.() ?? [];

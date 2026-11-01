@@ -143,6 +143,22 @@ interface CoreHooks {
   onSelection?: (head: number) => void;
 }
 
+/** Apply a host key edit to a view like typing (one history step). */
+export function applyEditTo(view: EditorView, edit: TextEdit): void {
+  const len = view.state.doc.length;
+  const c = (p: number) => Math.max(0, Math.min(p, len));
+  const from = c(edit.start), to = c(edit.end);
+  const ins = edit.text || '';
+  const after = len - (to - from) + ins.length;
+  const cl = (p: number) => Math.max(0, Math.min(p, after));
+  view.dispatch({
+    changes: { from, to, insert: ins },
+    selection: { anchor: cl(edit.selStart), head: cl(edit.selEnd ?? edit.selStart) },
+    scrollIntoView: true,
+    userEvent: 'input',
+  });
+}
+
 function buildEditor(host: HTMLElement, initial: string, opts: TextEditorOptions, hooks: CoreHooks) {
   let writing = false;
   const hostRegions = StateField.define<{ list: HostRegion[]; deco: DecorationSet }>({
@@ -162,13 +178,18 @@ function buildEditor(host: HTMLElement, initial: string, opts: TextEditorOptions
     if (!opts.autoWidth) return undefined;
     return autoWrapCh(opts.autoWidth(), { viewportW: host.clientWidth || null, fallback: DEFAULT_WRAP_CH });
   };
+  // 0.4.9 (bug B4): the same line keys (Enter, Tab, Shift-Tab) run in the main view and in
+  // every secure zone view; each hook gets the view the key was pressed in.
+  const lineKeys = [
+    { key: 'Enter', run: (v: EditorView) => !!opts.onEnter?.(v) },
+    { key: 'Tab', run: (v: EditorView) => !!opts.onTab?.(v, false) },
+    { key: 'Shift-Tab', run: (v: EditorView) => !!opts.onTab?.(v, true) },
+  ];
   const ext: Extension[] = [
     history(),
     drawSelection(),
     keymap.of([
-      { key: 'Enter', run: (v) => !!opts.onEnter?.(v) },
-      { key: 'Tab', run: (v) => !!opts.onTab?.(v, false) },
-      { key: 'Shift-Tab', run: (v) => !!opts.onTab?.(v, true) },
+      ...lineKeys,
       { key: 'Escape', run: () => { opts.onEsc?.(); return !!opts.onEsc; } },
     ]),
     keymap.of([...defaultKeymap, ...historyKeymap]),
@@ -217,7 +238,7 @@ function buildEditor(host: HTMLElement, initial: string, opts: TextEditorOptions
     ext.push(outlineEditor({
       sessions: opts.sessions,
       askPassphrase: opts.askPassphrase,
-      childExtensions: [history(), keymap.of([...defaultKeymap, ...historyKeymap]), ...(opts.childExtensions ?? [])],
+      childExtensions: [history(), keymap.of(lineKeys), keymap.of([...defaultKeymap, ...historyKeymap]), ...(opts.childExtensions ?? [])],
       textWidthCh: widthCh,
       focus: opts.focus,
       followInText: opts.followInText,
@@ -291,18 +312,20 @@ export function mountTextEditor(
   host.className = 'cm-host of-text-editor source';
   a.append(host);
   let handleRef: TextEditorHandle | null = null;
-  const keyEdit = (fn: () => TextEdit | null | false | undefined): boolean => {
+  // The edit lands in the view the key was pressed in (main text or a secure zone).
+  const keyEdit = (v: EditorView, fn: () => TextEdit | null | false | undefined): boolean => {
     const edit = fn();
     if (!edit) return false;
-    handleRef!.applyEdit(edit);
+    if (handleRef && v === handleRef.view) { handleRef.applyEdit(edit); return true; }
+    applyEditTo(v, edit);
     return true;
   };
   const core = buildEditor(host, doc.getText(), {
     ...o,
     sessions: doc.sessions,
     focus: o.focus ?? doc.focusLink,
-    onEnter: o.onEnter ? (v) => keyEdit(() => o.onEnter!(v.state.doc.toString(), v.state.selection.main.from, v.state.selection.main.to)) : undefined,
-    onTab: o.onTab ? (v, shift) => keyEdit(() => o.onTab!(v.state.doc.toString(), v.state.selection.main.from, v.state.selection.main.to, shift)) : undefined,
+    onEnter: o.onEnter ? (v) => keyEdit(v, () => o.onEnter!(v.state.doc.toString(), v.state.selection.main.from, v.state.selection.main.to)) : undefined,
+    onTab: o.onTab ? (v, shift) => keyEdit(v, () => o.onTab!(v.state.doc.toString(), v.state.selection.main.from, v.state.selection.main.to, shift)) : undefined,
   }, {
     onLocal: (next) => doc.setText(next, { source: 'text', reason: 'text' }),
     onSelection: (head) => doc.setCaret(head),

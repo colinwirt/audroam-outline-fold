@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.4.9 — 2026-11-02
+
+- Fix (C, ids): one id allocator in the doc owner (`createIdAllocator`, `doc.mintId()`, `doc.idsInUse()`) over the root doc, every unlocked region and the anchor ids. A region root row mirrors its anchor and is exempt; any other duplicate (hand-typed in Text or in a zone, or arriving on unlock) keeps the older node's id and renumbers the newer one, or is flagged and left alone when a `<r:…>` / `#id` link names it. New `ids` event (`IdDiagnostic`). Minted ids are never reused.
+- Fix (C, zone): the zone's first line is the anchor row and shows without `<id:N>` (`zoneShowRoot`); the parsed zone root always keeps the anchor id (`zoneRootId`). Sealing never wrote the anchor id into the payload (contract test).
+- Fix (B4, zone): Enter / Tab / Shift-Tab in a secure zone run the host's `onEnter` / `onTab` on the zone view (`applyEditTo`); Tab used to move focus to the footer buttons.
+- Fix (B2, zone): `[ ]` / `[x]` / `[-]` markers render as ☐ / ☑ / ▣ glyph widgets (`zoneTaskGlyphs`); the text is unchanged.
+- Fix (B1, zone): a zone widget re-render (width change, refresh) hands the old view's selection and focus to the new view, so the caret no longer vanishes.
+- Tests: `zone-049` (real mount: caret survives re-render, glyphs, no keyring/payload in zone before/after save, Tab/Shift-Tab through host onTab, root line) and `ids-049` (anchor mirror, hand-typed duplicate in zone and in Text, minting after unlock, linked duplicate flagged). The 0.4.5 zone tests only grepped source and never mounted a zone.
+
 ## 0.4.8 — 2026-11-02
 
 - New `createOutlineDoc({ text, ctx, serializeRoot?, debounceMs?, timers?, ... })`: the single owner

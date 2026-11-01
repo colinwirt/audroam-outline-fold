@@ -52,6 +52,57 @@ export function splitZoneText(text: string): { body: string; trailer: string } {
   if (!m) return { body: text, trailer: '' };
   return { body: text.slice(0, m.index).replace(/\s+$/, ''), trailer: text.slice(m.index).replace(/^\n/, '') };
 }
+/**
+ * 0.4.9 (bug C): the zone's first line is the anchor's own row (its secret caption). It shows
+ * without `<id:N>`: that id is the anchor's, and showing it invited a second node with it.
+ */
+export function zoneShowRoot(body: string, anchorId: string): string {
+  const nl = body.indexOf('\n');
+  const first = nl < 0 ? body : body.slice(0, nl);
+  const tag = new RegExp(`\\s*<id:${anchorId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}>`);
+  return first.replace(tag, '') + (nl < 0 ? '' : body.slice(nl));
+}
+/** The parsed zone keeps exactly the anchor id on its root row. */
+export function zoneRootId(doc: { nodes: { id?: string }[] }, anchorId: string): void {
+  const r = doc.nodes[0];
+  if (doc.nodes.length === 1 && r && !r.id) r.id = anchorId;
+}
+/** 0.4.9 (bug B2): `[ ]` / `[x]` / `[-]` task markers in a zone line → glyph, else null. */
+export function zoneTaskMarks(line: string): { from: number; to: number; glyph: string } | null {
+  const m = /^(\s*[-*+]\s+)\[( |x|X|-)\]/.exec(line);
+  if (!m) return null;
+  const from = m[1]!.length;
+  return { from, to: from + 3, glyph: m[2] === ' ' ? '\u2610' : m[2] === '-' ? '\u25A3' : '\u2611' };
+}
+class TaskGlyph extends WidgetType {
+  constructor(readonly glyph: string) { super(); }
+  eq(o: TaskGlyph): boolean { return o.glyph === this.glyph; }
+  toDOM(): HTMLElement {
+    const s = document.createElement('span');
+    s.className = 'of-zone-task';
+    s.textContent = this.glyph;
+    return s;
+  }
+}
+const taskDecos = (v: EditorView): DecorationSet => {
+  const b = new RangeSetBuilder<Decoration>();
+  for (const { from, to } of v.visibleRanges) {
+    for (let pos = from; pos <= to;) {
+      const line = v.state.doc.lineAt(pos);
+      const t = zoneTaskMarks(line.text);
+      if (t) b.add(line.from + t.from, line.from + t.to, Decoration.replace({ widget: new TaskGlyph(t.glyph) }));
+      pos = line.to + 1;
+    }
+  }
+  return b.finish();
+};
+/** Task markers in a zone render as the glyphs the main text uses; the text stays `[ ]`. */
+export const zoneTaskGlyphs = ViewPlugin.fromClass(class {
+  decorations: DecorationSet;
+  constructor(v: EditorView) { this.decorations = taskDecos(v); }
+  update(u: { docChanged: boolean; viewportChanged: boolean; view: EditorView }) { if (u.docChanged || u.viewportChanged) this.decorations = taskDecos(u.view); }
+}, { decorations: (p) => p.decorations });
+
 export function joinZoneText(body: string, trailer: string): string {
   return trailer ? `${body.replace(/\s+$/, '')}\n\n${trailer}` : body;
 }
@@ -138,7 +189,9 @@ class SecureZone extends WidgetType {
       outer.dispatch({ selection: { anchor: target }, scrollIntoView: true });
       return true;
     };
-    let split = splitZoneText(child ? serialize(child) : '');
+    const anchorId = s.branchId;
+    const shown = (t: string) => { const sp = splitZoneText(t); return { body: zoneShowRoot(sp.body, anchorId), trailer: sp.trailer }; };
+    let split = shown(child ? serialize(child) : '');
     let ownText = child ? serialize(child) : '';
     const view = new EditorView({
       parent: host,
@@ -148,6 +201,7 @@ class SecureZone extends WidgetType {
           ...(this.opts.childExtensions ?? []),
           drawSelection(),
           zoneCaret,
+          zoneTaskGlyphs,
           // 0.4.5: ↑ on the first zone line / ↓ on the last leave the zone to the main lines around it.
           keymap.of([
             { key: 'ArrowUp', run: (v) => leave(v, -1) },
@@ -158,6 +212,7 @@ class SecureZone extends WidgetType {
             const d = sessions.get(region).doc;
             if (!d) return;
             const next = parse(joinZoneText(u.state.doc.toString(), split.trailer));
+            zoneRootId(next, anchorId);
             d.nodes.splice(0, d.nodes.length, ...next.nodes); // keep viewer identity
             ownText = serialize(d);
             sessions.markChanged(region);
@@ -177,12 +232,24 @@ class SecureZone extends WidgetType {
       try { now = serialize(d); } catch { return; }
       if (now === ownText) return;
       ownText = now;
-      split = splitZoneText(now);
+      split = shown(now);
       const cur = view.state.doc.toString();
       if (split.body === cur) return;
       applying = true;
       try { view.dispatch({ changes: { from: 0, to: cur.length, insert: split.body } }); } finally { applying = false; }
     });
+    // 0.4.9 (bug B1): a re-render (width change, refresh after a session transition) keeps
+    // the caret: the new view takes the old one's selection and focus.
+    const prev = zoneViews.get(region);
+    if (prev && prev !== view) {
+      const had = prev.hasFocus || (typeof document !== 'undefined' && prev.contentDOM.contains(document.activeElement));
+      const sel = prev.state.selection.main;
+      const len = view.state.doc.length;
+      if (had) {
+        view.dispatch({ selection: { anchor: Math.min(sel.anchor, len), head: Math.min(sel.head, len) } });
+        queueMicrotask(() => { try { view.focus(); } catch { /* gone */ } });
+      }
+    }
     zoneViews.set(region, view);
     zoneRenderFailures.delete(region);
     let gone = false;
