@@ -261,3 +261,145 @@ Total is about 7–9 weeks of focused work. Phases V3–V7 can overlap once V2 h
 - More ▾ → **Restore discarded version** brings it back as the autosave, unconfirmed, so the user confirms it with Save as usual.
 - Hold: 7 days, or until a later confirmed Save (proposed default; open question for Colin). Clear text never leaves memory.
 - Tests: discard then restore round-trips; a confirmed Save keeps the replaced version restorable; a new discard replaces the slot; the slot expires after the hold; a base mismatch shows the "can't tell" label.
+
+## SEAL-DRAFT: build-ready spec (1 Nov 2026)
+
+Turns the two decisions above into requirements. Docs only; nothing here is built yet.
+
+**Repo facts checked on 1 Nov 2026 (branch `draft/v1-rebuild`):**
+- `SealedPayload` (src/types.ts:38) is `{ kid?, ciphertext?, uri?, alg?, pub? }`. The trailer field is `ct:` in the file and `ciphertext` in memory.
+- The trailer is parsed by `parsePayloadMap` (src/payloads.ts:207, field regex `kid|alg|ct|uri|pub` at :228), written by `formatPayloadsBlock`, and validated raw by `parsePayloadEntriesRaw` (src/validate.ts:97, regex `kid|alg|ct|uri` at :131).
+- The guard is in `ViewerImpl.save` (src/sealedBranch.ts:882): `cur.ciphertext !== opened.ciphertext` → "payload changed outside the viewer".
+- `src/sealUi.ts` and `tests/unseal-edit.test.ts` **do not exist on this branch**. The seal UI and its tests are new files below. The test style follows `tests/sealed-branch.test.ts`: vitest, `__installSecretForKat` as the fake KDF (no Argon2/PBKDF2 cost), and `CTX = { noteId, ownerId }`.
+
+### SD-1 Payload grammar
+Flat keys under the node id so the existing one-level field reader still works. Old readers skip unknown keys.
+```
+--- payloads ---
+vault:
+  kid: k1
+  alg: of-seal-v2
+  pub: "Alarm codes"
+  ct: <loaded, confirmed>
+  at: 2026-11-01T01:40:00Z
+  base: h:<hash>
+  auto-ct: <autosave, unconfirmed>
+  auto-at: 2026-11-01T03:12:00Z
+  auto-base: h:<hash of the loaded ct it was edited from>
+  gone-ct: <discarded>
+  gone-at: 2026-11-01T03:20:00Z
+  gone-by: save | discard
+  gone-from: loaded | autosave
+```
+- `hash` = `h:` + b64u(first 16 bytes of SHA-256 over the ASCII `ct` string). It hashes ciphertext only, never clear text.
+- `base` on the loaded slot is the hash of the ct it replaced. It is optional, and it is absent on legacy notes.
+- In memory, `SealedPayload` gains `at?`, `base?`, `autosave?: { ciphertext, at, base }` and `discarded?: { ciphertext, at, replacedBy: 'save'|'discard', from: 'loaded'|'autosave' }`.
+- Every slot uses the entry's `kid` and `alg`. There is no per-slot kid, so a rotation re-seals all slots.
+- `uri` entries get no draft slots. Using `auto-*` or `gone-*` with `uri` is a validation error.
+- Tests (`tests/seal-draft-grammar.test.ts`), 6: a full entry parses to the in-memory shape; ct only parses to `{kid,alg,ciphertext}` with no extra keys; `auto-ct` without `auto-base` parses with `base` undefined; an unknown `gone-by` value is dropped by parse and flagged by the validator; a `uri` entry with `auto-ct` is flagged; `pub` is quoted the same way as today.
+
+### SD-2 Serialize round-trip
+- `formatPayloadsBlock` writes keys in this fixed order: kid, alg, pub, ct, at, base, auto-*, gone-*. It omits empty slots.
+- `parse(serialize(doc))` is deep-equal for every slot combination: L, L+A, L+D, L+A+D, A+D (loaded dropped is not allowed, see SD-3).
+- Tests, 5: one per combination (table-driven); serialize is byte-stable when run twice; a ct-only note serializes byte-identical to the pre-change output (golden from `tests/vectors`).
+
+### SD-3 Validator
+New codes in `validate.ts` (both `parsePayloadEntriesRaw` and the structured path):
+- `payload_draft_without_loaded`: `auto-ct` or `gone-ct` with no `ct`.
+- `payload_draft_on_uri`
+- `payload_draft_bad_time`: `at`, `auto-at` or `gone-at` is not ISO-8601.
+- `payload_draft_bad_hash`: a `base` or `auto-base` that does not match `h:[A-Za-z0-9_-]{22}`.
+- `payload_draft_bad_reason`: `gone-by` or `gone-from` is outside its enum.
+
+These are warnings, not errors, so a note still opens. The worst case falls back to the loaded ct.
+- Tests (`tests/validate.test.ts`, add), 6: one per code, plus a clean full entry giving zero issues.
+
+### SD-4 Guard compares loaded ct only
+- In `ViewerImpl.save` and in the new `autosave()`, the "changed outside the viewer" check compares only `cur.ciphertext` (loaded) against `opened.ciphertext`. It also checks kid, alg and kdf as today.
+- A changed `auto-*` or `gone-*` never trips the guard. That covers this session's own autosaves and those of a host that rewrote them.
+- Tests (`tests/seal-draft-viewer.test.ts`), 3: autosave ×3, then save, succeeds; an external change to the loaded ct throws the existing message; an external change to `auto-ct` only does not throw.
+
+### SD-5 Autosave cadence and key in memory
+- `viewer.autosave()` encrypts the current snapshot under the held branch key with a fresh nonce. It writes `autosave = { ciphertext, at: now, base: hash(loaded ct) }` and calls `host.onChange` (the host's existing note autosave). It never touches `ciphertext`.
+- The cadence belongs to the host. The helper `scheduleSealAutosave(viewer, { idleMs = 1500, maxMs = 10000, now, setTimer })` debounces on edit and flushes on lock, `pagehide` and `visibilitychange:hidden`. Time and timers are injected so tests use fake time.
+- The derived key stays only in the module key map while the kid is unlocked. `clearKeys()` and auto-lock end autosave: after lock, `autosave()` throws `SealError('locked')` and the scheduler stops. Clear text is never written to the payload, localStorage or host storage.
+- Autosave is a no-op when the snapshot equals the last autosaved or loaded text. Without that, every tick would rewrite the slot with a fresh nonce.
+- Tests, 7: three autosaves leave one `auto-ct` and the loaded ct is unchanged; with fake timers, idle 1500 ms flushes once; a 10 s cap flushes during continuous typing; lock flushes and then stops; autosave after `clearKeys()` throws locked; an unchanged text does not write; no serialized output or `host.onChange` arg contains the plaintext marker string.
+
+### SD-6 Unlock with an autosave present
+- `openSealedBranch` decrypts the autosave if it exists and its base matches, and opens on it. It exposes `viewer.draftState = 'unconfirmed' | 'clean' | 'conflict'`. If the autosave fails to decrypt, it opens the loaded text and sets `draftError`.
+- Tests, 4: edit, autosave, `clearKeys`, unlock: the viewer shows the edited text and the state is unconfirmed; with no autosave, the state is clean; a corrupt `auto-ct` opens the loaded text and sets draftError; a base mismatch gives the state conflict (see SD-10).
+
+### SD-7 Confirmed Save
+- `viewer.save()` with an autosave:
+  1. Encrypt the snapshot.
+  2. Decrypt it back and compare it with the snapshot (verify).
+  3. Only then, in one assignment to `node.sealed`, set loaded to the new ct, `base` to hash(old loaded), `at` to now, and remove `autosave`. The old loaded ct moves to `discarded` with `replacedBy: 'save', from: 'loaded'`.
+- If verification fails, throw `SealError('verify')` and leave `node.sealed` unchanged (both versions kept).
+- Tests, 4: after save, loaded is the new ct and autosave is gone; the old ct is in `gone-ct` and decrypts to the old text; a forced verify failure (stub cipher that corrupts decrypt) leaves the payload deep-equal to before; a save with no change still returns early as today.
+
+### SD-8 Discard
+- `viewer.discardAutosave()` moves the autosave to `discarded` (`replacedBy: 'discard', from: 'autosave'`), removes `autosave`, and reloads the loaded text into the viewer as clean.
+- Tests, 2: after discard, the loaded ct is unchanged and the viewer text equals the loaded text; a second discard of a newer autosave replaces the gone slot (only one is kept).
+
+### SD-9 Restore discarded (More ▾)
+- `viewer.restoreDiscarded()` copies `gone-ct` to `autosave` (`base` = hash(current loaded), `at` = now) and clears `discarded`. The viewer then shows it as unconfirmed, and the user's Save confirms it through SD-7.
+- If an autosave already exists, it swaps: the current autosave becomes the gone slot. Nothing is lost.
+- The More ▾ item **Restore discarded version** shows only when a non-expired `discarded` exists (`sealMenuItems(viewer, now)` in the new `src/sealUi.ts`).
+- Tests, 5: discard then restore round-trips the text and the state is unconfirmed; save, restore, then save again brings back the previous loaded text; restore with an existing autosave swaps; the menu item is hidden with no slot and shown with one; restoring an expired slot throws and the menu hides it.
+
+### SD-10 Labels, diff and base mismatch
+- `versionLabels(viewer, { now, deviceId })` returns plain strings: `Autosave · 2:12pm · this device · +3 lines` and `Saved · 1:40pm`. Times use the host locale. "this device" shows only when the autosave was written in this session. `+N/−N` comes from a line diff of the two plaintexts in memory.
+- `versionDiff(a, b)` returns line ops for a preview. Text and lines only, in the DOM; it is never persisted.
+- When `auto-base` is missing, or does not equal hash(loaded ct), the label shows `Can't tell which is newer` on both versions, and neither version is dropped by autosave, Save or Discard without an explicit choice. Save then requires `save({ resolve: 'keep-autosave' })`, which still sends the loaded version to the gone slot.
+- Note: `save(opts)` currently rejects any opts (line ~875). The `resolve` key is the one allowed exception.
+- Tests (`tests/seal-ui.test.ts`), 6: label strings exact with a fixed clock; the +3/−1 counts; the diff ops for a simple edit; missing base gives "Can't tell which is newer"; a mismatched base gives the same label; a plain save in conflict throws, and `resolve` saves with the gone slot holding the old loaded.
+
+### SD-11 Hold (default, pending Colin)
+- `discarded` is kept until `gone-at + 7 days`, **or** until a later confirmed Save after it was made. Whichever comes first.
+- When a Save itself creates the gone slot, that slot survives that Save. The *next* confirmed Save replaces it.
+- Expiry is lazy: it is checked on parse, open, menu or save via an injected `now`. An expired slot is removed at the next write.
+- `SEAL_DISCARD_HOLD_MS = 7 * 864e5` is exported so Colin can change it.
+- Tests, 3: at 6d23h it is restorable; at 7d+1s it is hidden and dropped at the next write; a later confirmed Save replaces it.
+
+### SD-12 Backward compatibility
+- A note with only `kid/alg/ct(/pub)` opens, edits and saves exactly as today. Its first autosave adds `auto-*`. Its first confirmed Save adds `at`/`base` and `gone-*`.
+- Older outline-fold readers ignore the extra keys and see the loaded ct, so they never see an unconfirmed edit. Writers that drop unknown keys lose only the draft slots, never the loaded ct.
+- of-seal-v1 stays decrypt-only: autosave and restore throw the existing migrate message.
+- Tests, 4: the legacy ct-only vector opens, saves and round-trips; parse by the old field set (simulated by stripping `auto-*`/`gone-*`) still yields the loaded ct; v1 autosave throws the migrate error; `uri` notes are unaffected.
+
+### Files to change
+- `src/types.ts`: the `SealedPayload` slots.
+- `src/payloads.ts`: `parsePayloadMap` and `formatPayloadsBlock` keys and order.
+- `src/validate.ts`: the raw field regex and the new codes.
+- `src/sealedBranch.ts`:
+  - `ViewerImpl.save` (guard at ~882, verify, slot moves)
+  - new `autosave`, `discardAutosave` and `restoreDiscarded`
+  - `openSealedBranch` (draftState)
+  - `ctHash`
+  - `SEAL_DISCARD_HOLD_MS`
+- **new** `src/sealDraft.ts`: pure slot transitions (`applyAutosave`, `applySave`, `applyDiscard`, `applyRestore`, `expire`), so the tests need no DOM.
+- **new** `src/sealUi.ts`: `versionLabels`, `versionDiff`, `sealMenuItems`, `scheduleSealAutosave`.
+- `src/index.ts`: the exports.
+- `README.md`: the trailer rule row.
+
+New tests: `tests/seal-draft-grammar.test.ts`, `tests/seal-draft-viewer.test.ts`, `tests/seal-ui.test.ts`. Extended: `tests/validate.test.ts`.
+
+**Total: 55 vitest cases.**
+- SD-1 6
+- SD-2 5
+- SD-3 6
+- SD-4 3
+- SD-5 7
+- SD-6 4
+- SD-7 4
+- SD-8 2
+- SD-9 5
+- SD-10 6
+- SD-11 3
+- SD-12 4
+
+### Open for Colin
+1. The hold: is 7 days or a later save right? (SD-11)
+2. In conflict, should Save need an explicit choice (proposed), or default to keeping the autosave? (SD-10)
+3. Autosave cadence: is 1.5 s idle with a 10 s cap right? (SD-5)
