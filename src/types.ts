@@ -45,6 +45,30 @@ export interface SealedPayload {
   alg?: string;
   /** Sealed branch only: an explicitly public label shown on the locked placeholder. */
   pub?: string;
+  /** SEAL-DRAFT: ISO time the loaded (confirmed) ct was saved. */
+  at?: string;
+  /** SEAL-DRAFT: `h:` hash of the ct the loaded ct replaced (absent on legacy notes). */
+  base?: string;
+  /** SEAL-DRAFT: unconfirmed autosave slot (same kid/alg as the entry). */
+  autosave?: SealedDraftSlot;
+  /** SEAL-DRAFT: the one discarded slot, held until the next confirmed Save. */
+  discarded?: SealedDiscardedSlot;
+}
+
+/** Autosave slot (`auto-ct`, `auto-at`, `auto-base`). Ciphertext only, never clear text. */
+export interface SealedDraftSlot {
+  ciphertext: string;
+  at?: string;
+  /** Hash of the loaded ct this autosave was edited from. */
+  base?: string;
+}
+
+/** Discarded slot (`gone-ct`, `gone-at`, `gone-by`, `gone-from`). */
+export interface SealedDiscardedSlot {
+  ciphertext: string;
+  at?: string;
+  replacedBy?: 'save' | 'discard';
+  from?: 'loaded' | 'autosave';
 }
 
 export interface OutlineNode {

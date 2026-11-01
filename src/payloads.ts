@@ -225,7 +225,7 @@ export function parsePayloadMap(block: string): PayloadMap {
       current = top[1]!;
       continue;
     }
-    const field = raw.match(/^\s+(kid|alg|ct|uri|pub)\s*:\s*(.+)$/i);
+    const field = raw.match(/^\s+(kid|alg|ct|uri|pub|at|base|auto-ct|auto-at|auto-base|gone-ct|gone-at|gone-by|gone-from)\s*:\s*(.+)$/i);
     if (field && current) {
       const v = field[2]!.trim();
       const k = field[1]!.toLowerCase();
@@ -254,6 +254,26 @@ function fieldsToSealed(fields: Record<string, string>): SealedPayload | null {
   if (fields.uri) sealed.uri = fields.uri;
   if (fields.alg) sealed.alg = fields.alg;
   if (fields.pub) sealed.pub = fields.pub;
+  // SEAL-DRAFT slots (SD-1): inline ct entries only; `uri` entries get none.
+  if (fields.ct) {
+    if (fields.at) sealed.at = fields.at;
+    if (fields.base) sealed.base = fields.base;
+    if (fields['auto-ct']) {
+      const a: NonNullable<SealedPayload['autosave']> = { ciphertext: fields['auto-ct'] };
+      if (fields['auto-at']) a.at = fields['auto-at'];
+      if (fields['auto-base']) a.base = fields['auto-base'];
+      sealed.autosave = a;
+    }
+    if (fields['gone-ct']) {
+      const g: NonNullable<SealedPayload['discarded']> = { ciphertext: fields['gone-ct'] };
+      if (fields['gone-at']) g.at = fields['gone-at'];
+      const by = fields['gone-by']?.toLowerCase();
+      if (by === 'save' || by === 'discard') g.replacedBy = by;
+      const from = fields['gone-from']?.toLowerCase();
+      if (from === 'loaded' || from === 'autosave') g.from = from;
+      sealed.discarded = g;
+    }
+  }
   return sealed;
 }
 
@@ -597,8 +617,25 @@ export function formatPayloadsBlock(payloads: PayloadMap): string {
     if (s.kid) lines.push(`  kid: ${s.kid}`);
     if (s.alg) lines.push(`  alg: ${s.alg}`);
     if (s.pub) lines.push(`  pub: ${JSON.stringify(s.pub)}`);
-    if (s.ciphertext) lines.push(`  ct: ${s.ciphertext}`);
-    else if (s.uri) lines.push(`  uri: ${s.uri}`);
+    if (s.ciphertext) {
+      lines.push(`  ct: ${s.ciphertext}`);
+      // SEAL-DRAFT (SD-2): fixed order, empty slots omitted; ct-only output is unchanged.
+      if (s.at) lines.push(`  at: ${s.at}`);
+      if (s.base) lines.push(`  base: ${s.base}`);
+      const a = s.autosave;
+      if (a?.ciphertext) {
+        lines.push(`  auto-ct: ${a.ciphertext}`);
+        if (a.at) lines.push(`  auto-at: ${a.at}`);
+        if (a.base) lines.push(`  auto-base: ${a.base}`);
+      }
+      const g = s.discarded;
+      if (g?.ciphertext) {
+        lines.push(`  gone-ct: ${g.ciphertext}`);
+        if (g.at) lines.push(`  gone-at: ${g.at}`);
+        if (g.replacedBy) lines.push(`  gone-by: ${g.replacedBy}`);
+        if (g.from) lines.push(`  gone-from: ${g.from}`);
+      }
+    } else if (s.uri) lines.push(`  uri: ${s.uri}`);
   }
   lines.push('---');
   return lines.join('\n');
