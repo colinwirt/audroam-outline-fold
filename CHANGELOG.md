@@ -8,6 +8,7 @@
 - New `promptPassphrase()`; examples and react-live use it instead of window.prompt.
 - `<r:REGION:N>` refs draw as Map jump chips; click calls setFocus → revealScoped.
 - Secure zone: Remove seal moved behind "More ▾", with a confirm step ("This stores the branch as plain text", red confirm), then the passphrase. Keyboard accessible; fits 390px.
+- Minimal unlocked chrome: one 🔒 Lock icon (tooltip: key + idle countdown) and a ⋯ More menu (Remove seal…) per zone; Save & re-seal only while unsaved; faint unsaved dot. Removed the "Unlocked · k1" chips, "Lock now" text button, "memory only", hint line, "zone end" label and the map "🔓 k1" cloud label. Map: new `onRegionLock` draws the cloud 🔒 button.
 
 ## Unreleased — sub-map regions, unseal lifecycle, editor, host API
 
