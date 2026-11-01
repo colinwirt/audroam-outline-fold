@@ -883,8 +883,10 @@
   --of-region-stroke: rgba(120, 120, 120, 0.45);
   --of-region-label: #555;
 }
-.map-region-node > rect:not(.map-fold-hit) { fill: var(--map-node-bg, #fff); stroke: var(--of-region-stroke, rgba(46, 160, 67, 0.6)); stroke-width: 1.2; }
-.map-region-node > text { font-size: 13px; fill: currentColor; }
+/* 0.4.3 (QA E): pills inside an open zone read on the zone, light or dark: ink and fill come
+   from the --of-seal-* host vars, so a dark host never gets light text on a white pill. */
+.map-region-node > rect:not(.map-fold-hit) { fill: var(--of-seal-bg, var(--map-node-bg, #fff)); stroke: var(--of-region-stroke, rgba(46, 160, 67, 0.6)); stroke-width: 1.2; }
+.map-region-node > text { font-size: 13px; fill: var(--of-seal-ink, #1f2328); }
 .map-region-pill > rect:not(.map-fold-hit) { fill: var(--of-region-fill, rgba(46, 160, 67, 0.14)); }
 /* §R1 region folding: same fold chrome as root nodes; selection ring on the focused node. */
 .map-region-node .map-fold-hit { fill: transparent; stroke: none; }
@@ -960,11 +962,21 @@ div.of-unlock.of-unlock-sheet { border-radius: 12px 12px 8px 8px; border-left-wi
 .map-node.is-unlocked-anchor > rect, .map-node.is-unlocked-anchor .map-node-bg { fill: #eaf5ef; stroke: #3d8a5f; }
 .map-region-kid > rect { fill: #eef2fa; stroke: #b5c6e6; stroke-width: 1; }
 .map-region-kid > text { font-size: 10px; fill: #244a8a; }
-.map-region-unlocked .map-region-label { fill: #245c3c; }
+.map-region-unlocked .map-region-label { fill: var(--of-unlocked-ink, #245c3c); }
 
 /* 0.4.2: Outline region rows (composeOutlineDoc). Key pill on sealed anchors; the
    region root heads a green secure zone. Hosts theme through the --of-seal-* / --of-chip-*
    variables (light defaults from the mockups). */
 .of-kid-chip { margin-left: 0.35rem; flex: none; }
-.of-node.of-region-sealed { border-left: 3px solid var(--of-seal-stroke, #3d8a5f); background: var(--of-seal-zone-bg, rgba(46, 160, 67, 0.08)); border-radius: 0 6px 6px 0; margin: 2px 0; }
+.of-node.of-region-sealed { border-left: 3px solid var(--of-seal-stroke, #3d8a5f); background: var(--of-seal-zone-bg, rgba(46, 160, 67, 0.08)); border-radius: 0 6px 6px 0; margin: 2px 0; color: var(--of-seal-ink, inherit); }
+.of-node.of-region-sealed .of-title { color: var(--of-seal-ink, inherit); }
 .of-node.of-region-sealed > .of-row .of-title::before { content: '🔓 '; }
+
+/* 0.4.3 (QA C): zone header in the Map cloud and the Outline zone: one small 🔒 Lock now
+   button and More ▾ (Remove seal…). */
+.map-region-tool { cursor: pointer; }
+.map-region-tool > rect { fill: var(--of-seal-btn-bg, #fff); stroke: var(--of-seal-btn-stroke, #b9c3cc); stroke-width: 1; }
+.map-region-tool > text { font-size: 11px; fill: var(--of-seal-btn-ink, #1f2328); }
+.map-region-tool:focus-visible > rect, .map-region-tool:hover > rect { stroke: var(--of-seal-stroke, #3d8a5f); }
+.of-zone-tools { display: inline-flex; gap: 0.25rem; margin-left: 0.4rem; vertical-align: middle; }
+.of-zone-tool { font: inherit; font-size: 0.75rem; line-height: 1; padding: 0.1rem 0.3rem; border-radius: 4px; cursor: pointer; background: var(--of-seal-btn-bg, #fff); color: var(--of-seal-btn-ink, #1f2328); border: 1px solid var(--of-seal-btn-stroke, #b9c3cc); }

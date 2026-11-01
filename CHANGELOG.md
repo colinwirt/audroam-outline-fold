@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.4.3 — 2026-11-01
+
+- Fix (P0): typing in Text no longer jumps the caret. `mountTextEditor`'s `setDoc` (also behind the textarea `value` setter) now applies a minimal prefix/suffix diff (`minimalChange`) instead of replacing the whole doc, so selection and history survive a host round-trip.
+- Sealed zones: 🔒 Lock and More ▾ tools in the unlocked zone header (Map cloud: `onRegionLock` / `onRegionMore`; Outline: `data-seal-lock` / `data-seal-more`). Map pill reads 🔓 while unlocked; unlock is announced.
+- Text: a locked `<enc>` line renders as a green secure zone (`of-cm-sealed-line`); click calls `onUnlockZone(region, el)`.
+- Theme vars `--of-seal-bg`, `--of-seal-ink`, `--of-unlocked-ink` for dark hosts.
+- Guard: zone refresh kicks are coalesced and skipped on a torn-down view; secure-zone widget destroy is idempotent (suspected source of a `removeChild` NotFoundError after unlock).
+
 ## 0.4.2 — 2026-11-01
 
 - Fix: an unlocked sealed branch no longer renders the locked chrome (`•••• locked ••••`, Decrypt chip) above its plaintext. `composeOutlineDoc` marks the anchor clone `regionState: 'open'` and the region root `regionRoot`; `toHtml` draws the key pill (`🔓 k1`) and the green unlocked zone (`of-region-sealed`).

@@ -32,6 +32,11 @@ export interface OutlineEditorOptions {
   focus?: FocusLink;
   /** "Follow in text": default on (`resolveFollowInText`). Pauses while the user types. */
   followInText?: () => boolean;
+  /**
+   * 0.4.3 (QA D): click on a locked `<enc>` line (shown as a green secure zone) asks the host
+   * to unlock that region with the same prompt as the Map and Outline.
+   */
+  onUnlockZone?: (region: RegionId, anchor: HTMLElement) => void;
 }
 
 const ENC_RE = /<enc:[A-Za-z0-9_.-]+>/;
@@ -104,7 +109,10 @@ class SecureZone extends WidgetType {
         ],
       }),
     });
+    let gone = false;
     (wrap as HTMLElement & { _ofDestroy?: () => void })._ofDestroy = () => {
+      if (gone) return; // CM may destroy a widget DOM twice across a fast lock/unlock
+      gone = true;
       zone.destroy();
       applying = true;
       view.destroy(); // drops the nested undo history with the plaintext
@@ -122,18 +130,21 @@ class SecureZone extends WidgetType {
 /** CM6 extensions: syntax marks, atomic `<enc>` tags, and the secure-zone widget. */
 export function outlineEditor(opts: OutlineEditorOptions): Extension[] {
   const { sessions } = opts;
-  const build = (state: EditorState): { zones: DecorationSet; tags: DecorationSet } => {
+  const build = (state: EditorState): { zones: DecorationSet; tags: DecorationSet; lines: DecorationSet } => {
     const enc = scanEnc(state.doc, sessions);
     const zb = new RangeSetBuilder<Decoration>();
     const tb = new RangeSetBuilder<Decoration>();
+    const lb = new RangeSetBuilder<Decoration>();
     for (const e of enc) {
-      tb.add(e.tagFrom, e.tagTo, Decoration.mark({ class: 'of-cm-enc', atomic: true }));
       const st = e.region ? sessions.get(e.region) : null;
+      // Locked: the whole line reads as a green secure zone; a click unlocks (QA D).
+      if (st && st.locked) lb.add(state.doc.lineAt(e.tagFrom).from, state.doc.lineAt(e.tagFrom).from, Decoration.line({ class: 'of-cm-sealed-line', attributes: { 'data-region': e.region!, title: 'Sealed branch: click to unlock' } }));
+      tb.add(e.tagFrom, e.tagTo, Decoration.mark({ class: 'of-cm-enc', atomic: true }));
       if (st && !st.locked) zb.add(e.to, e.to, Decoration.widget({ widget: new SecureZone(e.region!, opts, opts.textWidthCh?.(e.region!)), block: true, side: 1 }));
     }
-    return { zones: zb.finish(), tags: tb.finish() };
+    return { zones: zb.finish(), tags: tb.finish(), lines: lb.finish() };
   };
-  const field = StateField.define<{ zones: DecorationSet; tags: DecorationSet }>({
+  const field = StateField.define<{ zones: DecorationSet; tags: DecorationSet; lines: DecorationSet }>({
     create: build,
     update(v, tr) {
       return tr.docChanged || tr.effects.some((e) => e.is(refresh)) ? build(tr.state) : v;
@@ -141,6 +152,7 @@ export function outlineEditor(opts: OutlineEditorOptions): Extension[] {
     provide: (f) => [
       EditorView.decorations.from(f, (v) => v.zones),
       EditorView.decorations.from(f, (v) => v.tags),
+      EditorView.decorations.from(f, (v) => v.lines),
       EditorView.atomicRanges.of((view) => view.state.field(f).tags),
     ],
   });
@@ -165,9 +177,21 @@ export function outlineEditor(opts: OutlineEditorOptions): Extension[] {
   });
   // Rebuild zones whenever a session transitions (unlock, lock, change, remove seal).
   const live = ViewPlugin.define((view) => {
-    const kick = () => queueMicrotask(() => view.dispatch({ effects: refresh.of(null) }));
+    // 0.4.3 (QA G): coalesce the kicks and skip a view that is gone or mid-update; a
+    // late refresh after unlock re-rendered a zone widget whose DOM was already replaced.
+    let queued = false;
+    let dead = false;
+    const kick = () => {
+      if (queued) return;
+      queued = true;
+      queueMicrotask(() => {
+        queued = false;
+        if (dead || !view.dom.isConnected) return;
+        try { view.dispatch({ effects: refresh.of(null) }); } catch { /* view torn down mid-flight */ }
+      });
+    };
     const offs = (['unlock', 'lock', 'change', 'error'] as const).map((t) => sessions.api.on(t, kick));
-    return { destroy: () => offs.forEach((o) => o()) };
+    return { destroy: () => { dead = true; offs.forEach((o) => o()); } };
   });
   const follow = ViewPlugin.define((view) => {
     let typedAt = 0;
@@ -188,7 +212,17 @@ export function outlineEditor(opts: OutlineEditorOptions): Extension[] {
     });
     return { destroy: () => { off?.(); view.dom.removeEventListener('keydown', onKey); } };
   });
-  return [field, guard, marks, live, follow, theme];
+  const unlockClick = EditorView.domEventHandlers({
+    mousedown(e) {
+      const line = (e.target as Element | null)?.closest?.('.of-cm-sealed-line') as HTMLElement | null;
+      const region = line?.getAttribute('data-region');
+      if (!line || !region || !opts.onUnlockZone || !sessions.get(region).locked) return false;
+      e.preventDefault();
+      opts.onUnlockZone(region, line);
+      return true;
+    },
+  });
+  return [field, guard, marks, live, follow, unlockClick, theme];
 }
 
 const theme = EditorView.baseTheme({
@@ -198,6 +232,7 @@ const theme = EditorView.baseTheme({
   '.of-secure-zone-end': { borderTop: '1px dashed rgba(46,160,67,0.7)', margin: '0 6px' },
   '.of-sz-btn': { minHeight: '44px' },
   '.of-cm-enc': { color: '#1f7a35', fontWeight: '600' },
+  '.of-cm-sealed-line': { background: 'var(--of-seal-zone-bg, rgba(46,160,67,0.08))', borderLeft: '3px solid var(--of-seal-stroke, #3d8a5f)', cursor: 'pointer' },
   '.of-cm-id': { opacity: '0.55' },
   '.of-cm-r, .of-cm-t': { textDecoration: 'underline dotted' },
 });

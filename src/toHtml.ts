@@ -79,6 +79,12 @@ function renderNode(
     ? `<span class="${p}-chip ${p}-chip-${open ? 'g' : 'k'} ${p}-kid-chip" data-testid="of-kid-${esc(node.id ?? '')}">${open ? '🔓 ' : ''}${esc(kid)}</span>`
     : '';
 
+  // 0.4.3 (QA C): an open sealed zone gets one small 🔒 Lock now button and More ▾ (Remove
+  // seal…) in its header row. The host wires them (data-seal-lock / data-seal-more).
+  const zoneTools = kid && open && node.id
+    ? `<span class="${p}-zone-tools"><button type="button" class="${p}-zone-tool ${p}-zone-lock" data-seal-lock="${esc(node.id)}" data-testid="of-zone-lock-${esc(node.id)}" aria-label="Lock now" title="Lock now">🔒</button><button type="button" class="${p}-zone-tool ${p}-zone-more" data-seal-more="${esc(node.id)}" data-testid="of-zone-more-${esc(node.id)}" aria-haspopup="menu" aria-label="More secure zone actions" title="More">More ▾</button></span>`
+    : '';
+
   // Task SVG lead — ASCII `[ ]`/`[x]` stripped from title at parse time.
   let taskChrome = '';
   if (node.task && node.id) {
@@ -144,7 +150,7 @@ function renderNode(
     : '';
 
   return `<li role="treeitem" class="${p}-node${collapsed ? ` ${p}-collapsed` : ''}${locked ? ` ${p}-locked` : ''}${open ? ` ${p}-region-open` : ''}${node.regionRoot ? ` ${p}-region ${p}-region-${node.regionRoot}` : ''}${node.task ? ` ${p}-has-task` : ''}" tabindex="-1" aria-level="${ariaLevel}"${ariaExpanded} ${dataAttrs}>
-  <div class="${p}-row">${foldBtn}${taskChrome}${icon}<span class="${p}-title">${caption}</span>${threadChip}${noteChips}${jumpChips}${kidChip}${unlockBtn}</div>
+  <div class="${p}-row">${foldBtn}${taskChrome}${icon}<span class="${p}-title">${caption}</span>${threadChip}${noteChips}${jumpChips}${kidChip}${zoneTools}${unlockBtn}</div>
   ${body}${kids}
 </li>`;
 }

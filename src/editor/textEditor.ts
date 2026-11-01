@@ -99,6 +99,20 @@ export function trailerCut(text: string): number {
 
 const setHostRegions = StateEffect.define<HostRegion[]>();
 
+/**
+ * Smallest single replace turning `prev` into `next` (common prefix and suffix kept).
+ * Used for host writes to `textarea.value` so CodeMirror maps the selection instead of
+ * dropping it to the start or end of the doc.
+ */
+export function minimalChange(prev: string, next: string): { from: number; to: number; insert: string } {
+  let a = 0;
+  const max = Math.min(prev.length, next.length);
+  while (a < max && prev.charCodeAt(a) === next.charCodeAt(a)) a += 1;
+  let b = 0;
+  while (b < max - a && prev.charCodeAt(prev.length - 1 - b) === next.charCodeAt(next.length - 1 - b)) b += 1;
+  return { from: a, to: prev.length - b, insert: next.slice(a, next.length - b) };
+}
+
 export function mountTextEditor(textarea: HTMLTextAreaElement, opts: TextEditorOptions = {}): TextEditorHandle {
   const host = document.createElement('div');
   host.className = 'cm-host of-text-editor source';
@@ -183,6 +197,7 @@ export function mountTextEditor(textarea: HTMLTextAreaElement, opts: TextEditorO
       textWidthCh: widthCh,
       focus: opts.focus,
       followInText: opts.followInText,
+      onUnlockZone: opts.onUnlockZone,
     }));
   }
   if (opts.extensions) ext.push(...opts.extensions);
@@ -193,7 +208,8 @@ export function mountTextEditor(textarea: HTMLTextAreaElement, opts: TextEditorO
     const next = value == null ? '' : String(value);
     if (view.state.doc.toString() === next) return;
     writing = true;
-    try { view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: next } }); } finally { writing = false; }
+    // 0.4.3: minimal change, so the caret (mapped through it) stays where the user typed.
+    try { view.dispatch({ changes: minimalChange(view.state.doc.toString(), next) }); } finally { writing = false; }
   };
   Object.defineProperty(textarea, 'value', {
     configurable: true,

@@ -351,6 +351,10 @@ export interface MapViewOptions {
   regionFold?: RegionFoldStore;
   /** A locked sealed region's fold handle was activated: ask the host to unlock (§R1 d). */
   onRegionUnlock?: (region: string) => void;
+  /** 0.4.3: zone header 🔒 on an open sealed cloud (host locks the session). */
+  onRegionLock?: (region: string) => void;
+  /** 0.4.3: zone header More ▾ on an open sealed cloud (host shows Remove seal…). */
+  onRegionMore?: (region: string, anchor: DOMRect) => void;
   /** Map focus moved (click, keys, `setFocus`): scoped id (`region:node` inside a region). */
   onFocusChange?: (scopedId: string) => void;
   getDoc: () => OutlineFoldDoc;
@@ -3534,6 +3538,17 @@ export function createMapView(
   });
   host.addEventListener('click', (e) => {
     const t = e.target as Element | null;
+    const tool = t?.closest?.('.map-region-tool');
+    if (tool && host.contains(tool)) {
+      e.preventDefault();
+      e.stopPropagation();
+      const region = tool.getAttribute('data-region-id') || '';
+      if (tool.getAttribute('data-region-tool') === 'lock') {
+        opts.onRegionLock?.(region);
+        announce('Sealed branch locked');
+      } else opts.onRegionMore?.(region, (tool as Element).getBoundingClientRect());
+      return;
+    }
     const g = t?.closest?.('.map-region-node');
     if (!g || !host.contains(g)) {
       if (t?.closest?.('.map-node')) setRegionFocus(null);
@@ -3812,6 +3827,17 @@ export function createMapView(
         const cloudLabel = r.host.kind === 'sealed' && r.host.doc ? `🔓 ${r.host.kid ?? 'key'}` : r.host.label;
         const cloud = regionSvg({ rootId: r.host.id, kind: r.host.kind, label: cloudLabel, unlocked: r.host.kind === 'sealed' && !!r.host.doc }, r.hull);
         const expandedCloud = !(r.boxes.length === 1 && r.boxes[0]!.root);
+        // 0.4.3 (QA C): zone header tools on an open sealed cloud: 🔒 Lock now and More ▾.
+        const tools = r.host.kind === 'sealed' && r.host.doc && expandedCloud
+          ? (() => {
+              const y = r.hull.y + 4;
+              const xm = r.hull.x + r.hull.w - 44 - 22 - 56;
+              const xl = xm - 28;
+              const rid = esc(r.host.id);
+              return `<g class="map-region-tool map-region-lock" data-region-tool="lock" data-region-id="${rid}" role="button" tabindex="-1" aria-label="Lock now"><title>Lock now</title><rect x="${xl}" y="${y}" width="24" height="20" rx="5"/><text x="${xl + 12}" y="${y + 14}" text-anchor="middle">🔒</text></g>` +
+                `<g class="map-region-tool map-region-more" data-region-tool="more" data-region-id="${rid}" role="button" tabindex="-1" aria-haspopup="menu" aria-label="More secure zone actions"><title>More</title><rect x="${xm}" y="${y}" width="52" height="20" rx="5"/><text x="${xm + 26}" y="${y + 14}" text-anchor="middle">More ▾</text></g>`;
+            })()
+          : '';
         // Region root fold handle on the open cloud (top-right): folds the whole region (§R1 b).
         const cloudFold = expandedCloud
           ? `<g class="map-region-node map-region-root" id="${esc(regionDomId(r.host.id))}" role="treeitem" aria-expanded="true" aria-selected="false" aria-label="${esc((r.host.label || (r.host.kind === 'sealed' ? 'Sealed branch' : 'Record')) + ', expanded')}" data-scoped-id="${esc(r.host.id)}" data-region-id="${esc(r.host.id)}">${foldHandleSvg(r.hull.x + r.hull.w - 44, r.hull.y + 16, false)}<rect class="map-fold-hit" x="${r.hull.x + r.hull.w - 27 - 16}" y="${r.hull.y}" width="32" height="32" fill="transparent" cursor="pointer"/></g>`
@@ -3822,7 +3848,8 @@ export function createMapView(
         const pills = r.boxes
           .map((b) => {
             const folded = b.key === r.host.id;
-            const t = folded ? (r.host.kind === 'sealed' ? '🔒 ' : '') + (r.host.label || (r.host.kind === 'sealed' ? 'Sealed branch' : 'Record')) : captionWithoutLinks(displayCaption(b.title));
+            // 0.4.3 (QA C): 🔒 only while locked; an unlocked branch folded to its pill reads 🔓.
+            const t = folded ? (r.host.kind === 'sealed' ? (r.host.doc ? '🔓 ' : '🔒 ') : '') + (r.host.label || (r.host.kind === 'sealed' ? 'Sealed branch' : 'Record')) : captionWithoutLinks(displayCaption(b.title));
             const cy = b.y + b.h / 2;
             const slot = b.foldable ? FOLD_SLOT : 0;
             const boxRight = b.x + Math.max(1, b.w - slot);
@@ -3844,7 +3871,7 @@ export function createMapView(
             return `<g class="map-region-node${folded ? ' map-region-pill' : ''}${locked && r.host.kind === 'sealed' ? ' map-region-locked' : ''}${b.collapsed ? ' collapsed' : ''}" id="${esc(regionDomId(b.key))}" role="treeitem" aria-selected="false"${b.foldable ? ` aria-expanded="${b.collapsed ? 'false' : 'true'}"` : ''} aria-label="${esc(aria)}" data-scoped-id="${esc(b.key)}" data-region-id="${esc(r.host.id)}"><rect x="${b.x}" y="${b.y}" width="${Math.max(1, b.w - slot)}" height="${b.h}" rx="${Math.min(14, b.h / 2)}"/>${textSvg}${chrome}${kidChip}</g>`;
           })
           .join('');
-        return cloud + edges + pills + cloudFold;
+        return cloud + edges + pills + cloudFold + tools;
       })
       .join('');
   }
@@ -6414,6 +6441,8 @@ export function createMapView(
       mounted.set(h.id, { ...h, folded: false });
       if (h.folded) rfold.setRegionFolded(h.id, true);
       paint();
+      // 0.4.3 (QA C): replace a stale "Sealed branch is locked" in the live region.
+      if (h.kind === 'sealed' && h.doc) announce('Sealed branch unlocked');
       return {
         relayout: () => paint(),
         setFolded: (f: boolean) => {
