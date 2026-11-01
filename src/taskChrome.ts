@@ -233,3 +233,17 @@ export function resolveNoteLinks(node: OutlineNode): string[] {
   }
   return ids;
 }
+
+/**
+ * 0.4.12: stored text keeps ASCII task markers. A leading glyph marker (`☑ x`, `☐ x`, typed or
+ * from an old payload) becomes `[x] x` / `[ ] x` in place. Glyphs are display only.
+ */
+export function normalizeTaskMarkers<T extends { title: string; children?: T[] }>(nodes: T[]): boolean {
+  let hit = false;
+  for (const n of nodes) {
+    const g = String(n.title).match(LEADING_GLYPH);
+    if (g) { n.title = toggleTaskMarker(n.title, DONE_GLYPH.includes(g[1]!) ? 'done' : 'open'); hit = true; }
+    if (n.children && normalizeTaskMarkers(n.children)) hit = true;
+  }
+  return hit;
+}

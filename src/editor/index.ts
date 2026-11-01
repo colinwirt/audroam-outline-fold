@@ -11,6 +11,7 @@
 import { EditorState, RangeSetBuilder, StateEffect, StateField, type Extension, type Text } from '@codemirror/state';
 import { Decoration, EditorView, ViewPlugin, WidgetType, drawSelection, keymap, type DecorationSet } from '@codemirror/view';
 import { parse } from '../parse.js';
+import { normalizeTaskMarkers } from '../taskChrome.js';
 import { serialize } from '../serialize.js';
 import type { SealSessions } from '../sealSession.js';
 import type { RegionId } from '../hostApi.js';
@@ -96,12 +97,18 @@ const taskDecos = (v: EditorView): DecorationSet => {
   }
   return b.finish();
 };
-/** Task markers in a zone render as the glyphs the main text uses; the text stays `[ ]`. */
-export const zoneTaskGlyphs = ViewPlugin.fromClass(class {
+/**
+ * Task markers render as ☐ / ☑ / ▣ (display only; the text stays `[ ]` / `[x]` / `[-]`).
+ * 0.4.12: one decoration for the main editor and every zone editor.
+ */
+export const taskGlyphs = ViewPlugin.fromClass(class {
   decorations: DecorationSet;
   constructor(v: EditorView) { this.decorations = taskDecos(v); }
   update(u: { docChanged: boolean; viewportChanged: boolean; view: EditorView }) { if (u.docChanged || u.viewportChanged) this.decorations = taskDecos(u.view); }
 }, { decorations: (p) => p.decorations });
+
+/** @deprecated 0.4.12 alias of `taskGlyphs`. */
+export const zoneTaskGlyphs = taskGlyphs;
 
 export function joinZoneText(body: string, trailer: string): string {
   return trailer ? `${body.replace(/\s+$/, '')}\n\n${trailer}` : body;
@@ -201,7 +208,7 @@ class SecureZone extends WidgetType {
           ...(this.opts.childExtensions ?? []),
           drawSelection(),
           zoneCaret,
-          zoneTaskGlyphs,
+          taskGlyphs,
           // 0.4.5: ↑ on the first zone line / ↓ on the last leave the zone to the main lines around it.
           keymap.of([
             { key: 'ArrowUp', run: (v) => leave(v, -1) },
@@ -212,6 +219,7 @@ class SecureZone extends WidgetType {
             const d = sessions.get(region).doc;
             if (!d) return;
             const next = parse(joinZoneText(u.state.doc.toString(), split.trailer));
+            normalizeTaskMarkers(next.nodes); // a typed ☑ / ☐ is stored as [x] / [ ]
             zoneRootId(next, anchorId);
             d.nodes.splice(0, d.nodes.length, ...next.nodes); // keep viewer identity
             ownText = serialize(d);

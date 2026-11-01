@@ -1113,6 +1113,16 @@ function taskGlyphSvg(state: TaskState, x: number, y: number): string {
   </g>`;
 }
 
+/**
+ * 0.4.12: the one task lead (hit target + glyph) for every Map node, main or region. The hit
+ * spans the lead column; the glyph is the 14 px box centred on `cy`. Callers pass geometry only.
+ */
+export function taskLeadSvg(state: TaskState, g: { x: number; y: number; h: number; cy: number; lead: number; hitCy?: number }): string {
+  const aria = state === 'done' ? 'true' : state === 'pending' ? 'mixed' : 'false';
+  return `<rect class="map-task-hit" x="${g.x + 2}" y="${Math.min(g.y, (g.hitCy ?? g.cy) - 22)}" width="${Math.max(g.lead - 2, TASK_BOX)}" height="${Math.max(g.h, 44)}" fill="transparent" cursor="pointer" role="checkbox" aria-checked="${aria}"/>` +
+    taskGlyphSvg(state, g.x + TASK_INSET + TASK_BOX / 2, g.cy);
+}
+
 /** The width grip and its hit area (bottom-right corner). Time leaves have none (TL1). */
 function widthGripSvg(boxRight: number, y: number, h: number, textW: number, shown: boolean): string {
   return `<g class="map-width-grip" stroke="#8ec8ff" stroke-width="1.75" stroke-linecap="round" fill="none" pointer-events="none" opacity="${shown ? '1' : '0'}">
@@ -3922,14 +3932,12 @@ export function createMapView(
             // 0.4.10 (Colin): region rows draw tasks with the main Map's glyph and hit target.
             const task = !folded ? b.task ?? null : null;
             const tx = b.x + 12 + (task ? TASK_LEAD : 0);
-            const taskSvg = task
-              ? taskGlyphSvg(task, b.x + TASK_INSET + TASK_BOX / 2, cy) +
-                `<rect class="map-task-hit" x="${b.x + 2}" y="${b.y}" width="${TASK_LEAD + 8}" height="${b.h}" fill="transparent" cursor="pointer" role="checkbox" aria-checked="${task === 'done' ? 'true' : task === 'pending' ? 'mixed' : 'false'}"/>`
-              : '';
+            // 0.4.12: the shared task lead (same markup as the main Map).
+            const taskSvg = task ? taskLeadSvg(task, { x: b.x, y: b.y, h: b.h, cy, lead: TASK_LEAD }) : '';
             const textSvg = tip + taskSvg + (lines.length <= 1
               ? `<text x="${tx}" y="${cy + fpx * 0.35}" ${fa}>${esc(t)}</text>`
               : `<text x="${tx}" y="${cy + fpx * 0.35 - ((lines.length - 1) * lh) / 2}" ${fa}>${lines.map((l, i) => `<tspan x="${tx}"${i ? ` dy="${lh}"` : ''}>${esc(l)}</tspan>`).join('')}</text>`);
-            return `<g class="map-region-node${folded ? ' map-region-pill' : ''}${locked && r.host.kind === 'sealed' ? ' map-region-locked' : ''}${b.collapsed ? ' collapsed' : ''}" id="${esc(regionDomId(b.key))}" role="treeitem" aria-selected="false"${b.foldable ? ` aria-expanded="${b.collapsed ? 'false' : 'true'}"` : ''} aria-label="${esc(aria)}" data-scoped-id="${esc(b.key)}" data-region-id="${esc(r.host.id)}"><rect x="${b.x}" y="${b.y}" width="${Math.max(1, b.w - slot)}" height="${b.h}" rx="${Math.min(14, b.h / 2)}"/>${textSvg}${chrome}${kidChip}</g>`;
+            return `<g class="map-region-node${folded ? ' map-region-pill' : ''}${locked && r.host.kind === 'sealed' ? ' map-region-locked' : ''}${b.collapsed ? ' collapsed' : ''}" id="${esc(regionDomId(b.key))}" role="treeitem" aria-selected="false"${b.foldable ? ` aria-expanded="${b.collapsed ? 'false' : 'true'}"` : ''} aria-label="${esc(aria)}" data-scoped-id="${esc(b.key)}" data-region-id="${esc(r.host.id)}"><rect class="map-region-body" x="${b.x}" y="${b.y}" width="${Math.max(1, b.w - slot)}" height="${b.h}" rx="${Math.min(14, b.h / 2)}"/>${textSvg}${chrome}${kidChip}</g>`;
           })
           .join('');
         return cloud + edges + inner + pills + cloudFold + tools;
@@ -4444,14 +4452,8 @@ export function createMapView(
           const foldChrome = foldable
             ? foldChromeSvg(boxRight, pos.y, !!col, foldSlot, { casing, hiddenCount })
             : '';
-          const taskHit =
-            task != null
-              ? `<rect class="map-task-hit" x="${x + 2}" y="${Math.min(y, pos.y - 22)}" width="${Math.max(taskLead - 2, TASK_BOX)}" height="${Math.max(h, 44)}" fill="transparent" cursor="pointer" role="checkbox" aria-checked="${task === 'done' ? 'true' : task === 'pending' ? 'mixed' : 'false'}"/>`
-              : '';
-          const taskChrome =
-            task != null
-              ? taskGlyphSvg(task, x + TASK_INSET + TASK_BOX / 2, textCentreY)
-              : '';
+          // 0.4.12: shared with region pills (taskLeadSvg); y anchor is the pill centre.
+          const taskLead0 = task != null ? taskLeadSvg(task, { x, y, h, cy: textCentreY, hitCy: pos.y, lead: taskLead }) : '';
           const tip = fullText || label;
           const bodyAction = showMore ? 'more' : showLess ? 'less' : '';
           const moreChrome = bodyAction
@@ -4524,14 +4526,13 @@ export function createMapView(
       ${foldable ? `aria-expanded="${col ? 'false' : 'true'}" aria-haspopup="menu"` : ''}${levelMenu && levelMenu.id === key ? ' data-level-open="true"' : ''}>
       <title>${esc(tip)}</title>
       <rect class="map-pill" x="${x}" y="${y}" width="${boxW}" height="${h}" rx="18" ry="18"/>
-      ${taskChrome}
+      ${taskLead0}
       ${globe}
       ${kindLetter}
       ${timeLeaf ? timeLeafDots(multiLineText(lines, captionX, textCentreY, textW, richLines, fontPx, 400)) : multiLineText(lines, captionX, textCentreY, textW, richLines, fontPx, 400)}
       ${moreChrome}
       ${chipSvg}
       ${foldChrome}
-      ${taskHit}
       ${foldHit}
       ${timeLeaf ? '' : widthGripSvg(boxRight, y, h, textW, widthShown)}
     </g>`;

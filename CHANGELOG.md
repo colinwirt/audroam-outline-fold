@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.12 — 2026-11-02
+
+- Fix (Map region tasks, dark square): the zone CSS rule `.map-region-node > rect:not(.map-fold-hit)` painted every rect in a region pill, including the full-height task hit rect, as a bordered dark pill that covered the checkbox glyph. The pill body now carries `.map-region-body` and only it is painted; task/fold hit rects stay transparent.
+- One task lead renderer for main Map and region pills (`taskLeadSvg`: hit + 14 px glyph, same markup); region toggles still go through `onRegionTaskToggle` (re-seal path).
+- Task glyphs are display only, one decoration (`taskGlyphs`, `zoneTaskGlyphs` kept as alias) in the main editor and every zone editor; stored text stays `[ ]` / `[x]`. A leading `☑` / `☐` typed in a zone or found in an old payload normalises to `[x]` / `[ ]` (`normalizeTaskMarkers`, on zone parse and on sealed-view load).
+- Tests: `map-region-task-0412` (region vs main task markup equal, transparent hit, body class, CSS guard), `task-glyphs-0412` (pure normalise, main + zone decoration, typed glyph stored as ASCII, legacy glyph payload).
+
 ## 0.4.11 — 2026-11-02
 
 - Fix (bugs D/E, typing reverted / stripped): a structural write-back (zone re-seal on autosave, id fixes, remove seal) re-serialised the whole note, dropping an empty `- ` node the user was writing, trailing spaces and blank lines, and pushed that into the editor. `writeRoot` now applies only the lines the root change touched (`mergeKeeping(prev, normPrev, next)`, new, exported); everything else stays byte for byte.

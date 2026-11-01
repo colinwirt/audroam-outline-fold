@@ -385,6 +385,7 @@ export {
   parseActionTag,
   parseThreadTag,
   toggleTaskMarker,
+  normalizeTaskMarkers,
   taskStateOf,
   resolveTask,
   resolveAction,

@@ -887,13 +887,15 @@
    from the --of-seal-* host vars, so a dark host never gets light text on a white pill. */
 /* 0.4.3 (Colin, tablet): region nodes use the normal map pill (--pill-fill / --text), only the
    stroke is the green zone accent; never a white pill with light text on a dark host. */
-.map-svg .map-region-node > rect:not(.map-fold-hit) { fill: var(--pill-fill, #0c222c); stroke: var(--of-unlocked-stroke, var(--of-region-stroke, rgba(46, 160, 67, 0.75))); stroke-width: 1.4; }
+.map-svg .map-region-node > rect.map-region-body { fill: var(--pill-fill, #0c222c); stroke: var(--of-unlocked-stroke, var(--of-region-stroke, rgba(46, 160, 67, 0.75))); stroke-width: 1.4; }
 /* 0.4.4: font size comes from the node font (font-size attribute), as normal map pills. */
 .map-svg .map-region-node > text { fill: var(--text, var(--of-text, #e7ecf1)); }
-.map-svg .map-region-pill > rect:not(.map-fold-hit) { fill: var(--of-region-fill, rgba(46, 160, 67, 0.14)); }
+.map-svg .map-region-pill > rect.map-region-body { fill: var(--of-region-fill, rgba(46, 160, 67, 0.14)); }
+/* 0.4.12: only the pill body (.map-region-body) is painted; task/fold hit rects stay transparent. */
+.map-region-node .map-task-hit { fill: transparent; stroke: none; }
 /* §R1 region folding: same fold chrome as root nodes; selection ring on the focused node. */
 .map-region-node .map-fold-hit { fill: transparent; stroke: none; }
-.map-region-node.is-focused > rect:not(.map-fold-hit) { stroke: var(--map-focus, #c9a227); stroke-width: 2.4; }
+.map-region-node.is-focused > rect.map-region-body { stroke: var(--map-focus, #c9a227); stroke-width: 2.4; }
 .map-region-root.is-focused .map-fold-indicator circle { stroke-width: 2.6; }
 .map-region-edge { stroke: var(--of-region-edge, #a8e0b8); stroke-width: 1.6; fill: none; }
 /* 0.4.5: inner connectors read on the dark green cloud (light mint, not the zone green). */

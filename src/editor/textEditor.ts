@@ -16,7 +16,7 @@ import { zoneTab } from './zoneIndent.js';
 import { Compartment, EditorState, StateEffect, StateField, type Extension, type Text } from '@codemirror/state';
 import { EditorView, Decoration, WidgetType, keymap, drawSelection, type DecorationSet } from '@codemirror/view';
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
-import { outlineEditor, refreshZones, missingZones, zoneRenderFailures, ZONE_ERROR_EVENT, type OutlineEditorOptions } from './index.js';
+import { taskGlyphs, outlineEditor, refreshZones, missingZones, zoneRenderFailures, ZONE_ERROR_EVENT, type OutlineEditorOptions } from './index.js';
 export { missingZones, zoneRenderFailures, ZONE_ERROR_EVENT };
 import { autoWrapCh } from '../mapFit.js';
 import { DEFAULT_WRAP_CH } from '../mapLabel.js';
@@ -195,6 +195,7 @@ function buildEditor(host: HTMLElement, initial: string, opts: TextEditorOptions
   const ext: Extension[] = [
     history(),
     drawSelection(),
+    taskGlyphs,
     keymap.of([
       ...lineKeys,
       { key: 'Escape', run: () => { opts.onEsc?.(); return !!opts.onEsc; } },

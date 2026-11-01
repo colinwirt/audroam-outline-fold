@@ -14,6 +14,7 @@
 import { xchacha20poly1305 } from '@noble/ciphers/chacha.js';
 import { parse } from './parse.js';
 import { serialize } from './serialize.js';
+import { normalizeTaskMarkers } from './taskChrome.js';
 import {
   SEAL_ALG,
   SEAL_ALG_V1,
@@ -916,6 +917,7 @@ export async function openSealedBranch(
   const sub = parse(shown.body);
   const cleaned = stripAnchorId(shown.caption, sub.nodes, branchId);
   sub.nodes = cleaned.nodes;
+  normalizeTaskMarkers(sub.nodes); // 0.4.12: glyph markers from old payloads load as [x] / [ ]
   const root: OutlineNode = { id: branchId, title: cleaned.caption, depth: 0, children: sub.nodes } as OutlineNode;
   const reDepth = (list: OutlineNode[], d: number) => list.forEach((c) => { c.depth = d; if (c.children) reDepth(c.children, d + 1); });
   reDepth(sub.nodes, 1);
