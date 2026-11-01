@@ -7,7 +7,7 @@ Status: **draft** · Date: 1 Nov 2026 · Base: `feature/submap-regions-unseal` @
 ## 1. Goals and non-goals
 
 **Goals**
-1. Feature parity with 0.x plus the Unreleased branch. No new features. The one exception is the Text-mode fold controls from §3.8, which Colin has already decided.
+1. Feature parity with 0.x plus the Unreleased branch. No new features. Text-mode folding (§3.8) is only a proposal for Colin to decide.
 2. Modular structure. A pure core with no DOM. One typed event and command bus. Renderers, regions/crypto, editor, keyboard/a11y and persistence are separate modules that talk only through the bus and the core model.
 3. One host-adapter pattern, so Audroam (and any other host) wires events in one place instead of reaching into `mapView` internals.
 4. Split `src/mapView.ts` (6,521 lines, about 34% of `src/`) into the Map renderer plus its gesture, camera, label and region sub-modules.
@@ -52,7 +52,7 @@ Sources: README sections, CHANGELOG, `src/index.ts` exports, and the branch spec
 | F24 | Lazy CM6 editor with secure zone (`./editor` export) | editor/, editorLoader | `editor` (lazy) |
 | F25 | CSS export `./outline-fold.css` and paint tokens | outline-fold.css | `styles` (same export path) |
 | F26 | Keyboard: directional nav, fold keys, focus ownership, selection vs pan | mapView (`mapKeyboard*`, `resolveMapFocus`) | `a11y/keyboard` |
-| F27 | Text-mode fold controls (new, decided; see §3.8) | (editor) | `editor/foldGutter` |
+| F27 | Text mode: plain text, font-size A−/A+ buttons, no folding, never unseals (sealed line shows only `<enc:KEYID>`). Text folding is only a proposal; see §3.8 | editor/ | `editor` |
 
 **Export inventory.** About 450 named exports from 33 modules. v1 sorts each one into a group:
 - **Public**: types, parse/serialize/validate/toHtml, fold ops, ids, the bus, `createOutlineFold`, renderer factories, seal API, persistence API.
@@ -146,14 +146,18 @@ type OFCommand =
 ### 3.7 Editor (lazy)
 `editor/` contains the CM6 views, the secure zone and the fold controls. It is loaded only by `dispatch({cmd:'editor', open:true})`. The peer dependencies stay optional.
 
-### 3.8 Text-mode fold controls (decided by Colin, 1 Nov 2026)
-- Placement: at the **right end of each line that has children**, never in the left gutter.
-- Glyph: **−** when open, **+N** when folded (N = hidden descendant count, same as the Map count chip).
-- Visibility: very faint by default (**opacity about 0.25–0.3**). Full opacity on hover or when the cursor is on that line.
-- Touch: **30 px** minimum tap target.
-- Not selectable (`user-select:none`, CM6 widget decoration outside the text), so copy never includes it.
-- Sealed lines end with a faint **🔒** that is **inert**: no click handler, no fold toggle, not focusable, not copied.
-- Clicking a control dispatches `{cmd:'fold'}`, which uses the same store and events as Map and Outline.
+### 3.8 Text mode (corrected 1 Nov 2026)
+**Parity (current behaviour, kept as is):** Text-only mode is plain text. Its only controls are the font-size buttons **A− / A+**, which scale the text and have nothing to do with folding. Today's text editor has **no folding**. Text mode **never unseals**: a sealed line shows only its `<enc:KEYID>` tag, and nothing else from the sealed branch.
+
+**Proposed, Colin to decide: folding in Text mode.** This is not part of parity and does not ship unless Colin adopts it.
+- Fold controls sit at the **right end of each line that has children**, never in the left gutter.
+- Show **−** when the line is open and **+N** when it is folded.
+- Faint by default (**opacity about 0.25–0.3**), full strength on hover or when the cursor is on that line.
+- **30 px** tap target on touch.
+- Not selectable (a CM6 widget decoration with `user-select:none`), so copy never picks them up.
+- Must look **visually distinct from the A− / A+ font-size buttons**: for example, inline at the end of the line rather than in the toolbar, a different shape and weight, and no button chrome.
+- A sealed line still shows only `<enc:KEYID>` and has no fold control.
+- If adopted, a click dispatches `{cmd:'fold'}` using the same store and events as Map and Outline.
 
 ### 3.9 Keyboard / a11y and persistence
 - `a11y` owns focus, roving tabindex, the key maps (fold keys, digits, `*`, Home/End, Esc, directional nav) and the live-region announcements. Each renderer registers a `FocusTarget`.
@@ -178,7 +182,7 @@ of.doc(); of.text(); of.destroy();
 ## 5. Test strategy
 - **Default `npm test` = vitest, node environment, core only.** Covers parse/serialize round trips over `examples/` and `tests/vectors`, fold model, scoped ids, validation, the session transition table, layout math, and crypto vectors (with the worker replaced by an in-process port).
 - **Renderers in jsdom (`*.dom.test.ts`).** These use the fixed-width `Measurer` with no real layout and no timers (fake timers only), and assert on bus events and DOM structure.
-- **Playwright is an optional smoke set** (`npm run test:smoke`) and is not part of `npm test`. It has 6 specs at most: map load and fold, touch tap, alt menu, unlock and cloud (SEAL-2), editor lazy-load and fold controls, Pages viewer. Settings are `timeout: 10_000`, `expect: 3_000`, chromium plus one touch project, `retries: 0`. Today's 25 e2e specs become unit or jsdom tests or are dropped.
+- **Playwright is an optional smoke set** (`npm run test:smoke`) and is not part of `npm test`. It has 6 specs at most: map load and fold, touch tap, alt menu, unlock and cloud (SEAL-2), editor lazy-load and A−/A+, Pages viewer. Settings are `timeout: 10_000`, `expect: 3_000`, chromium plus one touch project, `retries: 0`. Today's 25 e2e specs become unit or jsdom tests or are dropped.
 - **Runtime budget, checked in CI:** core under 5 s, jsdom under 15 s, smoke under 60 s. Any single test file over 2 s fails a budget check (vitest `--reporter=json` plus a script). The total must not exceed the current suite time, which phase V0 records as the baseline.
 - Per the brief, this doc adds no tests. These are plans for the phases below.
 
@@ -199,7 +203,7 @@ of.doc(); of.text(); of.destroy();
 | V3 | Outline renderer + a11y module on bus/store; jsdom tests | M |
 | V4 | Map renderer split (mapView 6.5k lines → about 10 files), gestures/camera/width on bus | L |
 | V5 | Seal service instance state + worker port; regions module; wipe-on-lock via bus | M |
-| V6 | Editor module on bus + Text-mode fold controls (§3.8) | M |
+| V6 | Editor module on bus (plain text, A−/A+). Text folding only if adopted (§3.8) | M |
 | V7 | Persistence module; storage adapters | S |
 | V8 | Test reshape: unit/jsdom migration, Playwright smoke ≤6, budgets in CI | M |
 | V9 | Compat shim finished, Audroam adapter, docs/README, 1.0.0-rc | M |
@@ -222,5 +226,5 @@ Total is about 7–9 weeks of focused work. Phases V3–V7 can overlap once V2 h
 4. Playwright: which ≤6 smoke flows are must-keep, and should smoke run in CI on every PR or only on release branches?
 5. The compat shim's lifetime: one major version (removed in 2.0), or until Audroam has fully moved over?
 6. Should `createOutlineFold` own all three views (Map, Outline, Text), or can hosts mount views independently?
-7. Text-mode +N: should N count all hidden descendants (as the Map chip does) or only direct children?
+7. Text-mode folding (§3.8): should it be adopted at all? If so, should +N count all hidden descendants (as the Map chip does) or only direct children?
 8. Are there any 0.x features that can be dropped rather than ported (for example `demoCrypto` in the main entry, the scrapbook pack, or the legacy width-pick kinds)?
