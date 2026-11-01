@@ -13,6 +13,7 @@
 import { createIdAllocator, type IdDiagnostic, type IdScope } from './idAllocator.js';
 import { parse } from './parse.js';
 import { serialize } from './serialize.js';
+import { mergeKeeping } from './textMerge.js';
 import type { OutlineFoldDoc, OutlineNode } from './types.js';
 import {
   createSealSessions,
@@ -286,8 +287,14 @@ export function createOutlineDoc(o: OutlineDocOptions): OutlineDocHandle {
     const root = rootNow();
     const next = serializeRoot(root, text);
     if (next === text) return false;
-    text = next;
-    parsedText = text; // the parsed root already is this text: keep pinned node objects
+    // 0.4.11 (bugs D/E): replace only the lines the root change touched; the user's empty
+    // nodes and whitespace elsewhere stay byte for byte.
+    let norm = next;
+    try { norm = serializeRoot(parseText(text), text); } catch { /* unparsable: take next */ }
+    const merged = mergeKeeping(text, norm, next);
+    if (merged === text) return false;
+    text = merged;
+    parsedText = text; // the parsed root is this text (up to whitespace): keep pinned node objects
     emit('change', { text, rev, source });
     return true;
   };

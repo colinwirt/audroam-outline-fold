@@ -73,12 +73,14 @@ export function mountOutlineFold(o = {}) {
   });
   const safe = (fn, e) => { try { if (fn) fn(e); } catch (err) { /* host repaint */ } };
   const offs = [
-    doc.on("change", (e) => safe(o.onChange, e)),
+    doc.on("change", (e) => { if (e.source === "text") viewStale = true; safe(o.onChange, e); }),
     doc.on("seal", (e) => safe(o.onSeal, e)),
     doc.on("status", (e) => safe(o.onStatus, e)),
     doc.on("save-needed", () => { void drafting(); }),
   ];
   let editor = null;
+  // 0.4.11 (bug D): a view doc parsed before the latest typing must never write back.
+  let viewStale = false;
 
   async function drafting() {
     try {
@@ -101,11 +103,22 @@ export function mountOutlineFold(o = {}) {
     /** source: 'host' (default), 'map', 'load' (new server copy: clean baseline). */
     setText: (text, source = "host") => doc.setText(text, { source }),
     /** A view doc (Map / Outline tick, fold, seal) written back into the text. */
+    /** The host rendered its view doc from the current text (call after each parse). */
+    markView() { viewStale = false; },
+    /**
+     * 0.4.11 (bugs D/E): only the lines the view change touched are written; the user's empty
+     * nodes and whitespace stay. Refused when the view predates the latest typing (stale).
+     */
     commitView(viewDoc, source = "map") {
-      if (!viewDoc) return false;
-      const next = serializeKeeping(viewDoc, doc.getText(), keep);
-      if (next === doc.getText()) return false;
-      doc.setText(next, { source });
+      if (!viewDoc || viewStale) return false;
+      const cur = doc.getText();
+      const next = serializeKeeping(viewDoc, cur, keep);
+      if (next === cur) return false;
+      let norm = next;
+      try { norm = serializeKeeping(OF.parse(cur), cur, keep); } catch (err) { /* take next */ }
+      const merged = OF.mergeKeeping(cur, norm, next);
+      if (merged === cur) return false;
+      doc.setText(merged, { source });
       return true;
     },
     serializeView: (viewDoc) => serializeKeeping(viewDoc, doc.getText(), keep),

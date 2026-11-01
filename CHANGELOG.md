@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.11 — 2026-11-02
+
+- Fix (bugs D/E, typing reverted / stripped): a structural write-back (zone re-seal on autosave, id fixes, remove seal) re-serialised the whole note, dropping an empty `- ` node the user was writing, trailing spaces and blank lines, and pushed that into the editor. `writeRoot` now applies only the lines the root change touched (`mergeKeeping(prev, normPrev, next)`, new, exported); everything else stays byte for byte.
+- Host contract: `commitView` (Map / Outline writes) uses the same merge and is refused while the view doc predates the latest typing (`markView()` after each parse).
+- Tests: `keep-typed-0411` (pure merge; edit + Enter + type + empty node + trailing spaces + dirty zone survive autosave and reload byte for byte; Map write keeps them; stale view refused).
+
 ## 0.4.10 — 2026-11-02
 
 - Fix (anchor id): a payload never carries the anchor's `<id:N>`. `stripAnchorId` runs on seal (`innerText`), on viewer load and in the re-seal snapshot; a legacy payload that has it opens clean, reads dirty, and the next re-seal writes it without the id.
