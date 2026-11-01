@@ -253,3 +253,11 @@ Total is about 7–9 weeks of focused work. Phases V3–V7 can overlap once V2 h
 - If the autosave's `base` doesn't match the loaded version (it changed elsewhere), flag the conflict and never drop either one silently.
 - The viewer's guard ignores autosave replacements from this session.
 - Tests: an edit survives lock, then unlock and the autosave is shown; repeated autosaves keep one; confirmed Save drops the loaded version only after verifying; a failed verify keeps both; Discard keeps the loaded version; a base mismatch is flagged.
+
+### Restore discarded (Colin, 1 Nov 2026 ~2:16pm)
+
+- Version labels are plain text, not just red/green: "Autosave · 2:12pm · this device · +3 lines" vs "Saved · 1:40pm", with a diff preview. If `base` is missing or inconsistent, show "Can't tell which is newer" rather than guessing.
+- Whichever version is discarded or replaced (Discard, or a confirmed Save) moves to a third slot, `discarded: { ct, at, replacedBy }`, still sealed. Only one is kept, and each new discard replaces it.
+- More ▾ → **Restore discarded version** brings it back as the autosave, unconfirmed, so the user confirms it with Save as usual.
+- Hold: 7 days, or until a later confirmed Save (proposed default; open question for Colin). Clear text never leaves memory.
+- Tests: discard then restore round-trips; a confirmed Save keeps the replaced version restorable; a new discard replaces the slot; the slot expires after the hold; a base mismatch shows the "can't tell" label.
