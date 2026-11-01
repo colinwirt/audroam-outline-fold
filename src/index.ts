@@ -576,4 +576,22 @@ export {
   type RegionResolver,
   type ResolvedRef,
 } from './scopedId.js';
+export {
+  createRegionFoldStore,
+  bindRegionFoldToSessions,
+  isMemoryOnlyRegion,
+  revealInRegions,
+  revealContextFromHosts,
+  revealScopedId,
+  composeOutlineDoc,
+  commitOutlineFold,
+  regionOutlineBridge,
+  countNodes,
+  type RegionFoldStore,
+  type RegionFoldStoreOptions,
+  type RegionFoldEntries,
+  type RegionRevealContext,
+  type RegionRevealResult,
+  type OutlineRegionHost,
+} from './regionFold.js';
 export { loadOutlineEditor, type OutlineEditorModule } from './editorLoader.js';

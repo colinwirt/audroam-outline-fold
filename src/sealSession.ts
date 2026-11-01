@@ -387,8 +387,10 @@ export function createSealSessions(opts: SealSessionsOptions): SealSessions {
 export function regionHostsFromSessions(
   sessions: SealSessions,
   rootDoc: OutlineFoldDoc,
-  folded: (region: RegionId) => boolean = () => false,
+  foldedOrStore: ((region: RegionId) => boolean) | { isRegionFolded(region: RegionId): boolean } = () => false,
 ): RegionHostSpec[] {
+  // Pass the shared region fold store (§R1) so Map and Outline read one fold state.
+  const folded = typeof foldedOrStore === 'function' ? foldedOrStore : (r: RegionId) => foldedOrStore.isRegionFolded(r);
   const out: RegionHostSpec[] = [];
   const scan = (doc: OutlineFoldDoc, parent: RegionId, depth: number) => {
     const visit = (l: OutlineNode[] | undefined) =>
