@@ -144,7 +144,7 @@ type OFCommand =
 - `regions` handles mount/unmount, `placeRegions`, the region `Doc` instances and wipe-on-lock. It is wired to the fold store by subscribing to `lock` (replaces `bindRegionFoldToSessions`).
 
 ### 3.7 Editor (lazy)
-`editor/` contains the CM6 views, the secure zone and the fold controls. It is loaded only by `dispatch({cmd:'editor', open:true})`. The peer dependencies stay optional.
+`editor/` contains the CM6 views, the secure zone and the A−/A+ font-size buttons (plus the text fold controls only if §3.8 is adopted). It is loaded only by `dispatch({cmd:'editor', open:true})`. The peer dependencies stay optional.
 
 ### 3.8 Text mode (corrected 1 Nov 2026)
 **Parity (current behaviour, kept as is):** Text-only mode is plain text. Its only controls are the font-size buttons **A− / A+**, which scale the text and have nothing to do with folding. Today's text editor has **no folding**. Text mode **never unseals**: a sealed line shows only its `<enc:KEYID>` tag, and nothing else from the sealed branch.
