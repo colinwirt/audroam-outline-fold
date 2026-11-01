@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.4.7
+
+- Data safety (Colin QA): the Text secure zone re-syncs its text when the child doc changes
+  outside it (Map/Outline [ ] toggle, restore), so a later keystroke cannot write stale text back.
+- Map: [ ] on a row inside an unlocked cloud toggles it via the new `onRegionTaskToggle(scopedId)`
+  option (it did nothing: the scoped id is not in the root doc). Hosts mark the region dirty; Save re-seals.
+- Tests: zone edit → Save & re-seal → reload → decrypt round trip; the stale-save-hook loss
+  mechanism; cloud [ ] toggle round trip.
+
 ## 0.4.6
 
 - Text secure zone (data safety): a zone that cannot render no longer throws out of CodeMirror (that aborted the post-unlock refresh and left Text on the raw `<enc>` line while the Map showed the open branch). It renders a recoverable "saving is paused" error with Retry, fires `of-zone-error`, and `TextEditorHandle.zoneProblems()` lists unlocked regions with no working zone so hosts hold saves. Zones also refresh on `save`.

@@ -358,6 +358,12 @@ export interface MapViewOptions {
   onRegionLock?: (region: string) => void;
   /** 0.4.3: zone header More ▾ on an open sealed cloud (host shows Remove seal…). */
   onRegionMore?: (region: string, anchor: DOMRect) => void;
+  /**
+   * 0.4.7: a [ ] box on a row inside an unlocked region (scoped id). The host toggles the
+   * task in that region's child doc (the zone plaintext) and marks it dirty; Save re-seals.
+   * Return true when it changed.
+   */
+  onRegionTaskToggle?: (scopedId: string) => boolean;
   /** Map focus moved (click, keys, `setFocus`): scoped id (`region:node` inside a region). */
   onFocusChange?: (scopedId: string) => void;
   getDoc: () => OutlineFoldDoc;
@@ -4049,7 +4055,14 @@ export function createMapView(
   function applyTaskToggle(id: string): void {
     const doc = getDoc();
     const n = findNode(doc.nodes, id);
-    if (!n) return;
+    if (!n) {
+      // 0.4.7 (Colin QA): region rows are not in the root doc; the box used to do nothing.
+      if (parseScopedId(id).region && opts.onRegionTaskToggle?.(id)) {
+        onChange?.();
+        paint();
+      }
+      return;
+    }
     // Prefer structured node.task; fall back to title marker rewrite.
     if (n.task) {
       const result = toggleTask(doc, id);

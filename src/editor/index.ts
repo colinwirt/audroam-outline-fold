@@ -138,7 +138,8 @@ class SecureZone extends WidgetType {
       outer.dispatch({ selection: { anchor: target }, scrollIntoView: true });
       return true;
     };
-    const split = splitZoneText(child ? serialize(child) : '');
+    let split = splitZoneText(child ? serialize(child) : '');
+    let ownText = child ? serialize(child) : '';
     const view = new EditorView({
       parent: host,
       state: EditorState.create({
@@ -158,6 +159,7 @@ class SecureZone extends WidgetType {
             if (!d) return;
             const next = parse(joinZoneText(u.state.doc.toString(), split.trailer));
             d.nodes.splice(0, d.nodes.length, ...next.nodes); // keep viewer identity
+            ownText = serialize(d);
             sessions.markChanged(region);
             sessions.touch();
           }),
@@ -165,12 +167,29 @@ class SecureZone extends WidgetType {
         ],
       }),
     });
+    // 0.4.7 (Colin QA, data safety): the child doc can change outside this view (Map / Outline
+    // [ ] toggle, restore). Re-sync the zone text, else the next keystroke here would write the
+    // stale text back over that change.
+    const offSync = sessions.get(region).subscribe(() => {
+      const d = sessions.get(region).doc;
+      if (!d || gone) return;
+      let now: string;
+      try { now = serialize(d); } catch { return; }
+      if (now === ownText) return;
+      ownText = now;
+      split = splitZoneText(now);
+      const cur = view.state.doc.toString();
+      if (split.body === cur) return;
+      applying = true;
+      try { view.dispatch({ changes: { from: 0, to: cur.length, insert: split.body } }); } finally { applying = false; }
+    });
     zoneViews.set(region, view);
     zoneRenderFailures.delete(region);
     let gone = false;
     (wrap as HTMLElement & { _ofDestroy?: () => void })._ofDestroy = () => {
       if (gone) return; // CM may destroy a widget DOM twice across a fast lock/unlock
       gone = true;
+      offSync();
       if (zoneViews.get(region) === view) zoneViews.delete(region);
       zone.destroy();
       applying = true;

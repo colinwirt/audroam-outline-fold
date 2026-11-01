@@ -180,6 +180,8 @@ export function mountOutlineFold(o) {
         // 0.4.3 (QA C): zone header 🔒 Lock and More ▾ (Remove seal lives there now).
         onRegionLock: (region) => { rebind(); sessions.lock(region, "user"); },
         onRegionMore: (region, rect) => onMore && onMore(branchOf(region), rect),
+        // 0.4.7: [ ] on a row inside an unlocked cloud toggles it in the zone plaintext.
+        onRegionTaskToggle: (id) => host.toggleRegionTask(id),
       };
     },
     /** Inline unlock card by the anchor; resolves true when the region opened. */
