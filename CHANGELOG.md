@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.14 — 2026-11-02
+
+- Fix (↑ below an open zone jumped to the top of the doc, real browsers only): the zone block widget had vertical CSS margins (`4px 0 8px` from the editor theme, `2px 0` from the stylesheet). CodeMirror measures a block widget with `getBoundingClientRect`, which excludes margins, so every line below the zone sat ~12px lower on screen than in CM's height map. `cursorLineUp` aims half a line above the caret; the height map put that point back on the caret's own line, so CM's vertical scan treated it as line padding and kept stepping up, skipping the zone widget, to the doc start. ↓ was unaffected (it aims below). Fix, the standard CM way: no vertical margin on the block widget (`.cm-content > .of-secure-zone { margin-top: 0; margin-bottom: 0 }`, horizontal indent kept), and the outer editor `requestMeasure()`s once the zone mounts and whenever the zone resizes (`ResizeObserver`). The boundary hook, task glyphs and `estimatedHeight` were not the cause.
+- The zone no longer shows blank lines above its root row (`zoneShowRoot` trims them).
+- Tests: `zone-arrow-0414` (happy-dom: no vertical margin rule on the widget, re-measure after mount, leading blank trim). Real-browser check (manual, not CI): `scripts/manual/arrow-check.mjs` drives headless Chromium over the built dist, ↑ / ↓ from every line around an open zone, plus after the zone grows.
+
 ## 0.4.13 — 2026-11-02
 
 - Fix (zone Tab broke the Map, Save / Lock hung): the zone's `updateListener` re-parsed the zone text with no ids, so every new row was keyed by its preorder position in the Map; position 4 collided with the anchor id `4`, drew `t` as the region root and dropped the header. A zone line as shallow as the root (or above it) also gave the child doc two roots, and `viewer.isDirty()` / `snapshot()` threw inside `sessions.save` before its `try` and inside `lock`; the sealUi buttons `void` those promises, so the status stuck on Unsaved. New pure `parseZoneText` (`src/zoneText.ts`): always one root (malformed lines nest under the nearest shallower line, extra roots under the anchor row), root keeps the anchor id, every id-less row gets a session id (`zN`, `autoId`, never serialised) carried by preorder position while typing.

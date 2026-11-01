@@ -58,6 +58,8 @@ export function splitZoneText(text: string): { body: string; trailer: string } {
  * without `<id:N>`: that id is the anchor's, and showing it invited a second node with it.
  */
 export function zoneShowRoot(body: string, anchorId: string): string {
+  // 0.4.14: no blank lines above the root row (they showed as empty space at the zone top).
+  body = body.replace(/^(?:[ \t]*\n)+/, '');
   const nl = body.indexOf('\n');
   const first = nl < 0 ? body : body.slice(0, nl);
   const tag = new RegExp(`\\s*<id:${anchorId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}>`);
@@ -265,6 +267,11 @@ class SecureZone extends WidgetType {
     }
     zoneViews.set(region, view);
     zoneRenderFailures.delete(region);
+    // 0.4.14: the outer height map must follow the zone's real height (vertical motion reads
+    // it). Re-measure once mounted and whenever the zone resizes (typing, wrap, buttons).
+    const ro = outer && typeof ResizeObserver !== 'undefined' ? new ResizeObserver(() => outer.requestMeasure()) : null;
+    ro?.observe(wrap);
+    if (outer) queueMicrotask(() => { try { outer.requestMeasure(); } catch { /* gone */ } });
     let gone = false;
     (wrap as HTMLElement & { _ofDestroy?: () => void })._ofDestroy = () => {
       if (gone) return; // CM may destroy a widget DOM twice across a fast lock/unlock
@@ -273,6 +280,7 @@ class SecureZone extends WidgetType {
       if (zoneViews.get(region) === view) zoneViews.delete(region);
       zone.destroy();
       applying = true;
+      ro?.disconnect();
       view.destroy(); // drops the nested undo history with the plaintext
     };
     return wrap;
@@ -475,7 +483,11 @@ export function outlineEditor(opts: OutlineEditorOptions): Extension[] {
 }
 
 const theme = EditorView.baseTheme({
-  '.of-secure-zone': { border: '2px solid rgba(46,160,67,0.7)', borderRadius: '8px', margin: '4px 0 8px 1.5em', background: 'rgba(46,160,67,0.06)' },
+  // 0.4.14: a block widget has no vertical margin. CM measures widget height with
+  // getBoundingClientRect (margins excluded), so a margin left every line below the zone
+  // off by its size in the height map and ↑ skipped up to the top of the doc.
+  '& .cm-content > .of-secure-zone': { marginTop: '0', marginBottom: '0' },
+  '.of-secure-zone': { border: '2px solid rgba(46,160,67,0.7)', borderRadius: '8px', margin: '0 0 0 1.5em', background: 'rgba(46,160,67,0.06)' },
   '.of-secure-zone-bar': { display: 'flex', flexWrap: 'wrap', gap: '6px', padding: '4px 6px', alignItems: 'center', fontSize: '12px' },
   '.of-secure-zone-status': { marginLeft: 'auto', color: '#1f7a35' },
   '.of-secure-zone-end': { borderTop: '1px dashed rgba(46,160,67,0.7)', margin: '0 6px' },
