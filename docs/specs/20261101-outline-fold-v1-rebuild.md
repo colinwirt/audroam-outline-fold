@@ -242,12 +242,11 @@ Total is about 7–9 weeks of focused work. Phases V3–V7 can overlap once V2 h
 9. Inline secure zones: should undo history in a nested editor survive a re-lock and unlock (we propose it is wiped), and is there a cap on nesting depth in Text (we propose the same `MAX_SEAL_DEPTH`)?
 10. Should unsaved edits in a nested editor block auto-lock, auto-save and re-seal, or be discarded with a warning?
 
-## Decision: draft ciphertext for unlocked edits (Colin, 1 Nov 2026 ~2:07pm)
+## Decision: versioned ciphertext for unlocked edits (Colin, 1 Nov 2026 ~2:11pm)
 
-- In-progress edits in an unlocked sealed zone autosave as an encrypted draft **inside the note**, so the host's existing autosave carries them. Clear text is never stored and never lost on lock, reload or tab close.
-- Where: a `draft` field (same kid/alg, fresh nonce) plus `draftAt` on the node's entry in `--- payloads ---`. Nothing changes on the outline line.
-- The viewer's "payload changed outside the viewer" guard compares `ct` only, so draft writes don't trip it.
-- Save & re-seal writes the new `ct` and removes `draft` in one step.
-- On unlock, if a draft is newer than `ct`, offer Restore draft / Discard.
-- The derived key stays in memory while unlocked, so autosave doesn't pay the KDF cost each time.
-- Tests: an edit survives lock, then unlock and restore; Save clears the draft; Discard keeps `ct`; the guard ignores draft-only changes.
+- A payload entry holds first-class ciphertext versions, each `{ ct, at, base }`, where `at` is the updated timestamp and `base` is the hash of the version it was edited from. The latest `at` is current. There is no separate "draft" slot.
+- Edits in an unlocked zone autosave a new version (same kid/alg, fresh nonce) inside the note, through the host's existing autosave. Clear text is never stored and never lost.
+- On an approved Save, verify the latest version decrypts to the edited text, then drop the older versions in the same write. Nothing is copied or renamed. If verification fails, keep everything.
+- If two versions share a `base` (edited elsewhere at the same time), flag the conflict and never drop either one silently.
+- The viewer's guard ignores version appends from this session.
+- Tests: an edit survives lock, then unlock and the latest is shown; Save drops older versions only after verifying; a failed verify keeps all versions; a conflict is flagged.
