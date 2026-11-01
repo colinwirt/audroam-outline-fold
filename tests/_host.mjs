@@ -1,8 +1,10 @@
 // Test copy of Audroam templates/outlineFoldHost.mjs (imports pointed at src) for host-flow tests.
-// outlineFoldHost: the one module in Audroam that imports outline-fold
-// (spec 20261101-outline-fold-regions-integration). outline-view.js talks to
-// sealed regions only through mountOutlineFold(); the region docs, the fold
-// store, scoped ids, unlock prompts and seal drafts all live in the package.
+// outlineFoldHost: the one module in Audroam that imports outline-fold (0.4.8 boundary).
+// outline-view.js never touches the editor, CodeMirror or the doc text directly: it reads
+// and writes the note through this adapter. The package's createOutlineDoc owns the text,
+// the parsed root and the seal sessions; this file adds Audroam's policy around it:
+//   save-needed → serialise() → local draft; Save → serialise() → PUT pnBody → saved/failed;
+//   note-tag / width preserving serialisation, clean ids, the passphrase dialog and theme.
 import * as OF from "../src/index.ts";
 import { mountTextEditor } from "../src/editor/textEditor.ts";
 
@@ -12,10 +14,10 @@ export const {
   createMapView, mountMapControls, peelTrailingSections, nextAutoId, isResumeStale,
   collectNodeIds, createKey, unlockKey, clearKeys, isKeyUnlocked, countKidRefs, sealBranch,
   parseScopedId, scopeId, promptPassphrase, versionLabels,
-  applyAutosave, applySave, applyDiscard, applyRestore, draftStateOf,
+  applyAutosave, applySave, applyDiscard, applyRestore, draftStateOf, SealedStateError,
 } = OF;
 
-const SEAL_CIPHER = "a256gcm";
+export const SEAL_CIPHER = "a256gcm";
 
 /** 0.4.4: the stacked (<=720px) layout, where Text takes the full width above the Map. */
 export function isStackedLayout() {
@@ -28,230 +30,294 @@ export function layoutAutoWidth(doc) {
   return typeof v === "string" && v.trim() ? v.trim() : null;
 }
 
-function walk(nodes, fn) {
-  for (const n of nodes || []) { if (!n) continue; fn(n); walk(n.children, fn); }
-}
-function find(nodes, id) {
-  let hit = null;
-  walk(nodes, (n) => { if (!hit && n.id === id) hit = n; });
-  return hit;
-}
-function replace(nodes, from, to) {
-  if (!nodes) return false;
-  const i = nodes.indexOf(from);
-  if (i >= 0) { nodes[i] = to; return true; }
-  return nodes.some((n) => n && replace(n.children, from, to));
-}
-// Region rows with no stored id get a session id. autoId ids are never serialized,
-// so they stay out of the ciphertext.
-function pinIds(doc) {
-  const used = new Set();
-  walk(doc && doc.nodes, (n) => { if (n.id) used.add(String(n.id)); });
-  let seq = 1;
-  walk(doc && doc.nodes, (n) => {
-    if (n.id) return;
-    while (used.has("z" + seq)) seq++;
-    n.id = "z" + seq; n.autoId = true; used.add(n.id);
-  });
+/**
+ * Text for a doc, keeping what the note text already had: each <t:N> spelling
+ * (keepNoteTags) and the layout textWidth (outline-fold drops layout keys it does not know).
+ * h: { dropSessionIds?, keepNoteTags?, readTextWidth?, writeTextWidth?, fallbackText? }
+ * fallbackText(): what to keep from while the doc text is still empty (the server copy).
+ */
+export function serializeKeeping(d, prev, h = {}) {
+  if (!prev && h.fallbackText) prev = h.fallbackText() || "";
+  let next = OF.serialize(d);
+  if (h.dropSessionIds) next = h.dropSessionIds(next);
+  if (h.keepNoteTags) next = h.keepNoteTags(prev || "", next);
+  if (h.writeTextWidth && h.readTextWidth) next = h.writeTextWidth(next, h.readTextWidth(prev || ""));
+  return next;
 }
 
 /**
- * Mount sealed-region support on an outline view.
- * o.getRootDoc()   current root doc (may be replaced by the host at any time)
- * o.ctx()          { noteId, ownerId } bound into ciphertext AAD
- * o.onChange(evt)  repaint / mark the note edited (unlock, lock, change, save, error)
- * o.onSaved()      a region re-sealed into the root doc: write the note source
- * o.onFocus(id)    reveal / focus command for a scoped id
+ * Mount the note. o:
+ *   text            the note text to start from
+ *   ctx()           { noteId, ownerId } bound into ciphertext AAD
+ *   keep            serialiser helpers (see serializeKeeping)
+ *   onChange(e)     { text, rev, source } — every text change, whoever made it
+ *   onSeal(e)       seal session events (unlock, lock, save, change, error)
+ *   onStatus(s)     save status (rev, savedRev, dirty, inflight, error, regions)
+ *   onDraft(text)   save-needed: the serialised text for the local draft store
+ *   onHold(err)     serialise refused (SealedStateError): hold drafts and saves
+ *   onFocus(id)     reveal / focus command for a scoped id
+ *   debounceMs, timers, autoLockMs   (tests)
  */
-export function mountOutlineFold(o) {
-  const root = () => o.getRootDoc() || { nodes: [], fold: { mode: "-", ids: [] } };
-  // The viewer keeps its host doc; a proxy keeps that pointing at the live root doc.
-  const live = new Proxy({}, {
-    get: (_t, k) => root()[k],
-    set: (_t, k, v) => { root()[k] = v; return true; },
-    has: (_t, k) => k in root(),
-    ownKeys: () => Reflect.ownKeys(root()),
-    getOwnPropertyDescriptor: (_t, k) => {
-      const d = Reflect.getOwnPropertyDescriptor(root(), k);
-      return d ? { ...d, configurable: true } : undefined;
-    },
+export function mountOutlineFold(o = {}) {
+  const keep = o.keep || {};
+  const doc = OF.createOutlineDoc({
+    text: o.text || "",
+    ctx: () => (o.ctx ? o.ctx() : {}),
+    serializeRoot: (root, prev) => serializeKeeping(root, prev, { keepNoteTags: keep.keepNoteTags, readTextWidth: keep.readTextWidth, writeTextWidth: keep.writeTextWidth }),
+    debounceMs: o.debounceMs,
+    timers: o.timers,
+    autoLockMs: o.autoLockMs,
+    wipeOnPagehide: o.wipeOnPagehide,
+    onFocus: (id) => o.onFocus && o.onFocus(id),
+    sealCipher: SEAL_CIPHER,
   });
-  const ctx = { get noteId() { return String((o.ctx && o.ctx().noteId) || ""); }, get ownerId() { return String((o.ctx && o.ctx().ownerId) || ""); } };
-  const sessions = OF.createSealSessions({
-    getDoc: () => live,
-    ctx,
-    onFocusCommand: (id) => o.onFocus && o.onFocus(id),
-    confirmLockDirty: () => "save",
-  });
-  const store = OF.createRegionFoldStore();
-  // One focus state for Map, Outline and the text editor (Follow in text).
-  const focusLink = OF.createFocusLink();
-  const offFold = OF.bindRegionFoldToSessions(store, sessions);
-  // Branch node objects the open viewers hold; re-seated after the host re-parses.
-  const pinned = new Map();
-  const branchOf = (region) => sessions.get(region).branchId;
-  const offs = [];
-  const emit = (e) => { try { o.onChange && o.onChange(e); } catch (err) { /* host repaint */ } };
-  offs.push(sessions.api.on("unlock", (e) => {
-    const s = sessions.get(e.region);
-    if (!s.parent) pinned.set(e.region, find(root().nodes, s.branchId));
-    pinIds(s.doc);
-    emit(e);
-  }));
-  offs.push(sessions.api.on("lock", (e) => { pinned.delete(e.region); emit(e); }));
-  for (const t of ["change", "error"]) offs.push(sessions.api.on(t, emit));
-  offs.push(sessions.api.on("save", (e) => { try { o.onSaved && o.onSaved(e); } catch (err) { /* host */ } emit(e); }));
+  const safe = (fn, e) => { try { if (fn) fn(e); } catch (err) { /* host repaint */ } };
+  const offs = [
+    doc.on("change", (e) => safe(o.onChange, e)),
+    doc.on("seal", (e) => safe(o.onSeal, e)),
+    doc.on("status", (e) => safe(o.onStatus, e)),
+    doc.on("save-needed", () => { void drafting(); }),
+  ];
+  let editor = null;
 
-  function rebind() {
-    for (const [region, node] of [...pinned]) {
-      const cur = find(root().nodes, branchOf(region));
-      if (cur === node) continue;
-      if (!cur || !cur.sealed || !node) { pinned.delete(region); sessions.lock(region, "user"); continue; }
-      replace(root().nodes, cur, node);
+  async function drafting() {
+    try {
+      const snap = await doc.serialise();
+      safe(o.onDraft, snap.text);
+      return snap;
+    } catch (err) {
+      safe(o.onHold, err);
+      return null;
     }
   }
-  const open = () => sessions.list().filter((s) => !s.locked && !s.parent);
-  const hosts = () => { rebind(); return OF.regionHostsFromSessions(sessions, root(), store); };
 
-  const host = {
-    sessions,
-    store,
-    regionFor: (branchId) => sessions.regionFor(String(branchId)),
-    isOpen: (branchId) => !sessions.get(sessions.regionFor(String(branchId))).locked,
-    openRegions: () => open().map((s) => ({ region: s.region, branchId: s.branchId, kid: s.kid, dirty: s.dirty })),
-    regionHosts: hosts,
-    /** Root doc plus open region rows under scoped ids, for toHtml. */
-    outlineDoc(doc) {
-      rebind();
-      const h = OF.regionHostsFromSessions(sessions, doc || root(), store);
-      return h.some((x) => x.doc) ? OF.composeOutlineDoc(doc || root(), h, store) : (doc || root());
+  const fold = {
+    doc,
+    sessions: doc.sessions,
+    store: doc.store,
+    focusLink: doc.focusLink,
+    // --- text ---------------------------------------------------------------
+    getText: () => doc.getText(),
+    /** source: 'host' (default), 'map', 'load' (new server copy: clean baseline). */
+    setText: (text, source = "host") => doc.setText(text, { source }),
+    /** A view doc (Map / Outline tick, fold, seal) written back into the text. */
+    commitView(viewDoc, source = "map") {
+      if (!viewDoc) return false;
+      const next = serializeKeeping(viewDoc, doc.getText(), keep);
+      if (next === doc.getText()) return false;
+      doc.setText(next, { source });
+      return true;
     },
-    /** Scoped id → { region, id } ("" region = root row). */
-    scoped(id) {
-      const p = OF.parseScopedId(String(id || ""));
-      if (p.region) return p;
-      if (/^s:/.test(String(id))) return { region: String(id), id: "" };
-      return p;
+    serializeView: (viewDoc) => serializeKeeping(viewDoc, doc.getText(), keep),
+    /** Layout textWidth (A± / split drag), as a normal text edit. */
+    setTextWidth(ch) {
+      if (!keep.writeTextWidth) return false;
+      const next = keep.writeTextWidth(doc.getText(), ch);
+      if (next === doc.getText()) return false;
+      doc.setText(next, { source: "host" });
+      return true;
     },
-    /** The row of a region doc behind a scoped id, or null. */
-    regionNode(id) {
-      const p = host.scoped(id);
-      if (!p.region) return null;
-      const s = sessions.get(p.region);
-      return s.doc ? (p.id ? find(s.doc.nodes, p.id) : s.doc.nodes[0] || null) : null;
+    readTextWidth: () => (keep.readTextWidth ? keep.readTextWidth(doc.getText()) : null),
+    /** Clean ids: clean(text) → { text, removed }. */
+    cleanIds(clean) {
+      const r = clean(doc.getText());
+      if (r && r.removed && r.removed.length) doc.setText(r.text, { source: "host" });
+      return r;
     },
-    hasRegionChildren(id) {
-      const p = host.scoped(id);
-      if (!p.region) {
-        const s = sessions.get(sessions.regionFor(String(id)));
-        return !!(s.doc && s.doc.nodes.length);
+    caret: () => doc.caret(),
+    reveal: (from, to, select) => doc.reveal(from, to, { select: !!select }),
+    status: () => doc.status(),
+    // --- save ----------------------------------------------------------------
+    serialise: () => doc.serialise(),
+    draftNow: () => drafting(),
+    /**
+     * Save to the server. p: { url, bearer, base, fetch?, confirm?(text) }.
+     * Returns { held } | { cancelled } | { status, payload, text, rev }.
+     * saved(rev) only on an OK reply; anything else → failed(rev): the doc stays dirty,
+     * the re-sealed payloads stay in the text and a retry save-needed follows.
+     */
+    async saveNow(p) {
+      let snap;
+      try { snap = await doc.serialise(); } catch (err) { return { held: err }; }
+      if (p.confirm && !p.confirm(snap.text)) { doc.failed(snap.rev, new Error("cancelled")); return { cancelled: true }; }
+      const f = p.fetch || fetch;
+      let status = 0;
+      let payload = {};
+      try {
+        const res = await f(p.url, {
+          method: "PUT",
+          headers: { Authorization: "Bearer " + p.bearer, "Content-Type": "application/json" },
+          body: JSON.stringify({ pnBody: snap.text, base: p.base }),
+        });
+        status = res.status;
+        try { payload = await res.json(); } catch (err) { payload = {}; }
+        const ok = res.ok && !(payload.Result && payload.Result !== "OK");
+        if (ok) doc.saved(snap.rev);
+        else doc.failed(snap.rev, new Error(payload.Message || payload.error || "HTTP " + status));
+        return { status, ok, payload, text: snap.text, rev: snap.rev };
+      } catch (err) {
+        doc.failed(snap.rev, err);
+        return { status: 0, ok: false, payload: {}, error: err, text: snap.text, rev: snap.rev };
       }
-      const n = host.regionNode(id);
-      return !!(n && n.children && n.children.length) || (!p.id && !!sessions.get(p.region).doc);
     },
-    toggleRegionFold(id) {
-      const p = host.scoped(id);
-      if (!p.region) return false;
-      const s = sessions.get(p.region);
-      if (!s.doc) return false;
-      if (!p.id) store.setRegionFolded(p.region, !store.isRegionFolded(p.region));
-      else store.setNodeCollapsed(p.region, p.id, !store.isNodeCollapsed(p.region, s.doc, p.id));
-      sessions.touch();
-      return true;
+    // --- sealed regions ----------------------------------------------------------
+    regionFor: (b) => doc.regionFor(b),
+    isOpen: (b) => doc.isOpen(b),
+    openRegions: () => doc.openRegions(),
+    regionHosts: () => doc.regionHosts(),
+    outlineDoc: (view) => doc.outlineDoc(view),
+    scoped: (id) => doc.scoped(id),
+    regionNode: (id) => doc.regionNode(id),
+    hasRegionChildren: (id) => doc.hasRegionChildren(id),
+    toggleRegionFold: (id) => doc.toggleRegionFold(id),
+    toggleRegionTask: (id) => doc.toggleRegionTask(id),
+    branchOfRegion: (region) => doc.branchOf(region),
+    mapOptions: (onUnlock, onMore) => doc.mapOptions(onUnlock, onMore),
+    unlock: (branchId, anchorEl, opts = {}) => doc.unlock(branchId, anchorEl, opts),
+    lock: (branchId) => doc.lock(branchId),
+    saveRegion: (region) => doc.saveRegion(region),
+    async removeSeal(branchId, passphrase) { return doc.removeSeal(branchId, passphrase); },
+    /** Seal a plain branch of the view doc, then write the view into the text. */
+    async sealNode(viewDoc, node, kid) {
+      await doc.sealNode(node, kid, viewDoc);
     },
-    toggleRegionTask(id) {
-      const n = host.regionNode(id);
-      if (!n || !n.task) return false;
-      n.task = n.task === "open" ? "pending" : n.task === "pending" ? "done" : "open";
-      sessions.markChanged(host.scoped(id).region);
-      return true;
-    },
-    /** Map options: regions drawn as clouds from the same sessions and fold store. */
+    touch: () => doc.touch(),
+    idleRemainingMs: () => doc.idleRemainingMs(),
+    // --- text pane ----------------------------------------------------------------
     /**
-     * Shared focus (Map ⇄ Outline ⇄ editor). The package editor's follow plugin
-     * subscribes to it; the page sets it ('map' / 'outline' / 'editor').
+     * Mount the package editor in container (no textarea). h: onEnter(text, from, to),
+     * onTab(text, from, to, shift) → edit | null; onEsc, onBlur, onKey(e), onPointerUp,
+     * askPassphrase, onUnlockBranch(branchId, el), followInText(), dark.
      */
-    focusLink,
-    mapOptions(onUnlock, onMore) {
-      return {
-        getRegionHosts: hosts,
-        regionFold: store,
-        onRegionUnlock: (region) => onUnlock && onUnlock(region),
-        // 0.4.3 (QA C): zone header 🔒 Lock and More ▾ (Remove seal lives there now).
-        onRegionLock: (region) => { rebind(); sessions.lock(region, "user"); },
-        onRegionMore: (region, rect) => onMore && onMore(branchOf(region), rect),
-        // 0.4.7: [ ] on a row inside an unlocked cloud toggles it in the zone plaintext.
-        onRegionTaskToggle: (id) => host.toggleRegionTask(id),
-      };
-    },
-    /** Inline unlock card by the anchor; resolves true when the region opened. */
-    unlock(branchId, anchorEl, opts = {}) {
-      const region = sessions.regionFor(String(branchId));
-      if (!sessions.get(region).locked) return Promise.resolve(true);
-      const h = OF.mountUnlockPrompt({ sessions, region, anchorEl, label: opts.label, container: opts.container, inline: !!opts.inline });
-      return h.done;
-    },
-    lock(branchId) {
-      rebind();
-      return sessions.lock(branchId === "all" ? "all" : sessions.regionFor(String(branchId)), "user");
-    },
-    async saveRegion(region) {
-      rebind();
-      const s = sessions.get(region);
-      if (s.locked || !s.dirty) return;
-      await sessions.save(region);
-    },
-    /** Re-seal every dirty open region into the root doc (before writing the note). */
-    async saveAll() {
-      for (const s of open()) await host.saveRegion(s.region);
-    },
-    async removeSeal(branchId, passphrase) {
-      rebind();
-      const region = sessions.regionFor(String(branchId));
-      await sessions.removeSeal(region, passphrase);
-      pinned.delete(region);
-      return !find(root().nodes, String(branchId))?.sealed;
-    },
-    /** Seal a plain branch with an unlocked key (Save path for "Seal branch"). */
-    sealNode(node, kid) {
-      return OF.sealBranch(root(), node, kid, ctx, { cipher: SEAL_CIPHER });
-    },
-    touch: () => sessions.touch(),
-    idleRemainingMs: () => sessions.idleRemainingMs(),
-    /**
-     * Text pane: the package CodeMirror editor over the note textarea, with a secure
-     * zone (memory-only body) on each open region's <id:.> line. o.* are the host
-     * hooks: onEnter, onTab, onEsc, onBlur, askPassphrase, autoWidth.
-     */
-    mountEditor(textarea, o2 = {}) {
-      // Wrap secure zones at the layout's autoWidth only when the note sets one;
-      // otherwise textWidthCh is undefined and the package default applies.
-      let h = null;
-      h = mountTextEditor(textarea, {
-        ...o2,
-        sessions,
-        // 0.4.3 (QA D): click a locked <enc> line in Text to unlock it.
-        onUnlockZone: (region, el) => o2.onUnlockBranch && o2.onUnlockBranch(branchOf(region), el),
-        // Follow in text: the package follow plugin only runs with a FocusLink.
-        focus: o2.focus || focusLink,
-        followInText: typeof o2.followInText === "function" ? o2.followInText : () => true,
+    mountEditor(container, h = {}) {
+      if (editor) editor.destroy();
+      let ed = null;
+      ed = mountTextEditor(container, doc, {
+        onEnter: h.onEnter,
+        onTab: h.onTab,
+        onEsc: h.onEsc,
+        onBlur: h.onBlur,
+        onKey: h.onKey,
+        onPointerUp: h.onPointerUp,
+        askPassphrase: h.askPassphrase,
+        dark: h.dark,
+        onUnlockZone: (region, el) => h.onUnlockBranch && h.onUnlockBranch(doc.branchOf(region), el),
+        readOnly: !!h.readOnly,
+        followInText: typeof h.followInText === "function" ? h.followInText : () => true,
         textWidthCh: () => {
-          // 0.4.4: stacked mobile layout: the pane is full width, no ch wrap from autoWidth.
           if (isStackedLayout()) return undefined;
-          const v = layoutAutoWidth(root());
+          const v = layoutAutoWidth(doc.root());
           if (!v) return undefined;
-          return OF.autoWrapCh(v, { viewportW: h ? h.hostEl().clientWidth : null, fallback: OF.DEFAULT_WRAP_CH });
+          return OF.autoWrapCh(v, { viewportW: ed ? ed.hostEl().clientWidth : null, fallback: OF.DEFAULT_WRAP_CH });
         },
       });
-      return h;
+      editor = ed;
+      return {
+        show: (on) => ed.show(on),
+        isShown: () => ed.isShown(),
+        hasFocus: () => ed.hasFocus(),
+        focus: () => ed.view.focus(),
+        hostEl: () => ed.hostEl(),
+        scrollerEl: () => ed.scrollerEl(),
+        selection: () => ed.selection(),
+        selectionEnd: () => ed.selectionEnd(),
+        lineBox: (pos) => ed.lineBox(pos),
+        markLine: (from, to) => ed.markLine(from, to),
+        selectRange: (from, to) => ed.selectRange(from, to),
+        refresh: () => ed.refresh(),
+        setReadOnly: (on) => ed.setReadOnly(on),
+        zoneProblems: () => ed.zoneProblems(),
+        destroy: () => { ed.destroy(); if (editor === ed) editor = null; },
+      };
     },
     unmount() {
       offs.forEach((f) => f());
-      offFold();
-      try { sessions.destroy(); } catch (err) { /* already gone */ }
+      if (editor) { editor.destroy(); editor = null; }
+      doc.destroy();
       try { OF.clearKeys(); } catch (err) { /* keys already dropped */ }
-      pinned.clear();
     },
   };
-  return host;
+  return fold;
+}
+
+function el(tag, className, text) {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  if (text != null) node.textContent = text;
+  return node;
+}
+
+/** The seal passphrase dialog. hooks: onOpen(), onClose(). Resolves the passphrase or null. */
+export function askPassphrase(title, confirmIt, hooks = {}) {
+  return new Promise((resolve) => {
+    const dlg = document.createElement("dialog");
+    dlg.className = "seal-dialog";
+    const form = document.createElement("form");
+    form.method = "dialog";
+    const h = el("h2", "", title);
+    const one = el("input");
+    one.type = "password";
+    one.autocomplete = confirmIt ? "new-password" : "current-password";
+    one.placeholder = "Passphrase";
+    one.setAttribute("aria-label", "Passphrase");
+    const two = el("input");
+    two.type = "password";
+    two.autocomplete = "new-password";
+    two.placeholder = "Confirm passphrase";
+    two.setAttribute("aria-label", "Confirm passphrase");
+    const err = el("p", "seal-error", "");
+    const note = el("p", "seal-note", confirmIt
+      ? "New key for this note. There is no recovery: a lost passphrase means the branch cannot be opened."
+      : "");
+    const ok = el("button", "", "OK");
+    ok.type = "submit";
+    const cancel = el("button", "", "Cancel");
+    cancel.type = "button";
+    const row = el("div", "seal-buttons");
+    row.append(cancel, ok);
+    form.append(h, one);
+    if (confirmIt) form.append(two);
+    if (note.textContent) form.append(note);
+    form.append(err, row);
+    dlg.append(form);
+    document.body.append(dlg);
+    if (hooks.onOpen) hooks.onOpen();
+    const placeDlg = () => {
+      if (!dlg.isConnected) return;
+      const vv = window.visualViewport;
+      const vw = vv ? vv.width : window.innerWidth;
+      const vh = vv ? vv.height : window.innerHeight;
+      const ox = vv ? vv.offsetLeft : 0;
+      const oy = vv ? vv.offsetTop : 0;
+      const box = dlg.getBoundingClientRect();
+      dlg.style.left = ox + Math.max(8, (vw - box.width) / 2) + "px";
+      dlg.style.top = oy + Math.max(8, (vh - box.height) / 2) + "px";
+    };
+    let done = false;
+    const finish = (value) => {
+      if (done) return;
+      done = true;
+      if (window.visualViewport) window.visualViewport.removeEventListener("resize", placeDlg);
+      one.value = "";
+      two.value = "";
+      if (dlg.open) dlg.close();
+      dlg.remove();
+      if (hooks.onClose) hooks.onClose();
+      resolve(value);
+    };
+    form.addEventListener("submit", (event) => {
+      event.preventDefault();
+      const pass = one.value;
+      if (!pass) { err.textContent = "Enter a passphrase."; return; }
+      if (confirmIt && pass.length < 8) { err.textContent = "Use at least 8 characters."; return; }
+      if (confirmIt && pass !== two.value) { err.textContent = "The passphrases do not match."; return; }
+      finish(pass);
+    });
+    cancel.addEventListener("click", () => finish(null));
+    dlg.addEventListener("cancel", () => finish(null));
+    dlg.showModal();
+    placeDlg();
+    if (window.visualViewport) window.visualViewport.addEventListener("resize", placeDlg);
+    one.focus();
+  });
 }

@@ -24,20 +24,20 @@ const tick = () => new Promise((r) => setTimeout(r, 15));
 
 for (const hidden of [false, true]) it(`Map-style unlock opens the Text zone (host flow, hidden=${hidden})`, async () => {
   const txt = await sealed();
-  let doc: any = parse(txt);
   document.body.innerHTML = '';
   const wrap = document.createElement('div'); document.body.append(wrap);
-  const ta = document.createElement('textarea'); ta.value = txt; wrap.append(ta);
   if (hidden) wrap.style.display = 'none';
-  const fh = mountOutlineFold({ getRootDoc: () => doc, ctx: () => ({ noteId: '9', ownerId: '' }), onChange: () => { const t = serialize(doc); doc = parse(t); ta.value = t; }, onSaved: () => {}, onFocus: () => {} });
-  const h = fh.mountEditor(ta, {});
+  const fh = mountOutlineFold({ text: txt, ctx: () => ({ noteId: '9', ownerId: '' }), wipeOnPagehide: false });
+  const h = fh.mountEditor(wrap, {});
   await fh.sessions.open(fh.regionFor('4'), 'pw');
   await tick();
   expect(document.querySelector('.of-secure-zone:not(.of-secure-zone-error)')).not.toBeNull();
   expect(document.querySelector('.of-cm-sealed-line')).toBeNull();
   expect(h.zoneProblems()).toEqual([]);
-  expect(ta.value).toBe(txt); // payload untouched by opening
+  expect(fh.getText()).toBe(txt); // payload untouched by opening
+  expect(document.querySelector('textarea')).toBeNull();
   h.destroy();
+  fh.unmount();
 });
 
 it('a zone that fails to render: recoverable error, event, zoneProblems, payload unchanged', async () => {

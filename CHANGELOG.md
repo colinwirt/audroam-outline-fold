@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.4.8 — 2026-11-02
+
+- New `createOutlineDoc({ text, ctx, serializeRoot?, debounceMs?, timers?, ... })`: the single owner
+  of the note text, its parsed root and the seal sessions. Events: `change {text, rev, source}`,
+  `save-needed {rev, reason}`, `status`, `caret`, `reveal`, `seal`. `serialise()` returns the text
+  to persist for a rev (open dirty zones autosave as `auto-ct`, never plaintext; throws
+  `SealedStateError` when a zone cannot be shown); the host acks with `saved(rev)` / `failed(rev)`,
+  so an edit made while a save is in flight stays dirty. Zone re-seals and Remove seal reach the
+  text through the doc (the 0.4.5 bug 11 loss path cannot recur).
+- `mountTextEditor(container, outlineDoc, opts)`: the editor binds to the doc instead of a
+  `<textarea>` (no value shim, no input events). Key hooks get plain `(text, from, to)` and return
+  an edit; new handle methods `selection`, `selectionEnd`, `setReadOnly`. The textarea form stays
+  for older hosts.
+- Tests: doc-owner contract tests (typing → save-needed → serialise → saved; zone autosave without
+  plaintext; failed retry; in-flight edits; Map tick/fold; idle lock while dirty; fresh IVs; no
+  textarea; Remove seal) against the Audroam adapter copy.
+
 ## 0.4.7
 
 - Data safety (Colin QA): the Text secure zone re-syncs its text when the child doc changes

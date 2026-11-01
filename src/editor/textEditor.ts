@@ -12,7 +12,7 @@
  * - Edits past the first trailing fence (payloads, keyring, layout…) are kept above it.
  * - `setRegions()` still accepts host block widgets (e.g. notes) keyed by a line substring.
  */
-import { EditorState, StateEffect, StateField, type Extension, type Text } from '@codemirror/state';
+import { Compartment, EditorState, StateEffect, StateField, type Extension, type Text } from '@codemirror/state';
 import { EditorView, Decoration, WidgetType, keymap, drawSelection, type DecorationSet } from '@codemirror/view';
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
 import { outlineEditor, refreshZones, missingZones, zoneRenderFailures, ZONE_ERROR_EVENT, type OutlineEditorOptions } from './index.js';
@@ -20,6 +20,7 @@ export { missingZones, zoneRenderFailures, ZONE_ERROR_EVENT };
 import { autoWrapCh } from '../mapFit.js';
 import { DEFAULT_WRAP_CH } from '../mapLabel.js';
 import type { RegionId } from '../hostApi.js';
+import type { OutlineDocHandle } from '../outlineDoc.js';
 
 /** A host block widget placed after the first line containing `line`. */
 export interface HostRegion {
@@ -68,8 +69,26 @@ export interface TextEditorHandle {
    * means the Text pane cannot show an open branch: the host must hold saves and autosaves.
    */
   zoneProblems(): RegionId[];
-  dispatchText(edit: { start: number; end: number; text?: string; selStart: number }): void;
+  /** A user-level edit (undoable, like typing): Enter / Tab helpers. */
+  applyEdit(edit: TextEdit): void;
+  /** @deprecated 0.4.8: use `applyEdit`. */
+  dispatchText(edit: TextEdit): void;
+  /** Current caret / selection. */
+  selection(): { from: number; to: number };
+  /** 0.4.8: toggle read-only after mount (host learns edit rights late). */
+  setReadOnly(on: boolean): void;
   destroy(): void;
+}
+
+export interface TextEdit { start: number; end: number; text?: string; selStart: number; selEnd?: number }
+
+/** 0.4.8 host hooks for the doc-bound editor: key handlers get plain text + selection, no CodeMirror. */
+export interface DocEditorOptions extends Omit<TextEditorOptions, 'onEnter' | 'onTab' | 'sessions' | 'extensions'> {
+  onEnter?: (text: string, from: number, to: number) => TextEdit | null | false;
+  onTab?: (text: string, from: number, to: number, shift: boolean) => TextEdit | null | false;
+  /** Every keydown / pointerup in the main editor (typing pause, Follow from text). */
+  onKey?: (e: KeyboardEvent) => void;
+  onPointerUp?: () => void;
 }
 
 class HostRegionWidget extends WidgetType {
@@ -119,10 +138,12 @@ export function minimalChange(prev: string, next: string): { from: number; to: n
   return { from: a, to: prev.length - b, insert: next.slice(a, next.length - b) };
 }
 
-export function mountTextEditor(textarea: HTMLTextAreaElement, opts: TextEditorOptions = {}): TextEditorHandle {
-  const host = document.createElement('div');
-  host.className = 'cm-host of-text-editor source';
-  textarea.insertAdjacentElement('afterend', host);
+interface CoreHooks {
+  onLocal: (next: string) => void;
+  onSelection?: (head: number) => void;
+}
+
+function buildEditor(host: HTMLElement, initial: string, opts: TextEditorOptions, hooks: CoreHooks) {
   let writing = false;
   const hostRegions = StateField.define<{ list: HostRegion[]; deco: DecorationSet }>({
     create: (s) => ({ list: [], deco: hostRegionDeco(s.doc, []) }),
@@ -154,12 +175,8 @@ export function mountTextEditor(textarea: HTMLTextAreaElement, opts: TextEditorO
     EditorView.lineWrapping,
     hostRegions,
     EditorView.updateListener.of((u) => {
-      if (!u.docChanged || writing) return;
-      const next = u.state.doc.toString();
-      if (valueDesc.get!.call(textarea) !== next) {
-        valueDesc.set!.call(textarea, next);
-        textarea.dispatchEvent(new Event('input', { bubbles: true }));
-      }
+      if (u.docChanged && !writing) hooks.onLocal(u.state.doc.toString());
+      if (u.selectionSet || u.docChanged) hooks.onSelection?.(u.state.selection.main.head);
     }),
     EditorView.domEventHandlers({ blur: () => { opts.onBlur?.(); } }),
   ];
@@ -171,7 +188,8 @@ export function mountTextEditor(textarea: HTMLTextAreaElement, opts: TextEditorO
       '&.cm-focused .cm-selectionBackground, .cm-selectionBackground': { backgroundColor: 'rgba(108, 182, 255, 0.28)' },
     }, { dark: true }));
   }
-  if (opts.readOnly) ext.push(EditorState.readOnly.of(true));
+  const ro = new Compartment();
+  ext.push(ro.of(EditorState.readOnly.of(!!opts.readOnly)));
   if (opts.protectTrailer !== false) {
     ext.push(EditorState.transactionFilter.of((tr) => {
       if (writing || !tr.docChanged) return tr;
@@ -208,15 +226,126 @@ export function mountTextEditor(textarea: HTMLTextAreaElement, opts: TextEditorO
   }
   if (opts.extensions) ext.push(...opts.extensions);
 
-  const valueDesc = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!;
-  const view = new EditorView({ parent: host, state: EditorState.create({ doc: textarea.value || '', extensions: ext }) });
+  const view = new EditorView({ parent: host, state: EditorState.create({ doc: initial, extensions: ext }) });
+  /** Programmatic write: minimal change so the caret maps through it; no echo to onLocal. */
   const setDoc = (value: unknown): void => {
     const next = value == null ? '' : String(value);
     if (view.state.doc.toString() === next) return;
     writing = true;
-    // 0.4.3: minimal change, so the caret (mapped through it) stays where the user typed.
     try { view.dispatch({ changes: minimalChange(view.state.doc.toString(), next) }); } finally { writing = false; }
   };
+  const clamp = (p: number) => Math.max(0, Math.min(p, view.state.doc.length));
+  const applyEdit = (edit: TextEdit): void => {
+    // A user edit: goes through the update listener like typing (one history step).
+    view.dispatch({
+      changes: { from: edit.start, to: edit.end, insert: edit.text || '' },
+      selection: { anchor: edit.selStart, head: edit.selEnd ?? edit.selStart },
+      scrollIntoView: true,
+      userEvent: 'input',
+    });
+  };
+  const base = {
+    view,
+    host,
+    hasFocus: () => view.hasFocus,
+    isShown: () => !host.hidden,
+    show(on: boolean) { host.hidden = !on; },
+    hostEl: () => host,
+    scrollerEl: () => view.scrollDOM,
+    selectionEnd: () => view.state.selection.main.head,
+    selection: () => ({ from: view.state.selection.main.from, to: view.state.selection.main.to }),
+    lineBox(pos: number) { const b = view.lineBlockAt(clamp(pos)); return { top: b.top, bottom: b.bottom }; },
+    selectRange(from: number, to: number) { view.focus(); view.dispatch({ selection: { anchor: clamp(from), head: clamp(to) }, scrollIntoView: true }); },
+    markLine(from: number, to: number) { view.dispatch({ selection: { anchor: clamp(from), head: clamp(to) }, scrollIntoView: true }); },
+    setRegions(list: HostRegion[]) { view.dispatch({ effects: setHostRegions.of(list || []) }); },
+    refresh() { view.dispatch({ effects: refreshZones.of(null) }); },
+    zoneProblems(): RegionId[] { return opts.sessions ? missingZones(view.state.doc, opts.sessions) : []; },
+    applyEdit,
+    setReadOnly(on: boolean) { view.dispatch({ effects: ro.reconfigure(EditorState.readOnly.of(!!on)) }); },
+  };
+  return { view, setDoc, base };
+}
+
+/**
+ * 0.4.8: mount the text editor on a doc handle (`createOutlineDoc`). No textarea: the
+ * handle is the one source of truth. Local typing → `doc.setText(…, {source:'text'})`;
+ * every other writer (Map, zone re-seal, host) → minimal change into CodeMirror.
+ * `doc.reveal()` selects / scrolls; caret moves go to `doc.setCaret()` (no doc change).
+ *
+ * @deprecated form: `mountTextEditor(textarea, opts)` still works for 0.4.x hosts.
+ */
+export function mountTextEditor(container: HTMLElement, doc: OutlineDocHandle, opts?: DocEditorOptions): TextEditorHandle;
+/** @deprecated 0.4.8: pass a container and a `createOutlineDoc` handle. Removed in v1. */
+export function mountTextEditor(textarea: HTMLTextAreaElement, opts?: TextEditorOptions): TextEditorHandle;
+export function mountTextEditor(
+  a: HTMLElement,
+  b?: OutlineDocHandle | TextEditorOptions,
+  c?: DocEditorOptions,
+): TextEditorHandle {
+  if (typeof HTMLTextAreaElement !== 'undefined' && a instanceof HTMLTextAreaElement) {
+    return mountTextareaEditor(a, (b as TextEditorOptions) ?? {});
+  }
+  const doc = b as OutlineDocHandle;
+  const o: DocEditorOptions = c ?? {};
+  const host = document.createElement('div');
+  host.className = 'cm-host of-text-editor source';
+  a.append(host);
+  let handleRef: TextEditorHandle | null = null;
+  const keyEdit = (fn: () => TextEdit | null | false | undefined): boolean => {
+    const edit = fn();
+    if (!edit) return false;
+    handleRef!.applyEdit(edit);
+    return true;
+  };
+  const core = buildEditor(host, doc.getText(), {
+    ...o,
+    sessions: doc.sessions,
+    focus: o.focus ?? doc.focusLink,
+    onEnter: o.onEnter ? (v) => keyEdit(() => o.onEnter!(v.state.doc.toString(), v.state.selection.main.from, v.state.selection.main.to)) : undefined,
+    onTab: o.onTab ? (v, shift) => keyEdit(() => o.onTab!(v.state.doc.toString(), v.state.selection.main.from, v.state.selection.main.to, shift)) : undefined,
+  }, {
+    onLocal: (next) => doc.setText(next, { source: 'text', reason: 'text' }),
+    onSelection: (head) => doc.setCaret(head),
+  });
+  const { view, setDoc, base } = core;
+  if (o.onKey) view.dom.addEventListener('keydown', o.onKey);
+  if (o.onKey) view.dom.addEventListener('keyup', o.onKey);
+  const pointerUp = () => o.onPointerUp?.();
+  view.dom.addEventListener('pointerup', pointerUp);
+  const offs = [
+    doc.on('change', (e) => { if (e.source !== 'text') setDoc(e.text); }),
+    doc.on('reveal', (r) => (r.select ? base.selectRange(r.from, r.to) : base.markLine(r.from, r.to))),
+  ];
+  doc.setZoneProbe(() => (handleRef && handleRef.isShown() ? base.zoneProblems() : []));
+  // Zones follow every unlock / lock / save, whichever pane did it.
+  offs.push(doc.on('seal', (e) => {
+    if (e.type === 'unlock' || e.type === 'lock' || e.type === 'save') queueMicrotask(() => { try { base.refresh(); } catch { /* gone */ } });
+  }));
+  handleRef = {
+    ...base,
+    dispatchText: base.applyEdit,
+    destroy() {
+      offs.forEach((f) => f());
+      doc.setZoneProbe(null);
+      view.destroy();
+      host.remove();
+    },
+  };
+  return handleRef;
+}
+
+function mountTextareaEditor(textarea: HTMLTextAreaElement, opts: TextEditorOptions): TextEditorHandle {
+  const host = document.createElement('div');
+  host.className = 'cm-host of-text-editor source';
+  textarea.insertAdjacentElement('afterend', host);
+  const valueDesc = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!;
+  const fire = (next: string) => {
+    if (valueDesc.get!.call(textarea) !== next) {
+      valueDesc.set!.call(textarea, next);
+      textarea.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+  };
+  const { view, setDoc, base } = buildEditor(host, textarea.value || '', opts, { onLocal: fire });
   Object.defineProperty(textarea, 'value', {
     configurable: true,
     get: () => view.state.doc.toString(),
@@ -224,31 +353,9 @@ export function mountTextEditor(textarea: HTMLTextAreaElement, opts: TextEditorO
   });
   const ownFocus = Object.getOwnPropertyDescriptor(textarea, 'focus');
   textarea.focus = () => view.focus();
-  const clamp = (p: number) => Math.max(0, Math.min(p, view.state.doc.length));
-
   return {
-    view,
-    host,
-    hasFocus: () => view.hasFocus,
-    isShown: () => !host.hidden,
-    show(on) { host.hidden = !on; },
-    hostEl: () => host,
-    scrollerEl: () => view.scrollDOM,
-    selectionEnd: () => view.state.selection.main.head,
-    lineBox(pos) { const b = view.lineBlockAt(clamp(pos)); return { top: b.top, bottom: b.bottom }; },
-    selectRange(from, to) { view.focus(); view.dispatch({ selection: { anchor: clamp(from), head: clamp(to) }, scrollIntoView: true }); },
-    markLine(from, to) { view.dispatch({ selection: { anchor: clamp(from), head: clamp(to) }, scrollIntoView: true }); },
-    setRegions(list) { view.dispatch({ effects: setHostRegions.of(list || []) }); },
-    refresh() { view.dispatch({ effects: refreshZones.of(null) }); },
-    zoneProblems() { return opts.sessions ? missingZones(view.state.doc, opts.sessions) : []; },
-    dispatchText(edit) {
-      writing = true;
-      try {
-        view.dispatch({ changes: { from: edit.start, to: edit.end, insert: edit.text || '' }, selection: { anchor: edit.selStart } });
-      } finally { writing = false; }
-      valueDesc.set!.call(textarea, view.state.doc.toString());
-      textarea.dispatchEvent(new Event('input', { bubbles: true }));
-    },
+    ...base,
+    dispatchText: base.applyEdit,
     destroy() {
       view.destroy();
       host.remove();

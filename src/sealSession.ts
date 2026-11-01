@@ -81,6 +81,12 @@ export interface SealSessions {
   list(): SealSession[];
   open(region: RegionId, passphrase?: string): Promise<void>;
   save(region: RegionId): Promise<void>;
+  /**
+   * 0.4.8: write the region's current text into its SEAL-DRAFT autosave slot (`auto-ct`,
+   * fresh nonce). Nested regions autosave outward to the root. True when a slot was written.
+   * Throws when the key is locked (the caller holds the save: SealedStateError).
+   */
+  autosave(region: RegionId): Promise<boolean>;
   lock(region: RegionId | 'all', reason?: LockReason): Promise<void>;
   /** Re-auth with the passphrase (always, §8.6), then inline the children into the parent. */
   removeSeal(region: RegionId, passphrase: string): Promise<void>;
@@ -334,6 +340,14 @@ export function createSealSessions(opts: SealSessionsOptions): SealSessions {
       set(s, 'unlocked');
       if (!s.parent) api.emit({ type: 'save', region, payload: serialize(opts.getDoc()) });
       api.emit({ type: 'change', region, dirty: false });
+    },
+
+    async autosave(region) {
+      const s = impl(region);
+      if (!s.viewer || s.viewer.closed) return false;
+      let wrote = await s.viewer.autosave();
+      if (s.parent) wrote = (await self.autosave(s.parent)) || wrote;
+      return wrote;
     },
 
     async lock(region, reason = 'user') {

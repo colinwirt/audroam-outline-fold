@@ -32,15 +32,14 @@ async function reopen(text: string): Promise<string> {
   s.destroy();
   return out;
 }
-function mount(txt: string, writeOnSave: boolean) {
-  let doc: any = parse(txt);
+function mount(txt: string) {
   document.body.innerHTML = '';
-  const ta = document.createElement('textarea'); ta.value = txt; document.body.append(ta);
-  // writeOnSave=false models Audroam <= 20261101-045: writeSource() skipped the save while the
-  // caret was in Text (typingInText), so the textarea kept the pre-save ciphertext.
-  const fh = mountOutlineFold({ getRootDoc: () => doc, ctx: () => CTX, onChange: () => {}, onSaved: () => { if (writeOnSave) ta.value = serialize(doc); }, onFocus: () => {} });
-  const h = fh.mountEditor(ta, {});
-  return { fh, h, ta, getDoc: () => doc };
+  const box = document.createElement('div'); document.body.append(box);
+  // 0.4.8: the doc owns the text; a zone re-seal writes it there whatever pane has the caret.
+  const fh = mountOutlineFold({ text: txt, ctx: () => CTX, wipeOnPagehide: false, autoLockMs: 60000 });
+  const h = fh.mountEditor(box, {});
+  const ta = { get value() { return fh.getText() as string; } };
+  return { fh, h, ta };
 }
 function zoneView(): EditorView {
   const el = document.querySelector('.of-secure-zone-editor .cm-editor') as HTMLElement;
@@ -55,7 +54,7 @@ function typeLine(v: EditorView, line: string) {
 
 it('edit in zone → Save & re-seal → reload → decrypt: the typed rows are there', async () => {
   const txt = await sealed();
-  const { fh, h, ta } = mount(txt, true);
+  const { fh, h, ta } = mount(txt);
   await fh.sessions.open(fh.regionFor('4'), 'pw');
   await tick();
   typeLine(zoneView(), '  - basil (typed)');
@@ -71,25 +70,24 @@ it('edit in zone → Save & re-seal → reload → decrypt: the typed rows are t
   h.destroy();
 });
 
-it('the loss mechanism: a save hook that does not write the new ct loses the rows on reload', async () => {
+it('Save & re-seal with the caret in Text: the new ct reaches the text (no host write hook)', async () => {
   const txt = await sealed();
-  const { fh, h, ta } = mount(txt, false);
+  const { fh, h, ta } = mount(txt);
   await fh.sessions.open(fh.regionFor('4'), 'pw');
   await tick();
+  (document.querySelector('.cm-host .cm-content') as HTMLElement).focus();
   typeLine(zoneView(), '  - basil (typed)');
   (document.querySelector('.of-sz-save') as HTMLButtonElement).click();
   await tick(40);
-  // The session reports saved and clean, so a later saveAll() skips it...
   expect(fh.sessions.get(fh.regionFor('4')).dirty).toBe(false);
-  // ...but the note text still holds the old ciphertext.
-  expect(ta.value).toBe(txt);
-  expect(await reopen(ta.value)).not.toContain('basil');
+  expect(ta.value).not.toBe(txt);
+  expect(await reopen(ta.value)).toContain('basil');
   h.destroy();
 });
 
 it('[ ] toggle on a cloud row (Map) edits the zone plaintext, re-seals, survives reload', async () => {
   const txt = await sealed();
-  const { fh, h, ta } = mount(txt, true);
+  const { fh, h, ta } = mount(txt);
   await fh.sessions.open(fh.regionFor('4'), 'pw');
   await tick();
   const region = fh.regionFor('4');
@@ -101,7 +99,7 @@ it('[ ] toggle on a cloud row (Map) edits the zone plaintext, re-seals, survives
   expect(zoneView().state.doc.toString()).not.toContain('[ ] tomato');
   typeLine(zoneView(), '  - basil');
   expect(serialize(fh.sessions.get(region).doc!)).not.toContain('[ ] tomato');
-  await fh.saveAll();
+  await fh.serialise();
   await tick(40);
   const back = await reopen(ta.value);
   expect(back).not.toContain('[ ] tomato');

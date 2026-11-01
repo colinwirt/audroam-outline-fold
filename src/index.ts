@@ -638,3 +638,15 @@ export {
   type SecureZoneChromeOptions,
 } from './sealUi.js';
 export { wrapPlain } from './mapRegion.js';
+export {
+  createOutlineDoc,
+  SealedStateError,
+  type OutlineDocHandle,
+  type OutlineDocOptions,
+  type OutlineDocStatus,
+  type OutlineDocChange,
+  type SaveNeeded,
+  type SaveReason,
+  type TextSource,
+  type RegionStatus,
+} from './outlineDoc.js';

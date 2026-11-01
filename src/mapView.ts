@@ -366,6 +366,11 @@ export interface MapViewOptions {
   onRegionTaskToggle?: (scopedId: string) => boolean;
   /** Map focus moved (click, keys, `setFocus`): scoped id (`region:node` inside a region). */
   onFocusChange?: (scopedId: string) => void;
+  /**
+   * 0.4.8: the note's doc handle (`createOutlineDoc`). Supplies the region clouds, the shared
+   * fold store, Lock and the in-cloud task toggle; explicit options above still win.
+   */
+  outlineDoc?: { mapOptions(onUnlock?: (region: string) => void, onMore?: (branchId: string, rect: DOMRect) => void): Partial<MapViewOptions> };
   getDoc: () => OutlineFoldDoc;
   setDoc: (d: OutlineFoldDoc) => void;
   getLayout: () => MapLayout;
@@ -1520,8 +1525,11 @@ let mapInstanceSeq = 0;
 
 export function createMapView(
   host: HTMLElement,
-  opts: MapViewOptions,
+  optsIn: MapViewOptions,
 ): MapViewHandle {
+  const opts: MapViewOptions = optsIn.outlineDoc
+    ? { ...optsIn.outlineDoc.mapOptions(optsIn.onRegionUnlock), ...Object.fromEntries(Object.entries(optsIn).filter(([, v]) => v !== undefined)) } as MapViewOptions
+    : optsIn;
   host.classList.toggle('of-details', !!opts.details);
   let lastFocusEmit: string | null = null;
   let regionFocusRef: () => string | null = () => null;
