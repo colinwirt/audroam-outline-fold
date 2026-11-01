@@ -9,7 +9,7 @@
  * editor never contain plaintext. The `<enc>` tag is atomic and cannot be edited by hand.
  */
 import { EditorState, RangeSetBuilder, StateEffect, StateField, type Extension, type Text } from '@codemirror/state';
-import { Decoration, EditorView, ViewPlugin, WidgetType, type DecorationSet } from '@codemirror/view';
+import { Decoration, EditorView, ViewPlugin, WidgetType, drawSelection, keymap, type DecorationSet } from '@codemirror/view';
 import { parse } from '../parse.js';
 import { serialize } from '../serialize.js';
 import type { SealSessions } from '../sealSession.js';
@@ -40,6 +40,30 @@ export interface OutlineEditorOptions {
 }
 
 const ENC_RE = /<enc:[A-Za-z0-9_.-]+>/;
+const TRAILER_RE = /(?:^|\n)---\s*(?:payloads|sealed|enc|keyring|keys|layout)\s*---/i;
+
+/**
+ * 0.4.5 (Colin): the zone edits only the branch's outline text. Trailing blocks (payloads of
+ * nested seals, keyring, keys, layout) are split off and re-attached on every edit, so the
+ * keyring never shows in, or can be typed into, the editable zone.
+ */
+export function splitZoneText(text: string): { body: string; trailer: string } {
+  const m = TRAILER_RE.exec(text);
+  if (!m) return { body: text, trailer: '' };
+  return { body: text.slice(0, m.index).replace(/\s+$/, ''), trailer: text.slice(m.index).replace(/^\n/, '') };
+}
+export function joinZoneText(body: string, trailer: string): string {
+  return trailer ? `${body.replace(/\s+$/, '')}\n\n${trailer}` : body;
+}
+
+/** Zone views by region, so the main editor's ↑ can land on the zone's last line. */
+const zoneViews = new Map<RegionId, EditorView>();
+
+/** 0.4.5: caret and selection for the nested zone editor (the parent's drawSelection hides the native caret). */
+const zoneCaret = EditorView.theme({
+  '.cm-content': { caretColor: 'var(--of-caret, #9ecbff)' },
+  '.cm-cursor, .cm-dropCursor': { borderLeftColor: 'var(--of-caret, #9ecbff)', borderLeftWidth: '2px' },
+});
 const ID_RE = /<id:([^>\s]+)>/;
 /** Re-scan zones (session state or wrap width changed). */
 export const refreshZones = StateEffect.define<null>();
@@ -78,7 +102,7 @@ class SecureZone extends WidgetType {
   eq(o: SecureZone): boolean {
     return o.region === this.region && o.ch === this.ch;
   }
-  toDOM(): HTMLElement {
+  toDOM(outer?: EditorView): HTMLElement {
     const { sessions } = this.opts;
     const region = this.region;
     const host = document.createElement('div');
@@ -90,17 +114,39 @@ class SecureZone extends WidgetType {
     const s = sessions.get(region);
     const child = s.doc;
     let applying = false;
+    const leave = (v: EditorView, dir: -1 | 1): boolean => {
+      const sel = v.state.selection.main;
+      if (!sel.empty || !outer) return false;
+      const ln = v.state.doc.lineAt(sel.head).number;
+      if (dir < 0 ? ln !== 1 : ln !== v.state.doc.lines) return false;
+      let pos: number | null = null;
+      try { pos = outer.posAtDOM(wrap); } catch { pos = null; }
+      if (pos == null) return false;
+      const anchorLine = outer.state.doc.lineAt(pos);
+      const target = dir < 0 ? anchorLine.from : anchorLine.number < outer.state.doc.lines ? outer.state.doc.line(anchorLine.number + 1).from : anchorLine.to;
+      outer.focus();
+      outer.dispatch({ selection: { anchor: target }, scrollIntoView: true });
+      return true;
+    };
+    const split = splitZoneText(child ? serialize(child) : '');
     const view = new EditorView({
       parent: host,
       state: EditorState.create({
-        doc: child ? serialize(child) : '',
+        doc: split.body,
         extensions: [
           ...(this.opts.childExtensions ?? []),
+          drawSelection(),
+          zoneCaret,
+          // 0.4.5: ↑ on the first zone line / ↓ on the last leave the zone to the main lines around it.
+          keymap.of([
+            { key: 'ArrowUp', run: (v) => leave(v, -1) },
+            { key: 'ArrowDown', run: (v) => leave(v, 1) },
+          ]),
           EditorView.updateListener.of((u) => {
             if (!u.docChanged || applying) return;
             const d = sessions.get(region).doc;
             if (!d) return;
-            const next = parse(u.state.doc.toString());
+            const next = parse(joinZoneText(u.state.doc.toString(), split.trailer));
             d.nodes.splice(0, d.nodes.length, ...next.nodes); // keep viewer identity
             sessions.markChanged(region);
             sessions.touch();
@@ -109,10 +155,12 @@ class SecureZone extends WidgetType {
         ],
       }),
     });
+    zoneViews.set(region, view);
     let gone = false;
     (wrap as HTMLElement & { _ofDestroy?: () => void })._ofDestroy = () => {
       if (gone) return; // CM may destroy a widget DOM twice across a fast lock/unlock
       gone = true;
+      if (zoneViews.get(region) === view) zoneViews.delete(region);
       zone.destroy();
       applying = true;
       view.destroy(); // drops the nested undo history with the plaintext
@@ -222,7 +270,39 @@ export function outlineEditor(opts: OutlineEditorOptions): Extension[] {
       return true;
     },
   });
-  return [field, guard, marks, live, follow, unlockClick, theme];
+  // 0.4.5 (Colin): ↑ on the line right after an open zone goes into the zone's last line,
+  // and ↓ on the zone's `<enc>` line goes to its first line. CM's vertical motion skipped the
+  // whole block widget (ignoreEvent) and landed on the anchor or above it.
+  const zoneNav = keymap.of([
+    { key: 'ArrowUp', run: (view) => {
+      const sel = view.state.selection.main;
+      if (!sel.empty) return false;
+      const line = view.state.doc.lineAt(sel.head);
+      if (line.number < 2) return false;
+      const z = zoneAbove(view.state, line.number - 1);
+      if (!z) return false;
+      z.focus();
+      z.dispatch({ selection: { anchor: z.state.doc.line(z.state.doc.lines).from }, scrollIntoView: true });
+      return true;
+    } },
+    { key: 'ArrowDown', run: (view) => {
+      const sel = view.state.selection.main;
+      if (!sel.empty) return false;
+      const z = zoneAbove(view.state, view.state.doc.lineAt(sel.head).number);
+      if (!z) return false;
+      z.focus();
+      z.dispatch({ selection: { anchor: 0 }, scrollIntoView: true });
+      return true;
+    } },
+  ]);
+  const zoneAbove = (state: EditorState, lineNo: number): EditorView | null => {
+    const line = state.doc.line(lineNo);
+    if (!ENC_RE.test(line.text)) return null;
+    const hit = scanEnc(state.doc, sessions).find((e) => e.to === line.to);
+    if (!hit?.region || sessions.get(hit.region).locked) return null;
+    return zoneViews.get(hit.region) ?? null;
+  };
+  return [field, guard, marks, live, follow, unlockClick, zoneNav, theme];
 }
 
 const theme = EditorView.baseTheme({
@@ -230,7 +310,7 @@ const theme = EditorView.baseTheme({
   '.of-secure-zone-bar': { display: 'flex', flexWrap: 'wrap', gap: '6px', padding: '4px 6px', alignItems: 'center', fontSize: '12px' },
   '.of-secure-zone-status': { marginLeft: 'auto', color: '#1f7a35' },
   '.of-secure-zone-end': { borderTop: '1px dashed rgba(46,160,67,0.7)', margin: '0 6px' },
-  '.of-sz-btn': { minHeight: '44px' },
+  '.of-sz-btn': { minHeight: '44px', color: 'var(--of-sz-btn-ink, var(--of-text, #e7ecf1))', background: 'var(--of-sz-btn-bg, #132028)' },
   '.of-cm-enc': { color: '#1f7a35', fontWeight: '600' },
   '.of-cm-sealed-line': { background: 'var(--of-seal-zone-bg, rgba(46,160,67,0.08))', borderLeft: '3px solid var(--of-seal-stroke, #3d8a5f)', cursor: 'pointer' },
   '.of-cm-id': { opacity: '0.55' },

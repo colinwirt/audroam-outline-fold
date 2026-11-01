@@ -20,7 +20,7 @@ describe('0.4.3 zone header tools (QA C)', () => {
     const src = readFileSync(new URL('../src/mapView.ts', import.meta.url), 'utf8');
     expect(src).toContain('map-region-lock');
     expect(src).toContain('map-region-more');
-    expect(src).toContain("host.doc ? '🔓 ' : '🔒 '");
+    expect(src).toContain("host.doc ? '🔓' : '🔒'");
     expect(src).toContain('Sealed branch unlocked');
   });
   it('editor: locked <enc> line is a clickable green zone; kicks are guarded', () => {

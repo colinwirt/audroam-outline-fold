@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.4.5 — 2026-11-01
+
+- Fix (Text, secure zone): caret visible in the nested zone editor. The main editor's `drawSelection` hides the native caret for every `.cm-content` under it, and the nested view drew none; it now has its own `drawSelection` and `--of-caret` colour.
+- Fix (secure zone footer): More ▾ / Lock now were white text on `#fff` in a dark host. `.of-sz-btn` now paints from `--of-sz-btn-bg` / `--of-sz-btn-ink` (dark default, light under `.of-theme-light`).
+- Fix (secure zone): the zone edits only the branch outline. Trailing blocks (keyring, nested payloads, keys, layout) are split off (`splitZoneText`) and re-attached on save, never shown or editable.
+- Fix (Text): ↑ on the line after an open zone lands on the zone's last line, ↓ on the `<enc>` line enters it, and ↑/↓ at the zone edges leave it. CM vertical motion skipped the block widget.
+- Fix (Map): connectors between nodes inside an open region cloud (`innerRegionEdges`), light mint `--of-region-edge` on the dark green.
+- Fix (Map): the folded region pill shows only 🔒/🔓 (Unlock tooltip, k1 chip) instead of repeating the anchor caption, and is sized by `foldedRegionPill(fontPx)` so the text no longer crowds the right edge.
+
 ## 0.4.4 — 2026-11-01
 
 - Fix (Text): unlocking a sealed branch now shows the nested secure-zone editor. `secureZoneChrome` called `btns.removeChild(moreBtn)` after `moreBtn` had already been moved into the More wrapper, so `SecureZone.toDOM` threw, the refresh transaction was dropped, and the line stayed in the locked green style. Covered with a task-marker line (`- [-] Sealed branch <enc:k1> <id:16>`) happy-dom test.

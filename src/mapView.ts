@@ -52,7 +52,7 @@ import {
   type Pt,
 } from './mapGesture.js';
 import { regionHull, regionSvg, wrapPlain, type MapRegion } from './mapRegion.js';
-import { placeRegions, type PlacedBox, type PlacedRegion, type RegionHostSpec } from './regionLayout.js';
+import { placeRegions, innerRegionEdges, type PlacedBox, type PlacedRegion, type RegionHostSpec } from './regionLayout.js';
 import { createRegionFoldStore, isMemoryOnlyRegion, revealScopedId, type RegionFoldStore } from './regionFold.js';
 import { parseScopedId } from './scopedId.js';
 import type { OutlineFoldDoc, OutlineNode } from './types.js';
@@ -683,6 +683,14 @@ function shortLabel(title: string): string {
 /** Reserved end-cap on every foldable pill; circle-+ painted only when collapsed (M12 / fold-slot-always).
  * 34 = 2*(r+clear) with r≈9 and ≥8px clear for gold focus stroke (Design UX 2026-09-29 end-cap air). */
 export const FOLD_SLOT = 34;
+/**
+ * 0.4.5 (Colin): folded region pill (lock glyph only) sized like a normal pill at this font:
+ * 12px inset, glyph, 12px inset, room for the key chip, then the fold slot.
+ */
+export function foldedRegionPill(fontPx: number): { w: number; h: number } {
+  const glyph = Math.ceil(fontPx * 1.4);
+  return { w: 12 + glyph + 12 + 34 + FOLD_SLOT, h: Math.max(30, Math.ceil(fontPx * 1.3 + 14)) };
+}
 
 /** Fold handle radius. */
 export const FOLD_R = 9;
@@ -3816,6 +3824,7 @@ export function createMapView(
       visible: visibleKeyed,
       regionFolded: regionIsFolded,
       nodeCollapsed: (region, d, id) => rfold.isNodeCollapsed(region, d, id),
+      foldedPill: foldedRegionPill(resolveFontPx(undefined, getLayout().fontSize, getDoc().frontmatter?.fontSize)),
     });
     let maxX = layout.viewBox?.w ?? 0, maxY = layout.viewBox?.h ?? 0;
     for (const [k, b] of boxes) {
@@ -3858,11 +3867,19 @@ export function createMapView(
         const edges = r.edges
           .map(([x1, y1, x2, y2]) => `<path class="map-region-edge" d="M${x1} ${y1} C${x1} ${(y1 + y2) / 2} ${x2 - 20} ${y2} ${x2} ${y2}" fill="none"/>`)
           .join('');
+        // 0.4.5 (Colin): connectors between nodes inside the open cloud, light on the green.
+        const inner = innerRegionEdges(r.boxes)
+          .map(([x1, y1, x2, y2]) => { const mx = (x1 + x2) / 2; return `<path class="map-region-edge map-region-inner-edge" d="M${x1} ${y1} C${mx} ${y1} ${mx} ${y2} ${x2} ${y2}" fill="none"/>`; })
+          .join('');
         const pills = r.boxes
           .map((b) => {
             const folded = b.key === r.host.id;
             // 0.4.3 (QA C): 🔒 only while locked; an unlocked branch folded to its pill reads 🔓.
-            const t = folded ? (r.host.kind === 'sealed' ? (r.host.doc ? '🔓 ' : '🔒 ') : '') + (r.host.label || (r.host.kind === 'sealed' ? 'Sealed branch' : 'Record')) : captionWithoutLinks(displayCaption(b.title));
+            // 0.4.5 (Colin): the folded pill sits right under its anchor, whose caption already is the
+            // public label (or the 'Sealed branch' placeholder). Show only the lock glyph, not a copy.
+            const regionName = r.host.label || (r.host.kind === 'sealed' ? 'Sealed branch' : 'Record');
+            const t = folded ? (r.host.kind === 'sealed' ? (r.host.doc ? '🔓' : '🔒') : regionName) : captionWithoutLinks(displayCaption(b.title));
+            const ariaName = folded && r.host.kind === 'sealed' ? `${regionName}${r.host.doc ? '' : `, Unlock ${r.host.kid ?? 'key'}`}` : t;
             const cy = b.y + b.h / 2;
             const slot = b.foldable ? FOLD_SLOT : 0;
             const boxRight = b.x + Math.max(1, b.w - slot);
@@ -3873,7 +3890,7 @@ export function createMapView(
                   ? `<rect class="map-fold-hit" x="${foldHandleGeometry(boxRight).cx - 16}" y="${cy - 16}" width="32" height="32" fill="transparent" cursor="pointer" aria-label="Unlock ${esc(r.host.kid ?? 'key')}"><title>Unlock ${esc(r.host.kid ?? 'key')}</title></rect>`
                   : `<rect class="map-fold-hit" x="${foldHandleGeometry(boxRight).cx - 16}" y="${cy - 16}" width="32" height="32" fill="transparent" cursor="pointer"/>`)
               : '';
-            const aria = `${t}${b.foldable ? (b.collapsed ? `, collapsed${b.hidden ? `, ${foldCountLabel(b.hidden)}` : ''}${locked ? ', locked' : ''}` : ', expanded') : ''}`;
+            const aria = `${ariaName}${b.foldable ? (b.collapsed ? `, collapsed${b.hidden ? `, ${foldCountLabel(b.hidden)}` : ''}${locked ? ', locked' : ''}` : ', expanded') : ''}`;
             const kidChip = locked && r.host.kid
               ? `<g class="map-region-kid"><rect x="${b.x + b.w - slot - 34}" y="${b.y - 8}" width="30" height="16" rx="8"/><text x="${b.x + b.w - slot - 19}" y="${b.y + 4}" text-anchor="middle">${esc(r.host.kid.slice(0, 4))}</text></g>`
               : '';
@@ -3882,13 +3899,14 @@ export function createMapView(
             const fpx = resolveFontPx(undefined, getLayout().fontSize, getDoc().frontmatter?.fontSize);
             const lh = lineBox(fpx);
             const fa = `font-size="${fpx}" font-family="${LABEL_FONT_FAMILY}"`;
-            const textSvg = lines.length <= 1
+            const tip = locked && r.host.kind === 'sealed' ? `<title>Unlock ${esc(r.host.kid ?? 'key')}</title>` : '';
+            const textSvg = tip + (lines.length <= 1
               ? `<text x="${b.x + 12}" y="${cy + fpx * 0.35}" ${fa}>${esc(t)}</text>`
-              : `<text x="${b.x + 12}" y="${cy + fpx * 0.35 - ((lines.length - 1) * lh) / 2}" ${fa}>${lines.map((l, i) => `<tspan x="${b.x + 12}"${i ? ` dy="${lh}"` : ''}>${esc(l)}</tspan>`).join('')}</text>`;
+              : `<text x="${b.x + 12}" y="${cy + fpx * 0.35 - ((lines.length - 1) * lh) / 2}" ${fa}>${lines.map((l, i) => `<tspan x="${b.x + 12}"${i ? ` dy="${lh}"` : ''}>${esc(l)}</tspan>`).join('')}</text>`);
             return `<g class="map-region-node${folded ? ' map-region-pill' : ''}${locked && r.host.kind === 'sealed' ? ' map-region-locked' : ''}${b.collapsed ? ' collapsed' : ''}" id="${esc(regionDomId(b.key))}" role="treeitem" aria-selected="false"${b.foldable ? ` aria-expanded="${b.collapsed ? 'false' : 'true'}"` : ''} aria-label="${esc(aria)}" data-scoped-id="${esc(b.key)}" data-region-id="${esc(r.host.id)}"><rect x="${b.x}" y="${b.y}" width="${Math.max(1, b.w - slot)}" height="${b.h}" rx="${Math.min(14, b.h / 2)}"/>${textSvg}${chrome}${kidChip}</g>`;
           })
           .join('');
-        return cloud + edges + pills + cloudFold + tools;
+        return cloud + edges + inner + pills + cloudFold + tools;
       })
       .join('');
   }

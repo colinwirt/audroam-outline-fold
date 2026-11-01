@@ -53,6 +53,8 @@ export interface PlacedBox extends RegionBox {
   collapsed?: boolean;
   /** Hidden-count chip value when collapsed (0 = no chip). */
   hidden?: number;
+  /** 0.4.5: scoped key of the parent box inside the same region (inner connector). */
+  parent?: string;
 }
 
 export interface PlacedRegion {
@@ -177,12 +179,12 @@ function layoutLocal(host: RegionHostSpec, all: RegionHostSpec[], deps: RegionLa
   const vis = deps.visible(doc, host.id);
   const boxes = new Map<string, RegionBox>();
   const kids = new Map<string, string[]>();
-  const meta = new Map<string, { title: string; depth: number; n: OutlineNode }>();
+  const meta = new Map<string, { title: string; depth: number; n: OutlineNode; parentKey: string | null }>();
   for (const v of vis) {
     const p = pts[v.key] ?? { x: 0, y: 0 };
     const s = deps.size(v.n, v.key);
     boxes.set(v.key, { x: p.x - s.w / 2, y: p.y - s.h / 2, ...s });
-    meta.set(v.key, { title: v.n.title, depth: v.parentKey === null ? 0 : 1, n: v.n });
+    meta.set(v.key, { title: v.n.title, depth: v.parentKey === null ? 0 : 1, n: v.n, parentKey: v.parentKey });
     if (v.parentKey !== null) (kids.get(v.parentKey) ?? kids.set(v.parentKey, []).get(v.parentKey)!).push(v.key);
   }
   const nested = placeRegions(boxes, (k) => kids.get(k) ?? [], host.id, all, deps, depth);
@@ -207,6 +209,7 @@ function layoutLocal(host: RegionHostSpec, all: RegionHostSpec[], deps: RegionLa
         foldable,
         collapsed,
         hidden: collapsed ? mt.n.children!.length : 0,
+        ...(mt.parentKey !== null && meta.has(mt.parentKey) ? { parent: scopeId(host.id, meta.get(mt.parentKey)!.n.id ?? mt.parentKey) } : {}),
       };
     }),
     regions: nested,
@@ -225,4 +228,16 @@ export function anyOverlap(rects: RegionBox[]): boolean {
       if (a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h) return true;
     }
   return false;
+}
+
+/** 0.4.5: parent → child connectors between boxes inside one region, [x1,y1,x2,y2]. */
+export function innerRegionEdges(boxes: PlacedBox[]): [number, number, number, number][] {
+  const byKey = new Map(boxes.map((b) => [b.key, b] as const));
+  const out: [number, number, number, number][] = [];
+  for (const b of boxes) {
+    const p = b.parent ? byKey.get(b.parent) : undefined;
+    if (!p) continue;
+    out.push([p.x + p.w, p.y + p.h / 2, b.x, b.y + b.h / 2]);
+  }
+  return out;
 }
