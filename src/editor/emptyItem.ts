@@ -4,10 +4,15 @@
  *   1. a marker (`- `, `* `, `+ `, `1. `, with or without `[ ]`) is removed, indent kept;
  *   2. else the line outdents one unit;
  *   3. else (an empty top-level line) it joins the previous line, caret at that line's end.
- * Everything else is left to the default Backspace. Pure core + a CM command.
+ * Everything else is left to the default Backspace. Pure; the key is `outlineBackspace`.
  */
-import type { EditorView } from '@codemirror/view';
-import { zoneIndentUnit } from './zoneIndent.js';
+
+/** Smallest positive leading-space run (2 when none). */
+const spaceUnit = (text: string): number => {
+  let unit = 0;
+  for (const m of text.matchAll(/^( +)\S/gm)) if (!unit || m[1]!.length < unit) unit = m[1]!.length;
+  return unit || 2;
+};
 
 const EMPTY_ITEM = /^([ \t]*)((?:[-*+]|\d+\.)(?:[ \t]+\[[ xX]?\])?[ \t]*)?$/;
 
@@ -25,19 +30,10 @@ export function emptyItemBackspace(text: string, head: number): BackspaceEdit | 
   const indent = m[1]!;
   if (m[2]) return { from: ls + indent.length, to: le, caret: ls + indent.length };
   if (indent.length) {
-    const cut = indent.endsWith('\t') ? 1 : Math.min(zoneIndentUnit(text), indent.length);
+    const cut = indent.endsWith('\t') ? 1 : Math.min(spaceUnit(text), indent.length);
     const keep = indent.length - cut;
     return { from: ls + keep, to: le, caret: ls + keep };
   }
   if (ls === 0) return null;
   return { from: ls - 1, to: le, caret: ls - 1 };
-}
-
-export function backspaceEmptyItem(v: EditorView): boolean {
-  const sel = v.state.selection.main;
-  if (!sel.empty || v.state.readOnly) return false;
-  const e = emptyItemBackspace(v.state.doc.toString(), sel.head);
-  if (!e) return false;
-  v.dispatch({ changes: { from: e.from, to: e.to }, selection: { anchor: e.caret }, scrollIntoView: true, userEvent: 'delete.backward' });
-  return true;
 }

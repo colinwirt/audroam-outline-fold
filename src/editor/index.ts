@@ -8,7 +8,7 @@
  * The main document only ever holds the `<enc>` tag, so copy, paste and undo in the main
  * editor never contain plaintext. The `<enc>` tag is atomic and cannot be edited by hand.
  */
-import { EditorState, Prec, RangeSetBuilder, StateEffect, StateField, type Extension, type Text } from '@codemirror/state';
+import { EditorState, RangeSetBuilder, Transaction, StateEffect, StateField, type Extension, type Text } from '@codemirror/state';
 import { Decoration, EditorView, ViewPlugin, WidgetType, drawSelection, keymap, type DecorationSet } from '@codemirror/view';
 import { parseZoneText } from '../zoneText.js';
 import { normalizeTaskMarkers } from '../taskChrome.js';
@@ -190,8 +190,12 @@ class SecureZone extends WidgetType {
       let pos: number | null = null;
       try { pos = outer.posAtDOM(wrap); } catch { pos = null; }
       if (pos == null) return false;
-      const anchorLine = outer.state.doc.lineAt(pos);
-      const target = dir < 0 ? anchorLine.from : anchorLine.number < outer.state.doc.lines ? outer.state.doc.line(anchorLine.number + 1).from : anchorLine.to;
+      // The widget replaces the whole anchor line: land on the line above / below it.
+      const d = outer.state.doc;
+      const anchorLine = d.lineAt(pos);
+      const target = dir < 0
+        ? (anchorLine.number > 1 ? d.line(anchorLine.number - 1).from : anchorLine.from)
+        : (anchorLine.number < d.lines ? d.line(anchorLine.number + 1).from : anchorLine.to);
       outer.focus();
       outer.dispatch({ selection: { anchor: target }, scrollIntoView: true });
       return true;
@@ -205,16 +209,16 @@ class SecureZone extends WidgetType {
       state: EditorState.create({
         doc: split.body,
         extensions: [
+          // Boundary hook (zone side): ↑ on the first zone line / ↓ on the last hand the caret
+          // back to the main text. Ahead of the child keymaps; everything else is default motion.
+          keymap.of([
+            { key: 'ArrowUp', run: (v) => leave(v, -1) },
+            { key: 'ArrowDown', run: (v) => leave(v, 1) },
+          ]),
           ...(this.opts.childExtensions ?? []),
           drawSelection(),
           zoneCaret,
           taskGlyphs,
-          // 0.4.5: ↑ on the first zone line / ↓ on the last leave the zone to the main lines around it.
-          // 0.4.13 (bug 2): high precedence, ahead of the child defaultKeymap's line motion.
-          Prec.high(keymap.of([
-            { key: 'ArrowUp', run: (v) => leave(v, -1) },
-            { key: 'ArrowDown', run: (v) => leave(v, 1) },
-          ])),
           EditorView.updateListener.of((u) => {
             if (!u.docChanged || applying) return;
             const d = sessions.get(region).doc;
@@ -279,6 +283,10 @@ class SecureZone extends WidgetType {
   ignoreEvent(): boolean {
     return true;
   }
+  /** Lets CM's height map place lines below the zone before it is measured. */
+  get estimatedHeight(): number {
+    return 160;
+  }
 }
 
 /**
@@ -336,7 +344,9 @@ export function outlineEditor(opts: OutlineEditorOptions): Extension[] {
       // Locked: the whole line reads as a green secure zone; a click unlocks (QA D).
       if (st && st.locked) lb.add(state.doc.lineAt(e.tagFrom).from, state.doc.lineAt(e.tagFrom).from, Decoration.line({ class: 'of-cm-sealed-line', attributes: { 'data-region': e.region!, title: 'Sealed branch: click to unlock' } }));
       tb.add(e.tagFrom, e.tagTo, Decoration.mark({ class: 'of-cm-enc', atomic: true }));
-      if (st && !st.locked) zb.add(e.to, e.to, Decoration.widget({ widget: new SecureZone(e.region!, opts, opts.textWidthCh?.(e.region!)), block: true, side: 1 }));
+      // 0.4.13: an open zone is a block replace decoration over the whole anchor line (the
+      // zone shows that line as its root), so CM's own vertical motion steps over it.
+      if (st && !st.locked) zb.add(state.doc.lineAt(e.tagFrom).from, e.to, Decoration.replace({ widget: new SecureZone(e.region!, opts, opts.textWidthCh?.(e.region!)), block: true }));
     }
     return { zones: zb.finish(), tags: tb.finish(), lines: lb.finish() };
   };
@@ -418,40 +428,50 @@ export function outlineEditor(opts: OutlineEditorOptions): Extension[] {
       return true;
     },
   });
-  // 0.4.5 (Colin): ↑ on the line right after an open zone goes into the zone's last line,
-  // and ↓ on the zone's `<enc>` line goes to its first line. CM's vertical motion skipped the
-  // whole block widget (ignoreEvent) and landed on the anchor or above it.
-  // 0.4.13 (bug 2): high precedence — the host's defaultKeymap ArrowUp ran first and skipped the zone.
-  const zoneNav = Prec.high(keymap.of([
-    { key: 'ArrowUp', run: (view) => {
-      const sel = view.state.selection.main;
-      if (!sel.empty) return false;
-      const line = view.state.doc.lineAt(sel.head);
-      if (line.number < 2) return false;
-      const z = zoneAbove(view.state, line.number - 1);
-      if (!z) return false;
-      z.focus();
-      z.dispatch({ selection: { anchor: z.state.doc.line(z.state.doc.lines).from }, scrollIntoView: true });
-      return true;
-    } },
-    { key: 'ArrowDown', run: (view) => {
-      const sel = view.state.selection.main;
-      if (!sel.empty) return false;
-      const z = zoneAbove(view.state, view.state.doc.lineAt(sel.head).number);
-      if (!z) return false;
-      z.focus();
-      z.dispatch({ selection: { anchor: 0 }, scrollIntoView: true });
-      return true;
-    } },
-  ]));
-  const zoneAbove = (state: EditorState, lineNo: number): EditorView | null => {
-    const line = state.doc.line(lineNo);
-    if (!ENC_RE.test(line.text)) return null;
-    const hit = scanEnc(state.doc, sessions).find((e) => e.to === line.to);
-    if (!hit?.region || sessions.get(hit.region).locked) return null;
-    return zoneViews.get(hit.region) ?? null;
-  };
-  return [field, guard, marks, live, follow, unlockClick, zoneNav, theme];
+  // Boundary hook (main side), the only zone key logic here. CM's default vertical motion
+  // (cursorLineUp / Down) steps over the replaced anchor line or stops on its edge; when a
+  // keyboard move starts on the line right below / above an open zone and lands on or past
+  // it, focus the zone instead: its last line coming from below, its first line from above.
+  const enterZone = EditorView.updateListener.of((u) => {
+    if (u.docChanged || !u.selectionSet || !u.transactions.some((t) => t.annotation(Transaction.userEvent) === 'select')) return;
+    const doc = u.state.doc;
+    const head = u.state.selection.main.head;
+    const was = u.startState.selection.main.head;
+    if (head === was) return;
+    const wasLine = doc.lineAt(was).number;
+    const up = head < was;
+    const n = up ? wasLine - 1 : wasLine + 1;
+    if (n < 1 || n > doc.lines) return;
+    const zl = doc.line(n);
+    if (up ? head > zl.to : head < zl.from) return; // did not reach the zone line
+    let region: RegionId | null = null;
+    u.state.field(field).zones.between(zl.from, zl.to, (from, to, d) => {
+      const w = d.spec.widget;
+      if (from === zl.from && w instanceof SecureZone) { region = w.region; return false; }
+      return undefined;
+    });
+    const z = region ? zoneViews.get(region) : null;
+    if (!z) return;
+    queueMicrotask(() => {
+      try {
+        z.focus();
+        z.dispatch({ selection: { anchor: up ? z.state.doc.line(z.state.doc.lines).from : 0 }, scrollIntoView: true });
+      } catch { /* zone gone */ }
+    });
+  });
+  // Typing cannot land on the hidden anchor line of an open zone (caret at its edge).
+  const zoneEdge = EditorState.changeFilter.of((tr) => {
+    if (!tr.docChanged || !tr.isUserEvent('input') && !tr.isUserEvent('delete') && !tr.isUserEvent('paste')) return true;
+    const zones = tr.startState.field(field).zones;
+    let ok = true;
+    tr.changes.iterChanges((fromA, toA) => {
+      zones.between(Math.max(0, fromA - 1), toA + 1, (from, to) => {
+        if (toA >= from && fromA <= to) ok = false;
+      });
+    });
+    return ok;
+  });
+  return [field, guard, marks, live, follow, unlockClick, enterZone, zoneEdge, theme];
 }
 
 const theme = EditorView.baseTheme({

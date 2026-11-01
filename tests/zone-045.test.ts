@@ -26,7 +26,7 @@ describe('0.4.5 secure zone', () => {
   it('↑ after the zone and ↑/↓ at zone edges are handled', () => {
     const e = src('editor/index.ts');
     expect(e).toContain("{ key: 'ArrowUp', run: (v) => leave(v, -1) }");
-    expect(e).toContain('zoneNav');
+    expect(e).toContain('enterZone'); // 0.4.13: main side is CM's default motion + this hook
   });
   it('footer buttons are themed, never white on white', () => {
     const css = src('outline-fold.css');

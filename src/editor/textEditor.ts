@@ -12,11 +12,10 @@
  * - Edits past the first trailing fence (payloads, keyring, layout…) are kept above it.
  * - `setRegions()` still accepts host block widgets (e.g. notes) keyed by a line substring.
  */
-import { backspaceEmptyItem } from './emptyItem.js';
-import { zoneTab, zoneIndentChanges, indentBreaksTree } from './zoneIndent.js';
+import { outlineKeys } from './outlineKeys.js';
 
 const isSealedLine = (line: string): boolean => /<enc:[A-Za-z0-9_.-]+>/.test(line);
-import { Compartment, EditorState, Prec, StateEffect, StateField, type Extension, type Text } from '@codemirror/state';
+import { Compartment, EditorState, StateEffect, StateField, type Extension, type Text } from '@codemirror/state';
 import { EditorView, Decoration, WidgetType, keymap, drawSelection, type DecorationSet } from '@codemirror/view';
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
 import { taskGlyphs, outlineEditor, refreshZones, missingZones, zoneRenderFailures, ZONE_ERROR_EVENT, type OutlineEditorOptions } from './index.js';
@@ -39,9 +38,10 @@ export interface TextEditorOptions extends Partial<Omit<OutlineEditorOptions, 't
   autoWidth?: () => string | null | undefined;
   /** Explicit per-region wrap in ch; wins over `autoWidth`. */
   textWidthCh?: (region: RegionId) => number | undefined;
-  /** Host key hooks; return true when handled. */
-  onEnter?: (view: EditorView) => boolean;
-  onTab?: (view: EditorView, shift: boolean) => boolean;
+  /** @deprecated 0.4.13: ignored. Enter / Tab / Backspace are the package's outline keys. */
+  onEnter?: unknown;
+  /** @deprecated 0.4.13: ignored. */
+  onTab?: unknown;
   onEsc?: () => void;
   onBlur?: () => void;
   /** Keep edits above the trailing fences (default true). */
@@ -87,9 +87,7 @@ export interface TextEditorHandle {
 export interface TextEdit { start: number; end: number; text?: string; selStart: number; selEnd?: number }
 
 /** 0.4.8 host hooks for the doc-bound editor: key handlers get plain text + selection, no CodeMirror. */
-export interface DocEditorOptions extends Omit<TextEditorOptions, 'onEnter' | 'onTab' | 'sessions' | 'extensions'> {
-  onEnter?: (text: string, from: number, to: number) => TextEdit | null | false;
-  onTab?: (text: string, from: number, to: number, shift: boolean) => TextEdit | null | false;
+export interface DocEditorOptions extends Omit<TextEditorOptions, 'sessions' | 'extensions'> {
   /** Every keydown / pointerup in the main editor (typing pause, Follow from text). */
   onKey?: (e: KeyboardEvent) => void;
   onPointerUp?: () => void;
@@ -182,26 +180,14 @@ function buildEditor(host: HTMLElement, initial: string, opts: TextEditorOptions
     if (!opts.autoWidth) return undefined;
     return autoWrapCh(opts.autoWidth(), { viewportW: host.clientWidth || null, fallback: DEFAULT_WRAP_CH });
   };
-  // 0.4.9 (bug B4): the same line keys (Enter, Tab, Shift-Tab) run in the main view and in
-  // every secure zone view; each hook gets the view the key was pressed in.
-  const lineKeys = [
-    { key: 'Enter', run: (v: EditorView) => !!opts.onEnter?.(v) },
-    { key: 'Tab', run: (v: EditorView) => !!opts.onTab?.(v, false) },
-    { key: 'Shift-Tab', run: (v: EditorView) => !!opts.onTab?.(v, true) },
-  ];
-  // Zone keys: Enter as the main editor; Tab/Shift-Tab never leave the zone (zoneTab fallback).
-  const zoneKeys = [
-    lineKeys[0]!,
-    { key: 'Tab', run: zoneTab(false) },
-    { key: 'Shift-Tab', run: zoneTab(true) },
-  ];
   const ext: Extension[] = [
     history(),
     drawSelection(),
     taskGlyphs,
-    Prec.high(keymap.of([{ key: 'Backspace', run: backspaceEmptyItem }])),
+    // 0.4.13: standard CM commands behind the outline keys (Enter, Tab, Backspace); one
+    // keymap for the main text and every zone. A sealed `<enc:…>` line takes no children here.
+    ...outlineKeys(isSealedLine),
     keymap.of([
-      ...lineKeys,
       { key: 'Escape', run: () => { opts.onEsc?.(); return !!opts.onEsc; } },
     ]),
     keymap.of([...defaultKeymap, ...historyKeymap]),
@@ -250,7 +236,7 @@ function buildEditor(host: HTMLElement, initial: string, opts: TextEditorOptions
     ext.push(outlineEditor({
       sessions: opts.sessions,
       askPassphrase: opts.askPassphrase,
-      childExtensions: [history(), Prec.high(keymap.of([{ key: 'Backspace', run: backspaceEmptyItem }])), keymap.of(zoneKeys), keymap.of([...defaultKeymap, ...historyKeymap]), ...(opts.childExtensions ?? [])],
+      childExtensions: [history(), ...outlineKeys(), keymap.of([...defaultKeymap, ...historyKeymap]), ...(opts.childExtensions ?? [])],
       textWidthCh: widthCh,
       focus: opts.focus,
       followInText: opts.followInText,
@@ -324,42 +310,10 @@ export function mountTextEditor(
   host.className = 'cm-host of-text-editor source';
   a.append(host);
   let handleRef: TextEditorHandle | null = null;
-  // The edit lands in the view the key was pressed in (main text or a secure zone).
-  const keyEdit = (v: EditorView, fn: () => TextEdit | null | false | undefined): boolean => {
-    const edit = fn();
-    if (!edit) return false;
-    if (handleRef && v === handleRef.view) { handleRef.applyEdit(edit); return true; }
-    applyEditTo(v, edit);
-    return true;
-  };
-  /**
-   * 0.4.13 (Colin, bug 5): Tab / Shift+Tab in the main text always stay in the main text and
-   * keep the caret on its line. The host edit runs first; an edit that would nest a line two
-   * levels under its parent, or under a sealed `<enc:…>` line (its children live in the zone),
-   * is refused. No host edit → the built-in one-unit edit. Never falls through to the browser
-   * (which moved focus into the zone widget).
-   */
-  const mainTab = (v: EditorView, shift: boolean): boolean => {
-    const text = v.state.doc.toString();
-    const { from, to } = v.state.selection.main;
-    const edit = o.onTab ? o.onTab(text, from, to, shift) : null;
-    if (edit) {
-      const after = text.slice(0, edit.start) + (edit.text || '') + text.slice(edit.end);
-      if (!shift && indentBreaksTree(text, after, from, Math.max(from, to), isSealedLine)) return true;
-      return keyEdit(v, () => edit);
-    }
-    if (edit === false || !o.onTab || edit == null) {
-      const changes = zoneIndentChanges(text, from, to, shift, isSealedLine);
-      if (changes.length) v.dispatch({ changes, scrollIntoView: true, userEvent: shift ? 'delete.dedent' : 'input.indent' });
-    }
-    return true;
-  };
   const core = buildEditor(host, doc.getText(), {
     ...o,
     sessions: doc.sessions,
     focus: o.focus ?? doc.focusLink,
-    onEnter: o.onEnter ? (v) => keyEdit(v, () => o.onEnter!(v.state.doc.toString(), v.state.selection.main.from, v.state.selection.main.to)) : undefined,
-    onTab: (v, shift) => mainTab(v, shift),
   }, {
     onLocal: (next) => doc.setText(next, { source: 'text', reason: 'text' }),
     onSelection: (head) => doc.setCaret(head),

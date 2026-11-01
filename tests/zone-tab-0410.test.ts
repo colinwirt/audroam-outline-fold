@@ -6,7 +6,7 @@ import { createHash } from 'node:crypto';
 import { EditorView } from '@codemirror/view';
 import { parse, serialize, createKey, sealBranch, clearKeys, setSealCipher } from '../src/index.js';
 import { setArgon2Provider } from '../src/sealedBranch.js';
-import { zoneIndentUnit, zoneIndentChanges } from '../src/editor/zoneIndent.js';
+import { detectIndentUnit } from '../src/editor/outlineKeys.js';
 // @ts-ignore host copy of Audroam's outlineFoldHost
 import { mountOutlineFold } from './_host.mjs';
 
@@ -38,15 +38,9 @@ const press = (v: EditorView, shift: boolean) => {
   return e.defaultPrevented;
 };
 
-it('zoneIndentUnit / zoneIndentChanges (pure)', () => {
-  expect(zoneIndentUnit('- a\n    - b\n        - c')).toBe(4);
-  expect(zoneIndentUnit('- a')).toBe(2);
-  const t = '- a\n    - b';
-  expect(zoneIndentChanges(t, 6, 6, false)).toEqual([]); // 0.4.13: already a + 1
-  expect(zoneIndentChanges('- a\n    - b\n    - c', 14, 14, false)).toEqual([{ from: 12, to: 12, insert: '    ' }]);
-  expect(zoneIndentChanges('- a\n    - b', 1, 1, false)).toEqual([]); // the root never indents
-  expect(zoneIndentChanges(t, 6, 6, true)).toEqual([{ from: 4, to: 8, insert: '' }]);
-  expect(zoneIndentChanges('- a', 1, 1, true)).toEqual([]);
+it('detectIndentUnit (pure)', () => {
+  expect(detectIndentUnit('- a\n    - b\n        - c')).toBe('    ');
+  expect(detectIndentUnit('- a')).toBe('  ');
 });
 
 for (const [name, extra] of [
@@ -58,7 +52,7 @@ for (const [name, extra] of [
     const { fh, zone } = await mount(fix, extra);
     const z = zone();
     const ln = z.state.doc.line(3);
-    const unit = zoneIndentUnit(z.state.doc.toString());
+    const unit = detectIndentUnit(z.state.doc.toString()).length;
     const lead = /^ */.exec(ln.text)![0].length;
     expect(ln.text.trimStart().startsWith('- jars')).toBe(true);
     const at = (n: number) => /^ */.exec(zone().state.doc.line(3).text)![0].length === n;

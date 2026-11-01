@@ -10,7 +10,9 @@ import { parse, serialize, createKey, sealBranch, clearKeys, setSealCipher } fro
 import { setArgon2Provider } from '../src/sealedBranch.js';
 import { settleWithin } from '../src/sealSession.js';
 import { parseZoneText, oneZoneRoot } from '../src/zoneText.js';
-import { zoneIndentChanges, indentBreaksTree } from '../src/editor/zoneIndent.js';
+import { canIndent, detectIndentUnit, outlineKeys } from '../src/editor/outlineKeys.js';
+import { EditorState } from '@codemirror/state';
+import { readFileSync } from 'node:fs';
 import { emptyItemBackspace } from '../src/editor/emptyItem.js';
 // @ts-ignore host copy of Audroam's outlineFoldHost
 import { mountOutlineFold } from './_host.mjs';
@@ -34,6 +36,7 @@ async function mount(fix = FIX) {
   document.body.innerHTML = '';
   const box = document.createElement('div'); document.body.append(box);
   const fh = mountOutlineFold({ text, ctx: () => CTX, wipeOnPagehide: false, autoLockMs: 60000, debounceMs: 10 });
+  // Audroam's old key hooks are passed and must be ignored (0.4.13: the package owns the keys).
   fh.mountEditor(box, { onTab: Text.indentEdit, onEnter: Text.enterEdit });
   await fh.sessions.open(fh.regionFor('4'), 'pw');
   await tick();
@@ -130,27 +133,54 @@ describe('bug 1: zone Tab never breaks the tree, Save / Lock always settle', () 
     await expect(settleWithin(Promise.resolve(3), 20)).resolves.toBe(3);
   });
 
-  it('zoneIndentChanges: one unit, ≤ previous line + 1 unit, root never moves', () => {
+  it('canIndent: one unit, ≤ previous line + 1 unit, the first line never indents', () => {
+    const st = (doc: string, at: number) => EditorState.create({ doc, selection: { anchor: at }, extensions: outlineKeys() });
     const t = '- r\n  - a\n  - b\n    - c';
-    expect(zoneIndentChanges(t, 12, 12, false)).toEqual([{ from: 10, to: 10, insert: '  ' }]);
-    expect(zoneIndentChanges(t, 20, 20, false)).toEqual([]);
-    expect(zoneIndentChanges(t, 1, 1, false)).toEqual([]);
+    expect(canIndent(st(t, 12))).toBe(true);
+    expect(canIndent(st(t, 20))).toBe(false);
+    expect(canIndent(st(t, 1))).toBe(false);
+    expect(detectIndentUnit('- a\n    - b')).toBe('    ');
+    expect(detectIndentUnit('- a\n\t- b')).toBe('\t');
   });
 });
 
-describe('bug 2: ↑ across the zone', () => {
-  it('↑ on the first line below the zone enters its last line; ↑ on its first line goes to the anchor', async () => {
+describe('bug 2: ↑ / ↓ across the zone (CM default motion + one boundary hook)', () => {
+  it('↑ from the line below enters the zone last line; ↑ on its first line returns above the anchor', async () => {
     const { main, zone } = await mount();
     const after = lineOf(main, 'after <id:10>');
     main.focus(); main.dispatch({ selection: { anchor: after.from + 3 } });
     expect(key(main, 'ArrowUp')).toBe(true);
+    await tick();
     const z = zone();
     expect(z.hasFocus).toBe(true);
     expect(caretLine(z).number).toBe(z.state.doc.lines);
     z.dispatch({ selection: { anchor: 3 } });
     expect(key(z, 'ArrowUp')).toBe(true);
     expect(main.hasFocus).toBe(true);
-    expect(caretLine(main).text).toContain('<enc:');
+    expect(caretLine(main).text).toBe('- top <id:1>');
+  });
+  it('↓ from the line above enters the zone first line; ↓ on its last line returns below', async () => {
+    const { main, zone } = await mount();
+    const top = lineOf(main, 'top <id:1>');
+    main.focus(); main.dispatch({ selection: { anchor: top.from + 2 } });
+    expect(key(main, 'ArrowDown')).toBe(true);
+    await tick();
+    const z = zone();
+    expect(z.hasFocus).toBe(true);
+    expect(caretLine(z).number).toBe(1);
+    z.dispatch({ selection: { anchor: z.state.doc.line(z.state.doc.lines).from } });
+    expect(key(z, 'ArrowDown')).toBe(true);
+    expect(main.hasFocus).toBe(true);
+    expect(caretLine(main).text).toBe('- after <id:10>');
+  });
+  it('structure: the zone is a block replace over the anchor line; no custom main-text arrow / Tab handlers', () => {
+    const ix = readFileSync('src/editor/index.ts', 'utf8');
+    const te = readFileSync('src/editor/textEditor.ts', 'utf8');
+    expect(ix).toMatch(/Decoration\.replace\(\{ widget: new SecureZone\([^)]*\)[^)]*\), block: true \}\)/);
+    expect(ix).toContain('get estimatedHeight()');
+    expect(ix + te).not.toMatch(/Prec\.high|zoneNav|mainTab|indentBreaksTree/);
+    expect((ix.match(/key: 'Arrow(Up|Down)'/g) ?? []).length).toBe(2); // the zone-side boundary hook only
+    expect(te).not.toMatch(/key: '(Tab|Enter|Backspace)'/);
   });
 });
 
@@ -181,11 +211,24 @@ describe('bug 5: Tab below the zone', () => {
     void fh;
   });
 
-  it('indentBreaksTree (pure)', () => {
+  it('canIndent refuses a child for a sealed line', () => {
     const sealed = (l: string) => l.includes('<enc:');
-    expect(indentBreaksTree('- a\n  - b', '- a\n    - b', 7, 7, sealed)).toBe(true);
-    expect(indentBreaksTree('- a\n- b', '- a\n  - b', 5, 5, sealed)).toBe(false);
-    expect(indentBreaksTree('- a <enc:k>\n- b', '- a <enc:k>\n  - b', 13, 13, sealed)).toBe(true);
+    const st = EditorState.create({ doc: '- a <enc:k>\n- b', selection: { anchor: 14 }, extensions: outlineKeys(sealed) });
+    expect(canIndent(st, sealed)).toBe(false);
+  });
+  it('Shift-Tab outdents with indentLess and keeps focus; Enter continues the marker; empty-item Enter outdents', async () => {
+    const { main } = await mount();
+    const ln = lineOf(main, 'child of after');
+    main.focus(); main.dispatch({ selection: { anchor: ln.to } });
+    expect(key(main, 'Enter')).toBe(true);
+    expect(caretLine(main).text).toBe('  - ');
+    expect(key(main, 'Enter')).toBe(true);
+    expect(caretLine(main).text).toBe('- ');
+    expect(key(main, 'Tab')).toBe(true);
+    expect(caretLine(main).text).toBe('  - ');
+    expect(key(main, 'Tab', true)).toBe(true);
+    expect(caretLine(main).text).toBe('- ');
+    expect(main.hasFocus).toBe(true);
   });
 });
 
