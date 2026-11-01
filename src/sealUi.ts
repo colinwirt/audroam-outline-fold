@@ -219,7 +219,7 @@ export interface SecureZoneChromeOptions {
  *   header  "🔓 Secure zone [k1] ……… memory only (?)"
  *   body    (editor lines / viewer)
  *   hint    "↵ new child stays in zone · ⇧Tab at edge leaves zone" (editor only)
- *   bar     [🔓 Unlocked · k1] Idle lock 4:32 · status ……… Remove seal · Lock now · [Save & re-seal]
+ *   bar     [🔓 Unlocked · k1] Idle lock 4:32 · status ……… More ▾ (Remove seal… → confirm → passphrase) · Lock now · [Save & re-seal]
  *   end     dashed line labelled "zone end"
  * The mockup puts the bar in the app footer; hosts can move `.of-secure-zone-actions` there.
  */
@@ -258,13 +258,66 @@ export function secureZoneChrome(body: HTMLElement, o: SecureZoneChromeOptions &
     btns.appendChild(b);
     return b;
   };
-  btn('Remove seal', 'of-sz-remove', async () => {
-    const pass = await o.askPassphrase?.(region);
-    if (pass) await sessions.removeSeal(region, pass);
+  // More ▾ holds the rare, destructive action (Remove seal) behind a confirm step.
+  const more = el('span', 'of-sz-more');
+  const moreBtn = btn('More ▾', 'of-sz-more-btn', () => (menu.hidden ? openMenu() : closeMenu(true)));
+  more.appendChild(moreBtn);
+  const menuId = `of-sz-menu-${region.replace(/[^A-Za-z0-9_-]/g, '_')}`;
+  moreBtn.setAttribute('aria-haspopup', 'menu');
+  moreBtn.setAttribute('aria-expanded', 'false');
+  moreBtn.setAttribute('aria-controls', menuId);
+  const menu = el('div', 'of-sz-menu');
+  menu.id = menuId;
+  menu.setAttribute('role', 'menu');
+  menu.setAttribute('aria-label', 'More secure zone actions');
+  menu.hidden = true;
+  const removeItem = el('button', 'of-sz-menu-item of-sz-remove', 'Remove seal…');
+  removeItem.type = 'button';
+  removeItem.setAttribute('role', 'menuitem');
+  menu.appendChild(removeItem);
+  more.appendChild(menu);
+  const openMenu = () => { menu.hidden = false; moreBtn.setAttribute('aria-expanded', 'true'); removeItem.focus(); };
+  const closeMenu = (refocus: boolean) => { menu.hidden = true; moreBtn.setAttribute('aria-expanded', 'false'); if (refocus) moreBtn.focus(); };
+  moreBtn.addEventListener('keydown', (e) => { if (e.key === 'ArrowDown') { e.preventDefault(); openMenu(); } });
+  menu.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' || e.key === 'Tab') { if (e.key === 'Escape') e.preventDefault(); closeMenu(e.key === 'Escape'); }
+    else if (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'Home' || e.key === 'End') { e.preventDefault(); removeItem.focus(); }
   });
+  const onDocDown = (e: Event) => { if (!menu.hidden && !more.contains(e.target as Node)) closeMenu(false); };
+  document.addEventListener('pointerdown', onDocDown);
+
+  // Confirm step: "This stores the branch as plain text", red confirm, then the passphrase.
+  const confirm = el('div', 'of-sz-confirm');
+  confirm.setAttribute('role', 'alertdialog');
+  confirm.setAttribute('aria-modal', 'false');
+  const cmsgId = `${menuId}-confirm`;
+  const cmsg = el('p', 'of-sz-confirm-msg', 'Remove seal? This stores the branch as plain text.');
+  cmsg.id = cmsgId;
+  confirm.setAttribute('aria-labelledby', cmsgId);
+  const cRow = el('div', 'of-sz-confirm-row');
+  const cCancel = el('button', 'of-sz-btn of-sz-confirm-cancel', 'Keep sealed');
+  cCancel.type = 'button';
+  const cOk = el('button', 'of-sz-btn of-btn-danger of-sz-confirm-ok', 'Remove seal');
+  cOk.type = 'button';
+  cRow.append(cCancel, cOk);
+  confirm.append(cmsg, cRow);
+  confirm.hidden = true;
+  const closeConfirm = () => { confirm.hidden = true; moreBtn.focus(); };
+  removeItem.addEventListener('click', () => { closeMenu(false); confirm.hidden = false; cCancel.focus(); });
+  cCancel.addEventListener('click', closeConfirm);
+  confirm.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.preventDefault(); closeConfirm(); } });
+  cOk.addEventListener('click', async () => {
+    confirm.hidden = true;
+    const pass = await o.askPassphrase?.(region); // always re-asks (§8.6)
+    if (pass) await sessions.removeSeal(region, pass);
+    else moreBtn.focus();
+  });
+
+  btns.removeChild(moreBtn);
+  btns.append(more);
   btn('Lock now', 'of-sz-lock', () => void sessions.lock(region, 'user'));
   const save = o.canSave === false ? null : btn('Save & re-seal', 'of-sz-save of-btn-p', () => void sessions.save(region));
-  actions.append(chip, idle, status, el('span', 'of-sp'), btns);
+  actions.append(chip, idle, status, el('span', 'of-sp'), btns, confirm);
 
   const end = el('div', 'of-secure-zone-end');
   end.append(el('span', undefined, 'zone end'));
@@ -283,7 +336,7 @@ export function secureZoneChrome(body: HTMLElement, o: SecureZoneChromeOptions &
   const off = s0.subscribe(show);
   const timer = setInterval(show, 1000);
   show();
-  return { el: wrap, destroy: () => { off(); clearInterval(timer); } };
+  return { el: wrap, destroy: () => { off(); clearInterval(timer); document.removeEventListener('pointerdown', onDocDown); } };
 }
 
 /** Read-only memory-only viewer of an unlocked region (same chrome; Save hidden). */

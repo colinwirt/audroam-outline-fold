@@ -933,7 +933,18 @@
 .of-secure-zone-btns { display: flex; flex-wrap: wrap; gap: 6px; }
 .of-sz-btn { min-height: 32px; border: 1px solid #cfd5dc; background: #fff; border-radius: 6px; padding: 4px 10px; font-size: 12px; }
 .of-sz-btn.of-btn-p { background: #2b5cab; color: #fff; border-color: #2b5cab; }
-@media (pointer: coarse) { .of-sz-btn { min-height: 44px; } }
+@media (pointer: coarse) { .of-sz-btn, .of-sz-menu-item { min-height: 44px; } }
+.of-secure-zone-btns { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.of-sz-more { position: relative; }
+.of-sz-menu { position: absolute; right: 0; bottom: calc(100% + 4px); z-index: 20; min-width: 160px; max-width: calc(100vw - 24px); background: #fff; border: 1px solid #d5dbe1; border-radius: 8px; box-shadow: 0 8px 24px rgba(20,30,40,.14); padding: 4px; }
+.of-sz-menu-item { display: block; width: 100%; text-align: left; min-height: 32px; border: 0; background: none; border-radius: 5px; padding: 6px 10px; font-size: 13px; color: #a33; }
+.of-sz-menu-item:hover, .of-sz-menu-item:focus-visible { background: #fbeaea; outline: none; }
+.of-sz-btn:focus-visible, .of-sz-menu-item:focus-visible { box-shadow: 0 0 0 2px #d4e1f5; }
+.of-sz-confirm { flex-basis: 100%; box-sizing: border-box; max-width: 100%; border: 1px solid #e6b8b8; background: #fdf3f3; border-radius: 8px; padding: 8px 10px; }
+.of-sz-confirm-msg { margin: 0 0 8px; font-size: 12.5px; color: #5a1f1f; overflow-wrap: anywhere; }
+.of-sz-confirm-row { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; }
+.of-sz-btn.of-btn-danger { background: #b42318; color: #fff; border-color: #b42318; }
+@media (max-width: 420px) { .of-secure-zone-actions { padding: 4px 8px 6px; gap: 6px; } .of-secure-zone-btns { width: 100%; justify-content: flex-end; } }
 .of-secure-zone-note { font-size: 12px; padding: 2px 16px 4px; color: #245c3c; }
 .of-secure-zone-view { margin: 0; padding: 6px 16px; white-space: pre-wrap; overflow-wrap: anywhere; }
 .of-secure-zone-end { border-top: 1.5px dashed #3d8a5f; margin: 0 10px; position: relative; height: 0; }

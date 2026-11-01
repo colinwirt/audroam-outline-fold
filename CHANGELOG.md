@@ -7,6 +7,7 @@
 - Inline unlock card per 04; secure zone chrome reordered per 05; status chip "🔓 Unlocked · k1 · re-seals on save".
 - New `promptPassphrase()`; examples and react-live use it instead of window.prompt.
 - `<r:REGION:N>` refs draw as Map jump chips; click calls setFocus → revealScoped.
+- Secure zone: Remove seal moved behind "More ▾", with a confirm step ("This stores the branch as plain text", red confirm), then the passphrase. Keyboard accessible; fits 390px.
 
 ## Unreleased — sub-map regions, unseal lifecycle, editor, host API
 
