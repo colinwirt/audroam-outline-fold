@@ -14,7 +14,7 @@ export type OFEvent =
   | { type: 'lock'; region: RegionId; reason: 'user' | 'close' | 'parent' | 'idle' }
   | { type: 'save'; region: RegionId; payload: string }
   | { type: 'select'; id: ScopedId }
-  | { type: 'change'; region: RegionId; dirty: boolean }
+  | { type: 'change'; region: RegionId; dirty: boolean; unsealed?: string }
   | { type: 'error'; region?: RegionId; code: OFErrorCode; message: string; retryAfterMs?: number }
   /** Shared focus moved (Map click/keys, Outline click/keys, or `setFocus`). */
   | { type: 'focusChange'; id: ScopedId; source: FocusSource };

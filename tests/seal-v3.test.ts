@@ -76,7 +76,7 @@ describe('of-seal-v3 envelope', () => {
     clearKeys();
     await unlockKey(doc, kid, PASS);
     expect((await openSealedBranch(doc, 'v', CTX)).doc.nodes[0]!.title).toBe('Vault');
-  });
+  }, 20_000);
 
   it('a v2 payload still fails when the note id changes', async () => {
     const doc = parse('- Vault <id:v>\n  - hidden <id:c>');

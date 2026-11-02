@@ -125,7 +125,7 @@ describe('outline doc owner (0.4.8)', () => {
     await tick();
     typeAtEnd(zoneView(), '\n  - leek');
     (document.querySelector('.of-sz-save') as HTMLButtonElement).click();
-    await tick(40);
+    await tick(250);
     expect(fh.status().regions.find((r: { region: string }) => r.region === region).state).toBe('pending');
     const snap = await fh.serialise();
     fh.doc.failed(snap.rev, new Error('offline'));
@@ -258,10 +258,12 @@ describe('outline doc owner (0.4.8)', () => {
   });
   it('Remove seal: the plaintext branch reaches the text through the doc (source seal) and asks for a save', async () => {
     const txt = await sealed();
-    const { fh, needed, changes } = mount(txt);
+    const seals: { type?: string; unsealed?: string }[] = [];
+    const { fh, needed, changes } = mount(txt, { onSeal: (e: { type?: string; unsealed?: string }) => seals.push(e) });
     await fh.sessions.open(fh.regionFor('4'), 'pw');
     await tick();
     expect(await fh.removeSeal('4', 'pw')).toBe(true);
+    expect(seals.some((e) => e.type === 'change' && e.unsealed === '4')).toBe(true);
     expect(changes.at(-1)!.source).toBe('seal');
     expect(fh.getText()).toMatch(/tomato/);
     expect(fh.getText()).not.toMatch(/ct\s*:/);

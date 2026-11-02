@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.5.1 — 2026-11-02
+
+- Remove seal tells the host which branch was inlined. The change event carries `unsealed` (the branch id). The zone More button and `removeSeal` both emit it, so a host can allow that payload to leave the note.
+
 ## 0.5.0 — 2026-11-02
 
 - of-seal-v3. The envelope binds only its own header: magic, version, alg, HKDF id, salt, kid, seal id, and payload role. Note, owner, node, parent, and caption are not inputs. A block copied out of a note opens with outline-fold and the key.

@@ -426,7 +426,9 @@ export function createSealSessions(opts: SealSessionsOptions): SealSessions {
       node.children = children;
       map.delete(region);
       set(s, 'sealed');
-      api.emit({ type: 'change', region: s.parent, dirty: true });
+      // The host allowlist (lost sealed payloads) only hears this. The zone button
+      // calls removeSeal directly and never goes through the page menu.
+      api.emit({ type: 'change', region: s.parent, dirty: true, unsealed: s.branchId });
     },
 
     markChanged(region) {
