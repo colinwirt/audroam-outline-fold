@@ -650,7 +650,10 @@ export function parse(text: string, opts?: ParseOptions): OutlineFoldDoc {
     const w = indentWidth(raw);
     const trimmedStart = raw.trimStart();
     const content = stripListMarker(trimmedStart);
-    if (!content.trim()) continue;
+    // 0.4.20: a blank list item (`- `, `* `, `+ `) is a node with an empty caption.
+    // Skipping it made serialize(parse(text)) drop the line, so a Map commitView
+    // (tick, fold) inserted a fresh copy beside the original on every write.
+    if (!content.trim() && !/^[-*+]\s+$/.test(trimmedStart)) continue;
 
     let depth = 0;
     if (indentToDepth.length === 0) {

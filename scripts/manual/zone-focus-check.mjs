@@ -3,11 +3,11 @@
 // npm run build && node scripts/manual/follow-check.mjs
 import { build } from 'esbuild';
 import { chromium } from 'playwright';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { readFileSync } from 'node:fs';
 const here = fileURLToPath(new URL('.', import.meta.url));
 const r = await build({ entryPoints: [here + 'follow-entry.mjs'], bundle: true, write: false, format: 'esm', platform: 'browser', logLevel: 'error',
-  plugins: [{ name: 'dist', setup(b) { b.onResolve({ filter: /\/src\/.*\.ts$/ }, (a) => ({ path: new URL(a.path.replace(/^.*\/src\//, '../../dist/').replace(/\.ts$/, '.js'), 'file://' + here).pathname })); } }] });
+  plugins: [{ name: 'dist', setup(b) { b.onResolve({ filter: /[/\\]src[/\\].*\.ts$/ }, (a) => ({ path: fileURLToPath(new URL(a.path.replace(/^.*[/\\]src[/\\]/, '../../dist/').replace(/\.ts$/, '.js'), pathToFileURL(here))) })); } }] });
 const css = readFileSync(here + '../../src/outline-fold.css', 'utf8');
 const b = await chromium.launch();
 const p = await b.newPage({ viewport: { width: 1400, height: 900 } });

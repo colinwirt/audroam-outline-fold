@@ -89,7 +89,8 @@ const NONCE_LEN = 12; // v1 + keyring wrap (AES-GCM)
 const SECRET_LEN = 32;
 const TAG_LEN = 16;
 const ARGON2_DEFAULT = { m: 65536, t: 3, p: 1 };
-const ARGON2_FLOOR = { m: 19456, t: 2 };
+/** Mobile fallback (SR-007). 19MiB/t=2 is no longer accepted. The 64MiB/t=3 default stays valid. */
+const ARGON2_FLOOR = { m: 32768, t: 4 };
 const PBKDF2_ITERS = 600_000;
 
 let argon2: Argon2Provider | null = null;
@@ -143,7 +144,11 @@ export function parseKdfHeader(h: string): KdfParams {
   let out: KdfParams | null = null;
   if (a) {
     const m = +a[1]!, t = +a[2]!, p = +a[3]!;
-    if (m < ARGON2_FLOOR.m || t < ARGON2_FLOOR.t || p < 1 || m > 1_048_576 || t > 10)
+    // Default profile (m>=64MiB, t>=3) or the mobile fallback (m>=32MiB, t>=4). A header
+    // that is weaker than both, including the old 19MiB/t=2 floor, is rejected.
+    const defaultProfile = m >= ARGON2_DEFAULT.m && t >= ARGON2_DEFAULT.t;
+    const fallbackProfile = m >= ARGON2_FLOOR.m && t >= ARGON2_FLOOR.t;
+    if ((!defaultProfile && !fallbackProfile) || p < 1 || m > 1_048_576 || t > 10)
       throw new SealError();
     out = { kdf: 'argon2id', m, t, p, salt: unb64u(a[4]!) };
   }
@@ -942,6 +947,7 @@ export async function openSealedBranch(
   };
   let original = innerJson(caption, body);
   let lastAuto: string | undefined = autoText;
+  let autosaveQueue: Promise<void> = Promise.resolve();
   const children = new Set<SealedViewer>();
   let closed = false;
   /** Replace the viewer content (same root object) with an inner JSON text. */
@@ -995,19 +1001,31 @@ export async function openSealedBranch(
       return !closed && snapshot() !== original;
     },
     async autosave() {
-      if (closed || !isKeyUnlocked(mode.kid)) throw new SealError('locked');
-      const cur = guard();
-      // Never rebase a version we can't place: the user must choose first (SD-10).
-      if (draftState === 'conflict') return false;
-      const pt = snapshot();
-      if (pt === (lastAuto ?? original)) return false;
-      const ct = await encryptV2(mode.kid, mode.cipher!, branchId, ctx, pt);
-      if (closed || !isKeyUnlocked(mode.kid)) throw new SealError('locked');
-      commit(applyAutosave(guard(), ct, now()));
-      lastAuto = pt;
-      autosaveWrittenHere = true;
-      draftState = 'unconfirmed';
-      return true;
+      // saveNow and the debounced save-needed can both serialise while the first encrypt
+      // is still awaiting. Without a queue both pass the lastAuto check and the later
+      // write replaces the auto-ct the caller already captured.
+      const prev = autosaveQueue;
+      let release!: () => void;
+      autosaveQueue = new Promise<void>((r) => { release = r; });
+      await prev;
+      try {
+        if (closed || !isKeyUnlocked(mode.kid)) throw new SealError('locked');
+        guard();
+        // Never rebase a version we can't place: the user must choose first (SD-10).
+        if (draftState === 'conflict') return false;
+        const pt = snapshot();
+        if (pt === (lastAuto ?? original)) return false;
+        const ct = await encryptV2(mode.kid, mode.cipher!, branchId, ctx, pt);
+        if (closed || !isKeyUnlocked(mode.kid)) throw new SealError('locked');
+        if (snapshot() !== pt) return false;
+        commit(applyAutosave(guard(), ct, now()));
+        lastAuto = pt;
+        autosaveWrittenHere = true;
+        draftState = 'unconfirmed';
+        return true;
+      } finally {
+        release();
+      }
     },
     async discardAutosave() {
       const cur = guard();

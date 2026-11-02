@@ -33,7 +33,7 @@ function walk(dir: string): string[] {
 }
 
 const files = walk(examplesDir);
-const rel = (p: string) => relative(root, p);
+const rel = (p: string) => relative(root, p).replaceAll('\\', '/');
 const mdFiles = files.filter((f) => f.endsWith('.md') && !f.endsWith('README.md'));
 const demoPassword = (
   JSON.parse(readFileSync(join(examplesDir, 'demo-values.json'), 'utf8')) as {

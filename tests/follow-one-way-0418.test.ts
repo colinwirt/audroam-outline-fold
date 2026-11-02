@@ -36,7 +36,7 @@ const FIX = `- Garden <id:1>\n  - beans <id:2>\n- Pantry box <id:4>\n  - seeds <
 const main = () => EditorView.findFromDOM(document.querySelector('.cm-editor') as HTMLElement)!;
 const key = (v: EditorView, k: string) => { for (const type of ['keydown', 'keyup']) v.contentDOM.dispatchEvent(new KeyboardEvent(type, { key: k, bubbles: true, cancelable: true })); };
 
-it.skip('caret moves, typing and clicks in the text or a zone never set Map focus', async () => {
+it('caret moves, typing and clicks in the text or a zone never set Map focus', async () => {
   const { fh, zone } = await mount(FIX, { followInText: () => true });
   const sets: unknown[] = [];
   fh.focusLink.subscribe((id: string, src: string) => sets.push([id, src]));

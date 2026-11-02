@@ -97,8 +97,11 @@ describe('sealed branches: format', () => {
     const salt = 'A'.repeat(22);
     expect(() => parseKdfHeader(`kdf=pbkdf2-sha256&i=100000&salt=${salt}`)).toThrow(SealError);
     expect(() => parseKdfHeader(`kdf=argon2id&m=8192&t=3&p=1&salt=${salt}`)).toThrow(SealError);
+    expect(() => parseKdfHeader(`kdf=argon2id&m=19456&t=2&p=1&salt=${salt}`)).toThrow(SealError);
+    expect(() => parseKdfHeader(`kdf=argon2id&m=32768&t=3&p=1&salt=${salt}`)).toThrow(SealError);
     expect(() => parseKdfHeader(`kdf=scrypt&n=1&salt=${salt}`)).toThrow(SealError);
-    expect(parseKdfHeader(`kdf=argon2id&m=19456&t=2&p=1&salt=${salt}`).kdf).toBe('argon2id');
+    expect(parseKdfHeader(`kdf=argon2id&m=32768&t=4&p=1&salt=${salt}`).kdf).toBe('argon2id');
+    expect(parseKdfHeader(`kdf=argon2id&m=65536&t=3&p=1&salt=${salt}`).kdf).toBe('argon2id');
   });
 });
 

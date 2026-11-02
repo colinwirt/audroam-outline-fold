@@ -200,16 +200,14 @@ export function mountOutlineFold(o = {}) {
     idleRemainingMs: () => doc.idleRemainingMs(),
     // --- text pane ----------------------------------------------------------------
     /**
-     * Mount the package editor in container (no textarea). h: onEnter(text, from, to),
-     * onTab(text, from, to, shift) → edit | null; onEsc, onBlur, onKey(e), onPointerUp,
-     * askPassphrase, onUnlockBranch(branchId, el), followInText(), dark.
+     * Mount the package editor in container (no textarea). h: onEsc, onBlur, onKey(e),
+     * onPointerUp, askPassphrase, onUnlockBranch(branchId, el), followInText(), dark.
+     * onEnter / onTab are ignored by the package and are not forwarded.
      */
     mountEditor(container, h = {}) {
       if (editor) editor.destroy();
       let ed = null;
       ed = mountTextEditor(container, doc, {
-        onEnter: h.onEnter,
-        onTab: h.onTab,
         onEsc: h.onEsc,
         onBlur: h.onBlur,
         onKey: h.onKey,

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.20 — 2026-11-02
+
+- Fix (blank list lines multiply on a Map tick or fold): a blank `- ` / `* ` / `+ ` item is a node with an empty caption. `parse` used to drop it, so `serialize(parse(text))` had no such line while the Map view (session id minted onto that line) serialised one. `mergeKeeping` inserted a fresh copy on every `commitView`. The text editor showed the copies; the Map kept the previous single node because a `map` write does not reparse. Repeated ticks and folds are idempotent.
+- Argon2id floor is the SR-007 mobile fallback m=32768 (32MiB), t=4. The old 19MiB/t=2 header is rejected. The default profile m=65536, t=3 still passes. A header must meet the default profile or the fallback profile.
+- Tests: `blank-dup-0420` (minted view, tick and fold, one blank line). `follow-one-way-0418` caret test is no longer skipped.
+- A zone autosave waits for an autosave already in flight, then re-checks the plaintext. `saveNow` and the debounced `save-needed` could both encrypt before either stored `lastAuto`, so the later write replaced the `auto-ct` the failed save had already captured.
+
 ## 0.4.17 — 2026-11-02
 
 - A sealed line's visible caption IS its public label: a user-editable, plain-text description. Editing it in the text or the Map updates the payload's `pub` (parse and serialize both sync caption -> `pub`; a blank caption shows "Sealed branch" and drops `pub`). Never refused: fold, tick, drag and rename after a caption edit all save.

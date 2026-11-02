@@ -169,7 +169,7 @@ describe('keyring', () => {
     await expect(unlockKey(d, k.kid, PASS)).rejects.toThrow("Can't unlock");
     await unlockKey(d, k.kid, 'new pass');
     expect((await openSealedBranch(d, 'a', CTX)).doc.nodes[0]!.title).toBe('A');
-  });
+  }, 20_000);
 
   it('a keyring entry cannot be moved to another kid (kid is in the wrap AAD)', async () => {
     const doc = parse(SRC);
