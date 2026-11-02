@@ -9,7 +9,8 @@
  *   on the child doc, Save & re-seal / Lock / Remove seal). Plaintext never enters the
  *   main document, its undo history or the textarea.
  * - The zone wraps at the layout's `autoWidth:` (`autoWrapCh`), read live from `autoWidth()`.
- * - Edits past the first trailing fence (payloads, keyring, layout…) are kept above it.
+ * - The locked trailer (payloads, keyring, layout…) stays in the note. It is hidden behind
+ *   one pill until opened, and an open trailer is read-only.
  * - `setRegions()` still accepts host block widgets (e.g. notes) keyed by a line substring.
  */
 import { outlineKeys } from './outlineKeys.js';
@@ -118,11 +119,114 @@ function hostRegionDeco(doc: Text, regions: HostRegion[]): DecorationSet {
 }
 
 const FENCE_RE = /(?:^|\n)---\s*(?:payloads|sealed|enc|keyring|keys|layout)\s*---/i;
-/** Offset of the first trailing fence; doc length when there is none. */
+const FENCE_KIND_RE = /(?:^|\n)---\s*(payloads|sealed|enc|keyring|keys|layout)\s*---/gi;
+const FENCE_NAME: Record<string, string> = {
+  payloads: 'Payloads',
+  sealed: 'Sealed',
+  enc: 'Enc',
+  keyring: 'Keyring',
+  keys: 'Keys',
+  layout: 'Layout',
+};
+/** Offset of the first trailing fence; doc length when there is none. The match includes the newline before the fence when there is one. */
 export function trailerCut(text: string): number {
   const m = FENCE_RE.exec(text);
   return m ? m.index : text.length;
 }
+
+/** Start of the fence line. Same as `trailerCut` when the fence is the start of the text. */
+export function trailerFenceFrom(text: string): number {
+  const cut = trailerCut(text);
+  if (cut >= text.length || cut === 0) return cut;
+  return text.charCodeAt(cut) === 10 ? cut + 1 : cut;
+}
+
+/** Pill label for the locked block, in the order the fences appear. Empty when there is none. */
+export function trailerLabel(text: string): string {
+  const from = trailerFenceFrom(text);
+  if (from >= text.length) return '';
+  const seen = new Set<string>();
+  const names: string[] = [];
+  for (const m of text.slice(from).matchAll(FENCE_KIND_RE)) {
+    const k = m[1]!.toLowerCase();
+    if (seen.has(k)) continue;
+    seen.add(k);
+    names.push(FENCE_NAME[k] ?? k);
+  }
+  return names.join(' · ');
+}
+
+const setTrailerOpen = StateEffect.define<boolean>();
+
+/** One pill for the whole locked trailer. Opening it does not change the note. */
+class TrailerPill extends WidgetType {
+  constructor(readonly label: string, readonly open: boolean) { super(); }
+  eq(o: TrailerPill): boolean { return o.label === this.label && o.open === this.open; }
+  get estimatedHeight(): number { return 28; }
+  toDOM(view: EditorView): HTMLElement {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'of-trailer-pill';
+    btn.setAttribute('aria-expanded', this.open ? 'true' : 'false');
+    btn.title = this.open
+      ? 'Hide the locked block. The note still stores it.'
+      : 'Show the locked block. It stays read-only.';
+    const mark = document.createElement('span');
+    mark.setAttribute('aria-hidden', 'true');
+    mark.textContent = this.open ? '\u25be' : '\u25b8';
+    const text = document.createElement('span');
+    text.textContent = this.label;
+    btn.append(mark, text);
+    // Keep the editor focused so a host blur handler does not treat this as leaving the pane.
+    btn.addEventListener('mousedown', (e) => e.preventDefault());
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const fence = trailerFenceFrom(view.state.doc.toString());
+      const head = view.state.selection.main.head;
+      view.dispatch({
+        effects: setTrailerOpen.of(!this.open),
+        selection: this.open && head >= fence ? { anchor: fence } : undefined,
+      });
+    });
+    return btn;
+  }
+  ignoreEvent(): boolean { return true; }
+}
+
+function trailerBlock(doc: Text): { from: number; label: string } | null {
+  const text = doc.toString();
+  const from = trailerFenceFrom(text);
+  if (from >= doc.length) return null;
+  const line = doc.lineAt(from);
+  if (line.from !== from) return null;
+  if (!/^---\s*(?:payloads|sealed|enc|keyring|keys|layout)\s*---/i.test(line.text)) return null;
+  return { from, label: trailerLabel(text) || 'Locked' };
+}
+
+function trailerDeco(doc: Text, open: boolean): DecorationSet {
+  const block = trailerBlock(doc);
+  if (!block) return Decoration.none;
+  const pill = new TrailerPill(block.label, open);
+  if (!open) {
+    return Decoration.set([Decoration.replace({ widget: pill, block: true }).range(block.from, doc.length)]);
+  }
+  return Decoration.set([
+    Decoration.widget({ widget: pill, block: true, side: -1 }).range(block.from),
+    Decoration.mark({ class: 'of-trailer-locked' }).range(block.from, doc.length),
+  ]);
+}
+
+const trailerFold = StateField.define<{ open: boolean; deco: DecorationSet }>({
+  create: (s) => ({ open: false, deco: trailerDeco(s.doc, false) }),
+  update(v, tr) {
+    let open = v.open;
+    for (const e of tr.effects) if (e.is(setTrailerOpen)) open = e.value;
+    if (open !== v.open || tr.docChanged) return { open, deco: trailerDeco(tr.state.doc, open) };
+    return v;
+  },
+  provide: (f) => EditorView.decorations.from(f, (v) => v.deco),
+});
 
 const setHostRegions = StateEffect.define<HostRegion[]>();
 
@@ -213,25 +317,39 @@ function buildEditor(host: HTMLElement, initial: string, opts: TextEditorOptions
   const ro = new Compartment();
   ext.push(ro.of(EditorState.readOnly.of(!!opts.readOnly)));
   if (opts.protectTrailer !== false) {
+    ext.push(trailerFold);
+    // No vertical margin: CodeMirror measures a block widget with getBoundingClientRect.
+    ext.push(EditorView.baseTheme({
+      '& .cm-content > .of-trailer-pill': { marginTop: '0', marginBottom: '0' },
+      '.of-trailer-pill': {
+        display: 'inline-flex', alignItems: 'center', gap: '6px',
+        margin: '0', padding: '2px 10px', minHeight: '28px',
+        border: '1px solid rgba(158, 203, 255, 0.4)', borderRadius: '999px',
+        background: 'rgba(158, 203, 255, 0.1)', color: '#d5e4f4',
+        font: '12px/1.4 ui-sans-serif, system-ui, sans-serif', cursor: 'pointer',
+      },
+      '.of-trailer-locked': { color: 'rgba(231, 236, 241, 0.55)' },
+    }));
     ext.push(EditorState.transactionFilter.of((tr) => {
       if (writing || !tr.docChanged) return tr;
-      const cut = trailerCut(tr.startState.doc.toString());
+      const start = tr.startState.doc.toString();
+      const cut = trailerCut(start);
       if (cut >= tr.startState.doc.length) return tr;
+      const fence = trailerFenceFrom(start);
       let blocked = false;
       tr.changes.iterChanges((_f, to) => { if (to > cut) blocked = true; });
       if (!blocked) return tr;
+      // A change that starts on the fence is dropped. Showing the block is not a way to edit it.
+      // A change that starts in the outline and reaches the fence keeps only the outline part.
       const parts: { from: number; to: number; insert: string }[] = [];
-      let anchor = cut;
+      let anchor = Math.min(tr.startState.selection.main.head, fence);
       tr.changes.iterChanges((from, to, _fb, _tb, ins) => {
+        if (from >= fence) return;
         const text = ins.toString();
-        if (from >= cut) {
-          if (text) { parts.push({ from: cut, to: cut, insert: text }); anchor = cut + text.length; }
-        } else {
-          parts.push({ from, to: Math.min(to, cut), insert: text });
-          anchor = from + text.length;
-        }
+        parts.push({ from, to: Math.min(to, cut), insert: text });
+        anchor = from + text.length;
       });
-      if (!parts.length) return { selection: { anchor: cut } };
+      if (!parts.length) return { selection: { anchor } };
       return { changes: parts, selection: { anchor } };
     }));
   }

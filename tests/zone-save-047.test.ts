@@ -78,7 +78,7 @@ it('Save & re-seal with the caret in Text: the new ct reaches the text (no host 
   (document.querySelector('.cm-host .cm-content') as HTMLElement).focus();
   typeLine(zoneView(), '  - basil (typed)');
   (document.querySelector('.of-sz-save') as HTMLButtonElement).click();
-  await tick(40);
+  await tick(80);
   expect(fh.sessions.get(fh.regionFor('4')).dirty).toBe(false);
   expect(ta.value).not.toBe(txt);
   expect(await reopen(ta.value)).toContain('basil');

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.3 — 2026-11-02
+
+- The text editor hides the locked trailer (payloads, keyring, keys, layout) behind one pill. The pill is closed until opened. The note text is unchanged either way.
+- Opening the pill shows that block read-only. A change that starts on the fence is dropped. A change that starts in the outline and runs into the fence still keeps only the outline part, so a paste cannot replace the trailer.
+- `protectTrailer: false` leaves the trailer visible and editable, with no pill.
+
 ## 0.5.2 — 2026-11-02
 
 - A new seal writes its base64url on one line between the BEGIN and CRC lines. Readers still open a seal wrapped at 76 characters, or any other wrap.
