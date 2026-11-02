@@ -72,7 +72,6 @@ export function sealedSaveProblems(doc: OutlineFoldDoc): string[] {
     if (!n.id || n.autoId) errs.push(`${who}: sealed line has no persistent id`);
     else seen.set(n.id, (seen.get(n.id) ?? 0) + 1);
     if (n.children?.length) errs.push(`${who}: sealed line has children (would be saved in clear)`);
-    if (n.title !== label) errs.push(`${who}: sealed line caption is not its public label`);
     if (!n.sealed!.ciphertext || !n.sealed!.kid) errs.push(`${who}: sealed line has no ciphertext or kid`);
   });
   for (const [id, c] of seen) if (c > 1) errs.push(`${id}: duplicate sealed id`);
@@ -114,4 +113,22 @@ export function reattachSealedOrphan(doc: OutlineFoldDoc, id: string, node: Outl
   node.title = p.pub ?? SEALED_PLACEHOLDER;
   node.children = [];
   discardSealedOrphan(doc, id);
+}
+
+/**
+ * 0.4.17: a sealed line's visible caption IS its public label (`pub`), a user-editable plain-text
+ * description. Editing it (text or Map) just updates `pub`; never refused. The label lives in the
+ * payloads block outside the ciphertext and is not bound into the AEAD (the AAD binds the cipher
+ * label, not `pub`), so this needs no key and leaves `ct` byte-for-byte unchanged.
+ * Blank caption -> no `pub`; the line shows SEALED_PLACEHOLDER.
+ */
+export function syncSealedLabels(nodes: OutlineNode[]): void {
+  for (const n of nodes) {
+    if (n.sealed && isSealedBranchPayload(n.sealed)) {
+      const t = (n.title ?? '').trim();
+      if (!t || t === SEALED_PLACEHOLDER) { delete n.sealed.pub; n.title = SEALED_PLACEHOLDER; }
+      else { n.sealed.pub = t; n.title = t; }
+    }
+    if (n.children) syncSealedLabels(n.children);
+  }
 }

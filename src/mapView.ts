@@ -1113,7 +1113,7 @@ function taskGlyphSvg(state: TaskState, x: number, y: number): string {
       : state === 'pending'
         ? `<path d="M-4 0 H4" fill="none" stroke="${stroke}" stroke-width="1.75" stroke-linecap="round"/>`
         : '';
-  return `<g class="map-task-glyph" transform="translate(${x} ${y})" aria-hidden="true">
+  return `<g class="map-task-glyph" pointer-events="none" transform="translate(${x} ${y})" aria-hidden="true">
     <rect x="-7" y="-7" width="14" height="14" rx="3" fill="none" stroke="${stroke}" stroke-width="1.75"/>
     ${mark}
   </g>`;

@@ -1,4 +1,4 @@
-import { assertSealedSafe, isEncRef } from './sealedState.js';
+import { assertSealedSafe, syncSealedLabels, isEncRef } from './sealedState.js';
 import { linkPayloadNodes } from './nodeAddress.js';
 import { collectLayouts, collectPayloads, formatLayoutBlock, formatPayloadsBlock, formatKeysBlock, formatKeyringBlock } from './payloads.js';
 import { spelledTag } from './tagSpelling.js';
@@ -215,6 +215,7 @@ function linkJumpTargets(doc: OutlineFoldDoc): void {
 
 export function serialize(doc: OutlineFoldDoc): string {
   // Fail closed before anything is written (see sealedState.assertSealedSafe).
+  syncSealedLabels(doc.nodes); // caption -> public label (0.4.17)
   assertSealedSafe(doc);
   linkPayloadNodes(doc);
   linkJumpTargets(doc);

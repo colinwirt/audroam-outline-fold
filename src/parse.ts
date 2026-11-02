@@ -1,4 +1,4 @@
-import { findSealedOrphans, isEncRef, KID_RE } from './sealedState.js';
+import { findSealedOrphans, syncSealedLabels, isEncRef, KID_RE } from './sealedState.js';
 
 /** `<enc:KEYID>` (of-seal-v2): the line names a key id only. */
 function encRef(body: string): SealedPayload | null {
@@ -754,6 +754,7 @@ export function parse(text: string, opts?: ParseOptions): OutlineFoldDoc {
   frontmatter.foldIds = ids;
   // Sealed-branch payloads whose line lost its id are kept (never dropped):
   // serialize() refuses to save until the id is restored or discarded explicitly.
+  syncSealedLabels(roots);
   const orphans = findSealedOrphans(roots, peeled.payloads);
 
   return {

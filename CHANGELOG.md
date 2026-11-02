@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.4.17 — 2026-11-02
+
+- A sealed line's visible caption IS its public label: a user-editable, plain-text description. Editing it in the text or the Map updates the payload's `pub` (parse and serialize both sync caption -> `pub`; a blank caption shows "Sealed branch" and drops `pub`). Never refused: fold, tick, drag and rename after a caption edit all save.
+- `pub` is outside the ciphertext and not bound into the AEAD (the of-seal-v2 AAD binds the cipher label, not `pub`), so a label change needs no key and leaves `ct` byte-for-byte unchanged. Re-seal of an open branch keeps the live label (no longer restores the label from open time).
+- Sealed-save guard: the caption-vs-label rule is removed (also from `validateSealedBranches`). Still strict for real leaks: plaintext children under a locked sealed line, missing id/duplicate id, missing ciphertext or kid, orphaned payloads, bad ct.
+- Text merge matches a sealed line by its `<enc:…> <id:…>` tag, so a structural write never duplicates a sealed line.
+- Map: the task glyph no longer intercepts pointer events over its hit area (fixes the react-live e2e tick test, red since 0.4.14).
+
 ## 0.4.16 — 2026-11-02
 
 - A save error never breaks the Map: the doc owner's root write (`writeRoot`: ids, seal, zone) catches a refused serialise (e.g. the strict sealed-save guard after the sealed line's caption was edited in the text), keeps the text as the user left it, and reports it as the save error in `status()` instead of throwing into the caller. Guard unchanged.

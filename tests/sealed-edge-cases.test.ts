@@ -156,10 +156,12 @@ describe('Q3 leak attempts', () => {
     expect(validateSealedBranches(doc)).toContain('v: locked sealed branch has plaintext children');
   });
 
-  it('caption of a sealed line edited in the model: save refuses', async () => {
+  it('caption of a sealed line edited in the model: saved as its public label (0.4.17)', async () => {
     const { doc } = await sealed();
-    find(doc, 'v')!.title = 'my bank pin is 1234';
-    expect(() => serialize(doc)).toThrow(/public label/);
+    find(doc, 'v')!.title = 'Bank box';
+    const out = serialize(doc);
+    expect(out).toContain('- Bank box <enc:');
+    expect(out).toContain('pub: "Bank box"');
   });
 
   it('parent folded (doc cloned) while a viewer is open: no plaintext, keys and ciphertext kept', async () => {

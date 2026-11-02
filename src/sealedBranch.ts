@@ -1066,7 +1066,7 @@ export async function openSealedBranch(
       }
       if (back !== pt) throw new SealError('verify');
       const base: SealedPayload = { ...cur, kid: mode.kid, alg: mode.alg };
-      if (opened.pub) base.pub = opened.pub;
+      // live label (`cur.pub`) wins: the caption may have been renamed while open.
       commit(applySave(base, ct, now()));
       opened.ciphertext = ct;
       original = pt;
@@ -1124,7 +1124,6 @@ export function validateSealedBranches(doc: OutlineFoldDoc): string[] {
       }
     if (!v2) errs.push(`${n.id}: legacy of-seal-v1 (decrypt-only; migrate)`);
     if (n.children?.length) errs.push(`${n.id}: locked sealed branch has plaintext children`);
-    if (n.title !== (p.pub ?? SEALED_PLACEHOLDER)) errs.push(`${n.id}: caption must be the public label`);
   });
   return errs;
 }

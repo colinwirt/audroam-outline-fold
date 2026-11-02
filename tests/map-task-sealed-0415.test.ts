@@ -41,8 +41,8 @@ function mountMap(fh: any) {
   mv.paint();
   return { host, mv, errors };
 }
-it('the stored text with a re-captioned sealed line is refused by the strict guard (unchanged)', async () => {
-  const t = await sealedText(); expect(() => serialize(parse(t))).toThrow(/caption is not its public label/);
+it('the stored text with a re-captioned sealed line saves; the caption becomes its public label (0.4.17)', async () => {
+  const t = await sealedText(); const out = serialize(parse(t)); expect(out).toContain('- My vault <enc:'); expect(out).toContain('pub: "My vault"');
 });
 it('Map ☐ tick on another row edits only that task line and never trips the seal guard', async () => {
   const text = await sealedText();
@@ -69,9 +69,10 @@ it('host commitView reports a refused whole-doc save through onHold instead of t
   const held: any[] = [];
   const fh = mountOutlineFold({ text, ctx: () => CTX, wipeOnPagehide: false, autoLockMs: 60000, debounceMs: 10, onHold: (e: any) => held.push(e) });
   const v = parse(fh.getText()); fh.markView();
-  v.nodes[0]!.title = 'renamed';
+  // A real leak: plaintext children under the locked sealed line.
+  const sn = v.nodes.find((n) => n.sealed)!; sn.children = [{ title: 'leak', id: '98', depth: 1 } as any];
   expect(fh.commitView(v, 'map')).toBe(false);
-  expect(String(held[0]?.message)).toMatch(/caption is not its public label/);
+  expect(String(held[0]?.message)).toMatch(/children/);
   expect(fh.getText()).toBe(text);
 });
 it('Map tick ↔ editor text, both ways, after editing the sealed caption; no throw, Map keeps repainting', async () => {
@@ -109,14 +110,15 @@ it('Map tick ↔ editor text, both ways, after editing the sealed caption; no th
   await tick();
   expect(fh.getText()).toContain('- [ ] water <id:7>');
   expect(row('water').querySelector('.map-task-hit')!.getAttribute('aria-checked')).toBe('false');
-  // 4. A whole-doc Map commit (fold) is refused by the guard: reported, not thrown; Map still paints.
+  // 4. A whole-doc Map commit now saves (0.4.17): the caption is kept as the public label.
   await tick(30);
   expect(saves.length).toBeGreaterThan(0); // the ticks are queued for the server save
   expect(errors).toEqual([]);
   const v = parse(fh.getText()); v.nodes[0]!.title = '[-] buy seeds renamed';
   expect(() => fh.commitView(v, 'map')).not.toThrow();
-  expect(held.length).toBe(1);
+  expect(held).toEqual([]);
   expect(() => mv.paint()).not.toThrow();
-  expect(fh.getText()).toContain('- My vault <enc:'); // the user's edit is kept
+  expect(fh.getText()).toContain('- My vault <enc:'); // the user's caption is kept
+  expect(fh.getText()).toContain('buy seeds renamed');
   mv.destroy?.(); host.remove(); box.remove();
 });

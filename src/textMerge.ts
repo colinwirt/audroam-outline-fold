@@ -8,6 +8,12 @@
  * next are replaced in prev; every other line of prev stays byte for byte. Pure.
  */
 const key = (line: string): string => line.replace(/\s+/g, ' ').trim();
+/** 0.4.17: a sealed line is its tag; its caption is not content (dropped by the serialiser). */
+const SEAL_TAG = /<enc:[^>]*>\s*<id:[^>]+>/;
+const sealKey = (line: string): string => {
+  const m = SEAL_TAG.exec(line);
+  return m ? `${line.match(/^\s*/)![0].length}|${key(m[0])}` : key(line);
+};
 
 /** LCS pairs (i in a, j in b) on keyed lines; common prefix / suffix trimmed first. */
 function match(a: string[], b: string[], eq: (x: string, y: string) => boolean): Array<[number, number]> {
@@ -38,7 +44,12 @@ export function mergeKeeping(prev: string, normPrev: string, next: string): stri
   const P = prev.split('\n'), N = normPrev.split('\n'), X = next.split('\n');
   // prev line for each normPrev line (loose: whitespace-insensitive).
   const pOf = new Map<number, number>();
-  for (const [i, j] of match(P, N, (x, y) => key(x) === key(y))) pOf.set(j, i);
+  // A sealed line matches by its tag; the normalised line (fixed label) replaces the stray caption.
+  const relabel = new Set<number>();
+  for (const [i, j] of match(P, N, (x, y) => sealKey(x) === sealKey(y))) {
+    pOf.set(j, i);
+    if (key(P[i]!) !== key(N[j]!)) relabel.add(i);
+  }
   const out: string[] = [];
   let p = 0; // next prev line not yet emitted
   let nPos = 0;
@@ -56,7 +67,7 @@ export function mergeKeeping(prev: string, normPrev: string, next: string): stri
     }
     if (ni < N.length) {
       const at = pOf.get(ni);
-      if (at != null && at >= p) { while (p <= at) out.push(P[p++]!); }
+      if (at != null && at >= p) { while (p < at) out.push(P[p++]!); out.push(relabel.has(p) ? N[ni]! : P[p]!); p++; }
       else if (at == null) out.push(N[ni]!);
     }
     nPos = ni + 1; xPos = xi + 1;
