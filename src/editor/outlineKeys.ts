@@ -33,6 +33,20 @@ export function detectIndentUnit(text: string): string {
 /** `indentUnit` follows the doc (the zone and the main text may differ). */
 export const outlineIndentUnit: Extension = indentUnit.compute(['doc'], (s) => detectIndentUnit(s.doc.toString()));
 
+/** Pure: would Shift-Tab outdent any non-blank line in the selection? */
+export function canOutdent(state: EditorState): boolean {
+  const doc = state.doc;
+  for (const r of state.selection.ranges) {
+    const first = doc.lineAt(r.from).number;
+    const last = doc.lineAt(r.to).number;
+    for (let n = first; n <= last; n++) {
+      const t = doc.line(n).text;
+      if (t.trim() && leadOf(t) > 0) return true;
+    }
+  }
+  return false;
+}
+
 /** Pure: may Tab indent every non-blank line touched by the selection? */
 export function canIndent(state: EditorState, leaf?: (line: string) => boolean): boolean {
   const unit = state.facet(indentUnit).length;

@@ -963,8 +963,9 @@ export interface SealedViewer {
   /** True when the viewer doc differs from what was decrypted. */
   isDirty(): boolean;
   /**
-   * Re-seal into the host branch payload: fresh salt+nonce, same kid/alg, same AAD binding.
-   * Only that payload changes. Options that try to change the mode are rejected.
+   * Re-seal into the host branch payload as of-seal-v3: fresh salt+nonce, same kid.
+   * A legacy payload is rewritten as v3 even when the plaintext is unchanged.
+   * Options that try to change the kid or cipher are rejected.
    */
   save(opts?: Record<string, unknown>): Promise<void>;
   /** Wipe the plaintext and close (and every nested viewer). */
@@ -1239,7 +1240,10 @@ export async function openSealedBranch(
         throw new Error('Sealed viewer: key list is read-only in the viewer');
       for (const c of children) if (!c.closed && c.isDirty()) throw new Error('Sealed viewer: save or close the nested viewer first');
       const pt = snapshot(); // also runs the fail-closed checks on the inner content
-      if (pt === original && !cur.autosave) return;
+      // An unchanged v3 payload is a no-op. A legacy payload still re-seals as v3:
+      // Save & re-seal is the upgrade, with or without an edit.
+      const legacy = opened.alg !== SEAL_ALG_V3 || !isV3Ciphertext(cur.ciphertext ?? '');
+      if (pt === original && !cur.autosave && !legacy) return;
       const ct = await encryptV3(mode.kid, mode.cipher!, pt, SEAL_V3_ROLES.body);
       // SD-7 verify: decrypt the new ct back before anything moves; else both versions stay.
       let back: string;

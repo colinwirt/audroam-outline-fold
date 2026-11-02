@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.5.4 — 2026-11-02
+
+- Save & re-seal of a legacy of-seal-v2 payload writes of-seal-v3 even when the plaintext did not change. An unchanged v3 payload is still a no-op.
+- Tab and Shift-Tab inside an open sealed zone stay in the zone. Tab from Save, Lock, or the zone help focuses the zone editor. Shift-Tab on a line that is already at the left edge outdents the sealed line in the note.
+
 ## 0.5.3 — 2026-11-02
 
 - The text editor hides the locked trailer (payloads, keyring, keys, layout) behind one pill. The pill is closed until opened. The note text is unchanged either way.

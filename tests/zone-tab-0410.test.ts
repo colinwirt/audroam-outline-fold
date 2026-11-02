@@ -21,7 +21,15 @@ async function mount(fix: string, extra: Record<string, unknown>) {
   clearKeys(); setSealCipher('a256gcm');
   const d = parse(fix);
   const k = await createKey(d, 'pw', { kid: 'k1' });
-  await sealBranch(d, d.nodes.find((n) => n.id === '4')!, k.kid, CTX);
+  const findId = (list: { id?: string; children?: never[] }[]): { id?: string; children?: never[] } | undefined => {
+    for (const n of list) {
+      if (n.id === '4') return n;
+      const c = n.children && findId(n.children);
+      if (c) return c;
+    }
+    return undefined;
+  };
+  await sealBranch(d, findId(d.nodes) as never, k.kid, CTX);
   const text = serialize(d); clearKeys();
   document.body.innerHTML = '';
   const box = document.createElement('div'); document.body.append(box);
@@ -71,3 +79,41 @@ for (const [name, extra] of [
     fh.unmount();
   });
 }
+
+it('Tab in the zone stays there, and Tab from Save & re-seal focuses the zone', async () => {
+  const fix = `- Garden <id:1>\n  - Pantry box <id:4>\n    - seeds <id:5>\n- after <id:7>\n`;
+  const { fh, zone } = await mount(fix, {});
+  const smaller = document.createElement('button');
+  smaller.id = 'text-smaller';
+  document.body.append(smaller);
+  const z = zone();
+  z.focus();
+  z.dispatch({ selection: { anchor: 1 } });
+  const tab = new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true });
+  z.contentDOM.dispatchEvent(tab);
+  expect(tab.defaultPrevented).toBe(true);
+  expect(document.activeElement).not.toBe(smaller);
+  expect(zone().dom.contains(document.activeElement)).toBe(true);
+  const save = document.querySelector('.of-sz-save') as HTMLButtonElement;
+  save.focus();
+  const fromSave = new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true });
+  save.dispatchEvent(fromSave);
+  expect(fromSave.defaultPrevented).toBe(true);
+  expect(document.activeElement).not.toBe(smaller);
+  expect(zone().contentDOM.contains(document.activeElement)).toBe(true);
+  fh.unmount();
+});
+
+it('Shift-Tab on the zone root outdents the sealed line in the note', async () => {
+  const fix = `- Garden <id:1>\n  - Pantry box <id:4>\n    - seeds <id:5>\n    - jars <id:6>\n- after <id:7>\n`;
+  const { fh, zone } = await mount(fix, {});
+  const z = zone();
+  z.focus();
+  z.dispatch({ selection: { anchor: 1 } });
+  expect(fh.getText()).toMatch(/\n  - Pantry box /);
+  expect(press(z, true)).toBe(true);
+  expect(zone().state.doc.line(1).text).toBe('- Pantry box');
+  expect(fh.getText()).toMatch(/\n- Pantry box <enc:/);
+  expect(fh.getText()).not.toMatch(/\n  - Pantry box /);
+  fh.unmount();
+});

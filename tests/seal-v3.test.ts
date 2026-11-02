@@ -78,6 +78,33 @@ describe('of-seal-v3 envelope', () => {
     expect((await openSealedBranch(doc, 'v', CTX)).doc.nodes[0]!.title).toBe('Vault');
   }, 20_000);
 
+  it('Save & re-seal upgrades an unchanged of-seal-v2 payload to v3', async () => {
+    const doc = parse('- Vault <id:v>\n  - hidden <id:c>');
+    const key = await createKey(doc, PASS);
+    const inner = JSON.stringify({ v: 1, caption: 'Vault', body: '- hidden <id:c>\n' });
+    const ct = await __encryptForKat(key.kid, 'a256gcm', 'v', CTX, inner, {
+      salt: new Uint8Array(16).fill(2),
+      nonce: new Uint8Array(12).fill(3),
+    });
+    const node = find(doc, 'v');
+    node.sealed = { kid: key.kid, alg: 'of-seal-v2', ciphertext: ct, pub: 'Vault' };
+    node.children = [];
+    node.title = 'Vault';
+    const viewer = await openSealedBranch(doc, 'v', CTX);
+    expect(viewer.isDirty()).toBe(false);
+    await viewer.save();
+    expect(node.sealed!.alg).toBe('of-seal-v3');
+    expect(node.sealed!.ciphertext).toContain('-----BEGIN OUTLINE-FOLD SEAL-----');
+    const written = serialize(doc);
+    expect(written).toContain('alg: of-seal-v3');
+    expect(written).not.toContain('of-seal-v2');
+    viewer.close();
+    const again = await openSealedBranch(doc, 'v', CTX);
+    expect(again.doc.nodes[0]!.title).toBe('Vault');
+    expect(again.doc.nodes[0]!.children![0]!.title).toBe('hidden');
+    again.close();
+  });
+
   it('a v2 payload still fails when the note id changes', async () => {
     const doc = parse('- Vault <id:v>\n  - hidden <id:c>');
     const key = await createKey(doc, PASS);

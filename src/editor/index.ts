@@ -8,8 +8,10 @@
  * The main document only ever holds the `<enc>` tag, so copy, paste and undo in the main
  * editor never contain plaintext. The `<enc>` tag is atomic and cannot be edited by hand.
  */
+import { indentLess, indentMore } from '@codemirror/commands';
 import { EditorState, RangeSetBuilder, Transaction, StateEffect, StateField, type Extension, type Text } from '@codemirror/state';
 import { Decoration, EditorView, ViewPlugin, WidgetType, drawSelection, keymap, type DecorationSet } from '@codemirror/view';
+import { canIndent, canOutdent, detectIndentUnit } from './outlineKeys.js';
 import { parseZoneText } from '../zoneText.js';
 import { normalizeTaskMarkers } from '../taskChrome.js';
 import { serialize } from '../serialize.js';
@@ -282,7 +284,10 @@ class SecureZone extends WidgetType {
     // the caret: the new view takes the old one's selection and focus.
     const prev = zoneViews.get(region);
     if (prev && prev !== view) {
-      const had = prev.hasFocus || (typeof document !== 'undefined' && prev.contentDOM.contains(document.activeElement));
+      // The Save button sits outside the zone editor. A re-seal refresh must keep
+      // that focus in the zone, or the next Tab leaves for the page.
+      const zoneEl = prev.dom.closest('.of-secure-zone');
+      const had = prev.hasFocus || (typeof document !== 'undefined' && !!document.activeElement && (prev.contentDOM.contains(document.activeElement) || !!zoneEl?.contains(document.activeElement)));
       const sel = prev.state.selection.main;
       const len = view.state.doc.length;
       if (had) {
@@ -292,6 +297,38 @@ class SecureZone extends WidgetType {
     }
     zoneViews.set(region, view);
     zoneRenderFailures.delete(region);
+    // Chrome moves focus on Tab inside a nested contenteditable before the zone keymap
+    // runs, so Tab left the zone and landed on the next page control. Capture it here.
+    // Shift-Tab at the zone's left edge outdents the sealed line in the host note.
+    const outdentAnchor = (): void => {
+      if (!outer) return;
+      const doc = outer.state.doc;
+      let line = null;
+      for (let i = 1; i <= doc.lines; i++) {
+        const ln = doc.line(i);
+        if (ln.text.includes(`<id:${anchorId}>`)) { line = ln; break; }
+      }
+      if (!line) return;
+      const unit = detectIndentUnit(doc.toString());
+      const lead = /^[ \t]*/.exec(line.text)![0].length;
+      if (lead < unit.length) return;
+      // Not userEvent "input": that filter blocks every edit of an open zone's anchor line,
+      // including the leading whitespace. This change stays in front of the <enc> tag.
+      outer.dispatch({ changes: { from: line.from, to: line.from + unit.length, insert: '' } });
+    };
+    const onZoneTab = (e: KeyboardEvent) => {
+      if (e.key !== 'Tab' || e.metaKey || e.ctrlKey || e.altKey) return;
+      const t = e.target;
+      if (!(t instanceof Node) || !wrap.contains(t)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      if (!view.dom.contains(t)) { view.focus(); return; }
+      if (e.shiftKey) {
+        if (canOutdent(view.state)) indentLess(view);
+        else outdentAnchor();
+      } else if (canIndent(view.state)) indentMore(view);
+    };
+    wrap.addEventListener('keydown', onZoneTab, true);
     // 0.4.14: the outer height map must follow the zone's real height (vertical motion reads
     // it). Re-measure once mounted and whenever the zone resizes (typing, wrap, buttons).
     const ro = outer && typeof ResizeObserver !== 'undefined' ? new ResizeObserver(() => outer.requestMeasure()) : null;
@@ -302,6 +339,7 @@ class SecureZone extends WidgetType {
       if (gone) return; // CM may destroy a widget DOM twice across a fast lock/unlock
       gone = true;
       offSync();
+      wrap.removeEventListener('keydown', onZoneTab, true);
       if (zoneViews.get(region) === view) zoneViews.delete(region);
       zone.destroy();
       applying = true;
