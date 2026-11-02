@@ -188,6 +188,7 @@ export function mountOutlineFold(o = {}) {
     toggleRegionTask: (id) => doc.toggleRegionTask(id),
     branchOfRegion: (region) => doc.branchOf(region),
     mapOptions: (onUnlock, onMore) => doc.mapOptions(onUnlock, onMore),
+    toggleTask: (id) => doc.toggleTask(id),
     unlock: (branchId, anchorEl, opts = {}) => doc.unlock(branchId, anchorEl, opts),
     lock: (branchId) => doc.lock(branchId),
     saveRegion: (region) => doc.saveRegion(region),

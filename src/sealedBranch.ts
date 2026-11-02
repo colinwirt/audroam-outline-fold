@@ -1098,7 +1098,9 @@ export async function openSealedBranch(
   // The viewer shares the key list read-only (frozen copies) so nested branches can open.
   const doc: OutlineFoldDoc = {
     nodes: [root],
-    fold: { mode: '-', ids: [] },
+    // Keep the inner body's fold. A later snapshot writes `(+)` from it; dropping it here
+    // made every unlock open expanded and every re-seal erase a saved fold.
+    fold: { mode: sub.fold?.mode ?? '-', ids: [...(sub.fold?.ids ?? [])] },
     keys: Object.freeze((host.keys ?? []).map((k) => Object.freeze({ ...k }))) as SealKeyEntry[],
     keyring: Object.freeze((host.keyring ?? []).map((k) => Object.freeze({ ...k }))) as SealKeyringEntry[],
     ...(sub.sealedOrphans ? { sealedOrphans: sub.sealedOrphans } : {}),
@@ -1110,7 +1112,16 @@ export async function openSealedBranch(
     const shift = (list: OutlineNode[], d: number): OutlineNode[] =>
       list.map((c) => ({ ...c, depth: d, children: c.children ? shift(c.children, d + 1) : undefined }));
     const clean = stripAnchorId(r.title, shift(kids, 0), branchId);
-    return innerJson(clean.caption, serialize({ nodes: clean.nodes, fold: { mode: '-', ids: [] }, ...(doc.sealedOrphans ? { sealedOrphans: doc.sealedOrphans } : {}) }));
+    const have = new Set<string>();
+    const mark = (list?: OutlineNode[]) => {
+      for (const n of list ?? []) {
+        if (n.id) have.add(n.id);
+        if (n.children) mark(n.children);
+      }
+    };
+    mark(clean.nodes);
+    const fold = { mode: doc.fold?.mode ?? '-', ids: (doc.fold?.ids ?? []).filter((id) => have.has(id)) };
+    return innerJson(clean.caption, serialize({ nodes: clean.nodes, fold, ...(doc.sealedOrphans ? { sealedOrphans: doc.sealedOrphans } : {}) }));
   };
   let original = innerJson(caption, body);
   let lastAuto: string | undefined = autoText;
@@ -1125,6 +1136,7 @@ export async function openSealedBranch(
     reDepth(next.nodes, 1);
     r.title = inner.caption;
     r.children = next.nodes;
+    doc.fold = { mode: next.fold?.mode ?? '-', ids: [...(next.fold?.ids ?? [])] };
     if (next.sealedOrphans) doc.sealedOrphans = next.sealedOrphans;
     else delete doc.sealedOrphans;
   };

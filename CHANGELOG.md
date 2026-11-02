@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.5.7 — 2026-11-02
+
+- Map: ticking a checkbox edits that source line. The id on a main-map row is a session id, so the lookup for `<id:>` missed and the map re-serialised the note. `[]` is an open task, but it does not round-trip to `[ ]`, so that re-serialise inserted a new line and left the original. A tick now accepts `[]` and, when the id is only a session id, edits the outline line that id belongs to. Duplicate labels and a line inserted above still hit the clicked line. A missed line is left unchanged.
+- Submap: folding a branch inside an open sealed region writes `(+)` into that region's text, the same marker the main map writes. The next unlock stays folded. The cloud pill's own fold is still only on screen.
+
+## 0.5.6 — 2026-11-02
+
+- Map: a task inside an open region uses the same lead as a main pill. The caption starts after the checkbox (`TASK_LEAD`), and a plain caption uses the same side pad. The old region paint added another 12px after the lead, so the check sat on the curve and the caption started late.
+- Map: a selected pill inside an open region shows the same corner width grip. Dragging it stores `w` on that child and marks the region dirty, so the next re-seal keeps it.
+
 ## 0.5.5 — 2026-11-02
 
 - A layout block left with an empty `fold-:` and `collapsedMarker` no longer grows a second pair when a later write adds a real fold id (unseal, or folding the branch that was just inlined). Those two lines do not round-trip, and the merge was keeping them beside the new `fold-: 12`.

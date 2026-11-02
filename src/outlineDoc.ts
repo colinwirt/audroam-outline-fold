@@ -10,10 +10,10 @@
  * A zone "Save & re-seal" is only `confirmed` in `status()` after `saved(rev)`; a failure keeps
  * the doc dirty, keeps the auto-ct slot in the text, and schedules a retry `save-needed`.
  */
-import { toggleTaskLine } from './task.js';
+import { parse } from './parse.js';
+import { toggleTaskAtLine, toggleTaskLine } from './task.js';
 import type { TaskState } from './types.js';
 import { createIdAllocator, type IdDiagnostic, type IdScope } from './idAllocator.js';
-import { parse } from './parse.js';
 import { serialize } from './serialize.js';
 import { mergeKeeping, syncPubLines } from './textMerge.js';
 import type { OutlineFoldDoc, OutlineNode } from './types.js';
@@ -140,6 +140,8 @@ export interface OutlineDocHandle {
     onRegionLock: (region: RegionId) => void;
     onRegionMore: (region: RegionId, rect: DOMRect) => void;
     onRegionTaskToggle: (id: string) => boolean;
+    onRegionWidth: (id: string, w: number) => void;
+    onRegionFoldSync: (region: string) => void;
     onMainTaskToggle: (id: string) => { from: TaskState; to: TaskState } | null;
   };
   unlock(branchId: string, anchorEl?: HTMLElement | null, o?: { label?: string; container?: HTMLElement; inline?: boolean }): Promise<boolean>;
@@ -176,7 +178,47 @@ function pinIds(doc: OutlineFoldDoc | null): void {
     if (n.id) return;
     while (used.has('z' + seq)) seq++;
     n.id = 'z' + seq; n.autoId = true; used.add(n.id);
+    // A `(+)` on a line with no id is foldMark. The session id carries it, as on the main map.
+    if (doc && n.foldMark === 'collapsed') {
+      if (!doc.fold) doc.fold = { mode: '-', ids: [] };
+      if (!doc.fold.ids.includes(n.id)) doc.fold.ids.push(n.id);
+      delete n.foldMark;
+    } else if (n.foldMark === 'expanded') delete n.foldMark;
   });
+}
+
+/** Outline ordinal of a session-id task, or null when the id is written or not a task. */
+function sessionTaskOrdinal(text: string, id: string): number | null {
+  const view = parse(text, { sessionIds: true });
+  let n = 0;
+  let found: number | null = null;
+  const walkOrd = (list?: OutlineNode[]) => {
+    for (const node of list ?? []) {
+      if (found !== null) return;
+      if (node.id === id) found = node.autoId && node.task ? n : -1;
+      n += 1;
+      walkOrd(node.children);
+    }
+  };
+  walkOrd(view.nodes);
+  return found === null || found < 0 ? null : found;
+}
+
+/** Put a collapsed/expanded flag onto `doc.fold`. Returns true when the list changed. */
+function setCollapsed(doc: OutlineFoldDoc, id: string, collapsed: boolean): boolean {
+  const mode = doc.fold?.mode ?? '-';
+  if (!doc.fold) doc.fold = { mode, ids: [] };
+  const ids = doc.fold.ids;
+  const has = ids.includes(id);
+  const want = mode === '+' ? !collapsed : collapsed;
+  if (want === has) return false;
+  if (want) ids.push(id);
+  else ids.splice(ids.indexOf(id), 1);
+  if (doc.frontmatter) {
+    doc.frontmatter.foldIds = [...ids];
+    doc.frontmatter.foldMode = mode;
+  }
+  return true;
 }
 
 const defaultTimers: Timers = {
@@ -372,6 +414,28 @@ export function createOutlineDoc(o: OutlineDocOptions): OutlineDocHandle {
     emitStatus();
   }));
 
+  /**
+   * A fold inside a sealed submap is part of that branch's text, the same `(+)` the main map
+   * writes. The store is what the cloud paints; this copies it onto the viewer so the next
+   * re-seal keeps it. The cloud's own fold (the pill) is not a line of the inner text.
+   */
+  function writeInnerFold(region: string): void {
+    if (!region.startsWith('s:')) return;
+    const s = sessions.get(region);
+    const inner = s.doc;
+    if (!inner) return;
+    const top = inner.nodes.length === 1 && inner.nodes[0]?.id === s.branchId ? inner.nodes[0].children : inner.nodes;
+    let changed = false;
+    const walkFold = (list?: OutlineNode[]) => {
+      for (const n of list ?? []) {
+        if (n.id && n.children?.length && setCollapsed(inner, n.id, store.isNodeCollapsed(region, inner, n.id))) changed = true;
+        if (n.children?.length) walkFold(n.children);
+      }
+    };
+    walkFold(top);
+    if (changed) sessions.markChanged(region);
+  }
+
   const handle: OutlineDocHandle = {
     getText: () => text,
     mintId: () => ids.mint(scopes()),
@@ -492,7 +556,10 @@ export function createOutlineDoc(o: OutlineDocOptions): OutlineDocHandle {
       const s = sessions.get(p.region);
       if (!s.doc) return false;
       if (!p.id) store.setRegionFolded(p.region, !store.isRegionFolded(p.region));
-      else store.setNodeCollapsed(p.region, p.id, !store.isNodeCollapsed(p.region, s.doc, p.id));
+      else {
+        store.setNodeCollapsed(p.region, p.id, !store.isNodeCollapsed(p.region, s.doc, p.id));
+        writeInnerFold(p.region);
+      }
       sessions.touch();
       return true;
     },
@@ -504,7 +571,12 @@ export function createOutlineDoc(o: OutlineDocOptions): OutlineDocHandle {
       return true;
     },
     toggleTask(id) {
-      const r = toggleTaskLine(handle.getText(), String(id));
+      const raw = handle.getText();
+      const key = String(id);
+      // A written <id:> edits that line. A session id is not in the text: edit the outline
+      // line that parse assigns to it now, so a line inserted above cannot land on the wrong row.
+      const ord = sessionTaskOrdinal(raw, key);
+      const r = toggleTaskLine(raw, key) ?? (ord === null ? null : toggleTaskAtLine(raw, ord));
       if (!r) return null;
       handle.setText(r.text, { source: 'host' });
       return { from: r.from, to: r.to };
@@ -517,6 +589,13 @@ export function createOutlineDoc(o: OutlineDocOptions): OutlineDocHandle {
         onRegionLock: (region) => { rootNow(); void sessions.lock(region, 'user'); },
         onRegionMore: (region, rect) => onMore?.(branchOf(region), rect),
         onRegionTaskToggle: (id) => handle.toggleRegionTask(id),
+        onRegionWidth: (id, w) => {
+          const n = handle.regionNode(id);
+          if (!n) return;
+          n.layout = { ...(n.layout || {}), w: Math.round(w) };
+          sessions.markChanged(handle.scoped(id).region);
+        },
+        onRegionFoldSync: (region) => writeInnerFold(region),
         onMainTaskToggle: (id) => handle.toggleTask(id),
       };
     },

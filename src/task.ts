@@ -72,12 +72,46 @@ export function shouldFireAction(from: TaskState, to: TaskState): boolean {
   return to === 'done' && from !== 'done';
 }
 
-const MARK_STATE: Record<string, TaskState> = { ' ': 'open', '-': 'pending', x: 'done', X: 'done' };
 const STATE_MARK: Record<TaskState, string> = { open: ' ', pending: '-', done: 'x' } as Record<TaskState, string>;
+/** `[ ]`, `[]`, `[-]`, `[x]` / `[X]` at the start of a list line. The inside may be empty. */
+const TASK_MARK = /^(\s*[-*+]\s+)\[([ xX-]*)\]/;
+
+function stateOfInner(inner: string): TaskState | null {
+  if (inner === 'x' || inner === 'X') return 'done';
+  if (inner === '-') return 'pending';
+  if (inner.trim() === '') return 'open';
+  return null;
+}
+
+/** Replace the bracket contents with the next mark. Null when the line is not a task. */
+function editTaskMarker(line: string): { line: string; from: TaskState; to: TaskState } | null {
+  const m = TASK_MARK.exec(line);
+  if (!m) return null;
+  const from = stateOfInner(m[2]!);
+  if (!from) return null;
+  const to = nextTaskState(from);
+  const at = m[1]!.length + 1;
+  return { line: line.slice(0, at) + STATE_MARK[to] + line.slice(at + m[2]!.length), from, to };
+}
+
+/** A line parse turns into a node: non-blank, and not an empty non-list line. */
+function isNodeLine(line: string): boolean {
+  if (!line.trim()) return false;
+  const trimmedStart = line.trimStart();
+  const content = trimmedStart.replace(/^[-*+]\s+/, '');
+  if (!content.trim() && !/^[-*+]\s+$/.test(trimmedStart)) return false;
+  return true;
+}
+
+function skipFrontmatter(text: string): number {
+  const m = /^---\r?\n[\s\S]*?\r?\n---\r?\n?/.exec(text);
+  return m ? m[0].length : 0;
+}
+
 /**
  * 0.4.15: cycle the `[ ]` / `[-]` / `[x]` marker on the outline line tagged `<id:id>`, as a text
- * edit. Only that one character changes: no re-serialise, so a toggle can never trip the
- * sealed-save guard on unrelated lines. Null when the line or marker is not found.
+ * edit. Only the marker changes: no re-serialise, so a toggle can never trip the sealed-save
+ * guard on unrelated lines. `[]` is open. Null when the line or marker is not found.
  */
 export function toggleTaskLine(text: string, id: string): { text: string; from: TaskState; to: TaskState } | null {
   const tag = `<id:${id}>`;
@@ -88,12 +122,40 @@ export function toggleTaskLine(text: string, id: string): { text: string; from: 
     const line = text.slice(at, end);
     if (/^--- /.test(line)) return null; // payloads / keyring / layout blocks
     if (new RegExp(`(^|\\s)${tag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(\\s|$)`).test(line)) {
-      const m = /^(\s*[-*+]\s+)\[( |x|X|-)\]/.exec(line);
-      if (!m) return null;
-      const from = MARK_STATE[m[2]!]!;
-      const to = nextTaskState(from);
-      const pos = at + m[1]!.length + 1;
-      return { text: text.slice(0, pos) + STATE_MARK[to] + text.slice(pos + 1), from, to };
+      const edited = editTaskMarker(line);
+      if (!edited) return null;
+      return { text: text.slice(0, at) + edited.line + text.slice(end), from: edited.from, to: edited.to };
+    }
+    if (nl < 0) break;
+    at = nl + 1;
+  }
+  return null;
+}
+
+/**
+ * Same one-line edit at the ordinal-th outline node. Used when the id is a session id that
+ * was never written on the line. The ordinal is the node's place in the current parse, so a
+ * line inserted above moves it. Null when that line is not a task.
+ */
+export function toggleTaskAtLine(text: string, ordinal: number): { text: string; from: TaskState; to: TaskState } | null {
+  if (ordinal < 0) return null;
+  let at = skipFrontmatter(text);
+  let seen = 0;
+  while (at <= text.length) {
+    const nl = text.indexOf('\n', at);
+    const end = nl < 0 ? text.length : nl;
+    let line = text.slice(at, end);
+    const cr = line.endsWith('\r');
+    if (cr) line = line.slice(0, -1);
+    if (/^---(\s|$)/.test(line)) return null;
+    if (isNodeLine(line)) {
+      if (seen === ordinal) {
+        const edited = editTaskMarker(line);
+        if (!edited) return null;
+        const next = edited.line + (cr ? '\r' : '');
+        return { text: text.slice(0, at) + next + text.slice(end), from: edited.from, to: edited.to };
+      }
+      seen += 1;
     }
     if (nl < 0) break;
     at = nl + 1;

@@ -365,9 +365,20 @@ export interface MapViewOptions {
    */
   onRegionTaskToggle?: (scopedId: string) => boolean;
   /**
+   * A corner drag on a pill inside an unlocked region. The map has already written `w` onto
+   * that child node. The host marks the region dirty so the next re-seal keeps the width.
+   */
+  onRegionWidth?: (scopedId: string, w: number) => void;
+  /**
+   * An inner branch in a region was folded or expanded. The store already holds the new state.
+   * The host copies it onto the child document so a sealed submap writes `(+)` on the next re-seal.
+   */
+  onRegionFoldSync?: (region: string) => void;
+  /**
    * 0.4.15: a [ ] box on a main-doc row. The doc owner cycles that line's marker as a text edit
-   * (no whole-doc re-serialise, so it cannot trip the sealed-save guard). Return the states, or
-   * null to fall back to `setDoc(toggleTask(...))`.
+   * (no whole-doc re-serialise, so it cannot trip the sealed-save guard). Return the states.
+   * Null means the line was not edited. When this is set, the map does not fall through to
+   * `setDoc` — that re-serialise inserted a second line for `[]` and for session ids.
    */
   onMainTaskToggle?: (id: string) => { from: TaskState; to: TaskState } | null;
   /** Map focus moved (click, keys, `setFocus`): scoped id (`region:node` inside a region). */
@@ -3574,6 +3585,8 @@ export function createMapView(
   const rfold: RegionFoldStore = opts.regionFold ?? createRegionFoldStore();
   /** Selected node inside a region (scoped id) or a region root (region id); null = root doc. */
   let regionFocus: string | null = null;
+  /** Caption column while a region pill's corner is being dragged. Cleared on commit. */
+  const regionWidthLive = new Map<OutlineNode, number>();
   rfold.subscribe(() => {
     if (host.isConnected) paint();
   });
@@ -3642,15 +3655,44 @@ export function createMapView(
   }
   function syncRegionFocus(): void {
     for (const el of host.querySelectorAll('.map-region-node.is-focused, .map-region.is-focused')) el.classList.remove('is-focused');
-    if (!regionFocus) return;
-    const el = host.querySelector(`.map-region-node[data-scoped-id="${CSS.escape(regionFocus)}"]`);
-    if (!el) {
-      regionFocus = null;
-      return;
+    const el = regionFocus
+      ? host.querySelector(`.map-region-node[data-scoped-id="${CSS.escape(regionFocus)}"]`)
+      : null;
+    if (regionFocus && !el) regionFocus = null;
+    if (el) {
+      el.classList.add('is-focused');
+      el.setAttribute('aria-selected', 'true');
+      if (el.id) host.setAttribute('aria-activedescendant', el.id);
     }
-    el.classList.add('is-focused');
-    el.setAttribute('aria-selected', 'true');
-    if (el.id) host.setAttribute('aria-activedescendant', el.id);
+    syncRegionWidthGrips();
+  }
+  /** Corner grip on the focused region pill, and on the pill whose corner is hot. */
+  function syncRegionWidthGrips(): void {
+    host.querySelectorAll<SVGGElement>('.map-region-node').forEach((g) => {
+      const id = g.getAttribute('data-scoped-id');
+      const on = !!id && (id === regionFocus || id === widthHotKey);
+      const grip = g.querySelector('.map-width-grip');
+      if (!grip) return;
+      grip.setAttribute('opacity', on ? '1' : '0');
+      g.querySelector('.map-width-hit')?.setAttribute('pointer-events', on ? 'all' : 'none');
+    });
+  }
+  /** Child node of an open region, or null for a root-doc id / the cloud root. */
+  function regionWidthTarget(key: string): OutlineNode | null {
+    const hit = regionBox(key);
+    if (!hit || hit.b.root || !hit.r.host.doc || !hit.b.localId) return null;
+    return findNode(hit.r.host.doc.nodes, hit.b.localId);
+  }
+  /** Write a finished region-pill drag onto the child. Returns true when `key` is in a region. */
+  function commitRegionWidth(key: string): boolean {
+    const node = regionWidthTarget(key);
+    if (!node) return false;
+    const w = regionWidthLive.get(node);
+    regionWidthLive.delete(node);
+    if (typeof w !== 'number') return true;
+    node.layout = { ...(node.layout || {}), w };
+    opts.onRegionWidth?.(key, w);
+    return true;
   }
   /** Activate a region fold handle: inner node toggle, region root fold / unfold, or unlock. */
   function activateRegionFold(key: string): void {
@@ -3678,6 +3720,7 @@ export function createMapView(
     setRegionFocus(key);
     if (!hit.b.foldable || !hit.b.localId || !h.doc) return;
     const nowCollapsed = rfold.toggleNode(h.id, h.doc, hit.b.localId);
+    opts.onRegionFoldSync?.(h.id);
     announce(`${nowCollapsed ? 'Collapsed' : 'Expanded'}: ${captionWithoutLinks(displayCaption(hit.b.title))}`);
   }
   /** Ordered region keys for arrow navigation inside one region (cloud root first). */
@@ -3793,6 +3836,7 @@ export function createMapView(
           rfold.setLevel(h.id, doc, level === '*' ? '*' : ((level - 1) as 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8));
         }
       } else if (local) rfold.setLevel(h.id, doc, level, local);
+      opts.onRegionFoldSync?.(h.id);
     }
   }
   function regionHosts(): RegionHostSpec[] {
@@ -3810,12 +3854,13 @@ export function createMapView(
   }
   function quickSize(d: OutlineFoldDoc, n: OutlineNode, pos: MapPoint | undefined, key?: string): { w: number; h: number } {
     const label = anchorCaption(key, captionWithoutLinks(displayCaption(n.title)));
+    const live = regionWidthLive.get(n);
     const sz = pillSize(label, {
       reserveFold: hasKids(n),
       reserveTask: !!resolveTask(n),
       semibold: false,
       wrapCh: pos?.wrapCh ?? autoCh(),
-      widthPx: pos?.w ?? n.layout?.w,
+      widthPx: live ?? pos?.w ?? n.layout?.w,
       maxLines: pos?.maxLines,
       fontSize: resolveFontPx(pos?.fontSize, getLayout().fontSize, d.frontmatter?.fontSize),
     });
@@ -3937,13 +3982,18 @@ export function createMapView(
             const tip = locked && r.host.kind === 'sealed' ? `<title>Unlock ${esc(r.host.kid ?? 'key')}</title>` : '';
             // 0.4.10 (Colin): region rows draw tasks with the main Map's glyph and hit target.
             const task = !folded ? b.task ?? null : null;
-            const tx = b.x + 12 + (task ? TASK_LEAD : 0);
-            // 0.4.12: the shared task lead (same markup as the main Map).
+            // Same lead as a main pill: the checkbox replaces the left pad. A second 12px pad
+            // used to sit after TASK_LEAD, so the check hugged the curve and the caption started late.
+            const tx = b.x + (task ? TASK_LEAD : PILL_PAD_X);
             const taskSvg = task ? taskLeadSvg(task, { x: b.x, y: b.y, h: b.h, cy, lead: TASK_LEAD }) : '';
+            const textY = lines.length <= 1 ? cy + lh * 0.25 : cy + lh * 0.25 - ((lines.length - 1) * lh) / 2;
             const textSvg = tip + taskSvg + (lines.length <= 1
-              ? `<text x="${tx}" y="${cy + fpx * 0.35}" ${fa}>${esc(t)}</text>`
-              : `<text x="${tx}" y="${cy + fpx * 0.35 - ((lines.length - 1) * lh) / 2}" ${fa}>${lines.map((l, i) => `<tspan x="${tx}"${i ? ` dy="${lh}"` : ''}>${esc(l)}</tspan>`).join('')}</text>`);
-            return `<g class="map-region-node${folded ? ' map-region-pill' : ''}${locked && r.host.kind === 'sealed' ? ' map-region-locked' : ''}${b.collapsed ? ' collapsed' : ''}" id="${esc(regionDomId(b.key))}" role="treeitem" aria-selected="false"${b.foldable ? ` aria-expanded="${b.collapsed ? 'false' : 'true'}"` : ''} aria-label="${esc(aria)}" data-scoped-id="${esc(b.key)}" data-region-id="${esc(r.host.id)}"><rect class="map-region-body" x="${b.x}" y="${b.y}" width="${Math.max(1, b.w - slot)}" height="${b.h}" rx="${Math.min(14, b.h / 2)}"/>${textSvg}${chrome}${kidChip}</g>`;
+              ? `<text x="${tx}" y="${textY}" ${fa}>${esc(t)}</text>`
+              : `<text x="${tx}" y="${textY}" ${fa}>${lines.map((l, i) => `<tspan x="${tx}"${i ? ` dy="${lh}"` : ''}>${esc(l)}</tspan>`).join('')}</text>`);
+            // Caption column, as a main pill's data-text-w: the measured width minus the fold slot and the task lead.
+            const textW = Math.max(1, Math.round(b.w - slot - (task ? TASK_LEAD : 0)));
+            const grip = folded ? '' : widthGripSvg(boxRight, b.y, b.h, textW, regionFocus === b.key || widthHotKey === b.key);
+            return `<g class="map-region-node${folded ? ' map-region-pill' : ''}${locked && r.host.kind === 'sealed' ? ' map-region-locked' : ''}${b.collapsed ? ' collapsed' : ''}" id="${esc(regionDomId(b.key))}" role="treeitem" aria-selected="false"${b.foldable ? ` aria-expanded="${b.collapsed ? 'false' : 'true'}"` : ''} aria-label="${esc(aria)}" data-scoped-id="${esc(b.key)}" data-region-id="${esc(r.host.id)}" data-text-w="${textW}"><rect class="map-region-body" x="${b.x}" y="${b.y}" width="${Math.max(1, b.w - slot)}" height="${b.h}" rx="${Math.min(14, b.h / 2)}"/>${textSvg}${chrome}${kidChip}${grip}</g>`;
           })
           .join('');
         return cloud + edges + inner + pills + cloudFold + tools;
@@ -4097,8 +4147,9 @@ export function createMapView(
       }
       return;
     }
-    const viaText = opts.onMainTaskToggle?.(id);
-    if (viaText) {
+    if (opts.onMainTaskToggle) {
+      const viaText = opts.onMainTaskToggle(id);
+      if (!viaText) return;
       const node = { ...n, task: viaText.to };
       onTaskToggle?.({ id, from: viaText.from, to: viaText.to, node });
       if (shouldFireAction(viaText.from, viaText.to)) {
@@ -4846,11 +4897,19 @@ export function createMapView(
     }
 
     function applyWidth(key: string, w: number): void {
+      const clamped = Math.max(MIN_COL, Math.min(MAX_COL, Math.round(w)));
+      const node = regionWidthTarget(key);
+      if (node) {
+        resizingWidthKey = key;
+        regionWidthLive.set(node, clamped);
+        paint();
+        return;
+      }
       const layout = getLayout();
       if (!layout.nodes) layout.nodes = {};
       resizingWidthKey = key;
       const prev = layout.nodes[key] || { x: 100, y: 100 };
-      layout.nodes[key] = { ...prev, w: Math.max(MIN_COL, Math.min(MAX_COL, Math.round(w))) };
+      layout.nodes[key] = { ...prev, w: clamped };
     }
 
     /** A finished drag is one undo step (F7, no toast). 0.2.43: a 1-line pill keeps its 1-line flag. */
@@ -4859,6 +4918,7 @@ export function createMapView(
       widthDrag = null;
       resizingWidthKey = null;
       if (!drag) return;
+      if (commitRegionWidth(drag.key)) return;
       const w = getLayout().nodes?.[drag.key]?.w;
       if (typeof w !== 'number' || w <= 0) return;
       commitWidthStep(
@@ -5228,15 +5288,15 @@ export function createMapView(
     ): { key: string; textW: number } | null {
       let best: { key: string; textW: number } | null = null;
       let bestDx = slop + 1;
-      host.querySelectorAll<SVGGElement>('.map-node:not(.time-leaf)').forEach((g) => {
-        const pill = g.querySelector('.map-pill');
+      host.querySelectorAll<SVGGElement>('.map-node:not(.time-leaf), .map-region-node:not(.map-region-root):not(.map-region-pill):not(.map-region-locked)').forEach((g) => {
+        const pill = g.querySelector('.map-pill, .map-region-body');
         if (!pill) return;
         const r = pill.getBoundingClientRect();
         if (clientY < r.bottom - 14 || clientY > r.bottom + slop) return;
         if (clientX < r.right - 12 || clientX > r.right + slop) return;
         const dx = Math.abs(clientX - r.right) + Math.abs(clientY - r.bottom);
         if (dx >= bestDx) return;
-        const key = g.getAttribute('data-id') || '';
+        const key = g.getAttribute('data-id') || g.getAttribute('data-scoped-id') || '';
         if (!key) return;
         bestDx = dx;
         best = { key, textW: Number(g.getAttribute('data-text-w')) || MIN_COL };
@@ -5247,8 +5307,10 @@ export function createMapView(
     function showWidthHot(key: string | null): void {
       if (widthHotKey === key) return;
       widthHotKey = key;
-      host.querySelectorAll<SVGGElement>('.map-node').forEach((g) => {
-        const on = !!key && g.getAttribute('data-id') === key;
+      const focus = getFocusId();
+      host.querySelectorAll<SVGGElement>('.map-node, .map-region-node').forEach((g) => {
+        const id = g.getAttribute('data-id') || g.getAttribute('data-scoped-id');
+        const on = !!id && (id === key || id === focus || id === regionFocus);
         g.querySelector('.map-width-grip')?.setAttribute('opacity', on ? '1' : '0');
         g.querySelector('.map-width-hit')?.setAttribute('pointer-events', on ? 'all' : 'none');
       });
@@ -5742,7 +5804,8 @@ export function createMapView(
       );
       const edge = onControl ? null : rightEdgeKey(e.clientX, e.clientY, finger ? 28 : 18);
       if (!finger && edge && e.button === 0) {
-        setFocusId(edge.key);
+        if (regionWidthTarget(edge.key)) setRegionFocus(edge.key);
+        else setFocusId(edge.key);
         focusMapForKeys();
         showWidthHot(edge.key);
         widthDrag = {
@@ -5764,7 +5827,7 @@ export function createMapView(
         }
         return;
       }
-      if (finger && edge && edge.key === getFocusId()) {
+      if (finger && edge && (edge.key === getFocusId() || edge.key === regionFocus)) {
         // Touch resize only after the pill is already selected. A first
         // touch selects; a pan must not drag the corner into a resize.
         edgeArm = {

@@ -2,8 +2,9 @@
  * Region fold store (spec 20261101 §R1). One store per instance, shared by Map and Outline.
  * Keys are scoped ids: `regionId:nodeId` for a node inside a region, `regionId` for the
  * region root (the cloud). Root-doc fold state keeps living in `doc.fold`; this store only
- * holds region entries, so it can never clash with root ids and is never written into any
- * payload (a child doc's own `fold` is only read as the default).
+ * holds region entries, so it can never clash with root ids. A sealed submap's branch fold
+ * is also written onto the child document (`(+)`, same as the main map) by the doc owner;
+ * this store is still what Map and Outline paint, and the cloud pill itself is not a line.
  *
  * - `record` regions (`n:` ids) persist through the map resume path (`regionFold`).
  * - `sealed` regions (`s:` ids, or any region nested inside one) are memory-only and are

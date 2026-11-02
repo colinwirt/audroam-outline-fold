@@ -893,6 +893,7 @@
 .map-svg .map-region-pill > rect.map-region-body { fill: var(--of-region-fill, rgba(46, 160, 67, 0.14)); }
 /* 0.4.12: only the pill body (.map-region-body) is painted; task/fold hit rects stay transparent. */
 .map-region-node .map-task-hit { fill: transparent; stroke: none; }
+.map-region-node .map-width-hit { fill: transparent; stroke: none; }
 /* §R1 region folding: same fold chrome as root nodes; selection ring on the focused node. */
 .map-region-node .map-fold-hit { fill: transparent; stroke: none; }
 .map-region-node.is-focused > rect.map-region-body { stroke: var(--map-focus, #c9a227); stroke-width: 2.4; }
