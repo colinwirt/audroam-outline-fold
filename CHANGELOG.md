@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.5.2 — 2026-11-02
+
+- A new seal writes its base64url on one line between the BEGIN and CRC lines. Readers still open a seal wrapped at 76 characters, or any other wrap.
+
 ## 0.5.1 — 2026-11-02
 
 - Remove seal tells the host which branch was inlined. The change event carries `unsealed` (the branch id). The zone More button and `removeSeal` both emit it, so a host can allow that payload to leave the note.

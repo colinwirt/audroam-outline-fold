@@ -9,8 +9,9 @@
  * The DEK is random per seal. The content key is that DEK. HKDF info is
  * "of-seal-v3/wrap" and does not include host context.
  *
- * Text: BEGIN/END markers, base64url wrapped at 76, then 8 hex CRC-32 of the
+ * Text: BEGIN/END markers, the base64url on one line, then 8 hex CRC-32 of the
  * base64url with whitespace removed. The CRC is checked before any decrypt.
+ * Readers still accept the older 76-character wrap.
  */
 export const SEAL_V3_BEGIN = '-----BEGIN OUTLINE-FOLD SEAL-----';
 export const SEAL_V3_END = '-----END OUTLINE-FOLD SEAL-----';
@@ -185,16 +186,12 @@ export function isV3Ciphertext(s: string | undefined): boolean {
   return Boolean(s && s.includes('BEGIN OUTLINE-FOLD SEAL'));
 }
 
-/** One fixed layout. Readers accept whitespace, quotes, and wrapping around this. */
+/** One layout. The body is a single line. Readers still accept whitespace, quotes, and wrapping. */
 export function armorSeal(raw: Uint8Array): string {
   let bin = '';
   for (let i = 0; i < raw.length; i++) bin += String.fromCharCode(raw[i]!);
   const b64 = btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
-  const lines = [SEAL_V3_BEGIN];
-  for (let i = 0; i < b64.length; i += 76) lines.push(b64.slice(i, i + 76));
-  lines.push(crc32Hex(enc.encode(b64)));
-  lines.push(SEAL_V3_END);
-  return lines.join('\n');
+  return [SEAL_V3_BEGIN, b64, crc32Hex(enc.encode(b64)), SEAL_V3_END].join('\n');
 }
 
 function unb64(s: string): Uint8Array<ArrayBuffer> {

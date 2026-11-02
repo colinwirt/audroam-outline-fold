@@ -29,7 +29,7 @@ Writers use one layout:
 
 ```text
 -----BEGIN OUTLINE-FOLD SEAL-----
-<base64url of the binary, 76 characters a line>
+<base64url of the binary, one line>
 <crc32, 8 lowercase hex>
 -----END OUTLINE-FOLD SEAL-----
 ```

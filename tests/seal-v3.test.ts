@@ -106,10 +106,11 @@ describe('of-seal-v3 envelope', () => {
     expect(Buffer.from(openSealArmor(pasted)).equals(Buffer.from(raw))).toBe(true);
     find(doc, 'v').sealed!.ciphertext = pasted;
     expect((await openSealedBranch(doc, 'v', CTX)).doc.nodes[0]!.title).toBe('Vault');
-    for (const line of ct.split('\n')) {
-      if (line.startsWith('-----')) continue;
-      expect(line.length).toBeLessThanOrEqual(76);
-    }
+    const written = ct.split('\n');
+    expect(written).toHaveLength(4);
+    expect(written[0]).toBe('-----BEGIN OUTLINE-FOLD SEAL-----');
+    expect(written[2]).toMatch(/^[0-9a-f]{8}$/);
+    expect(written[3]).toBe('-----END OUTLINE-FOLD SEAL-----');
   });
 
   it('a changed character is damaged, and a header byte with a rebuilt checksum is a wrong key', async () => {
