@@ -19,6 +19,7 @@ import type { SealSessions } from '../sealSession.js';
 import type { RegionId } from '../hostApi.js';
 import { secureZoneChrome } from '../sealUi.js';
 import type { FocusLink } from '../focusLink.js';
+import { parseScopedId } from '../scopedId.js';
 
 export interface OutlineEditorOptions {
   sessions: SealSessions;
@@ -472,6 +473,60 @@ export function outlineEditor(opts: OutlineEditorOptions): Extension[] {
     const offs = (['unlock', 'lock', 'change', 'error', 'save'] as const).map((t) => sessions.api.on(t, kick));
     return { destroy: () => { dead = true; offs.forEach((o) => o()); } };
   });
+  /** Scroll `view` so the `<enc>` line for `region` is on screen. Does not move the caret or take focus. */
+  const scrollToRegion = (view: EditorView, region: string): boolean => {
+    for (const e of scanEnc(view.state.doc, sessions)) {
+      if (e.region !== region) continue;
+      view.dispatch({ effects: EditorView.scrollIntoView(e.to, { y: 'center' }) });
+      return true;
+    }
+    return false;
+  };
+  /** Outermost seal first, so a nested zone's widget is mounted before we look inside it. */
+  const revealSealed = (outer: EditorView, region: string): void => {
+    const parts = region.split('/');
+    let view: EditorView | undefined = outer;
+    for (let i = 0; i < parts.length; i++) {
+      if (!view) return;
+      const r = parts.slice(0, i + 1).join('/');
+      scrollToRegion(view, r);
+      if (r !== region) view = zoneViews.get(r);
+    }
+  };
+  /**
+   * Caret on the zone row for `local`, without focusing the zone. The anchor row hides its
+   * `<id:>`, so the branch id lands on the zone's first line.
+   */
+  const placeInZone = (region: string, local: string): boolean => {
+    const z = zoneViews.get(region);
+    if (!z?.dom.isConnected) return false;
+    const known = sessions.list().find((s) => s.region === region);
+    if (!known) return false;
+    const doc = z.state.doc;
+    const needle = `<id:${local}>`;
+    let pos: number | null = null;
+    for (let i = 1; i <= doc.lines; i++) {
+      const line = doc.line(i);
+      if (line.text.includes(needle)) { pos = line.from; break; }
+    }
+    if (pos == null && local === known.branchId) pos = doc.line(1).from;
+    if (pos == null) return false;
+    z.dispatch({ selection: { anchor: pos }, effects: EditorView.scrollIntoView(pos, { y: 'center' }) });
+    return true;
+  };
+  /** A scoped id (`s:4:6`) or a region root (`s:4`). Null for a host-note id. Does not create a session. */
+  const sealedTarget = (id: string): { region: string; local: string } | null => {
+    const p = parseScopedId(id);
+    if (p.region.startsWith('s:')) {
+      const known = sessions.list().find((s) => s.region === p.region);
+      return known ? { region: p.region, local: p.id } : null;
+    }
+    if (id.startsWith('s:')) {
+      const known = sessions.list().find((s) => s.region === id);
+      return known?.branchId ? { region: id, local: known.branchId } : null;
+    }
+    return null;
+  };
   const follow = ViewPlugin.define((view) => {
     let typedAt = 0;
     const onKey = () => (typedAt = Date.now());
@@ -479,6 +534,15 @@ export function outlineEditor(opts: OutlineEditorOptions): Extension[] {
     const off = opts.focus?.subscribe((id, source) => {
       if (source === 'editor' || !(opts.followInText?.() ?? true)) return;
       if (Date.now() - typedAt < 1500) return; // paused while typing
+      const sealed = sealedTarget(id);
+      if (sealed) {
+        const place = (): boolean => {
+          revealSealed(view, sealed.region);
+          return placeInZone(sealed.region, sealed.local);
+        };
+        if (!place()) queueMicrotask(() => { try { place(); } catch { /* zone gone */ } });
+        return;
+      }
       const local = id.includes(':') ? id.slice(id.lastIndexOf(':') + 1) : id;
       const doc = view.state.doc;
       for (let i = 1; i <= doc.lines; i++) {

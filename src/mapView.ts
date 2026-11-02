@@ -54,7 +54,7 @@ import {
 import { regionHull, regionSvg, wrapPlain, type MapRegion } from './mapRegion.js';
 import { placeRegions, innerRegionEdges, type PlacedBox, type PlacedRegion, type RegionHostSpec } from './regionLayout.js';
 import { createRegionFoldStore, isMemoryOnlyRegion, revealScopedId, type RegionFoldStore } from './regionFold.js';
-import { parseScopedId } from './scopedId.js';
+import { parseScopedId, scopeId } from './scopedId.js';
 import type { OutlineFoldDoc, OutlineNode } from './types.js';
 import {
   measurePill,
@@ -365,10 +365,12 @@ export interface MapViewOptions {
    */
   onRegionTaskToggle?: (scopedId: string) => boolean;
   /**
-   * A corner drag on a pill inside an unlocked region. The map has already written `w` onto
-   * that child node. The host marks the region dirty so the next re-seal keeps the width.
+   * A width change on a pill inside an unlocked region (corner drag or the width menu).
+   * The map has already written it onto that child. `w` null is Auto (clear `w` and `wAuto`).
+   * A string `wAuto` sets the one-line flag; null clears it; omitted leaves it as it was.
+   * The host marks the region dirty so the next re-seal keeps the width.
    */
-  onRegionWidth?: (scopedId: string, w: number) => void;
+  onRegionWidth?: (scopedId: string, w: number | null, wAuto?: string | null) => void;
   /**
    * An inner branch in a region was folded or expanded. The store already holds the new state.
    * The host copies it onto the child document so a sealed submap writes `(+)` on the next re-seal.
@@ -3029,12 +3031,16 @@ export function createMapView(
     after: WidthEntry;
     /** The node's id before this step: none, session-only, or written (lazy ids, F8). */
     idState: WidthIdState;
+    /** Pill inside an open region. Undo writes this node, not the host document. */
+    node?: OutlineNode;
   };
   type WidthStepRec = {
     kind: WidthPickKind | 'drag';
     entries: WidthStepEntry[];
     anchorKey: string;
     persist: boolean;
+    /** Open region whose children this step sizes. Absent for a host-doc step. */
+    region?: string;
   };
   const widthUndoStack: WidthStepRec[] = [];
   const widthRedoStack: WidthStepRec[] = [];
@@ -3232,7 +3238,32 @@ export function createMapView(
     }
   }
 
+  /** Write one region's child width. Auto deletes both keys. */
+  function writeNodeLayout(node: OutlineNode, next: WidthEntry): void {
+    regionWidthLive.delete(node);
+    if (next.w == null) {
+      if (node.layout) {
+        delete node.layout.w;
+        delete node.layout.wAuto;
+        if (!Object.keys(node.layout).length) delete node.layout;
+      }
+      return;
+    }
+    const nl: NonNullable<OutlineNode['layout']> = { ...(node.layout || {}), w: Math.round(next.w) };
+    if (next.wAuto) nl.wAuto = next.wAuto;
+    else delete nl.wAuto;
+    node.layout = nl;
+  }
+
   function applyEntries(rec: WidthStepRec, side: 'before' | 'after'): void {
+    if (rec.region) {
+      for (const e of rec.entries) {
+        if (!e.node) continue;
+        writeNodeLayout(e.node, e[side]);
+        if (e.node.id) opts.onRegionWidth?.(scopeId(rec.region, e.node.id), e[side].w, e[side].wAuto);
+      }
+      return;
+    }
     const doc = getDoc();
     for (const e of rec.entries) {
       const key = writeWidth(e.key, e[side], rec.persist);
@@ -3318,9 +3349,11 @@ export function createMapView(
     anchorKey: string,
     entries: WidthStepEntry[],
     how: { toast: boolean; announce?: string },
+    region?: string,
   ): MapWidthStep | null {
     const changed = entries.filter((e) => !sameWidth(e.before, e.after));
-    const rec: WidthStepRec = { kind, entries: changed, anchorKey, persist: widthsPersist() };
+    // A region pick stays in that sealed branch. It does not setDoc the host note.
+    const rec: WidthStepRec = { kind, entries: changed, anchorKey, persist: region ? false : widthsPersist(), region };
     if (changed.length) {
       anchorPillLeft(anchorKey);
       applyEntries(rec, 'after');
@@ -3345,21 +3378,23 @@ export function createMapView(
     // 0.2.43: `slim` → Fit text, `wider` → Wide (old hosts / saved picks).
     const kind = normalizeWidthPickKind(rawKind);
     if (!kind) return false;
-    const n = nodeByKey(key);
+    const hit = regionWidthDoc(key);
+    const n = hit?.node ?? nodeByKey(key);
     // Time leaves have no width (TL1): no pick applies to them.
     if (!n || timeLeafKind(n)) return false;
+    const roots = hit ? hit.doc.nodes : getDoc().nodes;
     let scope: OutlineNode[] = [n];
     if (kind === 'siblings') {
-      const parent = findParentOf(getDoc().nodes, n);
+      const parent = findParentOf(roots, n);
       // TL1: `1 line siblings` skips time leaves.
-      scope = siblingScope(n, parent ? parent.children : getDoc().nodes).filter((s) => !timeLeafKind(s));
+      scope = siblingScope(n, parent ? parent.children : roots).filter((s) => !timeLeafKind(s));
     } else if (kind === 'level') {
-      scope = levelScope(n, getDoc().nodes).filter((s) => !timeLeafKind(s));
+      scope = levelScope(n, roots).filter((s) => !timeLeafKind(s));
     }
     const cap = currentSingleLineCap();
     let capped = 0;
     const entries: WidthStepEntry[] = scope.map((node) => {
-      const k = keyOfNode(node);
+      const k = hit ? (node.id ? scopeId(hit.region, node.id) : key) : keyOfNode(node);
       const before = readWidth(k, node);
       const m = fitMeasure(node, k);
       let after: WidthEntry;
@@ -3378,7 +3413,7 @@ export function createMapView(
       } else {
         after = { w: null, wAuto: null };
       }
-      return { key: k, before, after, idState: idStateOf(node) };
+      return { key: k, before, after, idState: idStateOf(node), node: hit ? node : undefined };
     });
     const fitAuto = kind === 'fit' && entries[0]!.after.w == null;
     return commitWidthStep(kind, key, entries, {
@@ -3389,7 +3424,7 @@ export function createMapView(
         capped,
         auto: fitAuto,
       }),
-    });
+    }, hit?.region);
   }
 
   function findParentOf(list: OutlineNode[], target: OutlineNode): OutlineNode | null {
@@ -3509,8 +3544,9 @@ export function createMapView(
 
   /** F11: the width popover for a node, as the `w` key opens it. */
   function openWidthMenu(id?: string): boolean {
-    const key = id ?? getFocusId();
-    if (!key || !nodeByKey(key) || !openWidthPopHook) return false;
+    const key = id || regionFocus || getFocusId();
+    if (!key || !openWidthPopHook) return false;
+    if (!nodeByKey(key) && !regionWidthTarget(key)) return false;
     return openWidthPopHook(key, { keyboard: true });
   }
 
@@ -3677,11 +3713,17 @@ export function createMapView(
       g.querySelector('.map-width-hit')?.setAttribute('pointer-events', on ? 'all' : 'none');
     });
   }
-  /** Child node of an open region, or null for a root-doc id / the cloud root. */
-  function regionWidthTarget(key: string): OutlineNode | null {
+  /** Child node of an open region, plus that region's doc. Null for a root-doc id or the cloud root. */
+  function regionWidthDoc(key: string): { region: string; doc: OutlineFoldDoc; node: OutlineNode } | null {
     const hit = regionBox(key);
     if (!hit || hit.b.root || !hit.r.host.doc || !hit.b.localId) return null;
-    return findNode(hit.r.host.doc.nodes, hit.b.localId);
+    const node = findNode(hit.r.host.doc.nodes, hit.b.localId);
+    if (!node) return null;
+    return { region: hit.r.host.id, doc: hit.r.host.doc, node };
+  }
+  /** Child node of an open region, or null for a root-doc id / the cloud root. */
+  function regionWidthTarget(key: string): OutlineNode | null {
+    return regionWidthDoc(key)?.node ?? null;
   }
   /** Write a finished region-pill drag onto the child. Returns true when `key` is in a region. */
   function commitRegionWidth(key: string): boolean {
@@ -3852,10 +3894,10 @@ export function createMapView(
   function anchorCaption(key: string | undefined, label: string, anchors: Set<string> = unlockedAnchorKeys()): string {
     return key !== undefined && anchors.has(key) ? UNLOCK_MARK + label : label;
   }
-  function quickSize(d: OutlineFoldDoc, n: OutlineNode, pos: MapPoint | undefined, key?: string): { w: number; h: number } {
+  function nodeMeasure(d: OutlineFoldDoc, n: OutlineNode, pos: MapPoint | undefined, key?: string) {
     const label = anchorCaption(key, captionWithoutLinks(displayCaption(n.title)));
     const live = regionWidthLive.get(n);
-    const sz = pillSize(label, {
+    return pillSize(label, {
       reserveFold: hasKids(n),
       reserveTask: !!resolveTask(n),
       semibold: false,
@@ -3864,6 +3906,9 @@ export function createMapView(
       maxLines: pos?.maxLines,
       fontSize: resolveFontPx(pos?.fontSize, getLayout().fontSize, d.frontmatter?.fontSize),
     });
+  }
+  function quickSize(d: OutlineFoldDoc, n: OutlineNode, pos: MapPoint | undefined, key?: string): { w: number; h: number } {
+    const sz = nodeMeasure(d, n, pos, key);
     return { w: sz.w, h: sz.h };
   }
   function visibleKeyed(d0: OutlineFoldDoc, region?: string): { n: OutlineNode; key: string; parentKey: string | null }[] {
@@ -3898,7 +3943,22 @@ export function createMapView(
     placed = placeRegions(boxes, (k) => kids.get(k) ?? [], '', hosts, {
       pack: (d0, region) => {
         const d = region ? rfold.viewDoc(region, d0) : d0;
-        return autoPackPositions(d, { isNodeCollapsed: (id) => isCollapsed(d, id), wrapCh: autoCh() }).nodes;
+        // A live drag is not on the node yet. Stamp it so the centre uses the
+        // same width as the pill, and the shared left edge stays put.
+        const order = indexOutline(d.nodes || []);
+        const nodeLayout: Record<string, MapPoint> = {};
+        const stamp = (n: OutlineNode) => {
+          const w = regionWidthLive.get(n);
+          if (typeof w === 'number') nodeLayout[nodeMapKey(n, order.get(n) || 0)] = { x: 0, y: 0, w };
+          n.children?.forEach(stamp);
+        };
+        (d.nodes || []).forEach(stamp);
+        return autoPackPositions(d, {
+          isNodeCollapsed: (id) => isCollapsed(d, id),
+          wrapCh: autoCh(),
+          fontSize: resolveFontPx(undefined, getLayout().fontSize, getDoc().frontmatter?.fontSize),
+          nodeLayout,
+        }).nodes;
       },
       size: (n) => quickSize(doc, n, undefined),
       visible: visibleKeyed,
@@ -3974,7 +4034,11 @@ export function createMapView(
             const kidChip = locked && r.host.kid
               ? `<g class="map-region-kid"><rect x="${b.x + b.w - slot - 34}" y="${b.y - 8}" width="30" height="16" rx="8"/><text x="${b.x + b.w - slot - 19}" y="${b.y + 4}" text-anchor="middle">${esc(r.host.kid.slice(0, 4))}</text></g>`
               : '';
-            const lines = wrapPlain(t, autoCh());
+            const node = !folded && b.localId && r.host.doc ? findNode(r.host.doc.nodes, b.localId) : null;
+            // Same measure as the box, so a stored or live width wraps the caption
+            // instead of drawing one line at the map's character width.
+            const measured = node ? nodeMeasure(getDoc(), node, undefined) : null;
+            const lines = measured?.lines.length ? measured.lines : wrapPlain(t, autoCh());
             // 0.4.4 (Colin): same font size as normal map nodes (pills are sized with it via quickSize).
             const fpx = resolveFontPx(undefined, getLayout().fontSize, getDoc().frontmatter?.fontSize);
             const lh = lineBox(fpx);
@@ -3988,7 +4052,7 @@ export function createMapView(
             const taskSvg = task ? taskLeadSvg(task, { x: b.x, y: b.y, h: b.h, cy, lead: TASK_LEAD }) : '';
             const textY = lines.length <= 1 ? cy + lh * 0.25 : cy + lh * 0.25 - ((lines.length - 1) * lh) / 2;
             const textSvg = tip + taskSvg + (lines.length <= 1
-              ? `<text x="${tx}" y="${textY}" ${fa}>${esc(t)}</text>`
+              ? `<text x="${tx}" y="${textY}" ${fa}>${esc(lines[0] ?? t)}</text>`
               : `<text x="${tx}" y="${textY}" ${fa}>${lines.map((l, i) => `<tspan x="${tx}"${i ? ` dy="${lh}"` : ''}>${esc(l)}</tspan>`).join('')}</text>`);
             // Caption column, as a main pill's data-text-w: the measured width minus the fold slot and the task lead.
             const textW = Math.max(1, Math.round(b.w - slot - (task ? TASK_LEAD : 0)));
@@ -5003,7 +5067,7 @@ export function createMapView(
 
     /** Which item carries ✓ for this pill (one at most). */
     function checkedWidthKind(key: string): WidthPickKind | null {
-      const n = nodeByKey(key);
+      const n = regionWidthTarget(key) ?? nodeByKey(key);
       if (!n) return null;
       const cur = readWidth(key, n);
       if (cur.w == null) return 'auto';
@@ -5108,7 +5172,8 @@ export function createMapView(
         }
         applyWidthPick(key, item.kind);
         if (item.kind === 'wide') {
-          const w = readWidth(key, nodeByKey(key)!).w;
+          const node = regionWidthTarget(key) ?? nodeByKey(key);
+          const w = node ? readWidth(key, node).w : null;
           if (w != null) wideW.set(key, w);
           else wideW.delete(key);
         }
@@ -5234,7 +5299,7 @@ export function createMapView(
       // TL1: no width popover on a time leaf (`w` does nothing there).
       if (timeLeafKind(nodeByKey(key))) return false;
       const g = nodeEl(key);
-      const pill = g?.querySelector('.map-pill');
+      const pill = g?.querySelector('.map-pill, .map-region-body');
       if (!g || !pill) return false;
       const r = pill.getBoundingClientRect();
       const textW = Number(g.getAttribute('data-text-w')) || MIN_COL;
@@ -6477,9 +6542,10 @@ export function createMapView(
       const doc = getDoc();
       const focusId = getFocusId();
 
-      // F11: `w` opens the width popover for the selected node.
-      if ((e.key === 'w' || e.key === 'W') && focusId && openWidthPopHook) {
-        if (openWidthMenu(focusId)) {
+      // F11: `w` opens the width popover for the selected node (a region pill, when one is selected).
+      const widthKey = regionFocus || focusId;
+      if ((e.key === 'w' || e.key === 'W') && widthKey && openWidthPopHook) {
+        if (openWidthMenu(widthKey)) {
           e.preventDefault();
           e.stopPropagation();
           return;

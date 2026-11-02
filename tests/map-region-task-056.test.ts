@@ -67,8 +67,15 @@ it('selecting an inner pill shows the corner grip, and a drag stores w', async (
     ({ left: 200, top: 200, right: 360, bottom: 244, width: 160, height: 44, x: 200, y: 200, toJSON() { return {}; } }) as DOMRect;
   mv.bindGestures();
   const down = new PointerEvent('pointerdown', { bubbles: true, clientX: 360, clientY: 244, button: 0, pointerId: 1, pointerType: 'mouse' });
+  const before = num(body, 'x');
+  const plainX = num(find(host, 'record').querySelector('.map-region-body')!, 'x');
+  expect(before).toBeCloseTo(plainX, 0);
   host.dispatchEvent(down);
   host.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, clientX: 420, clientY: 244, button: 0, buttons: 1, pointerId: 1, pointerType: 'mouse' }));
+  const moved = find(host, 'seems good').querySelector('.map-region-body')!;
+  const movedPlain = find(host, 'record').querySelector('.map-region-body')!;
+  expect(num(moved, 'x')).toBeCloseTo(num(movedPlain, 'x'), 0);
+  expect(num(moved, 'width')).toBeGreaterThan(num(body, 'width'));
   host.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, clientX: 420, clientY: 244, button: 0, pointerId: 1, pointerType: 'mouse' }));
 
   const node = sub.nodes[0]!.children!.find((n) => n.id === '6')!;
@@ -76,4 +83,85 @@ it('selecting an inner pill shows the corner grip, and a drag stores w', async (
   expect(node.layout?.w).toBeGreaterThanOrEqual(Math.max(120, startW));
   expect(widths[0]?.id).toBe(task.getAttribute('data-scoped-id'));
   mv.destroy?.();
+});
+
+it('a stored region width wraps the caption and stays on the column left edge', async () => {
+  const doc = parse('- Test sealing <id:3>\n');
+  const sub = parse('- record <id:7>\n- [x] Here is the sealed record that should wrap <id:6>\n');
+  sub.nodes.find((n) => n.id === '6')!.layout = { w: 140 };
+  const host = document.createElement('div');
+  Object.defineProperty(host, 'clientWidth', { value: 800 });
+  Object.defineProperty(host, 'clientHeight', { value: 600 });
+  document.body.appendChild(host);
+  const layout: any = { version: 1, nodes: {}, _source: 'auto-pack' };
+  const mv: any = (createMapView as any)(host, {
+    getDoc: () => doc,
+    setDoc: () => {},
+    getLayout: () => layout,
+    getFocusId: () => '3',
+    setFocusId: () => {},
+    getRegionHosts: () => [{ id: 's:3', kind: 'sealed', anchor: '3', doc: sub, folded: false, kid: 'k1' }],
+  });
+  mv.paint();
+  await new Promise((r) => setTimeout(r, 20));
+  const long = find(host, 'should wrap');
+  const plain = find(host, 'record');
+  const parts = [...long.querySelectorAll('tspan')].map((t) => t.textContent || '');
+  expect(parts.length).toBeGreaterThan(1);
+  expect(parts.join(' ')).toContain('sealed');
+  expect(num(long.querySelector('.map-region-body')!, 'x')).toBeCloseTo(num(plain.querySelector('.map-region-body')!, 'x'), 0);
+  mv.destroy?.();
+});
+
+it('Fit, 1 line, siblings, Wide and Auto write the region child, not the host note', async () => {
+  const doc = parse('- Test sealing <id:3>\n');
+  const sub = parse('- header <id:3>\n  - [x] Here is the sealed record that should wrap onto more than one line <id:6>\n  - record <id:7>\n');
+  const host = document.createElement('div');
+  Object.defineProperty(host, 'clientWidth', { value: 800 });
+  Object.defineProperty(host, 'clientHeight', { value: 600 });
+  document.body.appendChild(host);
+  const layout: any = { version: 1, nodes: {}, _source: 'auto-pack' };
+  const widths: { id: string; w: number | null; wAuto?: string | null }[] = [];
+  let hostWrites = 0;
+  const mv: any = (createMapView as any)(host, {
+    getDoc: () => doc,
+    setDoc: () => { hostWrites += 1; },
+    getLayout: () => layout,
+    getFocusId: () => '3',
+    setFocusId: () => {},
+    getRegionHosts: () => [{ id: 's:3', kind: 'sealed', anchor: '3', doc: sub, folded: false, kid: 'k1' }],
+    onRegionWidth: (id: string, w: number | null, wAuto?: string | null) => { widths.push({ id, w, wAuto }); },
+  });
+  mv.paint();
+  mv.bindGestures();
+  await new Promise((r) => setTimeout(r, 20));
+  const key = find(host, 'should wrap').getAttribute('data-scoped-id');
+  expect(key).toBe('s:3:6');
+  expect(mv.openWidthMenu(key)).toBe(true);
+  expect(host.querySelector('.map-width-pop [data-choice="fit-text"]')).not.toBeNull();
+  expect(host.querySelector('.map-width-pop [data-choice="auto"]')).not.toBeNull();
+  const child = () => sub.nodes[0]!.children!.find((n) => n.id === '6')!;
+  const sib = () => sub.nodes[0]!.children!.find((n) => n.id === '7')!;
+  expect(mv.applyWidthPick(key, 'line')).toBe(true);
+  expect(child().layout?.w).toBeGreaterThanOrEqual(120);
+  expect(child().layout?.wAuto).toBe('single-line');
+  expect(widths.at(-1)).toEqual({ id: 's:3:6', w: child().layout?.w, wAuto: 'single-line' });
+  expect(mv.applyWidthPick(key, 'siblings')).toBe(true);
+  expect(sib().layout?.wAuto).toBe('single-line');
+  expect(widths.some((w) => w.id === 's:3:7' && w.wAuto === 'single-line')).toBe(true);
+  expect(mv.applyWidthPick(key, 'level')).toBe(true);
+  expect(sub.nodes[0]!.layout?.w).toBeUndefined();
+  expect(mv.applyWidthPick(key, 'wide')).toBe(true);
+  expect(child().layout?.w).toBeGreaterThanOrEqual(120);
+  expect(child().layout?.wAuto).toBeUndefined();
+  expect(mv.applyWidthPick(key, 'auto')).toBe(true);
+  expect(child().layout?.w).toBeUndefined();
+  expect(widths.at(-1)?.w).toBeNull();
+  expect(mv.applyWidthPick(key, 'fit')).toBe(true);
+  expect(child().layout?.w).toBeGreaterThan(120);
+  expect(child().layout?.wAuto).toBeUndefined();
+  expect(hostWrites).toBe(0);
+  expect(doc.nodes[0]!.layout).toBeUndefined();
+  mv.destroy?.();
+  host.remove();
 });

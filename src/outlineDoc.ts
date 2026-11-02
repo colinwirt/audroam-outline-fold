@@ -140,7 +140,7 @@ export interface OutlineDocHandle {
     onRegionLock: (region: RegionId) => void;
     onRegionMore: (region: RegionId, rect: DOMRect) => void;
     onRegionTaskToggle: (id: string) => boolean;
-    onRegionWidth: (id: string, w: number) => void;
+    onRegionWidth: (id: string, w: number | null, wAuto?: string | null) => void;
     onRegionFoldSync: (region: string) => void;
     onMainTaskToggle: (id: string) => { from: TaskState; to: TaskState } | null;
   };
@@ -589,10 +589,21 @@ export function createOutlineDoc(o: OutlineDocOptions): OutlineDocHandle {
         onRegionLock: (region) => { rootNow(); void sessions.lock(region, 'user'); },
         onRegionMore: (region, rect) => onMore?.(branchOf(region), rect),
         onRegionTaskToggle: (id) => handle.toggleRegionTask(id),
-        onRegionWidth: (id, w) => {
+        onRegionWidth: (id, w, wAuto) => {
           const n = handle.regionNode(id);
           if (!n) return;
-          n.layout = { ...(n.layout || {}), w: Math.round(w) };
+          if (w == null) {
+            if (n.layout) {
+              delete n.layout.w;
+              delete n.layout.wAuto;
+              if (!Object.keys(n.layout).length) delete n.layout;
+            }
+          } else {
+            const nl: NonNullable<OutlineNode['layout']> = { ...(n.layout || {}), w: Math.round(w) };
+            if (wAuto) nl.wAuto = wAuto;
+            else if (wAuto === null) delete nl.wAuto;
+            n.layout = nl;
+          }
           sessions.markChanged(handle.scoped(id).region);
         },
         onRegionFoldSync: (region) => writeInnerFold(region),

@@ -68,6 +68,33 @@ it('Map -> Text still follows (FocusLink set from the map moves the text caret o
   expect(active[0].textContent).toMatch(/after/);
 });
 
+it('Map focus inside a submap moves the zone caret and does not take focus', async () => {
+  const { fh, zone } = await mount(FIX, { followInText: () => true });
+  await tick(1600);
+  const region = fh.regionFor('4');
+  const z = zone();
+  const beforeFocus = document.activeElement;
+  fh.focusLink.set(`${region}:6`, 'map');
+  await tick(50);
+  expect(z.state.doc.lineAt(z.state.selection.main.head).text).toMatch(/jars <id:6>/);
+  expect(z.hasFocus).toBe(false);
+  expect(document.activeElement).toBe(beforeFocus);
+  fh.focusLink.set(region, 'map');
+  await tick(50);
+  expect(z.state.doc.lineAt(z.state.selection.main.head).text).toMatch(/Pantry/);
+  expect(z.hasFocus).toBe(false);
+  const n = fh.regionNode(`${region}:6`);
+  const opts = fh.mapOptions();
+  opts.onRegionWidth(`${region}:6`, 240, null);
+  expect(n.layout.w).toBe(240);
+  expect(n.layout.wAuto).toBeUndefined();
+  opts.onRegionWidth(`${region}:6`, 300, 'single-line');
+  expect(n.layout).toMatchObject({ w: 300, wAuto: 'single-line' });
+  opts.onRegionWidth(`${region}:6`, null);
+  expect(n.layout?.w).toBeUndefined();
+  expect(n.layout?.wAuto).toBeUndefined();
+});
+
 it('with Follow off, a Map focus update leaves the caret row where it is', async () => {
   const { fh } = await mount(FIX, { followInText: () => false });
   await tick(1600);

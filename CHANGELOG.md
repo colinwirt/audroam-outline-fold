@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.8 — 2026-11-03
+
+- Map: resizing a pill inside an open sealed region grows it from the column's left edge, and the caption wraps to that width.
+- Map: Fit text, 1 line, 1 line siblings, 1 line at this level, Wide, and Auto on a submap pill write that child's `layout.w`. Auto clears it. The host note is not rewritten.
+- Follow in text: focus on a node inside an open seal moves the caret to that row in the secure zone, without taking focus.
+
 ## 0.5.7 — 2026-11-02
 
 - Map: ticking a checkbox edits that source line. The id on a main-map row is a session id, so the lookup for `<id:>` missed and the map re-serialised the note. `[]` is an open task, but it does not round-trip to `[ ]`, so that re-serialise inserted a new line and left the original. A tick now accepts `[]` and, when the id is only a session id, edits the outline line that id belongs to. Duplicate labels and a line inserted above still hit the clicked line. A missed line is left unchanged.
