@@ -56,25 +56,37 @@ export function mergeKeeping(prev: string, normPrev: string, next: string): stri
   const pairs = match(N, X, (x, y) => x === y);
   pairs.push([N.length, X.length]);
   let xPos = 0;
+  // 0.5.5: an empty `fold-:` / `collapsedMarker` pair does not round-trip (a default layout
+  // block is omitted). Those lines have no norm row. An insertion in that gap (unseal writing
+  // `fold-: 12`) used to keep the stale pair and add the new one inside the same block.
+  const trailerAt = P.findIndex((l) => /^---\s*(?:payloads|sealed|enc|keyring|keys|layout)\s*---$/i.test(l));
+  const staleLayout = (index: number): boolean =>
+    trailerAt >= 0 && index >= trailerAt && /^(?:fold[-+]\s*:|collapsedMarker\s*:|expandedMarker\s*:)/.test(P[index] ?? '');
+  const pushGap = (upTo: number) => {
+    while (p < upTo) {
+      if (staleLayout(p)) { p++; continue; }
+      out.push(P[p++]!);
+    }
+  };
   for (const [ni, xi] of pairs) {
     if (ni > nPos || xi > xPos) {
       // Hunk N[nPos..ni) -> X[xPos..xi): replace the prev lines that carried N[nPos..ni).
       const carried = [...Array(ni - nPos).keys()].map((k) => pOf.get(nPos + k)).filter((v): v is number => v != null);
       const cut = carried.length ? carried[0]! : p;
-      while (p < cut) out.push(P[p++]!);
+      pushGap(cut);
       out.push(...X.slice(xPos, xi));
       if (carried.length) p = carried[carried.length - 1]! + 1;
     }
     if (ni < N.length) {
       const at = pOf.get(ni);
-      if (at != null && at >= p) { while (p < at) out.push(P[p++]!); out.push(relabel.has(p) ? N[ni]! : P[p]!); p++; }
+      if (at != null && at >= p) { pushGap(at); out.push(relabel.has(p) ? N[ni]! : P[p]!); p++; }
       // 0.4.19: an unchanged normalised line with no source line is serialiser noise (e.g. an empty
       // `- ` read back as `- -`); prev already holds its source form, so emitting it duplicated a
       // blank node on every write.
     }
     nPos = ni + 1; xPos = xi + 1;
   }
-  while (p < P.length) out.push(P[p++]!);
+  pushGap(P.length);
   return out.join('\n');
 }
 

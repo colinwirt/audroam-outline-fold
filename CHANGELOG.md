@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.5.5 — 2026-11-02
+
+- A layout block left with an empty `fold-:` and `collapsedMarker` no longer grows a second pair when a later write adds a real fold id (unseal, or folding the branch that was just inlined). Those two lines do not round-trip, and the merge was keeping them beside the new `fold-: 12`.
+
 ## 0.5.4 — 2026-11-02
 
 - Save & re-seal of a legacy of-seal-v2 payload writes of-seal-v3 even when the plaintext did not change. An unchanged v3 payload is still a no-op.
