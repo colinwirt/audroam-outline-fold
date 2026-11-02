@@ -77,7 +77,7 @@ describe('of-seal-v2 binding and labels', () => {
   it('label mix-up: xc20p ciphertext with an a256gcm label (or share label) never opens', async () => {
     const doc = parse(SRC);
     const k = await createKey(doc, PASS);
-    await sealBranch(doc, find(doc, 'a')!, k.kid, CTX, { cipher: 'xc20p' });
+    await sealBranch(doc, find(doc, 'a')!, k.kid, CTX, { pub: "", cipher: 'xc20p' });
     const edit = (f: (h: string) => string) => {
       const d = parse(serialize(doc));
       const p = find(d, 'a')!.sealed!;
@@ -109,9 +109,9 @@ describe('of-seal-v2 ciphers per branch', () => {
   it('mixed ciphers in one map: both open, round trip byte-identical, cipher read from header', async () => {
     const doc = parse(SRC);
     const k = await createKey(doc, PASS);
-    await sealBranch(doc, find(doc, 'a')!, k.kid, CTX, { cipher: 'a256gcm' });
+    await sealBranch(doc, find(doc, 'a')!, k.kid, CTX, { pub: "", cipher: 'a256gcm' });
     setSealCipher('xc20p');
-    await sealBranch(doc, find(doc, 'b')!, k.kid, CTX);
+    await sealBranch(doc, find(doc, 'b')!, k.kid, CTX, { pub: "" });
     const text = serialize(doc);
     expect(text).not.toMatch(/secret/);
     expect(text).toMatch(/- Sealed branch <enc:k1> <id:a>/);
@@ -139,7 +139,7 @@ describe('of-seal-v2 ciphers per branch', () => {
       for (let i = 0; i < 40; i++) {
         const d = parse(SRC);
         d.keyring = doc.keyring;
-        await sealBranch(d, find(d, 'a')!, k.kid, CTX, { cipher });
+        await sealBranch(d, find(d, 'a')!, k.kid, CTX, { pub: "", cipher });
         const b = parseBranchCtV2(find(d, 'a')!.sealed!.ciphertext!);
         expect(b.nonce.length).toBe(cipher === 'a256gcm' ? 12 : 24);
         nonces.add(b64u(b.nonce));
@@ -155,7 +155,7 @@ describe('keyring', () => {
   it('passphrase change re-wraps only the keyring; ciphertexts are untouched', async () => {
     const doc = parse(SRC);
     const k = await createKey(doc, PASS);
-    await sealBranch(doc, find(doc, 'a')!, k.kid, CTX);
+    await sealBranch(doc, find(doc, 'a')!, k.kid, CTX, { pub: "" });
     const before = serialize(doc);
     const ringBefore = JSON.stringify(doc.keyring);
     await expect(changeKeyringPassphrase(doc, 'wrong', 'new pass')).rejects.toBeInstanceOf(SealError);

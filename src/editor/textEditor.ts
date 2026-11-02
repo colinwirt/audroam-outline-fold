@@ -15,7 +15,7 @@
 import { outlineKeys } from './outlineKeys.js';
 
 const isSealedLine = (line: string): boolean => /<enc:[A-Za-z0-9_.-]+>/.test(line);
-import { Compartment, EditorState, StateEffect, StateField, type Extension, type Text } from '@codemirror/state';
+import { Compartment, EditorState, StateEffect, Transaction, StateField, type Extension, type Text } from '@codemirror/state';
 import { EditorView, Decoration, WidgetType, keymap, drawSelection, type DecorationSet } from '@codemirror/view';
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
 import { taskGlyphs, outlineEditor, refreshZones, missingZones, zoneRenderFailures, ZONE_ERROR_EVENT, type OutlineEditorOptions } from './index.js';
@@ -251,7 +251,7 @@ function buildEditor(host: HTMLElement, initial: string, opts: TextEditorOptions
     const next = value == null ? '' : String(value);
     if (view.state.doc.toString() === next) return;
     writing = true;
-    try { view.dispatch({ changes: minimalChange(view.state.doc.toString(), next) }); } finally { writing = false; }
+    try { view.dispatch({ changes: minimalChange(view.state.doc.toString(), next), annotations: Transaction.remote.of(true) }); } finally { writing = false; }
   };
   const clamp = (p: number) => Math.max(0, Math.min(p, view.state.doc.length));
   const applyEdit = (edit: TextEdit): void => {
@@ -266,7 +266,10 @@ function buildEditor(host: HTMLElement, initial: string, opts: TextEditorOptions
   const base = {
     view,
     host,
-    hasFocus: () => view.hasFocus,
+    // 0.4.17 (zone focus): the caret in an open sealed zone (a nested EditorView inside this
+    // editor's DOM) counts as editor focus. CM's view.hasFocus is false there, so hosts that gate
+    // "move focus elsewhere" on hasFocus() pulled focus out after every debounced save.
+    hasFocus: () => view.hasFocus || (typeof document !== 'undefined' && !!document.activeElement && view.dom.contains(document.activeElement)),
     isShown: () => !host.hidden,
     show(on: boolean) { host.hidden = !on; },
     hostEl: () => host,

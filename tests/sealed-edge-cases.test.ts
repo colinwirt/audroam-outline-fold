@@ -42,8 +42,8 @@ function find(doc: OutlineFoldDoc, id: string): OutlineNode | undefined {
 async function sealed() {
   const doc = parse(SRC);
   const key = await createKey(doc, PASS);
-  await sealBranch(doc, find(doc, 'v')!, key.kid, CTX);
-  await sealBranch(doc, find(doc, 'w')!, key.kid, CTX);
+  await sealBranch(doc, find(doc, 'v')!, key.kid, CTX, { pub: "" });
+  await sealBranch(doc, find(doc, 'w')!, key.kid, CTX, { pub: "" });
   const text = serialize(doc);
   return { doc, kid: key.kid, text };
 }
@@ -251,8 +251,8 @@ describe('viewer lifecycle and fixed mode', () => {
   it('nested sealed branch stays sealed in the viewer and opens a further viewer', async () => {
     const doc = parse(SRC);
     const k = await createKey(doc, PASS);
-    await sealBranch(doc, find(doc, 'c1')!, k.kid, { ...CTX, parentId: 'v', depth: 1 });
-    await sealBranch(doc, find(doc, 'v')!, k.kid, CTX);
+    await sealBranch(doc, find(doc, 'c1')!, k.kid, { ...CTX, parentId: 'v', depth: 1 }, { pub: "" });
+    await sealBranch(doc, find(doc, 'v')!, k.kid, CTX, { pub: "" });
     const text = serialize(doc);
     const outer = await openSealedBranch(doc, 'v', CTX);
     const line = find(outer.doc, 'c1')!;
@@ -277,8 +277,8 @@ describe('viewer lifecycle and fixed mode', () => {
   it('dirty nested viewer blocks the outer save', async () => {
     const doc = parse(SRC);
     const k = await createKey(doc, PASS);
-    await sealBranch(doc, find(doc, 'c1')!, k.kid, { ...CTX, parentId: 'v', depth: 1 });
-    await sealBranch(doc, find(doc, 'v')!, k.kid, CTX);
+    await sealBranch(doc, find(doc, 'c1')!, k.kid, { ...CTX, parentId: 'v', depth: 1 }, { pub: "" });
+    await sealBranch(doc, find(doc, 'v')!, k.kid, CTX, { pub: "" });
     const outer = await openSealedBranch(doc, 'v', CTX);
     const inner = await outer.open('c1');
     inner.doc.nodes[0]!.title = 'changed';

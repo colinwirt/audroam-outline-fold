@@ -28,7 +28,7 @@ export async function sealedDoc(): Promise<OutlineFoldDoc> {
   await unlock();
   const doc = parse(SRC);
   doc.keyring = [{ ...RING }];
-  await sealBranch(doc, find(doc.nodes, 'v')!, 'k1', CTX);
+  await sealBranch(doc, find(doc.nodes, 'v')!, 'k1', CTX, { pub: "" });
   return doc;
 }
 

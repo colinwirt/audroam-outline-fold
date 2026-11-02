@@ -75,3 +75,57 @@ export function mergeKeeping(prev: string, normPrev: string, next: string): stri
   while (p < P.length) out.push(P[p++]!);
   return out.join('\n');
 }
+
+/** Pub line per payload id in a `--- payloads ---` section ('' = no pub line). */
+function pubLines(text: string): Map<string, string> {
+  const out = new Map<string, string>();
+  const L = text.split('\n');
+  let inP = false, id: string | null = null;
+  for (const l of L) {
+    if (/^--- payloads ---\s*$/.test(l)) { inP = true; continue; }
+    if (!inP) continue;
+    if (/^---/.test(l)) break;
+    const m = /^(\S[^:]*):\s*$/.exec(l);
+    if (m) { id = m[1]!; out.set(id, ''); continue; }
+    if (id && /^\s+pub:/.test(l)) out.set(id, l);
+  }
+  return out;
+}
+
+/**
+ * 0.4.18: make the text's payload `pub:` lines match `next` (a sealed caption typed in the text
+ * is the label; its stored pub follows). Only pub lines change; ct and everything else stay. Pure.
+ */
+export function syncPubLines(text: string, next: string): string {
+  const want = pubLines(next);
+  if (!want.size) return text;
+  const L = text.split('\n');
+  const out: string[] = [];
+  let inP = false, done = false, id: string | null = null, wrote = false;
+  const flush = () => {
+    if (id != null && !wrote && want.get(id)) {
+      let k = out.length - 1;
+      while (k >= 0 && !/^\S[^:]*:\s*$/.test(out[k]!)) k--;
+      const pos = k >= 0 && /^\s+alg:/.test(out[k + 1] ?? '') ? k + 2 : k + 1;
+      out.splice(pos, 0, want.get(id)!);
+    }
+  };
+  for (const l of L) {
+    if (!done && /^--- payloads ---\s*$/.test(l)) { inP = true; out.push(l); continue; }
+    if (inP && !done) {
+      if (/^---/.test(l)) { flush(); id = null; done = true; out.push(l); continue; }
+      const m = /^(\S[^:]*):\s*$/.exec(l);
+      if (m) { flush(); id = m[1]!; wrote = false; out.push(l); continue; }
+      if (id && /^\s+pub:/.test(l)) {
+        wrote = true;
+        if (!want.has(id)) { out.push(l); continue; }
+        const w = want.get(id)!;
+        if (w) out.push(w); // '' = caption cleared: drop the line
+        continue;
+      }
+    }
+    out.push(l);
+  }
+  const r = out.join('\n');
+  return r;
+}

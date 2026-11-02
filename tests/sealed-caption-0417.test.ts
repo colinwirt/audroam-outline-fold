@@ -17,7 +17,7 @@ async function sealed(): Promise<string> {
   clearKeys(); setSealCipher('a256gcm');
   const d = parse(`- [ ] buy seeds <id:1>\n  - packets <id:2>\n- vault <id:4>\n  - hidden pin <id:5>\n  - [x] hidden task <id:6>\n- water <id:7>\n`);
   const k = await createKey(d, 'pw', { kid: 'k1' });
-  await sealBranch(d, d.nodes.find((n) => n.id === '4')!, k.kid, CTX);
+  await sealBranch(d, d.nodes.find((n) => n.id === '4')!, k.kid, CTX, { pub: "" });
   const t = serialize(d); clearKeys();
   return t;
 }

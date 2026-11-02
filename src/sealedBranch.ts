@@ -694,7 +694,7 @@ export interface SealResult {
 
 /**
  * Seal a node and its subtree (of-seal-v2) under an unlocked keyring kid. The caption is
- * encrypted; the line shows the public label (opts.pub) or "Sealed branch" plus
+ * encrypted; the line shows the public label (opts.pub, else the node's title) or "Sealed branch" plus
  * `<enc:KEYID>`. The cipher comes from opts.cipher or setSealCipher(); never chosen
  * silently. Requires node.id. Inner sealed branches stay sealed inside.
  */
@@ -726,9 +726,11 @@ export async function sealBranch(
   const pt = innerText(node);
   const ct = await encryptV2(kid, cipher, node.id, ctx, pt, __fixed);
   const payload: SealedPayload = { kid, alg: SEAL_ALG, ciphertext: ct };
-  if (opts.pub) payload.pub = opts.pub;
+  // 0.4.18: the caption (public label) defaults to the node's own title; blank -> placeholder.
+  const pub = (opts.pub ?? node.title ?? '').trim();
+  if (pub && pub !== SEALED_PLACEHOLDER) payload.pub = pub;
   node.sealed = payload;
-  node.title = opts.pub ?? SEALED_PLACEHOLDER;
+  node.title = payload.pub ?? SEALED_PLACEHOLDER;
   node.children = [];
   return { warnings };
 }

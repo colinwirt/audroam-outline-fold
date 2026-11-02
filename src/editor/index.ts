@@ -396,8 +396,10 @@ export function outlineEditor(opts: OutlineEditorOptions): Extension[] {
     ],
   });
   // The `<enc>` tag cannot be typed over or deleted by hand (Remove seal does that).
+  // 0.4.18: a host write (doc → editor, e.g. a Map caption rename that also moves the payload's
+  // pub line) is not typing; its minimal diff may span the tag and must not be dropped.
   const guard = EditorState.changeFilter.of((tr) => {
-    if (!tr.docChanged) return true;
+    if (!tr.docChanged || tr.annotation(Transaction.remote)) return true;
     const enc = scanEnc(tr.startState.doc, sessions);
     let ok = true;
     tr.changes.iterChanges((fromA, toA) => {

@@ -18,7 +18,7 @@ async function sealedText(): Promise<string> {
   clearKeys(); setSealCipher('a256gcm');
   const d = parse(`- [ ] buy seeds <id:1>\n- vault <id:4>\n  - hidden <id:5>\n- [x] water <id:7>\n`);
   const k = await createKey(d, 'pw', { kid: 'k1' });
-  await sealBranch(d, d.nodes.find((n) => n.id === '4')!, k.kid, CTX);
+  await sealBranch(d, d.nodes.find((n) => n.id === '4')!, k.kid, CTX, { pub: "" });
   const text = serialize(d).replace('- Sealed branch <enc:', '- My vault <enc:'); // caption ≠ public label
   clearKeys();
   return text;
@@ -55,8 +55,10 @@ it('Map ☐ tick on another row edits only that task line and never trips the se
   expect(errors).toEqual([]);
   const out = fh.getText();
   expect(out.split('\n')[0]).toBe('- [-] buy seeds <id:1>');
-  // Only that line changed: the sealed line, payloads and keyring are byte-identical.
-  expect(out.split('\n').slice(1)).toEqual(text.split('\n').slice(1));
+  // Only that line changed: the sealed line, ct and keyring are byte-identical. (0.4.18: the save
+  // also writes the caption into the payload's pub line; caption = public label since 0.4.17.)
+  expect(out.split('\n').slice(1).filter((l) => !/^\s+pub:/.test(l))).toEqual(text.split('\n').slice(1));
+  expect(out).toContain('pub: "My vault"');
   // Colin: the tick only showed after a pane resize. It must repaint at once (no resize, no manual paint).
   expect(hit().getAttribute('aria-checked')).toBe('mixed');
   hit().dispatchEvent(new MouseEvent('click', { bubbles: true }));
@@ -81,7 +83,7 @@ it('Map tick ↔ editor text, both ways, after editing the sealed caption; no th
   clearKeys(); setSealCipher('a256gcm');
   const d = parse(`- [ ] buy seeds <id:1>\n- vault <id:4>\n  - hidden <id:5>\n- [x] water <id:7>\n`);
   const k = await createKey(d, 'pw', { kid: 'k1' });
-  await sealBranch(d, d.nodes.find((n) => n.id === '4')!, k.kid, CTX);
+  await sealBranch(d, d.nodes.find((n) => n.id === '4')!, k.kid, CTX, { pub: "" });
   const text = serialize(d); clearKeys();
   const held: any[] = []; const saves: any[] = [];
   const fh = mountOutlineFold({ text, ctx: () => CTX, wipeOnPagehide: false, autoLockMs: 60000, debounceMs: 10, onHold: (e: any) => held.push(e) });

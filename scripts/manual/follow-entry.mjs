@@ -15,7 +15,14 @@ window.run = async () => {
   await sealBranch(d, d.nodes.find((n) => n.id === '4'), k.kid, CTX);
   const text = serialize(d); clearKeys();
   const fh = mountOutlineFold({ text, ctx: () => CTX, wipeOnPagehide: false, autoLockMs: 600000, debounceMs: 10 });
-  fh.mountEditor(document.getElementById('box'), { followInText: () => true });
+  const ed = fh.mountEditor(document.getElementById('box'), { followInText: () => !window.NO_FOLLOW });
+  // AUDROAM_GLUE mirrors outline-view.js: doc change (source != map) -> tryRenderSource ->
+  // paint(); if (!editingSource()) focusCurrent();  editingSource() = lineEditor.hasFocus().
+  window.changes = [];
+  if (window.AUDROAM_GLUE) fh.doc.on('change', (e) => {
+    window.changes.push({ source: e.source, at: Date.now(), hasFocus: ed.hasFocus() });
+    if (e.source !== 'map' && !ed.hasFocus()) { const m = document.getElementById('map'); m.tabIndex = 0; m.focus(); }
+  });
   await fh.sessions.open(fh.regionFor('4'), 'pw');
   let view = parse(fh.getText()); fh.markView();
   fh.doc.on('change', (e) => { if (e.source !== 'map') { view = parse(fh.getText()); fh.markView(); mv.paint(); } });
@@ -30,6 +37,6 @@ window.run = async () => {
   await new Promise((r) => setTimeout(r, 300));
   const main = EditorView.findFromDOM(document.querySelector('#box .cm-editor'));
   const zone = () => EditorView.findFromDOM(document.querySelector('.of-secure-zone-editor .cm-editor'));
-  window.T = { main, zone, fh, mv, text: () => fh.getText() };
+  window.T = { ed, main, zone, fh, mv, text: () => fh.getText() };
   return 'ok';
 };

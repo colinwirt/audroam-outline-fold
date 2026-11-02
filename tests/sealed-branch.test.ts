@@ -41,7 +41,7 @@ function find(doc: OutlineFoldDoc, id: string): OutlineNode {
 async function sealedDoc(pub?: string) {
   const doc = parse(SRC);
   const key = await createKey(doc, PASS, { pub: 'Work key' });
-  await sealBranch(doc, find(doc, 'v'), key.kid, CTX, pub ? { pub } : {});
+  await sealBranch(doc, find(doc, 'v'), key.kid, CTX, { pub: pub ?? "" });
   return { doc, kid: key.kid, text: serialize(doc) };
 }
 
@@ -146,7 +146,7 @@ describe('sealed branches: unlock, re-lock, fail closed', () => {
     for (let i = 0; i < 50; i++) {
       const d = parse(SRC);
       d.keyring = doc.keyring;
-      await sealBranch(d, find(d, 'v'), key.kid, CTX);
+      await sealBranch(d, find(d, 'v'), key.kid, CTX, { pub: "" });
       seen.add(find(d, 'v').sealed!.ciphertext!.split('.')[1]!);
     }
     expect(seen.size).toBe(50);
@@ -192,7 +192,7 @@ describe('sealed branches: tamper and binding', () => {
       const doc0 = parse(SRC);
       const k1 = await createKey(doc0, PASS);
       await createKey(doc0, PASS); // k2 exists and unlocks: swaps to it must still fail
-      await sealBranch(doc0, find(doc0, 'v'), k1.kid, CTX);
+      await sealBranch(doc0, find(doc0, 'v'), k1.kid, CTX, { pub: "" });
       const text = serialize(doc0);
       const bad = mut(text);
       expect(bad).not.toBe(text);
@@ -214,7 +214,7 @@ describe('sealed branches: tamper and binding', () => {
     setSealCipher(null);
     await expect(sealBranch(parse(text), find(parse(text), 's'), 'k1', CTX)).rejects.toThrow(/no cipher chosen/);
     setSealCipher('a256gcm');
-    await expect(sealBranch(doc, find(doc, 's'), 'k1', CTX, { cipher: 'nope' as never })).rejects.toBeInstanceOf(SealError);
+    await expect(sealBranch(doc, find(doc, 's'), 'k1', CTX, { pub: "", cipher: 'nope' as never })).rejects.toBeInstanceOf(SealError);
   });
 
   for (const [name, ctx] of [
@@ -245,7 +245,7 @@ describe('key list: reuse across maps, remove guard', () => {
     importKeyEntry(b, entry);
     clearKeys();
     await unlockKey(b, a.kid, PASS);
-    await sealBranch(b, find(b, 'v'), a.kid, { ...CTX, noteId: 'note-2' });
+    await sealBranch(b, find(b, 'v'), a.kid, { ...CTX, noteId: 'note-2' }, { pub: "" });
     const bv = await openSealedBranch(b, 'v', { ...CTX, noteId: 'note-2' });
     expect(bv.doc.nodes[0]!.title).toBe('Vault');
     // Map A's blob pasted into map B fails.
@@ -283,8 +283,8 @@ describe('nested sealed branches (encrypt-then-embed)', () => {
     const k1 = await createKey(doc, PASS);
     const k2 = await createKey(doc, 'other pass');
     const c1 = find(doc, 'c1');
-    await sealBranch(doc, c1, k2.kid, { ...CTX, parentId: 'v' });
-    await sealBranch(doc, find(doc, 'v'), k1.kid, CTX);
+    await sealBranch(doc, c1, k2.kid, { ...CTX, parentId: 'v' }, { pub: "" });
+    await sealBranch(doc, find(doc, 'v'), k1.kid, CTX, { pub: "" });
     const text = serialize(doc);
     expect(text).not.toContain('Secret');
     clearKeys();
@@ -306,9 +306,9 @@ describe('nested sealed branches (encrypt-then-embed)', () => {
     const d3 = parse(SRC);
     d3.keyring = doc.keyring;
     await unlockKey(d3, k1.kid, PASS);
-    await sealBranch(d3, find(d3, 'v'), k1.kid, CTX);
+    await sealBranch(d3, find(d3, 'v'), k1.kid, CTX, { pub: "" });
     const ov = await openSealedBranch(d3, 'v', CTX);
-    const r = await sealBranch(ov.doc, find(ov.doc, 'c1'), k1.kid, { ...CTX, parentId: 'v', depth: 1 });
+    const r = await sealBranch(ov.doc, find(ov.doc, 'c1'), k1.kid, { ...CTX, parentId: 'v', depth: 1 }, { pub: "" });
     expect(r.warnings[0]).toMatch(/no extra protection/);
   });
 });
@@ -323,7 +323,7 @@ describe('KAT (independent reference via node:crypto)', () => {
     // keyring entry is needed only for sealBranch's ring check; the secret above is used
     await createKey(doc, PASS, { kid: 'kx' });
     doc.keyring!.push({ ...doc.keyring![0]!, kid: 'k1' });
-    await sealBranch(doc, find(doc, 't'), 'k1', CTX, {}, { salt, nonce });
+    await sealBranch(doc, find(doc, 't'), 'k1', CTX, { pub: "" }, { salt, nonce });
     const ct = find(doc, 't').sealed!.ciphertext!;
     const [h, n, body] = ct.split('.');
     const hdr = new TextDecoder().decode(unb64u(h!));

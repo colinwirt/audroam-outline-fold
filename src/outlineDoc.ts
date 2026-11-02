@@ -15,7 +15,7 @@ import type { TaskState } from './types.js';
 import { createIdAllocator, type IdDiagnostic, type IdScope } from './idAllocator.js';
 import { parse } from './parse.js';
 import { serialize } from './serialize.js';
-import { mergeKeeping } from './textMerge.js';
+import { mergeKeeping, syncPubLines } from './textMerge.js';
 import type { OutlineFoldDoc, OutlineNode } from './types.js';
 import {
   createSealSessions,
@@ -300,7 +300,10 @@ export function createOutlineDoc(o: OutlineDocOptions): OutlineDocHandle {
     // nodes and whitespace elsewhere stay byte for byte.
     let norm = next;
     try { norm = serializeRoot(parseText(text), text); } catch { /* unparsable: take next */ }
-    const merged = mergeKeeping(text, norm, next);
+    // 0.4.18: parse already reads a typed caption as the label, so norm == next on the pub line;
+    // on save, carry next's pub lines into the text so the stored payload matches the caption.
+    const kept = mergeKeeping(text, norm, next);
+    const merged = source === 'serialise' ? syncPubLines(kept, next) : kept;
     if (merged === text) return false;
     text = merged;
     parsedText = text; // the parsed root is this text (up to whitespace): keep pinned node objects
@@ -412,7 +415,8 @@ export function createOutlineDoc(o: OutlineDocOptions): OutlineDocHandle {
         try { await sessions.autosave(s.region); } catch { bad.push(s.region); }
       }
       if (bad.length) throw new SealedStateError('A sealed branch could not be re-sealed.', bad);
-      if (open.length) writeRoot('serialise');
+      // 0.4.18: always (a no-op unless a sealed caption typed in the text left its pub line stale).
+      writeRoot('serialise');
       inflight = rev;
       emitStatus();
       return { text, rev };
