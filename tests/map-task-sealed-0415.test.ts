@@ -74,3 +74,49 @@ it('host commitView reports a refused whole-doc save through onHold instead of t
   expect(String(held[0]?.message)).toMatch(/caption is not its public label/);
   expect(fh.getText()).toBe(text);
 });
+it('Map tick ↔ editor text, both ways, after editing the sealed caption; no throw, Map keeps repainting', async () => {
+  const orig = document.dispatchEvent.bind(document);
+  document.dispatchEvent = (e: Event) => (e.type === 'selectionchange' ? true : orig(e));
+  clearKeys(); setSealCipher('a256gcm');
+  const d = parse(`- [ ] buy seeds <id:1>\n- vault <id:4>\n  - hidden <id:5>\n- [x] water <id:7>\n`);
+  const k = await createKey(d, 'pw', { kid: 'k1' });
+  await sealBranch(d, d.nodes.find((n) => n.id === '4')!, k.kid, CTX);
+  const text = serialize(d); clearKeys();
+  const held: any[] = []; const saves: any[] = [];
+  const fh = mountOutlineFold({ text, ctx: () => CTX, wipeOnPagehide: false, autoLockMs: 60000, debounceMs: 10, onHold: (e: any) => held.push(e) });
+  fh.doc.on('save-needed', (e: any) => saves.push(e));
+  const box = document.createElement('div'); document.body.append(box);
+  fh.mountEditor(box, {});
+  const { EditorView } = await import('@codemirror/view');
+  const ed = EditorView.findFromDOM(box.querySelector('.cm-editor') as HTMLElement)!;
+  const { host, mv, errors } = mountMap(fh);
+  fh.doc.on('change', (e: any) => { if (e.source !== 'map') mv.paint(); }); // host re-renders on text change
+  // 1. The user edits the sealed line's caption in the text (the guard will refuse a whole-doc save).
+  const sealed = ed.state.doc.toString().indexOf('Sealed branch');
+  if (sealed >= 0) ed.dispatch({ changes: { from: sealed, to: sealed + 13, insert: 'My vault' }, userEvent: 'input' });
+  else fh.doc.setText(fh.getText().replace('- Sealed branch <enc:', '- My vault <enc:'), { source: 'text' });
+  await tick();
+  expect(fh.getText()).toContain('- My vault <enc:');
+  const row = (s: string) => [...host.querySelectorAll('.map-node')].find((g) => (g.textContent || '').includes(s))!;
+  // 2. Map tick → editor text, Map repaints at once.
+  expect(() => row('buy seeds').querySelector('.map-task-hit')!.dispatchEvent(new MouseEvent('click', { bubbles: true }))).not.toThrow();
+  await tick();
+  expect(ed.state.doc.line(1).text).toBe('- [-] buy seeds <id:1>');
+  expect(row('buy seeds').querySelector('.map-task-hit')!.getAttribute('aria-checked')).toBe('mixed');
+  // 3. Editor ☐ click → Map.
+  const g = [...box.querySelectorAll('.cm-content > .cm-line')].find((l) => (l.textContent || '').includes('water'))!.querySelector('.of-zone-task')!;
+  g.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0 }));
+  await tick();
+  expect(fh.getText()).toContain('- [ ] water <id:7>');
+  expect(row('water').querySelector('.map-task-hit')!.getAttribute('aria-checked')).toBe('false');
+  // 4. A whole-doc Map commit (fold) is refused by the guard: reported, not thrown; Map still paints.
+  await tick(30);
+  expect(saves.length).toBeGreaterThan(0); // the ticks are queued for the server save
+  expect(errors).toEqual([]);
+  const v = parse(fh.getText()); v.nodes[0]!.title = '[-] buy seeds renamed';
+  expect(() => fh.commitView(v, 'map')).not.toThrow();
+  expect(held.length).toBe(1);
+  expect(() => mv.paint()).not.toThrow();
+  expect(fh.getText()).toContain('- My vault <enc:'); // the user's edit is kept
+  mv.destroy?.(); host.remove(); box.remove();
+});

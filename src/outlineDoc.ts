@@ -290,7 +290,11 @@ export function createOutlineDoc(o: OutlineDocOptions): OutlineDocHandle {
   /** Write the root doc back into the text (seal / zone / remove seal). */
   const writeRoot = (source: TextSource): boolean => {
     const root = rootNow();
-    const next = serializeRoot(root, text);
+    let next: string;
+    // 0.4.15: a refused serialise (e.g. the strict sealed-save guard on a re-captioned sealed
+    // line) is a reported save failure, never a throw into the caller (Map click, zone save).
+    // The text stays as the user left it.
+    try { next = serializeRoot(root, text); } catch (err) { lastError = err; emitStatus(); return false; }
     if (next === text) return false;
     // 0.4.11 (bugs D/E): replace only the lines the root change touched; the user's empty
     // nodes and whitespace elsewhere stay byte for byte.

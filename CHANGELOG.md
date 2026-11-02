@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.4.16 — 2026-11-02
+
+- A save error never breaks the Map: the doc owner's root write (`writeRoot`: ids, seal, zone) catches a refused serialise (e.g. the strict sealed-save guard after the sealed line's caption was edited in the text), keeps the text as the user left it, and reports it as the save error in `status()` instead of throwing into the caller. Guard unchanged.
+- Tests: `map-task-sealed-0415` adds caption edit → Map tick → editor text `[ ]`→`[-]`, editor ☐ → Map repaint, refused whole-doc commit reported via `onHold` with the Map still painting. CI: the `zone-keys-0413` CSS check reads `dist/` only when built (CI runs tests before build; red since 0.4.13).
+
 ## 0.4.15 — 2026-11-02
 
 - Fix (Map checkbox tick lost with `SealedSaveError: sealed line caption is not its public label`): a note can hold a sealed line whose caption is not its public label (e.g. re-captioned in the text). The Map tick did `setDoc(toggleTask(doc))`, so the host re-serialised the whole doc, the strict sealed-save guard (unchanged) refused, the error was thrown into the click and the tick was dropped. Now the tick is a one-character text edit through the doc owner: new pure `toggleTaskLine(text, id)`, `doc.toggleTask(id)`, and `mapOptions()` supplies `onMainTaskToggle`, which `applyTaskToggle` prefers (falls back to `setDoc` for hosts without it). `onTaskToggle` / `onAction` still fire.

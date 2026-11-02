@@ -257,8 +257,8 @@ describe('bug 4: Backspace on an empty item', () => {
 
 describe('bug 3: no catch-all rect rule paints a region task hit square', () => {
   it('every region `rect` selector in the shipped CSS (src + dist) names its rect or excludes .map-task-hit', async () => {
-    const { readFileSync } = await import('node:fs');
-    for (const file of ['src/outline-fold.css', 'dist/outline-fold.css']) {
+    const { readFileSync, existsSync } = await import('node:fs');
+    for (const file of ['src/outline-fold.css', 'dist/outline-fold.css'].filter((f) => f.startsWith('src') || existsSync(f))) { // dist only after build (CI runs tests first)
       const css = readFileSync(file, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
       const bad: string[] = [];
       for (const m of css.matchAll(/([^{}]+)\{/g)) {
