@@ -57,7 +57,8 @@ it('Map ☐ tick on another row edits only that task line and never trips the se
   expect(out.split('\n')[0]).toBe('- [-] buy seeds <id:1>');
   // Only that line changed: the sealed line, payloads and keyring are byte-identical.
   expect(out.split('\n').slice(1)).toEqual(text.split('\n').slice(1));
-  mv.paint(); await tick();
+  // Colin: the tick only showed after a pane resize. It must repaint at once (no resize, no manual paint).
+  expect(hit().getAttribute('aria-checked')).toBe('mixed');
   hit().dispatchEvent(new MouseEvent('click', { bubbles: true }));
   await tick();
   expect(fh.getText().split('\n')[0]).toBe('- [x] buy seeds <id:1>');
