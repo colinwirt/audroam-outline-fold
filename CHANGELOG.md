@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.9 — 2026-11-03
+
+- Folding a line typed without a bullet replaces that line. `done` becomes `- done (+)`. The original line is not left in place.
+- Tab on the first row after a nested `<enc:>` line indents up to that seal's own indent. It still will not put a child under the seal.
+- A checkbox written as `[]` or `[ ]` with no leading `-` draws and ticks in place. The dash is not added.
+
 ## 0.5.8 — 2026-11-03
 
 - Map: resizing a pill inside an open sealed region grows it from the column's left edge, and the caption wraps to that width.

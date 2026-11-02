@@ -14,6 +14,7 @@ import { Decoration, EditorView, ViewPlugin, WidgetType, drawSelection, keymap, 
 import { canIndent, canOutdent, detectIndentUnit } from './outlineKeys.js';
 import { parseZoneText } from '../zoneText.js';
 import { normalizeTaskMarkers } from '../taskChrome.js';
+import { editTaskMarker, taskMarkAt } from '../task.js';
 import { serialize } from '../serialize.js';
 import type { SealSessions } from '../sealSession.js';
 import type { RegionId } from '../hostApi.js';
@@ -73,12 +74,11 @@ export function zoneRootId(doc: { nodes: { id?: string }[] }, anchorId: string):
   const r = doc.nodes[0];
   if (doc.nodes.length === 1 && r && !r.id) r.id = anchorId;
 }
-/** 0.4.9 (bug B2): `[ ]` / `[x]` / `[-]` task markers in a zone line → glyph, else null. */
+/** `[ ]` / `[]` / `[x]` / `[-]` on a line → glyph, with or without a leading `-`. */
 export function zoneTaskMarks(line: string): { from: number; to: number; glyph: string } | null {
-  const m = /^(\s*[-*+]\s+)\[( |x|X|-)\]/.exec(line);
-  if (!m) return null;
-  const from = m[1]!.length;
-  return { from, to: from + 3, glyph: m[2] === ' ' ? '\u2610' : m[2] === '-' ? '\u25A3' : '\u2611' };
+  const t = taskMarkAt(line);
+  if (!t) return null;
+  return { from: t.from, to: t.to, glyph: t.state === 'open' ? '\u2610' : t.state === 'pending' ? '\u25A3' : '\u2611' };
 }
 class TaskGlyph extends WidgetType {
   constructor(readonly glyph: string) { super(); }
@@ -94,15 +94,15 @@ class TaskGlyph extends WidgetType {
   // 0.4.15: let the view's mousedown handler see clicks on the glyph (CodeMirror checkbox-widget pattern).
   ignoreEvent(): boolean { return false; }
 }
-const NEXT_MARK: Record<string, string> = { ' ': '-', '-': 'x', x: ' ', X: ' ' }; // open → pending → done → open (as the Map)
-/** 0.4.15: cycle the task marker on the line holding `pos`; a normal user edit, so it saves like typing. */
+/** Cycle the task marker on the line holding `pos`. A normal user edit, so it saves like typing. */
 export function toggleTaskAt(view: EditorView, pos: number): boolean {
   const line = view.state.doc.lineAt(pos);
-  const t = zoneTaskMarks(line.text);
-  if (!t) return false;
-  const at = line.from + t.from + 1;
-  const to = NEXT_MARK[line.text[t.from + 1]!] ?? ' ';
-  view.dispatch({ changes: { from: at, to: at + 1, insert: to }, userEvent: 'input.toggle' });
+  const edited = editTaskMarker(line.text);
+  if (!edited) return false;
+  view.dispatch({
+    changes: { from: line.from + edited.innerFrom, to: line.from + edited.innerTo, insert: edited.mark },
+    userEvent: 'input.toggle',
+  });
   return true;
 }
 const taskDecos = (v: EditorView): DecorationSet => {

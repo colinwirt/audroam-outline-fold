@@ -74,6 +74,15 @@ function mount(text: string) {
   return { doc, host, mv, click };
 }
 
+it('a checkbox without a dash toggles in place', () => {
+  const { doc, mv, click } = mount('[] tst 1\n[ ] tst space\n  [] tst nested\n- [ ] tst dash\n');
+  click('tst 1');
+  click('tst space');
+  click('tst nested');
+  expect(doc.getText()).toBe('[-] tst 1\n[-] tst space\n  [-] tst nested\n- [ ] tst dash\n');
+  mv.destroy?.();
+});
+
 it('a written [] marker toggles in place', () => {
   expect(toggleTaskLine('- [] Land the lamp <id:9>\n', '9')).toEqual({
     text: '- [-] Land the lamp <id:9>\n',

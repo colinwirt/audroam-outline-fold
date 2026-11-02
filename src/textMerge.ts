@@ -14,6 +14,26 @@ const sealKey = (line: string): string => {
   const m = SEAL_TAG.exec(line);
   return m ? `${line.match(/^\s*/)![0].length}|${key(m[0])}` : key(line);
 };
+/** Caption after one leading bullet. The serialiser always writes `- `. */
+const bulletBody = (line: string): string => key(line).replace(/^[-*+]\s+/, '');
+const ID_TAIL = /(?:\s+<id:[^>\s]+>)+\s*$/;
+/**
+ * A plain line and the serialiser's bulleted form are one node (`done` and `- done`).
+ * An `<id:>` only the source still has (a session id the serialiser omits) does not
+ * make them two nodes. A fold marker stays in the body, so `done` does not match
+ * `- done (+)`.
+ */
+const sameSourceLine = (x: string, y: string): boolean => {
+  if (sealKey(x) === sealKey(y)) return true;
+  const bx = bulletBody(x);
+  const by = bulletBody(y);
+  if (!bx || !by) return false;
+  if (bx === by) return true;
+  const sx = bx.replace(ID_TAIL, '');
+  const sy = by.replace(ID_TAIL, '');
+  if (!sx || sx !== sy) return false;
+  return bx === sx || by === sy;
+};
 
 /** LCS pairs (i in a, j in b) on keyed lines; common prefix / suffix trimmed first. */
 function match(a: string[], b: string[], eq: (x: string, y: string) => boolean): Array<[number, number]> {
@@ -46,9 +66,11 @@ export function mergeKeeping(prev: string, normPrev: string, next: string): stri
   const pOf = new Map<number, number>();
   // A sealed line matches by its tag; the normalised line (fixed label) replaces the stray caption.
   const relabel = new Set<number>();
-  for (const [i, j] of match(P, N, (x, y) => sealKey(x) === sealKey(y))) {
+  for (const [i, j] of match(P, N, sameSourceLine)) {
     pOf.set(j, i);
-    if (key(P[i]!) !== key(N[j]!)) relabel.add(i);
+    // Sealed captions are relabelled. A plain line that only gained a bullet is not:
+    // an edit elsewhere must leave `done` as the user typed it.
+    if (key(P[i]!) !== key(N[j]!) && sealKey(P[i]!) === sealKey(N[j]!)) relabel.add(i);
   }
   const out: string[] = [];
   let p = 0; // next prev line not yet emitted

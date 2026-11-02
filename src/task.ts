@@ -73,8 +73,11 @@ export function shouldFireAction(from: TaskState, to: TaskState): boolean {
 }
 
 const STATE_MARK: Record<TaskState, string> = { open: ' ', pending: '-', done: 'x' } as Record<TaskState, string>;
-/** `[ ]`, `[]`, `[-]`, `[x]` / `[X]` at the start of a list line. The inside may be empty. */
-const TASK_MARK = /^(\s*[-*+]\s+)\[([ xX-]*)\]/;
+/**
+ * `[ ]`, `[]`, `[-]`, `[x]` / `[X]` at the start of a line. A list bullet is optional.
+ * The inside may be empty. A space after the box is required, the same rule as parse.
+ */
+const TASK_MARK = /^(\s*(?:[-*+]\s+)?)\[([ xX-]*)\](?=\s)/;
 
 function stateOfInner(inner: string): TaskState | null {
   if (inner === 'x' || inner === 'X') return 'done';
@@ -83,15 +86,32 @@ function stateOfInner(inner: string): TaskState | null {
   return null;
 }
 
-/** Replace the bracket contents with the next mark. Null when the line is not a task. */
-function editTaskMarker(line: string): { line: string; from: TaskState; to: TaskState } | null {
+/** The `[ ]` span on a line, or null when the line is not a task. */
+export function taskMarkAt(line: string): { from: number; to: number; state: TaskState } | null {
   const m = TASK_MARK.exec(line);
   if (!m) return null;
-  const from = stateOfInner(m[2]!);
-  if (!from) return null;
-  const to = nextTaskState(from);
-  const at = m[1]!.length + 1;
-  return { line: line.slice(0, at) + STATE_MARK[to] + line.slice(at + m[2]!.length), from, to };
+  const state = stateOfInner(m[2]!);
+  if (!state) return null;
+  const from = m[1]!.length;
+  return { from, to: from + 2 + m[2]!.length, state };
+}
+
+/** Replace the bracket contents with the next mark. Null when the line is not a task. */
+export function editTaskMarker(line: string): { line: string; from: TaskState; to: TaskState; innerFrom: number; innerTo: number; mark: string } | null {
+  const hit = taskMarkAt(line);
+  if (!hit) return null;
+  const to = nextTaskState(hit.state);
+  const mark = STATE_MARK[to];
+  const innerFrom = hit.from + 1;
+  const innerTo = hit.to - 1;
+  return {
+    line: line.slice(0, innerFrom) + mark + line.slice(innerTo),
+    from: hit.state,
+    to,
+    innerFrom,
+    innerTo,
+    mark,
+  };
 }
 
 /** A line parse turns into a node: non-blank, and not an empty non-list line. */

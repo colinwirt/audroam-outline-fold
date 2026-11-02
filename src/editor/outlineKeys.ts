@@ -3,8 +3,9 @@
  *
  * - Tab / Shift-Tab: `indentMore` / `indentLess` with the doc's `indentUnit`. Tab is refused
  *   (handled, no change) when it would nest a line more than one level under the line above,
- *   or under a line that cannot take children (`leaf`: a sealed `<enc:…>` line). Always handled,
- *   so the browser never moves focus.
+ *   or under a line that cannot take children (`leaf`: a sealed `<enc:…>` line). A line after
+ *   a nested seal may still indent up to that seal's own indent. Always handled, so the
+ *   browser never moves focus.
  * - Enter: on a list item, continue the marker; on an empty item, outdent (or clear the marker
  *   at the top level); otherwise `insertNewlineAndIndent`.
  * - Backspace: on an empty item, marker → outdent → join (`emptyItemBackspace`); else default.
@@ -62,7 +63,11 @@ export function canIndent(state: EditorState, leaf?: (line: string) => boolean):
       const t = doc.line(n).text;
       if (!t.trim()) continue;
       const target = leadOf(t) + unit;
-      if (!prev || prev.leaf || target > prev.lead + unit) return false;
+      if (!prev) return false;
+      // A sealed line takes no children. The next row may still indent up to the
+      // seal's own indent (a sibling of it). It may not go one level under it.
+      const max = prev.leaf ? prev.lead : prev.lead + unit;
+      if (target > max) return false;
       prev = { lead: target, leaf: !!leaf?.(t) };
     }
   }

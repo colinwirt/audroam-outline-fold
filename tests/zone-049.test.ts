@@ -95,6 +95,12 @@ describe('secure zone in Text (0.4.9)', () => {
     expect(z.state.doc.toString()).toContain('[ ] tomato');
     expect(zoneTaskMarks('  - [x] bean')).toEqual({ from: 4, to: 7, glyph: '\u2611' });
     expect(zoneTaskMarks('  - plain')).toBeNull();
+    expect(zoneTaskMarks('[] tst 1')).toEqual({ from: 0, to: 2, glyph: '\u2610' });
+    expect(zoneTaskMarks('[ ] tst 2')).toEqual({ from: 0, to: 3, glyph: '\u2610' });
+    expect(zoneTaskMarks('  [] tst 3')).toEqual({ from: 2, to: 4, glyph: '\u2610' });
+    expect(zoneTaskMarks('- [] tst')).toEqual({ from: 2, to: 4, glyph: '\u2610' });
+    expect(zoneTaskMarks('[]tst')).toBeNull();
+    expect(zoneTaskMarks('see [] tst')).toBeNull();
     fh.unmount();
   });
 

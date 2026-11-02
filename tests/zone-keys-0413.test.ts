@@ -216,6 +216,14 @@ describe('bug 5: Tab below the zone', () => {
     const st = EditorState.create({ doc: '- a <enc:k>\n- b', selection: { anchor: 14 }, extensions: outlineKeys(sealed) });
     expect(canIndent(st, sealed)).toBe(false);
   });
+  it('canIndent allows a shallower line after a nested seal, up to the seal indent', () => {
+    const sealed = (l: string) => l.includes('<enc:');
+    const doc = '- map\n  - node\n    - sealed <enc:k1>\n- eg for k3';
+    const at = doc.lastIndexOf('eg');
+    expect(canIndent(EditorState.create({ doc, selection: { anchor: at }, extensions: outlineKeys(sealed) }), sealed)).toBe(true);
+    const beside = '- map\n  - node\n    - sealed <enc:k1>\n    - eg for k3';
+    expect(canIndent(EditorState.create({ doc: beside, selection: { anchor: beside.lastIndexOf('eg') }, extensions: outlineKeys(sealed) }), sealed)).toBe(false);
+  });
   it('Shift-Tab outdents with indentLess and keeps focus; Enter continues the marker; empty-item Enter outdents', async () => {
     const { main } = await mount();
     const ln = lineOf(main, 'child of after');
