@@ -71,3 +71,32 @@ export function toggleTask(
 export function shouldFireAction(from: TaskState, to: TaskState): boolean {
   return to === 'done' && from !== 'done';
 }
+
+const MARK_STATE: Record<string, TaskState> = { ' ': 'open', '-': 'pending', x: 'done', X: 'done' };
+const STATE_MARK: Record<TaskState, string> = { open: ' ', pending: '-', done: 'x' } as Record<TaskState, string>;
+/**
+ * 0.4.15: cycle the `[ ]` / `[-]` / `[x]` marker on the outline line tagged `<id:id>`, as a text
+ * edit. Only that one character changes: no re-serialise, so a toggle can never trip the
+ * sealed-save guard on unrelated lines. Null when the line or marker is not found.
+ */
+export function toggleTaskLine(text: string, id: string): { text: string; from: TaskState; to: TaskState } | null {
+  const tag = `<id:${id}>`;
+  let at = 0;
+  while (at <= text.length) {
+    const nl = text.indexOf('\n', at);
+    const end = nl < 0 ? text.length : nl;
+    const line = text.slice(at, end);
+    if (/^--- /.test(line)) return null; // payloads / keyring / layout blocks
+    if (new RegExp(`(^|\\s)${tag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(\\s|$)`).test(line)) {
+      const m = /^(\s*[-*+]\s+)\[( |x|X|-)\]/.exec(line);
+      if (!m) return null;
+      const from = MARK_STATE[m[2]!]!;
+      const to = nextTaskState(from);
+      const pos = at + m[1]!.length + 1;
+      return { text: text.slice(0, pos) + STATE_MARK[to] + text.slice(pos + 1), from, to };
+    }
+    if (nl < 0) break;
+    at = nl + 1;
+  }
+  return null;
+}

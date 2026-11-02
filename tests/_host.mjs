@@ -112,7 +112,9 @@ export function mountOutlineFold(o = {}) {
     commitView(viewDoc, source = "map") {
       if (!viewDoc || viewStale) return false;
       const cur = doc.getText();
-      const next = serializeKeeping(viewDoc, cur, keep);
+      let next;
+      // 0.4.15: a refused serialise (sealed guard) is reported, never thrown into the Map's click.
+      try { next = serializeKeeping(viewDoc, cur, keep); } catch (err) { safe(o.onHold, err); return false; }
       if (next === cur) return false;
       let norm = next;
       try { norm = serializeKeeping(OF.parse(cur), cur, keep); } catch (err) { /* take next */ }

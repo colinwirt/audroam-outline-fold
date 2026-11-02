@@ -45,8 +45,8 @@ it('main and zone editors use the same glyph decoration; stored text stays ASCII
   const zone = EditorView.findFromDOM(document.querySelector('.of-secure-zone-editor .cm-editor') as HTMLElement)!;
   const mainGlyph = [...main.contentDOM.querySelectorAll('.of-zone-task')].filter((e) => !e.closest('.of-secure-zone-editor')).map((e) => e.outerHTML);
   const zoneGlyph = [...zone.contentDOM.querySelectorAll('.of-zone-task')].map((e) => e.outerHTML);
-  expect(mainGlyph).toEqual(['<span class="of-zone-task">\u2610</span>']);
-  expect(zoneGlyph).toEqual(['<span class="of-zone-task">\u2611</span>']);
+  expect(mainGlyph).toEqual(['<span class="of-zone-task" role="checkbox" aria-checked="false">\u2610</span>']); // 0.4.15: clickable checkbox
+  expect(zoneGlyph).toEqual(['<span class="of-zone-task" role="checkbox" aria-checked="true">\u2611</span>']);
   expect(main.state.doc.toString()).toContain('[ ] main task');
   expect(zone.state.doc.toString()).toContain('[x] inner done');
   // Typing a glyph in the zone stores ASCII in the region doc.

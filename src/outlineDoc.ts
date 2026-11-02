@@ -10,6 +10,8 @@
  * A zone "Save & re-seal" is only `confirmed` in `status()` after `saved(rev)`; a failure keeps
  * the doc dirty, keeps the auto-ct slot in the text, and schedules a retry `save-needed`.
  */
+import { toggleTaskLine } from './task.js';
+import type { TaskState } from './types.js';
 import { createIdAllocator, type IdDiagnostic, type IdScope } from './idAllocator.js';
 import { parse } from './parse.js';
 import { serialize } from './serialize.js';
@@ -129,6 +131,8 @@ export interface OutlineDocHandle {
   hasRegionChildren(id: string): boolean;
   toggleRegionFold(id: string): boolean;
   toggleRegionTask(id: string): boolean;
+  /** 0.4.15: cycle a main-doc task marker as a one-line text edit (never re-serialises). */
+  toggleTask(id: string): { from: TaskState; to: TaskState } | null;
   mapOptions(onUnlock?: (region: RegionId) => void, onMore?: (branchId: string, rect: DOMRect) => void): {
     getRegionHosts: () => RegionHostSpec[];
     regionFold: RegionFoldStore;
@@ -136,6 +140,7 @@ export interface OutlineDocHandle {
     onRegionLock: (region: RegionId) => void;
     onRegionMore: (region: RegionId, rect: DOMRect) => void;
     onRegionTaskToggle: (id: string) => boolean;
+    onMainTaskToggle: (id: string) => { from: TaskState; to: TaskState } | null;
   };
   unlock(branchId: string, anchorEl?: HTMLElement | null, o?: { label?: string; container?: HTMLElement; inline?: boolean }): Promise<boolean>;
   lock(branchId: string | 'all', reason?: LockReason): Promise<void>;
@@ -490,6 +495,12 @@ export function createOutlineDoc(o: OutlineDocOptions): OutlineDocHandle {
       sessions.markChanged(handle.scoped(id).region);
       return true;
     },
+    toggleTask(id) {
+      const r = toggleTaskLine(handle.getText(), String(id));
+      if (!r) return null;
+      handle.setText(r.text, { source: 'host' });
+      return { from: r.from, to: r.to };
+    },
     mapOptions(onUnlock, onMore) {
       return {
         getRegionHosts: () => handle.regionHosts(),
@@ -498,6 +509,7 @@ export function createOutlineDoc(o: OutlineDocOptions): OutlineDocHandle {
         onRegionLock: (region) => { rootNow(); void sessions.lock(region, 'user'); },
         onRegionMore: (region, rect) => onMore?.(branchOf(region), rect),
         onRegionTaskToggle: (id) => handle.toggleRegionTask(id),
+        onMainTaskToggle: (id) => handle.toggleTask(id),
       };
     },
     unlock(branchId, anchorEl, opt = {}) {

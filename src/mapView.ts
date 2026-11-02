@@ -364,6 +364,12 @@ export interface MapViewOptions {
    * Return true when it changed.
    */
   onRegionTaskToggle?: (scopedId: string) => boolean;
+  /**
+   * 0.4.15: a [ ] box on a main-doc row. The doc owner cycles that line's marker as a text edit
+   * (no whole-doc re-serialise, so it cannot trip the sealed-save guard). Return the states, or
+   * null to fall back to `setDoc(toggleTask(...))`.
+   */
+  onMainTaskToggle?: (id: string) => { from: TaskState; to: TaskState } | null;
   /** Map focus moved (click, keys, `setFocus`): scoped id (`region:node` inside a region). */
   onFocusChange?: (scopedId: string) => void;
   /**
@@ -4089,6 +4095,18 @@ export function createMapView(
         onChange?.();
         paint();
       }
+      return;
+    }
+    const viaText = opts.onMainTaskToggle?.(id);
+    if (viaText) {
+      const node = { ...n, task: viaText.to };
+      onTaskToggle?.({ id, from: viaText.from, to: viaText.to, node });
+      if (shouldFireAction(viaText.from, viaText.to)) {
+        const action = resolveAction(node);
+        if (action) onAction?.({ id, action, node });
+      }
+      onChange?.();
+      paint();
       return;
     }
     // Prefer structured node.task; fall back to title marker rewrite.

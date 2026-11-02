@@ -402,6 +402,7 @@ export {
 export {
   toggleTask,
   nextTaskState,
+  toggleTaskLine,
   shouldFireAction,
 } from './task.js';
 

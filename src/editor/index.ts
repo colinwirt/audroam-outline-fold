@@ -84,8 +84,23 @@ class TaskGlyph extends WidgetType {
     const s = document.createElement('span');
     s.className = 'of-zone-task';
     s.textContent = this.glyph;
+    s.setAttribute('role', 'checkbox');
+    s.setAttribute('aria-checked', this.glyph === '\u2610' ? 'false' : this.glyph === '\u25A3' ? 'mixed' : 'true');
     return s;
   }
+  // 0.4.15: let the view's mousedown handler see clicks on the glyph (CodeMirror checkbox-widget pattern).
+  ignoreEvent(): boolean { return false; }
+}
+const NEXT_MARK: Record<string, string> = { ' ': '-', '-': 'x', x: ' ', X: ' ' }; // open → pending → done → open (as the Map)
+/** 0.4.15: cycle the task marker on the line holding `pos`; a normal user edit, so it saves like typing. */
+export function toggleTaskAt(view: EditorView, pos: number): boolean {
+  const line = view.state.doc.lineAt(pos);
+  const t = zoneTaskMarks(line.text);
+  if (!t) return false;
+  const at = line.from + t.from + 1;
+  const to = NEXT_MARK[line.text[t.from + 1]!] ?? ' ';
+  view.dispatch({ changes: { from: at, to: at + 1, insert: to }, userEvent: 'input.toggle' });
+  return true;
 }
 const taskDecos = (v: EditorView): DecorationSet => {
   const b = new RangeSetBuilder<Decoration>();
@@ -107,7 +122,17 @@ export const taskGlyphs = ViewPlugin.fromClass(class {
   decorations: DecorationSet;
   constructor(v: EditorView) { this.decorations = taskDecos(v); }
   update(u: { docChanged: boolean; viewportChanged: boolean; view: EditorView }) { if (u.docChanged || u.viewportChanged) this.decorations = taskDecos(u.view); }
-}, { decorations: (p) => p.decorations });
+}, {
+  decorations: (p) => p.decorations,
+  eventHandlers: {
+    mousedown(e: MouseEvent, view: EditorView) {
+      const el = e.target as HTMLElement | null;
+      if (e.button !== 0 || !el?.closest?.('.of-zone-task') || view.state.readOnly) return false;
+      e.preventDefault();
+      return toggleTaskAt(view, view.posAtDOM(el.closest('.of-zone-task')!));
+    },
+  },
+});
 
 /** @deprecated 0.4.12 alias of `taskGlyphs`. */
 export const zoneTaskGlyphs = taskGlyphs;
