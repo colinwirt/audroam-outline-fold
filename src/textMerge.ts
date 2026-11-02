@@ -68,7 +68,9 @@ export function mergeKeeping(prev: string, normPrev: string, next: string): stri
     if (ni < N.length) {
       const at = pOf.get(ni);
       if (at != null && at >= p) { while (p < at) out.push(P[p++]!); out.push(relabel.has(p) ? N[ni]! : P[p]!); p++; }
-      else if (at == null) out.push(N[ni]!);
+      // 0.4.19: an unchanged normalised line with no source line is serialiser noise (e.g. an empty
+      // `- ` read back as `- -`); prev already holds its source form, so emitting it duplicated a
+      // blank node on every write.
     }
     nPos = ni + 1; xPos = xi + 1;
   }
