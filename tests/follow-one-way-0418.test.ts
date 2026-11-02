@@ -63,4 +63,20 @@ it('Map -> Text still follows (FocusLink set from the map moves the text caret o
   await tick(50);
   const m = main();
   expect(m.state.doc.lineAt(m.state.selection.main.head).text).toMatch(/after <id:7>/);
+  const active = [...m.contentDOM.children].filter((el) => el.classList.contains('cm-activeLine'));
+  expect(active).toHaveLength(1);
+  expect(active[0].textContent).toMatch(/after/);
+});
+
+it('with Follow off, a Map focus update leaves the caret row where it is', async () => {
+  const { fh } = await mount(FIX, { followInText: () => false });
+  await tick(1600);
+  const m = main();
+  const before = m.state.selection.main.head;
+  fh.focusLink.set('7', 'map');
+  await tick(50);
+  expect(m.state.selection.main.head).toBe(before);
+  const active = [...m.contentDOM.children].filter((el) => el.classList.contains('cm-activeLine'));
+  expect(active).toHaveLength(1);
+  expect(active[0].textContent).toMatch(/Garden/);
 });

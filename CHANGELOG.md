@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.5.0 — 2026-11-02
+
+- of-seal-v3. The envelope binds only its own header: magic, version, alg, HKDF id, salt, kid, seal id, and payload role. Note, owner, node, parent, and caption are not inputs. A block copied out of a note opens with outline-fold and the key.
+- Each seal uses a fresh 128-bit seal id, a fresh DEK, and a fresh IV. The DEK wrap is AES-256-GCM with that header as AAD. v1 and v2 still decrypt with their original context, and the next save writes v3.
+- Text form: `-----BEGIN OUTLINE-FOLD SEAL-----`, base64url at 76 characters, an 8-hex CRC-32, `-----END OUTLINE-FOLD SEAL-----`. The CRC is checked before decrypt. A miss is "damaged in transit". A decrypt miss is "Can't unlock". Readers ignore indentation, wrapping, CRLF, and leading `> `.
+- New Argon2id keyring headers are PHC-style (`$argon2id$v=19$m=65536,t=3,p=1$<salt>`). The wrap AAD is the keyring header. Legacy query headers and v2 wraps still open. Salts under 16 bytes and Argon2id below 32MiB/t=4 are rejected.
+- `portableCopy` keeps payloads and the keyring. `cleanCopy` is the visible outline only.
+- Spec and vectors: `docs/seal-v3.md`, `tests/seal-v3.test.ts`.
+- The text editor marks the caret line (`.cm-activeLine`, grey). With Follow in text on, a Map focus update moves that caret, so the row highlight follows. With Follow off, Map focus leaves the caret row where it is.
+
 ## 0.4.20 — 2026-11-02
 
 - Fix (blank list lines multiply on a Map tick or fold): a blank `- ` / `* ` / `+ ` item is a node with an empty caption. `parse` used to drop it, so `serialize(parse(text))` had no such line while the Map view (session id minted onto that line) serialised one. `mergeKeeping` inserted a fresh copy on every `commitView`. The text editor showed the copies; the Map kept the previous single node because a `map` write does not reparse. Repeated ticks and folds are idempotent.

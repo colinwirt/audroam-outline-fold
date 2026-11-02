@@ -1,6 +1,7 @@
 import { assertSealedSafe, syncSealedLabels, isEncRef } from './sealedState.js';
 import { linkPayloadNodes } from './nodeAddress.js';
 import { collectLayouts, collectPayloads, formatLayoutBlock, formatPayloadsBlock, formatKeysBlock, formatKeyringBlock } from './payloads.js';
+import { isSealedBranchPayload } from './sealedState.js';
 import { spelledTag } from './tagSpelling.js';
 import { markdownLinkSpans, parseHopTarget } from './captionRich.js';
 import type { OutlineFoldDoc, OutlineNode, TaskState } from './types.js';
@@ -211,6 +212,36 @@ function linkJumpTargets(doc: OutlineFoldDoc): void {
   };
   walk(doc.nodes);
   for (const n of auto) if (targets.has(n.id!)) delete n.autoId;
+}
+
+/**
+ * Copy that keeps sealed payloads and the keyring, so the block still opens
+ * with outline-fold and the key. Same text serialize() writes.
+ */
+export function portableCopy(doc: OutlineFoldDoc): string {
+  return serialize(doc);
+}
+
+/**
+ * Copy with no ciphertext and no keyring. Sealed lines keep their public label.
+ * Plain children, if the caller has put any on the node, stay. The sealed bytes do not.
+ */
+export function cleanCopy(doc: OutlineFoldDoc): string {
+  const clone = structuredClone(doc);
+  const walk = (nodes: OutlineFoldDoc['nodes']) => {
+    for (const n of nodes) {
+      if (n.sealed && isSealedBranchPayload(n.sealed)) {
+        n.title = n.sealed.pub || n.title || '';
+        delete n.sealed;
+      }
+      if (n.children?.length) walk(n.children);
+    }
+  };
+  walk(clone.nodes);
+  delete clone.keyring;
+  delete clone.keys;
+  delete clone.sealedOrphans;
+  return serialize(clone);
 }
 
 export function serialize(doc: OutlineFoldDoc): string {

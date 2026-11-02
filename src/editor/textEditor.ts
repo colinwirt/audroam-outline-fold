@@ -16,7 +16,7 @@ import { outlineKeys } from './outlineKeys.js';
 
 const isSealedLine = (line: string): boolean => /<enc:[A-Za-z0-9_.-]+>/.test(line);
 import { Compartment, EditorState, StateEffect, Transaction, StateField, type Extension, type Text } from '@codemirror/state';
-import { EditorView, Decoration, WidgetType, keymap, drawSelection, type DecorationSet } from '@codemirror/view';
+import { EditorView, Decoration, WidgetType, keymap, drawSelection, highlightActiveLine, type DecorationSet } from '@codemirror/view';
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
 import { taskGlyphs, outlineEditor, refreshZones, missingZones, zoneRenderFailures, ZONE_ERROR_EVENT, type OutlineEditorOptions } from './index.js';
 export { missingZones, zoneRenderFailures, ZONE_ERROR_EVENT };
@@ -183,6 +183,8 @@ function buildEditor(host: HTMLElement, initial: string, opts: TextEditorOptions
   const ext: Extension[] = [
     history(),
     drawSelection(),
+    // Grey caret row. Follow in text moves this caret when Map focus changes.
+    highlightActiveLine(),
     taskGlyphs,
     // 0.4.13: standard CM commands behind the outline keys (Enter, Tab, Backspace); one
     // keymap for the main text and every zone. A sealed `<enc:…>` line takes no children here.
@@ -205,6 +207,7 @@ function buildEditor(host: HTMLElement, initial: string, opts: TextEditorOptions
       '.cm-content': { caretColor: '#9ecbff' },
       '.cm-cursor, .cm-dropCursor': { borderLeftColor: '#9ecbff' },
       '&.cm-focused .cm-selectionBackground, .cm-selectionBackground': { backgroundColor: 'rgba(108, 182, 255, 0.28)' },
+      '.cm-activeLine': { backgroundColor: 'rgba(232, 236, 241, 0.08)' },
     }, { dark: true }));
   }
   const ro = new Compartment();
@@ -236,7 +239,7 @@ function buildEditor(host: HTMLElement, initial: string, opts: TextEditorOptions
     ext.push(outlineEditor({
       sessions: opts.sessions,
       askPassphrase: opts.askPassphrase,
-      childExtensions: [history(), ...outlineKeys(), keymap.of([...defaultKeymap, ...historyKeymap]), ...(opts.childExtensions ?? [])],
+      childExtensions: [history(), highlightActiveLine(), ...outlineKeys(), keymap.of([...defaultKeymap, ...historyKeymap]), ...(opts.childExtensions ?? [])],
       textWidthCh: widthCh,
       focus: opts.focus,
       followInText: opts.followInText,

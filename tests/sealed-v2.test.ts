@@ -8,7 +8,7 @@ import {
 } from '../src/index.js';
 import {
   __installSecretForKat, __encryptForKat, aadV2, b64u, unb64u, unlockKeyring, changeKeyringPassphrase,
-  migrateSealedV1, branchCipher, parseBranchCtV2, deriveShareKeyBits, __branchKeyBitsForKat,
+  migrateSealedV1, branchCipher, inspectSealV3, deriveShareKeyBits, __branchKeyBitsForKat, parseBranchCtV2,
 } from '../src/sealedBranch.js';
 
 const KAT = JSON.parse(readFileSync(new URL('./vectors/of-seal-v2-kat.json', import.meta.url), 'utf8'));
@@ -75,9 +75,18 @@ describe('of-seal-v2 KAT (committed vectors)', () => {
 
 describe('of-seal-v2 binding and labels', () => {
   it('label mix-up: xc20p ciphertext with an a256gcm label (or share label) never opens', async () => {
+    const secret = new Uint8Array(32).fill(4);
     const doc = parse(SRC);
-    const k = await createKey(doc, PASS);
-    await sealBranch(doc, find(doc, 'a')!, k.kid, CTX, { pub: "", cipher: 'xc20p' });
+    await createKey(doc, PASS, { kid: 'k1' });
+    await __installSecretForKat('k1', secret);
+    const salt = new Uint8Array(16).fill(1);
+    const nonce = new Uint8Array(24).fill(2);
+    const inner = JSON.stringify({ v: 1, caption: 'A', body: '- a secret <id:a1>\n' });
+    const ct = await __encryptForKat('k1', 'xc20p', 'a', CTX, inner, { salt, nonce });
+    const node = find(doc, 'a')!;
+    node.sealed = { kid: 'k1', alg: 'of-seal-v2', ciphertext: ct };
+    node.title = 'Sealed branch';
+    node.children = [];
     const edit = (f: (h: string) => string) => {
       const d = parse(serialize(doc));
       const p = find(d, 'a')!.sealed!;
@@ -140,9 +149,9 @@ describe('of-seal-v2 ciphers per branch', () => {
         const d = parse(SRC);
         d.keyring = doc.keyring;
         await sealBranch(d, find(d, 'a')!, k.kid, CTX, { pub: "", cipher });
-        const b = parseBranchCtV2(find(d, 'a')!.sealed!.ciphertext!);
-        expect(b.nonce.length).toBe(cipher === 'a256gcm' ? 12 : 24);
-        nonces.add(b64u(b.nonce));
+        const b = inspectSealV3(find(d, 'a')!.sealed!.ciphertext!);
+        expect(b.iv.length).toBe(cipher === 'a256gcm' ? 12 : 24);
+        nonces.add(b64u(b.iv));
         salts.add(b64u(b.salt));
       }
       expect(nonces.size).toBe(40);

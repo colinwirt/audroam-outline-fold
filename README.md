@@ -1,6 +1,8 @@
 # @audroam/outline-fold
 
-Pure TypeScript **outline language** for structured operational handoffs: parse / serialize, `fold-` / `fold+`, toggle, icons, `toHtml`, and **sealed payloads** (demo crypto only).
+Pure TypeScript **outline language** for structured operational handoffs: parse / serialize, `fold-` / `fold+`, toggle, icons, `toHtml`, and **sealed payloads**.
+
+Sealed branches write **of-seal-v3**. The envelope is part of this format: it opens from the text and the key, with no note, account, or server. See [docs/seal-v3.md](docs/seal-v3.md).
 
 **MIT.** Host apps own production authentication, encryption, and database drivers.
 

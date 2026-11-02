@@ -1,15 +1,15 @@
 /**
- * Sealed branches, format of-seal-v2 (writes) and of-seal-v1 (decrypt-only, migration).
+ * Sealed branches. Writes of-seal-v3. Reads v3, v2, and v1 (v1 and v2 are decrypt-only).
  *
- * v2: the line is `Caption <enc:KEYID>`. The key id resolves to a random 256-bit branch
- * secret held in the `--- keyring ---` block only in wrapped form (AES-256-GCM under a KEK
- * from the passphrase KDF, own salt, key id in AAD). The secret is never used directly:
- * per cipher/purpose keys come from HKDF-SHA256 with the labels of/a256gcm/v1, of/xc20p/v1,
- * of/share/v1 (label bound in AAD). Ciphers: a256gcm (WebCrypto, 96-bit nonce) and xc20p
- * (XChaCha20-Poly1305 from @noble/ciphers, 192-bit nonce). The host chooses the cipher for
- * new seals; every branch records its own. Core owns header, salt and nonce.
+ * v3 binds only the cipher header (magic, version, alg, HKDF id, salt, kid, seal id, role).
+ * A fresh DEK and IV are used on every seal. Host context is not an input.
+ * v2 and v1 still decrypt with their original note, owner, node, and parent binding,
+ * and the next save re-seals as v3.
+ *
+ * The line is `Caption <enc:KEYID>`. The key id resolves to a random 256-bit secret
+ * in the `--- keyring ---` block, wrapped under a KEK from the passphrase.
  * Keys live in memory only (non-extractable CryptoKey); clearKeys() drops them.
- * Spec: docs/sealed-branches-approval.md §9.12 (OF-41..46).
+ * Spec: docs/seal-v3.md and docs/sealed-branches-approval.md §9.12 (OF-41..46).
  */
 import { xchacha20poly1305 } from '@noble/ciphers/chacha.js';
 import { parse } from './parse.js';
@@ -18,14 +18,29 @@ import { normalizeTaskMarkers } from './taskChrome.js';
 import {
   SEAL_ALG,
   SEAL_ALG_V1,
+  SEAL_ALG_V3,
   SEALED_PLACEHOLDER,
   KID_RE,
+  isLineSealAlg,
   isSealedBranchPayload,
 } from './sealedState.js';
+import {
+  DamagedSealError,
+  SEAL_V3_ROLES,
+  SealError,
+  armorSeal,
+  isV3Ciphertext,
+  keyringV3Aad,
+  openSealArmor,
+  packSealV3,
+  parseSealV3,
+  sealV3Aad,
+} from './sealEnvelope.js';
+export { DamagedSealError, SealError };
 import { applyAutosave, applyDiscard, applyRestore, applySave, ctHash, draftStateOf, draftTime, type SealDraftState } from './sealDraft.js';
 import type { OutlineFoldDoc, OutlineNode, SealKeyEntry, SealKeyringEntry, SealedPayload } from './types.js';
 
-export { SEAL_ALG, SEAL_ALG_V1, SEALED_PLACEHOLDER };
+export { SEAL_ALG, SEAL_ALG_V1, SEAL_ALG_V3, SEALED_PLACEHOLDER };
 
 /** Ciphers for of-seal-v2 branches (OF-41). */
 export type SealCipher = 'a256gcm' | 'xc20p';
@@ -38,9 +53,9 @@ export const SEAL_LABELS = Object.freeze({
 } as const);
 const NONCE_BYTES: Record<SealCipher, number> = { a256gcm: 12, xc20p: 24 };
 
-/** Formats this build reads (writes only SEAL_ALG). */
+/** Formats this build reads (writes only of-seal-v3). */
 export function supportedVersions(): { read: string[]; write: string } {
-  return { read: [SEAL_ALG, SEAL_ALG_V1], write: SEAL_ALG };
+  return { read: [SEAL_ALG_V3, SEAL_ALG, SEAL_ALG_V1], write: SEAL_ALG_V3 };
 }
 
 let configuredCipher: SealCipher | null = null;
@@ -52,17 +67,6 @@ let configuredCipher: SealCipher | null = null;
 export function setSealCipher(c: SealCipher | null): void {
   if (c !== null && !SEAL_CIPHERS.includes(c)) throw new SealError();
   configuredCipher = c;
-}
-
-/** The one error every unlock failure raises (wrong key, tamper, moved blob, bad header). */
-export class SealError extends Error {
-  /** SEAL-DRAFT: `locked` (key gone, autosave refused) or `verify` (save did not decrypt back). */
-  readonly code?: 'locked' | 'verify';
-  constructor(code?: 'locked' | 'verify') {
-    super(code === 'locked' ? 'Locked' : code === 'verify' ? "Save could not be verified; nothing was changed" : "Can't unlock");
-    this.name = 'SealError';
-    if (code) this.code = code;
-  }
 }
 
 export interface SealContext {
@@ -132,34 +136,52 @@ export type KdfParams =
   | { kdf: 'argon2id'; m: number; t: number; p: number; salt: Uint8Array<ArrayBuffer> }
   | { kdf: 'pbkdf2-sha256'; i: number; salt: Uint8Array<ArrayBuffer> };
 
+function formatArgon2Query(k: { m: number; t: number; p: number; salt: Uint8Array<ArrayBuffer> }): string {
+  return `kdf=argon2id&m=${k.m}&t=${k.t}&p=${k.p}&salt=${b64u(k.salt)}`;
+}
+
+/** Writer form. Argon2id is a PHC-style string (base64url salt). PBKDF2 stays the legacy query. */
 export function formatKdfHeader(k: KdfParams): string {
   return k.kdf === 'argon2id'
-    ? `kdf=argon2id&m=${k.m}&t=${k.t}&p=${k.p}&salt=${b64u(k.salt)}`
+    ? `$argon2id$v=19$m=${k.m},t=${k.t},p=${k.p}$${b64u(k.salt)}`
     : `kdf=pbkdf2-sha256&i=${k.i}&salt=${b64u(k.salt)}`;
+}
+
+function acceptArgon2(m: number, t: number, p: number, salt: Uint8Array<ArrayBuffer>): KdfParams {
+  // Default profile (m>=64MiB, t>=3) or the mobile fallback (m>=32MiB, t>=4). A header
+  // that is weaker than both, including the old 19MiB/t=2 floor, is rejected.
+  const defaultProfile = m >= ARGON2_DEFAULT.m && t >= ARGON2_DEFAULT.t;
+  const fallbackProfile = m >= ARGON2_FLOOR.m && t >= ARGON2_FLOOR.t;
+  if (salt.length < SALT_LEN) throw new SealError();
+  if ((!defaultProfile && !fallbackProfile) || p < 1 || m > 1_048_576 || t > 10 || salt.length !== SALT_LEN)
+    throw new SealError();
+  return { kdf: 'argon2id', m, t, p, salt };
 }
 
 /** Strict, canonical KDF header parse. Unknown or weak params are rejected. */
 export function parseKdfHeader(h: string): KdfParams {
-  const a = h.match(/^kdf=argon2id&m=(\d{1,7})&t=(\d{1,2})&p=(\d)&salt=([A-Za-z0-9_-]{22})$/);
-  let out: KdfParams | null = null;
-  if (a) {
-    const m = +a[1]!, t = +a[2]!, p = +a[3]!;
-    // Default profile (m>=64MiB, t>=3) or the mobile fallback (m>=32MiB, t>=4). A header
-    // that is weaker than both, including the old 19MiB/t=2 floor, is rejected.
-    const defaultProfile = m >= ARGON2_DEFAULT.m && t >= ARGON2_DEFAULT.t;
-    const fallbackProfile = m >= ARGON2_FLOOR.m && t >= ARGON2_FLOOR.t;
-    if ((!defaultProfile && !fallbackProfile) || p < 1 || m > 1_048_576 || t > 10)
-      throw new SealError();
-    out = { kdf: 'argon2id', m, t, p, salt: unb64u(a[4]!) };
+  const query = h.match(/^kdf=argon2id&m=(\d{1,7})&t=(\d{1,2})&p=(\d)&salt=([A-Za-z0-9_-]+)$/);
+  if (query) {
+    const out = acceptArgon2(+query[1]!, +query[2]!, +query[3]!, unb64u(query[4]!));
+    if (out.kdf !== 'argon2id' || formatArgon2Query(out) !== h) throw new SealError();
+    return out;
   }
-  const b = h.match(/^kdf=pbkdf2-sha256&i=(\d{6,8})&salt=([A-Za-z0-9_-]{22})$/);
-  if (b) {
-    const i = +b[1]!;
-    if (i < PBKDF2_ITERS || i > 10_000_000) throw new SealError();
-    out = { kdf: 'pbkdf2-sha256', i, salt: unb64u(b[2]!) };
+  const phc = h.match(/^\$argon2id\$v=19\$m=(\d{1,7}),t=(\d{1,2}),p=(\d)\$([A-Za-z0-9_-]+)$/);
+  if (phc) {
+    const out = acceptArgon2(+phc[1]!, +phc[2]!, +phc[3]!, unb64u(phc[4]!));
+    if (formatKdfHeader(out) !== h) throw new SealError();
+    return out;
   }
-  if (!out || out.salt.length !== SALT_LEN || formatKdfHeader(out) !== h) throw new SealError();
-  return out;
+  const pb = h.match(/^kdf=pbkdf2-sha256&i=(\d{1,8})&salt=([A-Za-z0-9_-]+)$/);
+  if (pb) {
+    const i = +pb[1]!;
+    const salt = unb64u(pb[2]!);
+    if (salt.length < SALT_LEN || i < PBKDF2_ITERS || i > 10_000_000 || salt.length !== SALT_LEN) throw new SealError();
+    const out: KdfParams = { kdf: 'pbkdf2-sha256', i, salt };
+    if (formatKdfHeader(out) !== h) throw new SealError();
+    return out;
+  }
+  throw new SealError();
 }
 
 const BRANCH_HDR_V1 = /^v=1&alg=A256GCM&kdf=hkdf-sha256&salt=([A-Za-z0-9_-]{22})$/;
@@ -333,11 +355,16 @@ async function kekFrom(passphrase: string, kdf: string): Promise<CryptoKey> {
 }
 
 async function wrapSecret(kid: string, passphrase: string, secret: Uint8Array<ArrayBuffer>): Promise<{ kdf: string; wrap: string }> {
-  const kdf = formatKdfHeader(newKdfParams());
+  const params = newKdfParams();
+  const kdf = formatKdfHeader(params);
   const kek = await kekFrom(passphrase, kdf);
   const nonce = rand(NONCE_LEN);
   const ct = new Uint8Array(
-    await wc().subtle.encrypt({ name: 'AES-GCM', iv: nonce, additionalData: wrapAad(kid, kdf), tagLength: 128 }, kek, secret),
+    await wc().subtle.encrypt(
+      { name: 'AES-GCM', iv: nonce, additionalData: keyringV3Aad(kdf, params.salt, kid), tagLength: 128 },
+      kek,
+      secret,
+    ),
   );
   return { kdf, wrap: `a256gcm.${b64u(nonce)}.${b64u(ct)}` };
 }
@@ -351,10 +378,20 @@ async function unwrapSecret(entry: SealKeyringEntry, passphrase: string): Promis
     const nonce = unb64u(m[1]!);
     const ct = unb64u(m[2]!);
     if (nonce.length !== NONCE_LEN || ct.length !== SECRET_LEN + TAG_LEN) throw 0;
+    const params = parseKdfHeader(entry.kdf);
     const kek = await kekFrom(passphrase, entry.kdf);
-    return new Uint8Array(
-      await wc().subtle.decrypt({ name: 'AES-GCM', iv: nonce, additionalData: wrapAad(entry.kid, entry.kdf), tagLength: 128 }, kek, ct),
-    );
+    const ads = [keyringV3Aad(entry.kdf, params.salt, entry.kid), wrapAad(entry.kid, entry.kdf)];
+    let last: unknown;
+    for (const ad of ads) {
+      try {
+        return new Uint8Array(
+          await wc().subtle.decrypt({ name: 'AES-GCM', iv: nonce, additionalData: ad, tagLength: 128 }, kek, ct),
+        );
+      } catch (err) {
+        last = err;
+      }
+    }
+    throw last ?? 0;
   } catch {
     throw new SealError();
   }
@@ -629,6 +666,121 @@ async function decryptV2(p: SealedPayload, nodeId: string, ctx: SealContext): Pr
   return aeadV2('dec', secret, blob.cipher, blob.salt, blob.nonce, ad, blob.ct, ctx.noteId, nodeId);
 }
 
+// ---------- v3 seal / open (no host binding) ----------
+const V3_WRAP_INFO = enc.encode('of-seal-v3/wrap');
+
+export interface SealV3Fixed {
+  salt: Uint8Array<ArrayBuffer>;
+  sid: Uint8Array<ArrayBuffer>;
+  dek: Uint8Array<ArrayBuffer>;
+  dekIv: Uint8Array<ArrayBuffer>;
+  iv: Uint8Array<ArrayBuffer>;
+}
+
+async function hkdfAes(secret: CryptoKey, salt: Uint8Array<ArrayBuffer>, usages: KeyUsage[]): Promise<CryptoKey> {
+  return wc().subtle.deriveKey(
+    { name: 'HKDF', hash: 'SHA-256', salt, info: V3_WRAP_INFO },
+    secret,
+    { name: 'AES-GCM', length: 256 },
+    false,
+    usages,
+  );
+}
+
+function ivLenOf(alg: string): number {
+  if (alg === 'a256gcm') return 12;
+  if (alg === 'xc20p') return 24;
+  throw new SealError();
+}
+
+async function aesGcm(
+  dir: 'enc' | 'dec',
+  key: CryptoKey,
+  iv: Uint8Array<ArrayBuffer>,
+  data: Uint8Array<ArrayBuffer>,
+  ad: Uint8Array<ArrayBuffer>,
+): Promise<Uint8Array<ArrayBuffer>> {
+  const p = { name: 'AES-GCM', iv, additionalData: ad, tagLength: 128 };
+  const buf = dir === 'enc' ? await wc().subtle.encrypt(p, key, data) : await wc().subtle.decrypt(p, key, data);
+  return new Uint8Array(buf);
+}
+
+export async function encryptV3(
+  kid: string,
+  cipher: SealCipher,
+  plaintext: string,
+  role: string,
+  fixed?: SealV3Fixed,
+): Promise<string> {
+  if (!SEAL_CIPHERS.includes(cipher)) throw new SealError();
+  const secret = secrets.get(kid);
+  if (!secret) throw new SealError();
+  const salt = fixed?.salt ?? rand(SALT_LEN);
+  const sid = fixed?.sid ?? rand(16);
+  const dek = fixed?.dek ? new Uint8Array(fixed.dek) : rand(SECRET_LEN);
+  const dekIv = fixed?.dekIv ?? rand(NONCE_LEN);
+  const iv = fixed?.iv ?? rand(NONCE_BYTES[cipher]);
+  if (salt.length !== SALT_LEN || sid.length !== 16 || dek.length !== SECRET_LEN || dekIv.length !== NONCE_LEN || iv.length !== NONCE_BYTES[cipher])
+    throw new SealError();
+  const aad = sealV3Aad(cipher, salt, kid, sid, role);
+  try {
+    const wrapKey = await hkdfAes(secret, salt, ['encrypt']);
+    const dekCt = await aesGcm('enc', wrapKey, dekIv, dek, aad);
+    let ct: Uint8Array<ArrayBuffer>;
+    if (cipher === 'a256gcm') {
+      const key = await wc().subtle.importKey('raw', dek, 'AES-GCM', false, ['encrypt']);
+      ct = await aesGcm('enc', key, iv, enc.encode(plaintext), aad);
+    } else {
+      const a = xchacha20poly1305(dek, iv, aad);
+      ct = new Uint8Array(a.encrypt(enc.encode(plaintext)));
+    }
+    return armorSeal(packSealV3({ aad, dekIv, dekCt, iv, ct }));
+  } finally {
+    dek.fill(0);
+  }
+}
+
+async function decryptV3(p: SealedPayload): Promise<Uint8Array<ArrayBuffer>> {
+  const raw = openSealArmor(p.ciphertext!);
+  let parts;
+  try {
+    parts = parseSealV3(raw, ivLenOf);
+  } catch (err) {
+    if (err instanceof SealError || err instanceof DamagedSealError) throw err;
+    throw new SealError();
+  }
+  if (!SEAL_CIPHERS.includes(parts.alg as SealCipher)) throw new SealError();
+  const kid = p.kid ?? parts.kid;
+  if (kid !== parts.kid) throw new SealError();
+  const secret = secrets.get(kid);
+  if (!secret) throw new SealError();
+  const wrapKey = await hkdfAes(secret, parts.salt, ['decrypt']);
+  let dek: Uint8Array<ArrayBuffer>;
+  try {
+    dek = await aesGcm('dec', wrapKey, parts.dekIv, parts.dekCt, parts.aad);
+  } catch {
+    throw new SealError();
+  }
+  try {
+    if (parts.alg === 'a256gcm') {
+      const key = await wc().subtle.importKey('raw', dek, 'AES-GCM', false, ['decrypt']);
+      return await aesGcm('dec', key, parts.iv, parts.ct, parts.aad);
+    }
+    const a = xchacha20poly1305(dek, parts.iv, parts.aad);
+    return new Uint8Array(a.decrypt(parts.ct));
+  } catch {
+    throw new SealError();
+  } finally {
+    dek.fill(0);
+  }
+}
+
+/** Header fields of an armored v3 payload (no decrypt). */
+export function inspectSealV3(ct: string): { alg: string; kid: string; role: string; salt: Uint8Array<ArrayBuffer>; sid: Uint8Array<ArrayBuffer>; iv: Uint8Array<ArrayBuffer> } {
+  const parts = parseSealV3(openSealArmor(ct), ivLenOf);
+  return { alg: parts.alg, kid: parts.kid, role: parts.role, salt: parts.salt, sid: parts.sid, iv: parts.iv };
+}
+
 /**
  * Test-only known-answer hooks (fixed secret, salt, nonce). Not for production use: the
  * secret is installed under `kid` in memory like an unwrapped keyring entry.
@@ -709,7 +861,7 @@ export async function sealBranch(
   kid: string,
   ctx: SealContext,
   opts: { pub?: string; cipher?: SealCipher } = {},
-  __fixed?: { salt: Uint8Array<ArrayBuffer>; nonce: Uint8Array<ArrayBuffer> },
+  __fixed?: SealV3Fixed,
 ): Promise<SealResult> {
   if (!node.id || node.autoId) throw new Error('sealBranch: node needs a persistent id');
   const cipher = opts.cipher ?? configuredCipher;
@@ -729,8 +881,8 @@ export async function sealBranch(
     if (parentKid === kid) warnings.push('same-kid-as-parent: no extra protection');
   }
   const pt = innerText(node);
-  const ct = await encryptV2(kid, cipher, node.id, ctx, pt, __fixed);
-  const payload: SealedPayload = { kid, alg: SEAL_ALG, ciphertext: ct };
+  const ct = await encryptV3(kid, cipher, pt, SEAL_V3_ROLES.body, __fixed);
+  const payload: SealedPayload = { kid, alg: SEAL_ALG_V3, ciphertext: ct };
   // 0.4.18: the caption (public label) defaults to the node's own title; blank -> placeholder.
   const pub = (opts.pub ?? node.title ?? '').trim();
   if (pub && pub !== SEALED_PLACEHOLDER) payload.pub = pub;
@@ -740,10 +892,15 @@ export async function sealBranch(
   return { warnings };
 }
 
-/** Cipher recorded in a v2 branch payload, or null (v1 / not a branch / unreadable). */
+/** Cipher recorded in a v2 or v3 branch payload, or null (v1 / not a branch / unreadable). */
 export function branchCipher(p: SealedPayload | undefined): SealCipher | null {
-  if (p?.alg !== SEAL_ALG || !p.ciphertext) return null;
+  if (!p?.ciphertext) return null;
   try {
+    if (p.alg === SEAL_ALG_V3 || isV3Ciphertext(p.ciphertext)) {
+      const alg = inspectSealV3(p.ciphertext).alg;
+      return SEAL_CIPHERS.includes(alg as SealCipher) ? (alg as SealCipher) : null;
+    }
+    if (p.alg !== SEAL_ALG) return null;
     return parseBranchCtV2(p.ciphertext).cipher;
   } catch {
     return null;
@@ -763,9 +920,17 @@ async function decryptBranch(doc: OutlineFoldDoc, node: OutlineNode, ctx: SealCo
   if (sealedDepth(ctx, doc) >= MAX_SEAL_DEPTH) throw new SealError();
   let text: string;
   try {
-    const pt = p.alg === SEAL_ALG ? await decryptV2(p, node.id, ctx) : await decryptV1(doc, p, node.id, ctx);
+    const ct = p.ciphertext!;
+    const sealed = { ...p, ciphertext: ct };
+    const pt =
+      sealed.alg === SEAL_ALG_V3 || isV3Ciphertext(ct)
+        ? await decryptV3(sealed)
+        : sealed.alg === SEAL_ALG
+          ? await decryptV2(sealed, node.id, ctx)
+          : await decryptV1(doc, sealed, node.id, ctx);
     text = dec.decode(pt);
-  } catch {
+  } catch (err) {
+    if (err instanceof DamagedSealError) throw err;
     throw new SealError();
   }
   try {
@@ -908,15 +1073,16 @@ export async function openSealedBranch(
   }
   let autosaveWrittenHere = false;
   const opened: SealedPayload = { ...node.sealed! };
-  const isV2 = opened.alg === SEAL_ALG;
-  const kid = opened.kid ?? (isV2 ? parseBranchCtV2(opened.ciphertext!).kid : '');
-  const kdfOf = (d: OutlineFoldDoc) => (isV2 ? findRing(d, kid)?.kdf : d.keys?.find((k) => k.kid === kid)?.kdf);
+  const isV3 = opened.alg === SEAL_ALG_V3 || isV3Ciphertext(opened.ciphertext);
+  const isV2 = opened.alg === SEAL_ALG && !isV3;
+  const kid = opened.kid ?? (isV3 ? inspectSealV3(opened.ciphertext!).kid : isV2 ? parseBranchCtV2(opened.ciphertext!).kid : '');
+  const kdfOf = (d: OutlineFoldDoc) => ((isV2 || isV3) ? findRing(d, kid)?.kdf : d.keys?.find((k) => k.kid === kid)?.kdf);
   const kdf0 = kdfOf(host);
   if (!kdf0) throw new SealError();
   const mode: SealedViewerMode = Object.freeze({
     kid,
     alg: opened.alg!,
-    cipher: isV2 ? parseBranchCtV2(opened.ciphertext!).cipher : null,
+    cipher: isV3 ? branchCipher(opened) : isV2 ? parseBranchCtV2(opened.ciphertext!).cipher : null,
     kdf: kdf0,
   });
   const depth = sealedDepth(ctx, host) + 1;
@@ -968,7 +1134,7 @@ export async function openSealedBranch(
     if (target !== node) throw new Error(`Sealed viewer: branch ${branchId} is no longer in the host document`);
     if (!mode.cipher) throw new Error(V1_EDIT_ERR);
     const cur = node.sealed;
-    if (!cur || (cur.kid ?? mode.kid) !== mode.kid || cur.alg !== mode.alg || cur.ciphertext !== opened.ciphertext)
+    if (!cur || (cur.kid ?? mode.kid) !== mode.kid || cur.alg !== opened.alg || cur.ciphertext !== opened.ciphertext)
       throw new Error(`Sealed viewer: branch ${branchId} payload changed outside the viewer; refusing to overwrite`);
     if (kdfOf(host) !== mode.kdf) throw new Error('Sealed viewer: key entry changed; re-sealing refused');
     return cur;
@@ -1015,7 +1181,7 @@ export async function openSealedBranch(
         if (draftState === 'conflict') return false;
         const pt = snapshot();
         if (pt === (lastAuto ?? original)) return false;
-        const ct = await encryptV2(mode.kid, mode.cipher!, branchId, ctx, pt);
+        const ct = await encryptV3(mode.kid, mode.cipher!, pt, SEAL_V3_ROLES.autosave);
         if (closed || !isKeyUnlocked(mode.kid)) throw new SealError('locked');
         if (snapshot() !== pt) return false;
         commit(applyAutosave(guard(), ct, now()));
@@ -1074,7 +1240,7 @@ export async function openSealedBranch(
       for (const c of children) if (!c.closed && c.isDirty()) throw new Error('Sealed viewer: save or close the nested viewer first');
       const pt = snapshot(); // also runs the fail-closed checks on the inner content
       if (pt === original && !cur.autosave) return;
-      const ct = await encryptV2(mode.kid, mode.cipher!, branchId, ctx, pt);
+      const ct = await encryptV3(mode.kid, mode.cipher!, pt, SEAL_V3_ROLES.body);
       // SD-7 verify: decrypt the new ct back before anything moves; else both versions stay.
       let back: string;
       try {
@@ -1085,10 +1251,11 @@ export async function openSealedBranch(
         throw new SealError('verify');
       }
       if (back !== pt) throw new SealError('verify');
-      const base: SealedPayload = { ...cur, kid: mode.kid, alg: mode.alg };
+      const base: SealedPayload = { ...cur, kid: mode.kid, alg: SEAL_ALG_V3 };
       // live label (`cur.pub`) wins: the caption may have been renamed while open.
       commit(applySave(base, ct, now()));
       opened.ciphertext = ct;
+      opened.alg = SEAL_ALG_V3;
       original = pt;
       lastAuto = undefined;
       autosaveWrittenHere = false;
@@ -1132,17 +1299,23 @@ export function validateSealedBranches(doc: OutlineFoldDoc): string[] {
   walkAll(doc.nodes, (n) => {
     if (!isSealedBranchPayload(n.sealed)) return;
     const p = n.sealed!;
-    const v2 = p.alg === SEAL_ALG;
-    if (!p.kid || !(v2 ? ringKids : kids).has(p.kid)) errs.push(`${n.id}: unknown kid`);
+    const lineKid = isLineSealAlg(p.alg);
+    if (!p.kid || !(lineKid ? ringKids : kids).has(p.kid)) errs.push(`${n.id}: unknown kid`);
     if (!p.ciphertext) errs.push(`${n.id}: missing ct`);
     else
       try {
-        const b = parseBranchCt(p.ciphertext, p.alg);
-        if (v2 && p.kid && (b as BranchBlobV2).kid !== p.kid) errs.push(`${n.id}: <enc:${p.kid}> does not match the payload header`);
-      } catch {
-        errs.push(`${n.id}: bad ct`);
+        if (p.alg === SEAL_ALG_V3 || isV3Ciphertext(p.ciphertext)) {
+          const b = inspectSealV3(p.ciphertext);
+          if (p.kid && b.kid !== p.kid) errs.push(`${n.id}: <enc:${p.kid}> does not match the payload header`);
+        } else {
+          const b = parseBranchCt(p.ciphertext, p.alg);
+          if (p.alg === SEAL_ALG && p.kid && (b as BranchBlobV2).kid !== p.kid)
+            errs.push(`${n.id}: <enc:${p.kid}> does not match the payload header`);
+        }
+      } catch (err) {
+        errs.push(`${n.id}: ${err instanceof DamagedSealError ? 'damaged ct' : 'bad ct'}`);
       }
-    if (!v2) errs.push(`${n.id}: legacy of-seal-v1 (decrypt-only; migrate)`);
+    if (p.alg === SEAL_ALG_V1) errs.push(`${n.id}: legacy of-seal-v1 (decrypt-only; migrate)`);
     if (n.children?.length) errs.push(`${n.id}: locked sealed branch has plaintext children`);
   });
   return errs;
@@ -1157,7 +1330,7 @@ export interface MigrationResult {
 }
 
 /**
- * Re-seal every of-seal-v1 branch (nested included) as of-seal-v2. Every legacy kid in use
+ * Re-seal every of-seal-v1 branch (nested included) as of-seal-v3. Every legacy kid in use
  * must be unlocked first (unlockKey with its old passphrase). Each legacy kid gets a new
  * keyring entry wrapped under `passphrase`; `cipher` is the host's choice. Legacy key-list
  * entries that are no longer referenced are removed. All-or-nothing: on failure the doc
@@ -1190,8 +1363,8 @@ export async function migrateSealedV1(
         await walkList(sub.nodes, n.id, depth + 1);
         const inner = innerJson(caption, serialize({ nodes: sub.nodes, fold: { mode: '-', ids: [] }, ...(sub.sealedOrphans ? { sealedOrphans: sub.sealedOrphans } : {}) }));
         const kid = await target(p.kid!);
-        const ct = await encryptV2(kid, opts.cipher, n.id, c, inner);
-        n.sealed = { kid, alg: SEAL_ALG, ciphertext: ct, ...(p.pub ? { pub: p.pub } : {}) };
+        const ct = await encryptV3(kid, opts.cipher, inner, SEAL_V3_ROLES.body);
+        n.sealed = { kid, alg: SEAL_ALG_V3, ciphertext: ct, ...(p.pub ? { pub: p.pub } : {}) };
         migrated++;
       } else if (n.children?.length) {
         await walkList(n.children, parentId, depth);

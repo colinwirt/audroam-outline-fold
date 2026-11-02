@@ -485,13 +485,24 @@ export function outlineEditor(opts: OutlineEditorOptions): Extension[] {
       if (from === zl.from && w instanceof SecureZone) { region = w.region; return false; }
       return undefined;
     });
-    const z = region ? zoneViews.get(region) : null;
-    if (!z) return;
+    if (!region) return;
+    const placeEnd = up;
+    const anchor = zl.from;
     queueMicrotask(() => {
-      try {
+      const focusZone = (): boolean => {
+        const z = zoneViews.get(region!);
+        if (!z?.dom.isConnected) return false;
         z.focus();
-        z.dispatch({ selection: { anchor: up ? z.state.doc.line(z.state.doc.lines).from : 0 }, scrollIntoView: true });
-      } catch { /* zone gone */ }
+        z.dispatch({ selection: { anchor: placeEnd ? z.state.doc.line(z.state.doc.lines).from : 0 }, scrollIntoView: true });
+        return true;
+      };
+      try {
+        if (focusZone()) return;
+        // The move stepped over the zone before its height was in the map, and the
+        // off-screen widget was dropped. Land on the anchor line so the zone mounts.
+        u.view.dispatch({ selection: { anchor }, scrollIntoView: true });
+        queueMicrotask(() => { try { focusZone(); } catch { /* zone gone */ } });
+      } catch { /* view gone */ }
     });
   });
   // Typing cannot land on the hidden anchor line of an open zone (caret at its edge).

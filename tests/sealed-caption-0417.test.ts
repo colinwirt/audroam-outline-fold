@@ -57,7 +57,7 @@ for (const [name, op] of ops) {
     expect(parse(out).nodes.find((n) => n.id === '4')!.title).toBe(caption); // shown on the node
     expect(() => serialize(parse(out))).not.toThrow();
     // Ciphertext untouched by a label change (pub is not in the AEAD) and decrypts the same.
-    const ct = (s: string) => /\n4:\n(?:  .*\n)*?  ct: (\S+)/.exec(s)![1];
+    const ct = (s: string) => /\n  ct: (-----BEGIN OUTLINE-FOLD SEAL-----[\s\S]*?-----END OUTLINE-FOLD SEAL-----)/.exec(s)![1];
     expect(ct(out)).toBe(ct(base));
     expect(await contents(out)).toBe(before);
   });

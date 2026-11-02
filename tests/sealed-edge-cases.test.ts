@@ -47,7 +47,11 @@ async function sealed() {
   const text = serialize(doc);
   return { doc, kid: key.kid, text };
 }
-const ctOf = (t: string, id: string) => t.match(new RegExp(`^${id}:\\n(?:  .*\\n)*?  ct: (\\S+)`, 'm'))?.[1];
+const ctRaw = (t: string, id: string) =>
+  t.match(new RegExp(`^${id}:\\n(?:  .*\\n)*?  ct: (-----BEGIN OUTLINE-FOLD SEAL-----[\\s\\S]*?-----END OUTLINE-FOLD SEAL-----)`, 'm'))?.[1];
+/** Ciphertext as stored: continuation lines are indented four spaces in the note. */
+const ctOf = (t: string, id: string) =>
+  ctRaw(t, id)?.split('\n').map((line, i) => (i === 0 ? line : line.replace(/^ {4}/, ''))).join('\n');
 
 beforeEach(() => { clearKeys(); setSealCipher('a256gcm'); });
 
@@ -96,8 +100,8 @@ describe('Q2 id or marker removed from the sealed line', () => {
     const doc = parse(text.replace('<id:v>', ''));
     expect(discardSealedOrphan(doc, 'v')).toBe(true);
     const out = serialize(doc);
-    expect(out).not.toContain(ctOf(text, 'v')!);
-    expect(out).toContain(ctOf(text, 'w')!);
+    expect(out).not.toContain(ctRaw(text, 'v')!);
+    expect(out).toContain(ctRaw(text, 'w')!);
   });
 
   it('model edit deletes the id on the sealed node: save refuses (no auto id rebinding the blob)', async () => {
@@ -120,7 +124,7 @@ describe('Q3 leak attempts', () => {
     const cut = text.replace(/^v:\n(?:  .*\n)+/m, '');
     const out = serialize(parse(cut));
     expect(out).not.toMatch(SECRET);
-    expect(out).toContain(ctOf(text, 'w')!);
+    expect(out).toContain(ctRaw(text, 'w')!);
   });
 
   it('kid changed: open fails closed, save keeps the ciphertext as is', async () => {
@@ -205,7 +209,7 @@ describe('viewer lifecycle and fixed mode', () => {
     expect(ctOf(out, 'w')).toBe(ctOf(text, 'w'));
     expect(ctOf(out, 'v')).not.toBe(ctOf(text, 'v'));
     expect(find(doc, 'v')!.sealed!.kid).toBe(kid);
-    expect(find(doc, 'v')!.sealed!.alg).toBe('of-seal-v2');
+    expect(find(doc, 'v')!.sealed!.alg).toBe('of-seal-v3');
     view.close();
     const again = await openSealedBranch(doc, 'v', CTX);
     expect(again.doc.nodes[0]!.children![0]!.title).toBe('Secret child v2');

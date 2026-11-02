@@ -1,4 +1,4 @@
-import { headerKid, isSealedBranchPayload, SEAL_ALG } from './sealedState.js';
+import { headerKid, isLineSealAlg, isSealedBranchPayload } from './sealedState.js';
 import { parseEncBody } from './sealed.js';
 import { parseAutoWidth } from './mapFit.js';
 import type {
@@ -140,6 +140,13 @@ export function parseKeyringBlock(block: string): SealKeyringEntry[] {
       out.push(cur);
       continue;
     }
+    const cont = raw.match(/^    (\S.*)$/);
+    if (cont && cur && (cur.kdf || cur.wrap)) {
+      const piece = cont[1]!.replace(/[ \t]/g, '');
+      if (!cur.wrap) cur.kdf += piece;
+      else cur.wrap += piece;
+      continue;
+    }
     const f = raw.match(/^\s+(kdf|wrap|pub)\s*:\s*(.+)$/i);
     if (f && cur) {
       const v = f[2]!.trim();
@@ -204,9 +211,12 @@ export function formatKeysBlock(keys: SealKeyEntry[] | undefined): string {
  * Each entry carries its own kid; per-node keys are the grammar default, while
  * deliberate sensitivity-based kid reuse remains valid.
  */
+const BLOB_KEYS = new Set(['ct', 'auto-ct', 'gone-ct']);
+
 export function parsePayloadMap(block: string): PayloadMap {
   const out: PayloadMap = {};
   let current: string | null = null;
+  let lastBlob: string | null = null;
   const fields: Record<string, string> = {};
 
   const flush = () => {
@@ -214,6 +224,7 @@ export function parsePayloadMap(block: string): PayloadMap {
     const sealed = fieldsToSealed(fields);
     if (sealed) out[current] = sealed;
     current = null;
+    lastBlob = null;
     for (const k of Object.keys(fields)) delete fields[k];
   };
 
@@ -225,11 +236,17 @@ export function parsePayloadMap(block: string): PayloadMap {
       current = top[1]!;
       continue;
     }
+    const cont = raw.match(/^    (\S.*)$/);
+    if (cont && current && lastBlob && BLOB_KEYS.has(lastBlob)) {
+      fields[lastBlob] += '\n' + cont[1];
+      continue;
+    }
     const field = raw.match(/^\s+(kid|alg|ct|uri|pub|at|base|auto-ct|auto-at|auto-base|gone-ct|gone-at|gone-by|gone-from)\s*:\s*(.+)$/i);
     if (field && current) {
       const v = field[2]!.trim();
       const k = field[1]!.toLowerCase();
       fields[k] = k === 'pub' && v.startsWith('"') ? JSON.parse(v) : unquote(v);
+      lastBlob = BLOB_KEYS.has(k) ? k : null;
       continue;
     }
     const compact = raw.match(/^([A-Za-z0-9][A-Za-z0-9_-]*):\s*(.+)$/);
@@ -574,7 +591,7 @@ export function attachPayloads(
         // of-seal-v2: the key id lives on the line (`<enc:KEYID>`), not in the payload.
         const tagKid = n.sealed?.kid;
         n.sealed = { ...payloads[n.id] };
-        if (!n.sealed.kid && n.sealed.alg === SEAL_ALG) {
+        if (!n.sealed.kid && isLineSealAlg(n.sealed.alg)) {
           const k = tagKid ?? headerKid(n.sealed);
           if (k) n.sealed.kid = k;
         }
@@ -597,13 +614,20 @@ export function collectPayloads(nodes: OutlineNode[]): PayloadMap {
     for (const n of list) {
       if (n.id && n.sealed && (n.sealed.ciphertext || n.sealed.uri)) {
         out[n.id] = { ...n.sealed };
-        if (n.sealed.alg === SEAL_ALG) delete out[n.id]!.kid; // written as <enc:KEYID>
+        if (isLineSealAlg(n.sealed.alg)) delete out[n.id]!.kid; // written as <enc:KEYID>
       }
       if (n.children) walk(n.children);
     }
   };
   walk(nodes);
   return out;
+}
+
+/** First line stays on the field. Later lines are indented so a wrapped seal round-trips. */
+function pushBlob(lines: string[], key: string, value: string): void {
+  const parts = value.split('\n');
+  lines.push(`  ${key}: ${parts[0]}`);
+  for (let i = 1; i < parts.length; i++) lines.push(`    ${parts[i]}`);
 }
 
 /** Format trailer block (stable key order). */
@@ -618,19 +642,19 @@ export function formatPayloadsBlock(payloads: PayloadMap): string {
     if (s.alg) lines.push(`  alg: ${s.alg}`);
     if (s.pub) lines.push(`  pub: ${JSON.stringify(s.pub)}`);
     if (s.ciphertext) {
-      lines.push(`  ct: ${s.ciphertext}`);
+      pushBlob(lines, 'ct', s.ciphertext);
       // SEAL-DRAFT (SD-2): fixed order, empty slots omitted; ct-only output is unchanged.
       if (s.at) lines.push(`  at: ${s.at}`);
       if (s.base) lines.push(`  base: ${s.base}`);
       const a = s.autosave;
       if (a?.ciphertext) {
-        lines.push(`  auto-ct: ${a.ciphertext}`);
+        pushBlob(lines, 'auto-ct', a.ciphertext);
         if (a.at) lines.push(`  auto-at: ${a.at}`);
         if (a.base) lines.push(`  auto-base: ${a.base}`);
       }
       const g = s.discarded;
       if (g?.ciphertext) {
-        lines.push(`  gone-ct: ${g.ciphertext}`);
+        pushBlob(lines, 'gone-ct', g.ciphertext);
         if (g.at) lines.push(`  gone-at: ${g.at}`);
         if (g.replacedBy) lines.push(`  gone-by: ${g.replacedBy}`);
         if (g.from) lines.push(`  gone-from: ${g.from}`);

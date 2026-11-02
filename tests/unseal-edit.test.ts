@@ -24,7 +24,7 @@ import {
   type OutlineNode,
   type SealState,
 } from '../src/index.js';
-import { setArgon2Provider } from '../src/sealedBranch.js';
+import { inspectSealV3, setArgon2Provider } from '../src/sealedBranch.js';
 
 const PASS = 'correct horse battery staple';
 const CTX = { noteId: 'note-1', ownerId: 'owner-1' };
@@ -66,7 +66,7 @@ async function setup() {
 }
 
 const payload = (doc: OutlineFoldDoc) => find(doc.nodes, 'v')!.sealed!.ciphertext!;
-const ivOf = (ct: string) => ct.split('.').slice(-2, -1)[0];
+const ivOf = (ct: string) => Buffer.from(inspectSealV3(ct).iv).toString('hex');
 
 describe('unsealed editing', () => {
   it('(a) unseal: sealed → unlocking → unlocked; wrong passphrase → error → sealed, retry works', async () => {

@@ -14,9 +14,10 @@ beforeAll(() => setArgon2Provider(async (pw, salt) => new Uint8Array(createHash(
 const FIX = `- Garden list <id:1>\n- Sealed branch <id:4>\n  - seeds <id:5>\n    - [ ] tomato <id:6>\n- after <id:7>\n`;
 const CTX = { noteId: '9', ownerId: '' };
 const tick = (ms = 15) => new Promise((r) => setTimeout(r, ms));
-const cts = (t: string) => [...t.matchAll(/^\s+(?:auto-)?ct\s*:\s*(\S+)/gm)].map((m) => m[1]);
-const ctOf = (t: string) => (t.match(/^\s+ct\s*:\s*(\S+)/m) || [])[1];
-const autoCtOf = (t: string) => (t.match(/^\s+auto-ct\s*:\s*(\S+)/m) || [])[1];
+const ARMOR = String.raw`(-----BEGIN OUTLINE-FOLD SEAL-----[\s\S]*?-----END OUTLINE-FOLD SEAL-----)`;
+const cts = (t: string) => [...t.matchAll(new RegExp(String.raw`^[ \t]+(?:auto-)?ct[ \t]*:[ \t]*${ARMOR}`, 'gm'))].map((m) => m[1]!);
+const ctOf = (t: string) => t.match(new RegExp(String.raw`^[ \t]+ct[ \t]*:[ \t]*${ARMOR}`, 'm'))?.[1];
+const autoCtOf = (t: string) => t.match(new RegExp(String.raw`^[ \t]+auto-ct[ \t]*:[ \t]*${ARMOR}`, 'm'))?.[1];
 
 async function sealed(fix = FIX) {
   clearKeys(); setSealCipher('a256gcm');

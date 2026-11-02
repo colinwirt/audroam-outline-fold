@@ -14,11 +14,10 @@ import {
   isKeyUnlocked,
   openSealedBranch,
   unlockKey,
-  parseBranchCtV2,
   type SealContext,
   type SealedViewer,
 } from './sealedBranch.js';
-import { SEAL_ALG, isSealedBranchPayload } from './sealedState.js';
+import { headerKid, isSealedBranchPayload } from './sealedState.js';
 import { serialize } from './serialize.js';
 import { DEFAULT_AUTO_LOCK_MS } from './payloads.js';
 import { createHostApi, type HostApi, type OFErrorCode, type RegionId } from './hostApi.js';
@@ -144,14 +143,7 @@ function kidOf(n: OutlineNode | undefined): string | null {
   const p = n?.sealed;
   if (!p || !isSealedBranchPayload(p)) return null;
   if (p.kid) return p.kid;
-  if (p.alg === SEAL_ALG && p.ciphertext) {
-    try {
-      return parseBranchCtV2(p.ciphertext).kid;
-    } catch {
-      return null;
-    }
-  }
-  return null;
+  return headerKid(p) ?? null;
 }
 
 const MESSAGES: Record<OFErrorCode, string> = {

@@ -11,7 +11,7 @@ beforeAll(() => setArgon2Provider(async (pw, salt) => new Uint8Array(createHash(
 const CTX = { noteId: '9', ownerId: '' };
 const tick = (ms = 30) => new Promise((r) => setTimeout(r, ms));
 const pub = (t: string) => t.match(/pub: (.*)/)?.[1];
-const ct = (t: string) => t.match(/ct: (.*)/)?.[1];
+const ct = (t: string) => t.match(/ct: (-----BEGIN OUTLINE-FOLD SEAL-----[\s\S]*?-----END OUTLINE-FOLD SEAL-----)/)?.[1];
 async function setup() {
   clearKeys(); setSealCipher('a256gcm');
   const d = parse('- a <id:1>\n- vault <id:4>\n  - s <id:5>\n');

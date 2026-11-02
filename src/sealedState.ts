@@ -1,25 +1,41 @@
 import type { OutlineFoldDoc, OutlineNode, SealedPayload } from './types.js';
+import { kidFromSealArmor } from './sealEnvelope.js';
 
+export { SealError } from './sealEnvelope.js';
+
+/** of-seal-v2: decrypt-only. New seals write SEAL_ALG_V3. */
+export const SEAL_ALG_V2 = 'of-seal-v2';
+/** @deprecated Use SEAL_ALG_V2. Kept so existing imports still name the v2 alg. */
+export const SEAL_ALG = SEAL_ALG_V2;
 /** Current sealed-branch format (written). */
-export const SEAL_ALG = 'of-seal-v2';
+export const SEAL_ALG_V3 = 'of-seal-v3';
 /** Legacy sealed-branch format: decrypt-only (migration). */
 export const SEAL_ALG_V1 = 'of-seal-v1';
+
+/** v2 and v3 put the kid on the line (`<enc:KEYID>`), not in the payload body. */
+export function isLineSealAlg(alg: string | undefined): boolean {
+  return alg === SEAL_ALG_V2 || alg === SEAL_ALG_V3;
+}
 /** Key ids named by `<enc:KEYID>`. */
 export const KID_RE = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/;
 export const SEALED_PLACEHOLDER = 'Sealed branch';
 
 export function isSealedBranchPayload(p: SealedPayload | undefined): boolean {
-  return p?.alg === SEAL_ALG || p?.alg === SEAL_ALG_V1;
+  return p?.alg === SEAL_ALG_V1 || p?.alg === SEAL_ALG_V2 || p?.alg === SEAL_ALG_V3;
 }
 
-/** of-seal-v2 payload, or a bare `<enc:KEYID>` reference whose payload is missing. */
+/** Sealed line whose kid is on the line, or a bare `<enc:KEYID>` with no payload yet. */
 export function isEncRef(p: SealedPayload | undefined): boolean {
-  return Boolean(p?.kid && (p.alg === SEAL_ALG || (!p.ciphertext && !p.uri && !p.alg)));
+  return Boolean(p?.kid && (isLineSealAlg(p.alg) || (!p.ciphertext && !p.uri && !p.alg)));
 }
 
-/** Key id inside an of-seal-v2 payload header (structure only; never decrypts). */
+/** Key id inside a payload header (structure only; never decrypts). */
 export function headerKid(p: SealedPayload | undefined): string | undefined {
-  if (p?.alg !== SEAL_ALG || !p.ciphertext) return undefined;
+  if (!p?.ciphertext) return undefined;
+  if (p.alg === SEAL_ALG_V3 || p.ciphertext.includes('BEGIN OUTLINE-FOLD SEAL')) {
+    return kidFromSealArmor(p.ciphertext);
+  }
+  if (p.alg !== SEAL_ALG_V2) return undefined;
   try {
     const seg = p.ciphertext.split('.')[0]!.replace(/-/g, '+').replace(/_/g, '/');
     const m = atob(seg + '='.repeat((4 - (seg.length % 4)) % 4)).match(/&kid=([A-Za-z0-9][A-Za-z0-9_-]{0,63})&/);
@@ -106,7 +122,7 @@ export function reattachSealedOrphan(doc: OutlineFoldDoc, id: string, node: Outl
   delete node.autoId;
   const tagKid = node.sealed?.kid;
   node.sealed = { ...p };
-  if (p.alg === SEAL_ALG && !node.sealed.kid) {
+  if (isLineSealAlg(p.alg) && !node.sealed.kid) {
     const k = tagKid ?? headerKid(p);
     if (k) node.sealed.kid = k;
   }

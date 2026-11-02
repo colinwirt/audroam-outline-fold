@@ -281,3 +281,13 @@ passphrase, `docId` and storage.
 Approval is pinned to one library version and its vector hash; any major bump needs a new
 review. The feature stays behind a flag until strict CSP and Trusted Types ship in the host.
 This gate is in addition to the security-reviewer sign-off in §6.
+
+## Intent (seal v3, Colin, 2 Nov 2026)
+
+1. **Layering.** outline-fold owns the envelope. Every base mode is portable and standalone, and opens from the text and the key alone. Audroam takes the block drop-in, unchanged, and adds no binding inside it. A block copied out of Audroam always opens with outline-fold. Pinning (recipients, share keys, app context) belongs only in a future outer application envelope with user share keys, which returns the untouched inner block when it's unwrapped. No host pinning in v3, because a sandbox can fake host values.
+2. **Durability is availability.** A seal broken in transit is data loss, and it pushes people to paste plaintext. Decoding ignores whitespace: base64url, with spaces, tabs, CR, LF and leading `> ` stripped. Fixed BEGIN and END marker lines. A transit checksum is checked before decrypt and kept separate from the GCM tag, so damage reads as "damaged in transit", not "wrong passphrase". The header is plain ASCII in a fixed order. The keyring follows the same rules and can travel separately. Readers are tolerant; writers always output one fixed layout.
+3. **Standard formats.** Argon2id (RFC 9106) with PHC-style params, AES-256-GCM or AES-KW for the key wrap, base64url (RFC 4648). The kid is random or a hash of the key, never a user, account or host id. No owner, note, map or server fields.
+4. **Out of scope.** Detecting document changes belongs to Audroam's audit log (OPS-IMMUTABLE-HISTORY), not to the ciphertext or the keyring.
+5. **Release gates.** Public test vectors for: move, copy and caption edit; re-wrapped lines, CRLF and whitespace; `> ` quoting; a block pasted through an LLM; a single changed character reading as damaged; a tampered header; a KDF below the floor; payload swap.
+
+See the SR-007 amendment in refs/ops/security-register.md.
