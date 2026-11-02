@@ -5,7 +5,7 @@ import { createRequire } from 'node:module';
 import { parse, serialize, mergeKeeping, toggleFold } from '../src/index.js';
 
 const require = createRequire(import.meta.url);
-const Text = require('C:/code/audroam/audroam-api/templates/outlineViewText.js');
+const Text = require('./_textWidth.cjs');
 
 function hostSerialize(root: Parameters<typeof serialize>[0], prev: string): string {
   return Text.writeTextWidth(serialize(root), Text.readTextWidth(prev || ''));

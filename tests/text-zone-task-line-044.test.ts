@@ -33,7 +33,7 @@ it('0.4.4: unlocked anchor CSS tints only the pill, never every rect', async () 
   // the 🔓 mark is part of the caption pillSize measures (pill width includes it), not a DOM patch
   expect(src).not.toContain('data-of-unlock-mark');
   expect(src).toMatch(/const label = anchorCaption\(key, captionWithoutLinks/);
-  expect(src).toMatch(/const label = anchorCaption\(key, captionWithoutLinks\(displayCaption\(n\.title\)\)\);\n    const sz = pillSize\(label/);
+  expect(src).toMatch(/const label = anchorCaption\(key, captionWithoutLinks\(displayCaption\(n\.title\)\)\);\n    const live = regionWidthLive\.get\(n\);\n    const sz = pillSize\(label/);
 });
 
 it('0.4.4: region pill text uses the node font size, not a fixed 13px', async () => {

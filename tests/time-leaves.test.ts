@@ -237,7 +237,7 @@ describe('paint wiring (source)', () => {
     expect(mapSrc).toMatch(/if \(!n \|\| timeLeafKind\(n\)\) return false;/);
     expect(mapSrc).toMatch(/getDoc\(\)\.nodes\)\.filter\(\(s\) => !timeLeafKind\(s\)\)/);
     expect(mapSrc).toMatch(/if \(timeLeafKind\(nodeByKey\(key\)\)\) return false;/);
-    expect(mapSrc).toMatch(/'\.map-node:not\(\.time-leaf\)'/);
+    expect(mapSrc).toMatch(/'\.map-node:not\(\.time-leaf\), \.map-region-node:not\(\.map-region-root\)/);
     expect(mapSrc).toMatch(/key === resizingWidthKey \|\| timeLeafKind\(n\)\) continue;/);
   });
 
