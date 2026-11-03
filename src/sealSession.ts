@@ -10,6 +10,7 @@
  */
 import {
   SealError,
+  DamagedSealError,
   MAX_SEAL_DEPTH,
   isKeyUnlocked,
   openSealedBranch,
@@ -148,11 +149,22 @@ function kidOf(n: OutlineNode | undefined): string | null {
 
 const MESSAGES: Record<OFErrorCode, string> = {
   'bad-pass': 'Wrong passphrase',
+  damaged: 'Seal is damaged',
   'aad-mismatch': 'This branch does not belong to this map',
   'too-large': 'Sealed branch is too large',
   depth: `Sealed branches nest at most ${MAX_SEAL_DEPTH} deep`,
   'save-failed': 'Save failed; your edits are kept, try again',
 };
+
+/**
+ * 0.5.16: one unlock-error classifier for every path (zone, card, key picker).
+ * DamagedSealError (checksum failed before any decrypt) is not a SealError, so it used to fall
+ * through to 'bad-pass'. It is 'damaged' now: no retry, no back-off. Anything else stays
+ * 'bad-pass' (a wrong key and an AEAD tag failure cannot be told apart, by design).
+ */
+export function sealErrorCode(e: unknown): 'damaged' | 'bad-pass' {
+  return e instanceof DamagedSealError ? 'damaged' : 'bad-pass';
+}
 
 export function createSealSessions(opts: SealSessionsOptions): SealSessions {
   const api = opts.api ?? createHostApi();
@@ -327,6 +339,7 @@ export function createSealSessions(opts: SealSessionsOptions): SealSessions {
         s.viewer = parent ? await parent.open(s.branchId) : await openSealedBranch(pdoc, s.branchId, opts.ctx);
       } catch (e) {
         s.viewer = null;
+        if (e instanceof DamagedSealError) return fail(s, 'damaged'); // no back-off, not counted
         return fail(s, e instanceof SealError || !(e instanceof Error) ? 'bad-pass' : /depth/i.test(e.message) ? 'depth' : 'bad-pass');
       }
       s.failures = 0;

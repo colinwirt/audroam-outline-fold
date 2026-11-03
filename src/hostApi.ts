@@ -7,7 +7,7 @@ export type RegionId = string;
 /** `regionId:nodeId`; root-region ids have no prefix. */
 export type ScopedId = string;
 
-export type OFErrorCode = 'bad-pass' | 'aad-mismatch' | 'too-large' | 'depth' | 'save-failed';
+export type OFErrorCode = 'bad-pass' | 'damaged' | 'aad-mismatch' | 'too-large' | 'depth' | 'save-failed';
 
 export type OFEvent =
   | { type: 'unlock'; region: RegionId }

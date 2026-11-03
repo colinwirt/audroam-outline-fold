@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.5.16 — 2026-11-04
+
+Seal v3 unlock-screen fixes (Design UX spec). No change to the seal format, save, re-seal or unlock of v1/v2/v3 seals.
+
+- Wrong key and damaged are separate states. A wrong passphrase shows "Wrong passphrase", keeps the field, and shows the back-off ("Try again in 12s"). A seal that fails its checksum shows "Seal is damaged": no retry, no back-off, and it does not count toward the back-off. The explanation sits behind "?". Root cause: `DamagedSealError` does not extend `SealError`, and the session mapped every unlock failure to `bad-pass`. New error code `damaged`, new export `sealErrorCode(err)` for the host's key-picker path.
+- `mountUnlockPrompt({ restoreEarlier })`: a host hook that offers "Restore earlier version" on a damaged seal, only when `available()` is true. The host confirms before it overwrites anything.
+- New keys: `MIN_NEW_PASSPHRASE` (16), `passphraseStrength` ("Too short" / "OK"), `generatePassphrase()` (5 words from the EFF large wordlist, CC BY 3.0 US, via `crypto.getRandomValues`, unbiased). Unlock never checks length: shorter existing passphrases still open.
+- `idleLockText(ms)`: "Locked after {n} min idle" from the note's real `autoLockMs`.
+- Shorter wording: zone header "🔓 {label or kid}" (no "Secure zone", no "memory only"), sub line "Unlocked · this tab only" with the old sentence behind "?". "Remove seal" keeps "Keep sealed" as the focused default.
+- Labels: `keyLabel(kid)` option on the unlock card, zone chrome and status chip (falls back to the kid; the Map keeps the kid). More ▾ → "Rename…" (`onRename`), and `mountRenameForm` (Label, optional Search content marked "Not encrypted · searchable by the server", device-side secret warning via `looksLikeSecret`). The package stores neither field; the host keeps them outside the outline block.
+
 ## 0.5.15
 
 - Map ticks name their row for certain. The Map passes a reference (the row's id, its path from the shown top row, and its title). The doc resolves that reference against a parse of the whole note: first the written `<id:N>` or `__tmp-N` session id, then the path, and last the 0.5.14 ordinal. Every step checks the title. "View from here" now ticks the right line.

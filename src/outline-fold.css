@@ -991,3 +991,13 @@ div.of-unlock.of-unlock-sheet { border-radius: 12px 12px 8px 8px; border-left-wi
 .map-region-tool:focus-visible > rect, .map-region-tool:hover > rect { stroke: var(--of-seal-stroke, #3d8a5f); }
 .of-zone-tools { display: inline-flex; gap: 0.25rem; margin-left: 0.4rem; vertical-align: middle; }
 .of-zone-tool { font: inherit; font-size: 0.75rem; line-height: 1; padding: 0.1rem 0.3rem; border-radius: 4px; cursor: pointer; background: var(--of-seal-btn-bg, #fff); color: var(--of-seal-btn-ink, #1f2328); border: 1px solid var(--of-seal-btn-stroke, #b9c3cc); }
+
+/* 0.5.16 unlock states, rename form */
+.of-unlock.is-damaged .of-unlock-msg { color: var(--of-danger, #b42318); font-weight: 600; }
+.of-unlock-damaged-note, .of-rename-note { font-size: 12px; margin-top: 6px; }
+.of-rename { position: fixed; left: 50%; top: 20%; transform: translateX(-50%); z-index: 1000; width: min(360px, calc(100vw - 16px)); background: var(--of-bg, #fff); border: 1px solid var(--of-border, #d0d5dd); border-radius: 8px; padding: 12px; box-shadow: 0 8px 24px rgba(0,0,0,.15); }
+.of-rename-l { display: block; font-size: 12px; margin-bottom: 8px; }
+.of-rename-label, .of-rename-search { display: block; width: 100%; box-sizing: border-box; margin-top: 2px; font: inherit; }
+.of-rename-plain { font-size: 12px; }
+.of-rename-warn { font-size: 12px; color: var(--of-danger, #b42318); margin-top: 6px; }
+.of-rename-row { display: flex; justify-content: flex-end; gap: 6px; margin-top: 10px; }

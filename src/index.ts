@@ -569,6 +569,7 @@ export {
 } from './hostApi.js';
 export {
   createSealSessions,
+  sealErrorCode,
   type SealSessions,
   type SealSession,
   type SealSessionSnapshot,
@@ -644,7 +645,20 @@ export {
   type UnlockPromptOptions,
   type UnlockPromptHandle,
   type SecureZoneChromeOptions,
+  mountRenameForm,
+  type RenameFormOptions,
+  type RestoreEarlierHook,
 } from './sealUi.js';
+export {
+  MIN_NEW_PASSPHRASE,
+  MIN_NEW_PASSPHRASE_TEXT,
+  passphraseStrength,
+  generatePassphrase,
+  EFF_LARGE_WORDLIST,
+  idleLockText,
+  looksLikeSecret,
+  type GenerateOptions,
+} from './passphrase.js';
 export { wrapPlain } from './mapRegion.js';
 export {
   createOutlineDoc,

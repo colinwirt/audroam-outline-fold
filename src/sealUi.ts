@@ -12,6 +12,19 @@ import type { RegionId } from './hostApi.js';
 import type { SealSessions, SealSessionSnapshot } from './sealSession.js';
 import { serialize } from './serialize.js';
 import { SealError, type SealedViewer } from './sealedBranch.js';
+import { looksLikeSecret } from './passphrase.js';
+
+/** Host-supplied 'Restore earlier version' for a damaged seal (shown only when history exists). */
+export interface RestoreEarlierHook {
+  available: () => boolean | Promise<boolean>;
+  /** The host must confirm before it overwrites anything. */
+  run: () => void | Promise<void>;
+}
+
+const labelOf = (kid: string | null | undefined, keyLabel?: (kid: string) => string | null | undefined): string => {
+  const k = kid ?? 'key';
+  try { return (kid && keyLabel?.(kid)) || k; } catch { return k; }
+};
 
 const el = <K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: string): HTMLElementTagNameMap[K] => {
   const e = document.createElement(tag);
@@ -72,6 +85,10 @@ export interface UnlockPromptOptions {
   inline?: boolean;
   /** "?" help click. */
   onHelp?: () => void;
+  /** 0.5.16: display label for a kid (outside the Map). Falls back to the kid. */
+  keyLabel?: (kid: string) => string | null | undefined;
+  /** 0.5.16: offered on a damaged seal only, and only when `available()` is true. */
+  restoreEarlier?: RestoreEarlierHook;
 }
 
 export interface UnlockPromptHandle {
@@ -91,7 +108,7 @@ export function mountUnlockPrompt(o: UnlockPromptOptions): UnlockPromptHandle {
   const s0 = sessions.get(region);
   // seal-edit 04: "🔒 Unlock k1 (?)" / [passphrase][Paste from 1Password] / Deriving… ▬▬ [Unlock]
   const title = el('div', 'of-unlock-title');
-  const tt = el('b', undefined, `Unlock ${s0.kid ?? 'key'}`);
+  const tt = el('b', undefined, `Unlock ${labelOf(s0.kid, o.keyLabel)}`);
   title.append('🔒 ', tt);
   tt.id = `of-unlock-t-${Math.random().toString(36).slice(2, 8)}`;
   card.setAttribute('aria-labelledby', tt.id);
@@ -122,8 +139,23 @@ export function mountUnlockPrompt(o: UnlockPromptOptions): UnlockPromptHandle {
   msg.setAttribute('aria-live', 'polite');
   row1.append(input);
   if (paste) row1.append(paste);
-  row.append(msg, bar, cancel, ok);
-  form.append(row1, row);
+  // 0.5.16 damaged state: no retry; optional Restore; the explanation sits behind '?'.
+  const dq = el('button', 'of-q of-unlock-damaged-q', '?');
+  dq.type = 'button';
+  dq.setAttribute('aria-label', 'About a damaged seal');
+  dq.hidden = true;
+  const dnote = el('div', 'of-unlock-damaged-note', 'The sealed text failed its checksum, so it was changed or cut after it was sealed. A passphrase cannot fix it. Nothing was changed. An earlier version of the note may still hold an intact copy.');
+  dnote.hidden = true;
+  dq.addEventListener('click', () => (dnote.hidden = !dnote.hidden));
+  const restore = o.restoreEarlier ? el('button', 'of-unlock-restore', 'Restore earlier version') : null;
+  if (restore) {
+    restore.type = 'button';
+    restore.hidden = true;
+    restore.addEventListener('click', () => void o.restoreEarlier!.run());
+  }
+  let canRestore: boolean | null = null;
+  row.append(msg, dq, bar, ...(restore ? [restore] : []), cancel, ok);
+  form.append(row1, row, dnote);
   card.append(title, form);
   if (o.inline) card.classList.add('of-unlock-inline');
   (o.container ?? document.body).appendChild(card);
@@ -145,20 +177,35 @@ export function mountUnlockPrompt(o: UnlockPromptOptions): UnlockPromptHandle {
   const show = (s: SealSessionSnapshot) => {
     const deriving = s.state === 'unlocking';
     const backing = s.state === 'error' && s.retryAfterMs > 0;
-    ok.disabled = deriving || backing;
+    const damaged = s.state === 'error' && s.error?.code === 'damaged';
+    ok.disabled = deriving || backing || damaged;
     input.disabled = deriving;
+    ok.hidden = damaged;
+    row1.hidden = damaged;
+    input.hidden = damaged;
+    dq.hidden = !damaged;
+    if (!damaged) dnote.hidden = true;
     card.classList.toggle('is-deriving', deriving);
     card.classList.toggle('is-error', s.state === 'error');
+    card.classList.toggle('is-damaged', damaged);
+    if (restore) {
+      if (!damaged) restore.hidden = true;
+      else if (canRestore === null) {
+        canRestore = false;
+        Promise.resolve().then(() => o.restoreEarlier!.available()).then((v) => { canRestore = !!v; if (!closed) show(sessions.get(region)); }, () => {});
+      } else restore.hidden = !canRestore;
+    }
     if (deriving) msg.textContent = 'Deriving…';
+    else if (damaged) msg.textContent = 'Seal is damaged';
     else if (s.state === 'error' && s.error) {
       msg.textContent = s.error.code === 'bad-pass'
-        ? (backing ? `Couldn't unlock. Try again in ${Math.ceil(s.retryAfterMs / 1000)}s.` : "Couldn't unlock. Try again.")
+        ? (backing ? `Wrong passphrase · Try again in ${Math.ceil(s.retryAfterMs / 1000)}s` : 'Wrong passphrase')
         : s.error.message;
       if (!tick && backing) tick = setInterval(() => show(sessions.get(region)), 500);
     } else if (s.state === 'sealed') {
       if (tick) { clearInterval(tick); tick = null; }
       if (msg.textContent?.startsWith('Deriving')) msg.textContent = '';
-      else if (msg.textContent?.includes('Try again in')) msg.textContent = "Couldn't unlock. Try again.";
+      else if (msg.textContent?.includes('Try again in')) msg.textContent = 'Wrong passphrase';
     } else if (s.state === 'unlocked') close(true);
   };
   const off = sessions.get(region).subscribe(show);
@@ -213,6 +260,10 @@ export interface SecureZoneChromeOptions {
   onHelp?: () => void;
   /** Show the "Save & re-seal" button (false for a read-only viewer). Default true. */
   canSave?: boolean;
+  /** 0.5.16: display label for a kid (outside the Map). Falls back to the kid. */
+  keyLabel?: (kid: string) => string | null | undefined;
+  /** 0.5.16: More ▾ → Rename… (host opens `mountRenameForm` and stores the label in note metadata). */
+  onRename?: (kid: string) => void;
 }
 
 /**
@@ -228,26 +279,28 @@ export function secureZoneChrome(body: HTMLElement, o: SecureZoneChromeOptions &
   const { sessions, region } = o;
   const s0 = sessions.get(region);
   const kid = s0.kid ?? 'key';
+  const name = labelOf(s0.kid, o.keyLabel);
   const wrap = el('div', 'of-secure-zone');
   wrap.dataset.region = region;
   wrap.setAttribute('role', 'region');
-  wrap.setAttribute('aria-label', `Secure zone · ${kid} · memory only`);
+  wrap.setAttribute('aria-label', `${name} · unlocked in this tab only`);
   const head = el('div', 'of-secure-zone-bar');
-  const title = el('span', 'of-secure-zone-title', '🔓 Secure zone');
-  const kchip = el('span', 'of-chip of-chip-k', kid);
+  // 0.5.16: "🔓 {label or kid}" · "Unlocked · this tab only" (?) — the long sentence sits behind '?'.
+  const title = el('span', 'of-secure-zone-title', `🔓 ${name}`);
   const sp = el('span', 'of-sp');
-  const mem = el('span', 'of-mut', 'memory only');
+  const mem = el('span', 'of-mut of-secure-zone-sub', 'Unlocked · this tab only');
   const help = el('button', 'of-q of-secure-zone-help', '?');
   help.type = 'button';
   help.setAttribute('aria-label', 'About the secure zone');
   const note = el('div', 'of-secure-zone-note', 'Plaintext lives in this tab only. Save re-seals it into the parent; the note text only ever holds the <enc> tag. Draft autosave and search exclude the zone. Locks when idle.');
   note.hidden = true;
   help.addEventListener('click', () => (o.onHelp ? o.onHelp() : (note.hidden = !note.hidden)));
-  head.append(title, kchip, sp, mem, help);
+  head.append(title, sp, mem, help);
 
   const hint = o.hint === false || o.canSave === false ? null : el('div', 'of-secure-zone-hint of-mut', '↵ new child stays in zone · ⇧Tab at edge leaves zone');
   const actions = el('div', 'of-secure-zone-actions');
-  const chip = el('span', 'of-chip of-chip-g', `🔓 Unlocked · ${kid}`);
+  const chip = el('span', 'of-chip of-chip-g', `🔓 Unlocked · ${name}`);
+  void kid;
   const idle = el('span', 'of-secure-zone-idle of-mut');
   const status = el('span', 'of-secure-zone-status');
   status.setAttribute('aria-live', 'polite');
@@ -275,14 +328,28 @@ export function secureZoneChrome(body: HTMLElement, o: SecureZoneChromeOptions &
   const removeItem = el('button', 'of-sz-menu-item of-sz-remove', 'Remove seal…');
   removeItem.type = 'button';
   removeItem.setAttribute('role', 'menuitem');
+  const renameItem = o.onRename ? el('button', 'of-sz-menu-item of-sz-rename', 'Rename…') : null;
+  if (renameItem) {
+    renameItem.type = 'button';
+    renameItem.setAttribute('role', 'menuitem');
+    renameItem.addEventListener('click', () => { closeMenu(false); o.onRename!(kid); });
+    menu.appendChild(renameItem);
+  }
   menu.appendChild(removeItem);
   more.appendChild(menu);
-  const openMenu = () => { menu.hidden = false; moreBtn.setAttribute('aria-expanded', 'true'); removeItem.focus(); };
+  const items = () => [...menu.querySelectorAll<HTMLButtonElement>('.of-sz-menu-item')];
+  const openMenu = () => { menu.hidden = false; moreBtn.setAttribute('aria-expanded', 'true'); items()[0]!.focus(); };
   const closeMenu = (refocus: boolean) => { menu.hidden = true; moreBtn.setAttribute('aria-expanded', 'false'); if (refocus) moreBtn.focus(); };
   moreBtn.addEventListener('keydown', (e) => { if (e.key === 'ArrowDown') { e.preventDefault(); openMenu(); } });
   menu.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' || e.key === 'Tab') { if (e.key === 'Escape') e.preventDefault(); closeMenu(e.key === 'Escape'); }
-    else if (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'Home' || e.key === 'End') { e.preventDefault(); removeItem.focus(); }
+    else if (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'Home' || e.key === 'End') {
+      e.preventDefault();
+      const l = items();
+      const i = l.indexOf(document.activeElement as HTMLButtonElement);
+      const n = e.key === 'Home' ? 0 : e.key === 'End' ? l.length - 1 : (i + (e.key === 'ArrowDown' ? 1 : l.length - 1)) % l.length;
+      l[Math.max(0, n)]!.focus();
+    }
   });
   const onDocDown = (e: Event) => { if (!menu.hidden && !more.contains(e.target as Node)) closeMenu(false); };
   document.addEventListener('pointerdown', onDocDown);
@@ -352,7 +419,7 @@ export function mountMemoryViewer(host: HTMLElement, o: Omit<SecureZoneChromeOpt
 }
 
 /** Global chip: "Unlocked · k1 · re-seals on save", plus unsaved / saved. Hidden while all locked. */
-export function mountSealStatusChip(host: HTMLElement, sessions: SealSessions): () => void {
+export function mountSealStatusChip(host: HTMLElement, sessions: SealSessions, o: { keyLabel?: (kid: string) => string | null | undefined } = {}): () => void {
   const wrapEl = el('span', 'of-seal-status');
   const st = el('span', 'of-seal-draft');
   const chip = el('span', 'of-chip of-chip-g of-seal-chip');
@@ -363,7 +430,7 @@ export function mountSealStatusChip(host: HTMLElement, sessions: SealSessions): 
     const open = sessions.list().filter((s) => !s.locked);
     wrapEl.hidden = !open.length;
     if (!open.length) return void (chip.textContent = st.textContent = '');
-    const kids = [...new Set(open.map((s) => s.kid ?? 'key'))].join(', ');
+    const kids = [...new Set(open.map((s) => labelOf(s.kid, o.keyLabel)))].join(', ');
     const d = open.some((s) => s.dirty) ? 'unsaved' : open.some((s) => s.saved) ? 'saved' : '';
     st.innerHTML = d === 'unsaved' ? '<span class="of-dot"></span><span class="of-mut">Unsaved</span>' : d === 'saved' ? '<span class="of-mut">Saved</span>' : '';
     chip.textContent = `🔓 Unlocked · ${kids} · re-seals on save`;
@@ -690,4 +757,73 @@ export function scheduleSealAutosave(viewer: SealedViewer, o: SealAutosaveOption
     get stopped() { return stopped; },
   };
   return api;
+}
+
+export interface RenameFormOptions {
+  kid: string;
+  container?: HTMLElement;
+  /** Fields start empty unless the host passes what it already stored (never the sealed body). */
+  initial?: { label?: string; search?: string };
+  onSubmit: (v: { label: string; search: string }) => void | Promise<void>;
+  onCancel?: () => void;
+}
+
+/**
+ * 0.5.16 Rename… form: Label (one line) and Search content (optional, multi-line, NOT encrypted).
+ * The package stores nothing: the host keeps both in its own note metadata, never in the outline
+ * block, so the block stays portable. A device-side warning shows when the text looks like a secret.
+ */
+export function mountRenameForm(o: RenameFormOptions): { el: HTMLElement; close: () => void } {
+  const box = el('div', 'of-rename');
+  box.setAttribute('role', 'dialog');
+  box.setAttribute('aria-label', `Rename ${o.kid}`);
+  const form = el('form', 'of-rename-form');
+  const lab = el('label', 'of-rename-l', 'Label');
+  const label = el('input', 'of-rename-label');
+  label.type = 'text';
+  label.maxLength = 80;
+  label.autocomplete = 'off';
+  label.value = o.initial?.label ?? '';
+  lab.append(label);
+  const sl = el('label', 'of-rename-l', 'Search content (optional)');
+  const search = el('textarea', 'of-rename-search');
+  search.rows = 3;
+  search.value = o.initial?.search ?? '';
+  sl.append(search);
+  const plain = el('div', 'of-rename-plain of-mut', 'Not encrypted · searchable by the server');
+  const q = el('button', 'of-q', '?');
+  q.type = 'button';
+  q.setAttribute('aria-label', 'About search content');
+  const qn = el('div', 'of-rename-note of-mut', 'The label and search content are stored with the note as plain text so you can find this branch. They are not sealed and the server can read them. Do not put anything secret here.');
+  qn.hidden = true;
+  q.addEventListener('click', () => (qn.hidden = !qn.hidden));
+  plain.append(' ', q);
+  const warn = el('div', 'of-rename-warn', 'This looks like a secret. These fields are not encrypted.');
+  warn.setAttribute('role', 'alert');
+  warn.hidden = true;
+  const check = () => { warn.hidden = !(looksLikeSecret(label.value) || looksLikeSecret(search.value)); };
+  label.addEventListener('input', check);
+  search.addEventListener('input', check);
+  label.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); form.requestSubmit?.(); } });
+  const row = el('div', 'of-rename-row');
+  const cancel = el('button', 'of-sz-btn', 'Cancel');
+  cancel.type = 'button';
+  const ok = el('button', 'of-sz-btn of-btn-p', 'Save');
+  ok.type = 'submit';
+  row.append(cancel, ok);
+  form.append(lab, sl, plain, qn, warn, row);
+  box.append(form);
+  (o.container ?? document.body).appendChild(box);
+  check();
+  const close = () => box.remove();
+  cancel.addEventListener('click', () => { close(); o.onCancel?.(); });
+  box.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.preventDefault(); close(); o.onCancel?.(); } });
+  form.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const v = { label: label.value.replace(/[\r\n]+/g, ' ').trim(), search: search.value.trim() };
+    void o.onSubmit(v);
+    close();
+  });
+  label.focus({ preventScroll: true });
+  return { el: box, close };
 }
