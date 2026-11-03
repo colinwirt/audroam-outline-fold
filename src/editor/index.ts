@@ -74,6 +74,80 @@ export function zoneRootId(doc: { nodes: { id?: string }[] }, anchorId: string):
   const r = doc.nodes[0];
   if (doc.nodes.length === 1 && r && !r.id) r.id = anchorId;
 }
+
+type ZoneNode = { id?: string; children?: ZoneNode[] };
+
+/**
+ * 1-based preorder place of `local` in a zone doc. Serialize writes one line per node,
+ * and a session id (`autoId`) is not written as `<id:>`, so the zone row is this place.
+ */
+export function zoneLineForLocal(doc: { nodes?: ZoneNode[] } | null | undefined, local: string): number | null {
+  if (!doc || !local) return null;
+  let n = 0;
+  let found: number | null = null;
+  const walk = (list: ZoneNode[] | undefined): void => {
+    for (const node of list ?? []) {
+      if (found != null) return;
+      n += 1;
+      if (node.id === local) { found = n; return; }
+      walk(node.children);
+    }
+  };
+  walk(doc.nodes);
+  return found;
+}
+
+/** Smallest single replace of `prev` into `next`, so a caret outside the edit stays put. */
+function smallestReplace(prev: string, next: string): { from: number; to: number; insert: string } {
+  let a = 0;
+  const max = Math.min(prev.length, next.length);
+  while (a < max && prev.charCodeAt(a) === next.charCodeAt(a)) a += 1;
+  let b = 0;
+  while (b < max - a && prev.charCodeAt(prev.length - 1 - b) === next.charCodeAt(next.length - 1 - b)) b += 1;
+  return { from: a, to: prev.length - b, insert: next.slice(a, next.length - b) };
+}
+
+/**
+ * Scroll the outer text pane so the zone caret line stays visible. Returns true so
+ * CodeMirror does not walk ancestors itself. `center` is for an explicit follow;
+ * typing uses `nearest` and does not move when the line is already on screen.
+ */
+function zoneKeepCaret(outer: EditorView | undefined, zone: EditorView, y?: string): boolean {
+  if (!outer?.scrollDOM.isConnected) return true;
+  let top = 0;
+  let bottom = 0;
+  try {
+    const coords = zone.coordsAtPos(zone.state.selection.main.head);
+    if (!coords) return true;
+    top = coords.top;
+    bottom = coords.bottom;
+  } catch {
+    return true;
+  }
+  const box = outer.scrollDOM.getBoundingClientRect();
+  if (box.height < 1 || bottom - top < 1) return true;
+  const margin = 8;
+  let dy = 0;
+  if (y === 'center' && bottom - top <= box.height) {
+    dy = (top + bottom) / 2 - (box.top + box.height / 2);
+  } else if (top < box.top + margin) {
+    dy = top - (box.top + margin);
+  } else if (bottom > box.bottom - margin) {
+    dy = bottom - (box.bottom - margin);
+  }
+  if (dy) outer.scrollDOM.scrollTop += dy;
+  return true;
+}
+
+/** Caret offset on 1-based line `lineNo` of `text`, clamped to that line. */
+function caretOnLine(text: string, lineNo: number, col: number): number {
+  const lines = text.split('\n');
+  const n = Math.max(1, Math.min(lineNo, Math.max(1, lines.length)));
+  let at = 0;
+  for (let i = 0; i < n - 1; i++) at += lines[i]!.length + 1;
+  const line = lines[n - 1] ?? '';
+  return at + Math.max(0, Math.min(col, line.length));
+}
 /** `[ ]` / `[]` / `[x]` / `[-]` on a line → glyph, with or without a leading `-`. */
 export function zoneTaskMarks(line: string): { from: number; to: number; glyph: string } | null {
   const t = taskMarkAt(line);
@@ -262,9 +336,18 @@ class SecureZone extends WidgetType {
             sessions.touch();
           }),
           EditorView.lineWrapping,
+          // Typing scrolls the caret. The default walk treats a tall zone block as the
+          // target and pins its bottom to the text pane. Scroll the caret line only.
+          EditorView.scrollHandler.of((zv, _range, target) => zoneKeepCaret(outer, zv, target?.y)),
         ],
       }),
     });
+    // The host rule `.cm-host .cm-editor { height: 100% }` also matches this nested
+    // editor, which stretches the zone to the pane and makes every keystroke scroll
+    // to the bottom. Inline styles win over that rule.
+    view.dom.style.height = 'auto';
+    view.scrollDOM.style.height = 'auto';
+    view.scrollDOM.style.overflow = 'visible';
     // 0.4.7 (Colin QA, data safety): the child doc can change outside this view (Map / Outline
     // [ ] toggle, restore). Re-sync the zone text, else the next keystroke here would write the
     // stale text back over that change.
@@ -278,8 +361,20 @@ class SecureZone extends WidgetType {
       split = shown(now);
       const cur = view.state.doc.toString();
       if (split.body === cur) return;
+      const here = view.state.selection.main;
+      const docNow = view.state.doc;
+      const headLine = docNow.lineAt(here.head);
+      const anchorLine = docNow.lineAt(here.anchor);
       applying = true;
-      try { view.dispatch({ changes: { from: 0, to: cur.length, insert: split.body } }); } finally { applying = false; }
+      try {
+        view.dispatch({
+          changes: smallestReplace(cur, split.body),
+          selection: {
+            anchor: caretOnLine(split.body, anchorLine.number, here.anchor - anchorLine.from),
+            head: caretOnLine(split.body, headLine.number, here.head - headLine.from),
+          },
+        });
+      } finally { applying = false; }
     });
     // 0.4.9 (bug B1): a re-render (width change, refresh after a session transition) keeps
     // the caret: the new view takes the old one's selection and focus.
@@ -494,8 +589,9 @@ export function outlineEditor(opts: OutlineEditorOptions): Extension[] {
     }
   };
   /**
-   * Caret on the zone row for `local`, without focusing the zone. The anchor row hides its
-   * `<id:>`, so the branch id lands on the zone's first line.
+   * Caret on the zone row for `local`, without taking DOM focus (map keys stay on the map).
+   * A written `<id:>` wins. A session id is not in the text; it is the Nth outline row.
+   * The anchor row hides its `<id:>`, so the branch id lands on the zone's first line.
    */
   const placeInZone = (region: string, local: string): boolean => {
     const z = zoneViews.get(region);
@@ -509,7 +605,19 @@ export function outlineEditor(opts: OutlineEditorOptions): Extension[] {
       const line = doc.line(i);
       if (line.text.includes(needle)) { pos = line.from; break; }
     }
-    if (pos == null && local === known.branchId) pos = doc.line(1).from;
+    if (pos == null) {
+      const ordinal = zoneLineForLocal(known.doc, local);
+      if (ordinal != null) {
+        let seen = 0;
+        for (let i = 1; i <= doc.lines; i++) {
+          const line = doc.line(i);
+          if (!line.text.trim()) continue;
+          seen += 1;
+          if (seen === ordinal) { pos = line.from; break; }
+        }
+      }
+    }
+    if (pos == null && local === known.branchId && doc.lines) pos = doc.line(1).from;
     if (pos == null) return false;
     z.dispatch({ selection: { anchor: pos }, effects: EditorView.scrollIntoView(pos, { y: 'center' }) });
     return true;
@@ -628,6 +736,9 @@ const theme = EditorView.baseTheme({
   // off by its size in the height map and ↑ skipped up to the top of the doc.
   '& .cm-content > .of-secure-zone': { marginTop: '0', marginBottom: '0' },
   '.of-secure-zone': { border: '2px solid rgba(46,160,67,0.7)', borderRadius: '8px', margin: '0 0 0 1.5em', background: 'rgba(46,160,67,0.06)' },
+  // Beat a host `.cm-host .cm-editor { height: 100% }` so the nested editor stays content-sized.
+  '.of-secure-zone .cm-editor': { height: 'auto' },
+  '.of-secure-zone .cm-scroller': { height: 'auto', overflow: 'visible' },
   '.of-secure-zone-bar': { display: 'flex', flexWrap: 'wrap', gap: '6px', padding: '4px 6px', alignItems: 'center', fontSize: '12px' },
   '.of-secure-zone-status': { marginLeft: 'auto', color: '#1f7a35' },
   '.of-secure-zone-end': { borderTop: '1px dashed rgba(46,160,67,0.7)', margin: '0 6px' },

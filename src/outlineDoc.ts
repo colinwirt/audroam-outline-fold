@@ -31,6 +31,7 @@ import { createFocusLink, type FocusLink } from './focusLink.js';
 import { mountUnlockPrompt } from './sealUi.js';
 import { sealBranch } from './sealedBranch.js';
 import { parseScopedId } from './scopedId.js';
+import { nextSessionId } from './nodeAddress.js';
 
 export type { IdDiagnostic } from './idAllocator.js';
 export type SaveReason = 'text' | 'map' | 'zone' | 'seal' | 'host' | 'retry';
@@ -169,15 +170,13 @@ function replace(nodes: OutlineNode[] | undefined, from: OutlineNode, to: Outlin
   if (i >= 0) { nodes[i] = to; return true; }
   return nodes.some((n) => n && replace(n.children, from, to));
 }
-/** Region rows with no stored id get a session id (autoId: never serialized, never sealed). */
+/** Region rows with no stored id get a session id (`__tmp-N`: never serialized, never sealed). */
 function pinIds(doc: OutlineFoldDoc | null): void {
   const used = new Set<string>();
   walk(doc?.nodes, (n) => { if (n.id) used.add(String(n.id)); });
-  let seq = 1;
   walk(doc?.nodes, (n) => {
     if (n.id) return;
-    while (used.has('z' + seq)) seq++;
-    n.id = 'z' + seq; n.autoId = true; used.add(n.id);
+    n.id = nextSessionId(used); n.autoId = true;
     // A `(+)` on a line with no id is foldMark. The session id carries it, as on the main map.
     if (doc && n.foldMark === 'collapsed') {
       if (!doc.fold) doc.fold = { mode: '-', ids: [] };

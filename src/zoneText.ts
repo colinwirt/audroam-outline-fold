@@ -10,6 +10,7 @@
  *   from the previous doc, so Map keys, focus and folds stay put while typing. Without this the
  *   Map keyed id-less rows by position, and position 4 collided with anchor id 4.
  */
+import { nextSessionId } from './nodeAddress.js';
 import { parse } from './parse.js';
 import type { OutlineFoldDoc, OutlineNode } from './types.js';
 
@@ -30,18 +31,18 @@ export function oneZoneRoot(doc: OutlineFoldDoc): OutlineFoldDoc {
   return doc;
 }
 
-/** Session ids for id-less rows: previous ids by preorder position first, then fresh `zN`. */
+/** Session ids for id-less rows: previous ids by preorder position first, then fresh `__tmp-N`. */
 export function pinZoneIds(doc: OutlineFoldDoc, prev: OutlineFoldDoc | null, reserved: Iterable<string> = []): void {
   const used = new Set<string>([...reserved].map(String));
   walk(doc.nodes, (n) => { if (n.id) used.add(String(n.id)); });
   const carried: (string | undefined)[] = [];
   walk(prev?.nodes, (n) => { carried.push(n.autoId ? n.id : undefined); });
-  let i = 0, seq = 1;
+  let i = 0;
   walk(doc.nodes, (n) => {
     const old = carried[i++];
     if (n.id) return;
     if (old && !used.has(old)) n.id = old;
-    else { while (used.has('z' + seq)) seq++; n.id = 'z' + seq; }
+    else n.id = nextSessionId(used);
     n.autoId = true;
     used.add(n.id);
   });

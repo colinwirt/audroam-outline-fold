@@ -1,5 +1,5 @@
 import { assertSealedSafe, syncSealedLabels, isEncRef } from './sealedState.js';
-import { linkPayloadNodes } from './nodeAddress.js';
+import { assignPersistentId, isSessionId, linkPayloadNodes } from './nodeAddress.js';
 import { collectLayouts, collectPayloads, formatLayoutBlock, formatPayloadsBlock, formatKeysBlock, formatKeyringBlock } from './payloads.js';
 import { isSealedBranchPayload } from './sealedState.js';
 import { spelledTag } from './tagSpelling.js';
@@ -185,8 +185,18 @@ function layoutFoldIds(doc: OutlineFoldDoc): string[] {
   walk(doc.nodes);
   if (!auto.size) return doc.fold.ids;
   if (doc.fold.mode === '+') {
-    for (const id of doc.fold.ids) delete auto.get(id)?.autoId;
-    return doc.fold.ids;
+    // fold+ stores the expanded ids in the note, so a session id has to become a real one.
+    const ids = doc.fold.ids.map((id) => {
+      const n = auto.get(id);
+      if (!n || !isSessionId(id)) {
+        if (n) delete n.autoId;
+        return id;
+      }
+      return assignPersistentId(doc, n);
+    });
+    doc.fold.ids = ids;
+    if (doc.frontmatter) doc.frontmatter.foldIds = [...ids];
+    return ids;
   }
   return doc.fold.ids.filter((id) => !auto.has(id));
 }
@@ -211,7 +221,20 @@ function linkJumpTargets(doc: OutlineFoldDoc): void {
     }
   };
   walk(doc.nodes);
-  for (const n of auto) if (targets.has(n.id!)) delete n.autoId;
+  for (const n of auto) {
+    if (!n.id || !targets.has(n.id)) continue;
+    // A `__tmp-` id cannot be written. A jump that names one gets a normal id.
+    if (!isSessionId(n.id)) { delete n.autoId; continue; }
+    const old = n.id;
+    const neu = assignPersistentId(doc, n);
+    const retarget = (list?: OutlineNode[]) => {
+      for (const x of list ?? []) {
+        for (const l of x.links ?? []) if (l.kind === 'jump' && l.form === 'tag' && l.target === old) l.target = neu;
+        retarget(x.children);
+      }
+    };
+    retarget(doc.nodes);
+  }
 }
 
 /**

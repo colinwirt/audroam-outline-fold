@@ -40,7 +40,7 @@ const load = (text: string) => parse(text, { sessionIds: true });
 describe('parse sessionIds', () => {
   it('gives id-less lines session ids in document order and round-trips byte for byte', () => {
     const doc = load(NOTE);
-    expect(byTitle(doc, 'Food').id).toBe('6');
+    expect(byTitle(doc, 'Food').id).toBe('__tmp-6');
     expect(byTitle(doc, 'Food').autoId).toBe(true);
     expect(serialize(doc)).toBe(NOTE);
   });
@@ -97,20 +97,20 @@ describe('parse sessionIds', () => {
 
   it('sparse ids: session ids skip 2 and 5, never collide, and the written id is one of them', () => {
     const doc = load(SPARSE);
-    expect(['a', 'b', 'c', 'd', 'e', 'f'].map((t) => byTitle(doc, t).id)).toEqual(['6', '2', '7', '8', '5', '9']);
+    expect(['a', 'b', 'c', 'd', 'e', 'f'].map((t) => byTitle(doc, t).id)).toEqual(['__tmp-1', '2', '__tmp-2', '__tmp-3', '5', '__tmp-4']);
     expect(serialize(doc)).toBe(SPARSE);
-    const folded = serialize(toggleFold(doc, '8'));
+    const folded = serialize(toggleFold(doc, '__tmp-3'));
     expect(folded).toBe(SPARSE.replace('- d\n', '- d (+)\n'));
     const node = byTitle(doc, 'c');
-    expect(assignPersistentId(doc, node)).toBe('7');
+    expect(assignPersistentId(doc, node)).toBe('3');
     node.layout = { w: 200 };
-    expect(serialize(doc).match(/<id:\d+>/g)).toEqual(['<id:2>', '<id:7>', '<id:5>']);
+    expect(serialize(doc).match(/<id:\d+>/g)).toEqual(['<id:2>', '<id:3>', '<id:5>']);
   });
 
   it('skips ids keyed in the payloads and layout blocks', () => {
     const text = '- a\n- b <id:3>\n\n--- layout ---\nfold-: \n9:\n  w: 120\n---\n';
     const doc = load(text);
-    expect(byTitle(doc, 'a').id).toBe('10');
+    expect(byTitle(doc, 'a').id).toBe('__tmp-1');
   });
 
   it('a real fold- id stays listed; a session id stays off the list', () => {

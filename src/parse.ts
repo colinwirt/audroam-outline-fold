@@ -1,4 +1,5 @@
 import { findSealedOrphans, syncSealedLabels, isEncRef, KID_RE } from './sealedState.js';
+import { SESSION_ID_PREFIX } from './nodeAddress.js';
 
 /** `<enc:KEYID>` (of-seal-v2): the line names a key id only. */
 function encRef(body: string): SealedPayload | null {
@@ -619,9 +620,10 @@ function keptSpellings(
 
 export interface ParseOptions {
   /**
-   * Give every line without `<id:…>` a session id (`autoId: true`) from
-   * `nextAutoId`, which skips ids on lines and keys in the payloads and layout
-   * blocks. A `(+)` on such a line folds it. Serialize does not write session ids.
+   * Give every line without `<id:…>` a session id (`autoId: true`, `__tmp-N`)
+   * from `nextAutoId`. The same series is used in an open secure zone and a
+   * nested submap. A `(+)` on such a line folds it. Serialize does not write
+   * session ids. Pass `{ prefix }` to mint a different series.
    */
   sessionIds?: boolean | { prefix?: string };
 }
@@ -718,7 +720,7 @@ export function parse(text: string, opts?: ParseOptions): OutlineFoldDoc {
   attachLayouts(roots, peeled.layouts);
 
   if (opts?.sessionIds) {
-    const prefix = typeof opts.sessionIds === 'object' ? opts.sessionIds.prefix ?? '' : '';
+    const prefix = typeof opts.sessionIds === 'object' ? (opts.sessionIds.prefix ?? SESSION_ID_PREFIX) : SESSION_ID_PREFIX;
     const used = collectNodeIds(roots);
     for (const id of Object.keys(peeled.payloads)) used.add(id);
     for (const id of Object.keys(peeled.layouts)) used.add(id);

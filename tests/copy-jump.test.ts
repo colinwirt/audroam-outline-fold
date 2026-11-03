@@ -89,15 +89,20 @@ describe('minting an id (mintNodeId)', () => {
     expect(mintNodeId(doc, wheel, { canMint: true })).toEqual({ id: '4', minted: true });
   });
 
-  it('writes a session id as it is (parse with sessionIds)', () => {
+  it('replaces a session id with a normal id (parse with sessionIds)', () => {
     const doc = parse(FIXTURE, { sessionIds: true });
     const kiln = byTitle(doc.nodes, 'Kiln corner');
     const session = kiln.id!;
+    expect(session.startsWith('__tmp-')).toBe(true);
     expect(kiln.autoId).toBe(true);
     expect(writtenId(kiln)).toBeNull();
-    expect(mintNodeId(doc, kiln, { canMint: true })).toEqual({ id: session, minted: true });
+    const minted = mintNodeId(doc, kiln, { canMint: true });
+    expect(minted.minted).toBe(true);
+    expect(minted.id).toMatch(/^[A-Za-z0-9][A-Za-z0-9_-]*$/);
+    expect(minted.id).not.toBe(session);
     expect(kiln.autoId).toBeUndefined();
-    expect(serialize(doc)).toContain(`  - Kiln corner <id:${session}>\n`);
+    expect(serialize(doc)).toContain(`  - Kiln corner <id:${minted.id}>\n`);
+    expect(serialize(doc)).not.toContain('__tmp-');
   });
 
   it('is a no-op when the line already has an id: same id, nothing written', () => {

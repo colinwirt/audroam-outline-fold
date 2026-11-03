@@ -95,6 +95,60 @@ it('Map focus inside a submap moves the zone caret and does not take focus', asy
   expect(n.layout?.wAuto).toBeUndefined();
 });
 
+it('Map focus on a zone row with no written id moves the zone caret', async () => {
+  const bare = `- Garden <id:1>\n- Pantry box <id:4>\n  - seeds\n  - jars\n- after <id:7>\n`;
+  const { fh, zone } = await mount(bare, { followInText: () => true });
+  await tick(1600);
+  const region = fh.regionFor('4');
+  const child = fh.sessions.get(region).doc.nodes[0].children.find((n: { title?: string }) => n.title === 'jars');
+  expect(child.autoId).toBe(true);
+  const z = zone();
+  const beforeFocus = document.activeElement;
+  fh.focusLink.set(`${region}:${child.id}`, 'map');
+  await tick(50);
+  const line = z.state.doc.lineAt(z.state.selection.main.head);
+  expect(line.text).toMatch(/jars/);
+  expect(line.text.includes('<id:')).toBe(false);
+  expect(z.hasFocus).toBe(false);
+  expect(document.activeElement).toBe(beforeFocus);
+});
+
+it('typing in a zone keeps the caret on that row', async () => {
+  const { zone } = await mount(FIX, { followInText: () => true });
+  await tick(1600);
+  const z = zone();
+  const line = z.state.doc.line(2);
+  const at = line.from + 2;
+  z.focus();
+  z.dispatch({
+    changes: { from: at, to: at, insert: 'Q' },
+    selection: { anchor: at + 1 },
+    userEvent: 'input',
+    scrollIntoView: true,
+  });
+  await tick(40);
+  const head = z.state.selection.main.head;
+  expect(z.state.doc.lineAt(head).number).toBe(2);
+  expect(z.state.doc.lineAt(head).text).toMatch(/Q/);
+  expect(head).toBe(at + 1);
+});
+
+it('a zone resync keeps the caret on the row being edited', async () => {
+  const { fh, zone } = await mount(FIX, { followInText: () => true });
+  await tick(1600);
+  const z = zone();
+  const line = z.state.doc.line(2);
+  z.dispatch({ selection: { anchor: line.from + 3 } });
+  const region = fh.regionFor('4');
+  const jars = fh.sessions.get(region).doc.nodes[0].children.find((n: { title?: string }) => n.title === 'jars');
+  jars.title = 'jars plus';
+  fh.sessions.markChanged(region);
+  await tick(20);
+  expect(z.state.doc.toString()).toMatch(/jars plus/);
+  expect(z.state.doc.lineAt(z.state.selection.main.head).text).toMatch(/seeds/);
+  expect(z.state.doc.lineAt(z.state.selection.main.head).number).toBe(2);
+});
+
 it('with Follow off, a Map focus update leaves the caret row where it is', async () => {
   const { fh } = await mount(FIX, { followInText: () => false });
   await tick(1600);

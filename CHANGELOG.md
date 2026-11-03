@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.5.11 — 2026-11-03
+
+- A session id is `__tmp-7`. The same series is used on the main outline, in an open secure zone, and in a nested submap. It is not written into the note.
+- A width, a payload, a fold that must be saved, or Copy link mints a normal id such as `<id:7>` instead of saving the session id.
+
+## 0.5.10 — 2026-11-03
+
+- Follow in text: map focus on a row inside an open secure zone moves the grey caret to that row, including a row whose id is only a session id and is not written as `<id:>`. The zone does not take keyboard focus.
+- Typing in the secure zone keeps the caret on the row being edited. The text pane scrolls only far enough to show that line. It does not jump to the bottom of the pane.
+
 ## 0.5.9 — 2026-11-03
 
 - Folding a line typed without a bullet replaces that line. `done` becomes `- done (+)`. The original line is not left in place.

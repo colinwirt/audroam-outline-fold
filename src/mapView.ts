@@ -2734,8 +2734,8 @@ export function createMapView(
   }
 
   /**
-   * The line's written id, or a new one: `assignPersistentId` (a session id is
-   * kept and written; otherwise the free position or the next number), then
+   * The line's written id, or a new one: `assignPersistentId` (a `__tmp-` session
+   * id is replaced by a normal id; otherwise the free position or the next number), then
    * one setDoc + onChange so the host marks the document dirty. Only `<id:…>`
    * is added; the caption, its tags and their spacing are untouched.
    */

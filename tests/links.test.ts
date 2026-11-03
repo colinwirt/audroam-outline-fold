@@ -148,7 +148,10 @@ describe('ids: lazy, never written by the parser', () => {
     const doc = parse('- A\n- B\n', { sessionIds: true });
     const b = doc.nodes[1]!;
     doc.nodes[0]!.links = [{ kind: 'jump', target: b.id!, form: 'tag' }];
-    expect(serialize(doc)).toBe(`- A <r:${b.id}>\n- B <id:${b.id}>\n`);
+    const text = serialize(doc);
+    expect(b.id).toMatch(/^[A-Za-z0-9]/);
+    expect(text).toBe(`- A <r:${b.id}>\n- B <id:${b.id}>\n`);
+    expect(text).not.toContain('__tmp-');
   });
 
   it('cleanIds keeps an id a <r:> jump names', () => {

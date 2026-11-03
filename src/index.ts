@@ -76,6 +76,9 @@ export {
   indexOutline,
   linkPayloadNodes,
   nextAutoId,
+  nextSessionId,
+  isSessionId,
+  SESSION_ID_PREFIX,
   nodeMapKey,
   type AutoIdOptions,
 } from './nodeAddress.js';
