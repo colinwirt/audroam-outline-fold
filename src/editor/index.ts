@@ -107,36 +107,121 @@ function smallestReplace(prev: string, next: string): { from: number; to: number
   return { from: a, to: prev.length - b, insert: next.slice(a, next.length - b) };
 }
 
+/** How far to move a scroller so the caret line sits in view. `center` is for an explicit follow. */
+function caretDelta(top: number, bottom: number, viewTop: number, viewHeight: number, y?: string): number {
+  if (viewHeight < 1 || bottom - top < 1) return 0;
+  const margin = 8;
+  if (y === 'center' && bottom - top <= viewHeight) return (top + bottom) / 2 - (viewTop + viewHeight / 2);
+  if (top < viewTop + margin) return top - (viewTop + margin);
+  if (bottom > viewTop + viewHeight - margin) return bottom - (viewTop + viewHeight - margin);
+  return 0;
+}
+
+/**
+ * Screen box of one zone line. A line CodeMirror has not drawn is placed by its
+ * share of the zone widget, whose box is the whole block, including the part
+ * above the pane. The first line is the top of that widget.
+ */
+function lineBoxInZone(zone: EditorView, pos: number): { top: number; bottom: number } | null {
+  let dom: DOMRect;
+  try { dom = zone.dom.getBoundingClientRect(); } catch { return null; }
+  if (dom.height < 1) return null;
+  const doc = zone.state.doc;
+  if (!doc.lines) return null;
+  const line = doc.lineAt(pos);
+  const top = dom.top + (dom.height * (line.number - 1)) / doc.lines;
+  const bottom = dom.top + (dom.height * line.number) / doc.lines;
+  if (bottom - top < 1) return null;
+  return { top, bottom };
+}
+
+/** Screen box of the zone caret. A drawn line uses its real coordinates. */
+function caretViewport(zone: EditorView): { top: number; bottom: number } | null {
+  try {
+    const coords = zone.coordsAtPos(zone.state.selection.main.head);
+    if (coords && coords.bottom - coords.top >= 1) return { top: coords.top, bottom: coords.bottom };
+  } catch { /* not measured yet */ }
+  try {
+    return lineBoxInZone(zone, zone.state.selection.main.head);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The pane that actually scrolls. A zone scroller is overflow:visible, so it is
+ * not this pane; the outer text scroller is. Nested zones keep walking until an
+ * ancestor really scrolls.
+ */
+function textPane(view: EditorView): HTMLElement | null {
+  const own = view.scrollDOM;
+  if (own?.isConnected) {
+    const oy = getComputedStyle(own).overflowY;
+    if (oy === 'auto' || oy === 'scroll') return own;
+  }
+  let n: HTMLElement | null = view.dom.parentElement;
+  while (n) {
+    if (n.classList.contains('cm-scroller')) {
+      const oy = getComputedStyle(n).overflowY;
+      if (oy === 'auto' || oy === 'scroll') return n;
+    }
+    n = n.parentElement;
+  }
+  return own?.isConnected ? own : null;
+}
+
 /**
  * Scroll the outer text pane so the zone caret line stays visible. Returns true so
  * CodeMirror does not walk ancestors itself. `center` is for an explicit follow;
  * typing uses `nearest` and does not move when the line is already on screen.
  */
-function zoneKeepCaret(outer: EditorView | undefined, zone: EditorView, y?: string): boolean {
-  if (!outer?.scrollDOM.isConnected) return true;
-  let top = 0;
-  let bottom = 0;
-  try {
-    const coords = zone.coordsAtPos(zone.state.selection.main.head);
-    if (!coords) return true;
-    top = coords.top;
-    bottom = coords.bottom;
-  } catch {
-    return true;
-  }
-  const box = outer.scrollDOM.getBoundingClientRect();
-  if (box.height < 1 || bottom - top < 1) return true;
-  const margin = 8;
-  let dy = 0;
-  if (y === 'center' && bottom - top <= box.height) {
-    dy = (top + bottom) / 2 - (box.top + box.height / 2);
-  } else if (top < box.top + margin) {
-    dy = top - (box.top + margin);
-  } else if (bottom > box.bottom - margin) {
-    dy = bottom - (box.bottom - margin);
-  }
-  if (dy) outer.scrollDOM.scrollTop += dy;
+function zoneKeepCaret(zone: EditorView, y?: string): boolean {
+  const pane = textPane(zone);
+  if (!pane) return true;
+  const caret = caretViewport(zone);
+  if (!caret) return true;
+  const box = pane.getBoundingClientRect();
+  const dy = caretDelta(caret.top, caret.bottom, box.top, box.height, y);
+  if (dy) pane.scrollTop += dy;
   return true;
+}
+
+/**
+ * The zone view's layout pass treats the outer text scroller as its own and, while
+ * the zone is focused, pins that scroller to the bottom of the zone widget. Put the
+ * pane back where it was, then keep the caret line on screen. A wheel, touch, or
+ * pointer in the last moment is the user moving the pane: undo the pin, and do not
+ * pull the caret back on screen.
+ */
+export function zoneScrollAfterMeasure(o: {
+  before: number;
+  after: number;
+  focused: boolean;
+  userScrollAt: number;
+  now?: number;
+  caretTop?: number;
+  caretBottom?: number;
+  viewTop?: number;
+  viewHeight?: number;
+  /** `center` is a map follow. It runs even when the zone does not have focus. */
+  y?: string;
+}): number {
+  if (!o.focused && o.y !== 'center') return o.after;
+  const top = Math.abs(o.after - o.before) > 1 ? o.before : o.after;
+  if ((o.now ?? 0) - o.userScrollAt < 200) return top;
+  const dy = caretDelta(o.caretTop ?? 0, o.caretBottom ?? 0, o.viewTop ?? 0, o.viewHeight ?? 0, o.y);
+  return top + dy;
+}
+
+/**
+ * How far to move the pane so a zone block comes on screen. A block taller than
+ * the pane is the open zone widget: reveal its top edge. Centering that block,
+ * or aligning its end, leaves the lower half on screen and a top row above it.
+ */
+export function zoneRevealDelta(blockTop: number, blockBottom: number, viewTop: number, viewHeight: number): number {
+  if (viewHeight < 1 || blockBottom - blockTop < 1) return 0;
+  const bottom = blockBottom - blockTop > viewHeight ? blockTop + 20 : blockBottom;
+  return caretDelta(blockTop, bottom, viewTop, viewHeight, 'center');
 }
 
 /** Caret offset on 1-based line `lineNo` of `text`, clamped to that line. */
@@ -220,6 +305,8 @@ export function joinZoneText(body: string, trailer: string): string {
 
 /** Zone views by region, so the main editor's ↑ can land on the zone's last line. */
 const zoneViews = new Map<RegionId, EditorView>();
+/** Until this time, a map follow owns the pane: keep that zone's caret line centered. */
+const followSnapUntil = new Map<RegionId, number>();
 
 /** 0.4.5: caret and selection for the nested zone editor (the parent's drawSelection hides the native caret). */
 const zoneCaret = EditorView.theme({
@@ -338,7 +425,7 @@ class SecureZone extends WidgetType {
           EditorView.lineWrapping,
           // Typing scrolls the caret. The default walk treats a tall zone block as the
           // target and pins its bottom to the text pane. Scroll the caret line only.
-          EditorView.scrollHandler.of((zv, _range, target) => zoneKeepCaret(outer, zv, target?.y)),
+          EditorView.scrollHandler.of((zv, _range, target) => zoneKeepCaret(zv, target?.y)),
         ],
       }),
     });
@@ -425,17 +512,76 @@ class SecureZone extends WidgetType {
       } else if (canIndent(view.state)) indentMore(view);
     };
     wrap.addEventListener('keydown', onZoneTab, true);
+    // The zone scroller is overflow:visible, so CodeMirror's measure treats the outer
+    // text scroller as its scroll parent and, on each keystroke, sets that scroller to
+    // its bottom. The caret, higher in the zone, leaves the screen. Put the pane back.
+    let userScrollAt = 0;
+    let measuring = false;
+    let gone = false;
+    const markUserScroll = () => { userScrollAt = Date.now(); };
+    if (outer) {
+      outer.scrollDOM.addEventListener('wheel', markUserScroll, { capture: true, passive: true });
+      outer.scrollDOM.addEventListener('touchstart', markUserScroll, { capture: true, passive: true });
+      outer.scrollDOM.addEventListener('pointerdown', markUserScroll, true);
+      const origMeasure = view.measure.bind(view);
+      view.measure = (flush?: boolean) => {
+        if (measuring) return;
+        measuring = true;
+        const scroller = outer.scrollDOM;
+        const before = scroller.scrollTop;
+        // Sample the caret before the layout pass. That pass moves the pane, and the
+        // caret's screen box moves with it.
+        const follow = (followSnapUntil.get(region) ?? 0) > Date.now();
+        const track = view.hasFocus || follow;
+        const caret = track ? caretViewport(view) : null;
+        const box = track ? scroller.getBoundingClientRect() : null;
+        try {
+          origMeasure(flush);
+          if (gone || !track || !box || !scroller.isConnected) return;
+          const next = zoneScrollAfterMeasure({
+            before,
+            after: scroller.scrollTop,
+            focused: view.hasFocus || follow,
+            userScrollAt,
+            now: Date.now(),
+            caretTop: caret?.top,
+            caretBottom: caret?.bottom,
+            viewTop: box.top,
+            viewHeight: box.height,
+            y: follow ? 'center' : undefined,
+          });
+          if (Math.abs(scroller.scrollTop - next) > 1) scroller.scrollTop = next;
+        } finally { measuring = false; }
+      };
+    }
     // 0.4.14: the outer height map must follow the zone's real height (vertical motion reads
     // it). Re-measure once mounted and whenever the zone resizes (typing, wrap, buttons).
-    const ro = outer && typeof ResizeObserver !== 'undefined' ? new ResizeObserver(() => outer.requestMeasure()) : null;
+    // A resize that throws the pane to the bottom of the widget is put back; a one-line
+    // nudge while already at the bottom is left alone.
+    const ro = outer && typeof ResizeObserver !== 'undefined' ? new ResizeObserver(() => {
+      const before = outer.scrollDOM.scrollTop;
+      outer.requestMeasure();
+      requestAnimationFrame(() => {
+        const follow = (followSnapUntil.get(region) ?? 0) > Date.now();
+        if (gone || (!view.hasFocus && !follow) || !outer.scrollDOM.isConnected) return;
+        if (Date.now() - userScrollAt < 200) return;
+        if (Math.abs(outer.scrollDOM.scrollTop - before) <= 48) return;
+        outer.scrollDOM.scrollTop = before;
+        zoneKeepCaret(view, follow ? 'center' : undefined);
+      });
+    }) : null;
     ro?.observe(wrap);
     if (outer) queueMicrotask(() => { try { outer.requestMeasure(); } catch { /* gone */ } });
-    let gone = false;
     (wrap as HTMLElement & { _ofDestroy?: () => void })._ofDestroy = () => {
       if (gone) return; // CM may destroy a widget DOM twice across a fast lock/unlock
       gone = true;
       offSync();
       wrap.removeEventListener('keydown', onZoneTab, true);
+      if (outer) {
+        outer.scrollDOM.removeEventListener('wheel', markUserScroll, true);
+        outer.scrollDOM.removeEventListener('touchstart', markUserScroll, true);
+        outer.scrollDOM.removeEventListener('pointerdown', markUserScroll, true);
+      }
       if (zoneViews.get(region) === view) zoneViews.delete(region);
       zone.destroy();
       applying = true;
@@ -568,11 +714,28 @@ export function outlineEditor(opts: OutlineEditorOptions): Extension[] {
     const offs = (['unlock', 'lock', 'change', 'error', 'save'] as const).map((t) => sessions.api.on(t, kick));
     return { destroy: () => { dead = true; offs.forEach((o) => o()); } };
   });
-  /** Scroll `view` so the `<enc>` line for `region` is on screen. Does not move the caret or take focus. */
+  /**
+   * Bring an unmounted zone onto the pane so its widget can be built. Does not
+   * move the caret or take focus. An open zone is left where it is: scrolling
+   * the block's end (`e.to`, y center) shows the lower half of a tall widget.
+   */
   const scrollToRegion = (view: EditorView, region: string): boolean => {
+    if (zoneViews.get(region)?.dom.isConnected) return true;
     for (const e of scanEnc(view.state.doc, sessions)) {
       if (e.region !== region) continue;
-      view.dispatch({ effects: EditorView.scrollIntoView(e.to, { y: 'center' }) });
+      const line = view.state.doc.lineAt(e.tagFrom);
+      const block = view.lineBlockAt(line.from);
+      const pane = textPane(view);
+      if (!pane) return true;
+      const top = view.documentTop + block.top;
+      const bottom = view.documentTop + block.bottom;
+      if (bottom - top < 1) {
+        pane.scrollTop = Math.max(0, block.top - 8);
+        return true;
+      }
+      const box = pane.getBoundingClientRect();
+      const dy = zoneRevealDelta(top, bottom, box.top, box.height);
+      if (dy) pane.scrollTop += dy;
       return true;
     }
     return false;
@@ -619,7 +782,13 @@ export function outlineEditor(opts: OutlineEditorOptions): Extension[] {
     }
     if (pos == null && local === known.branchId && doc.lines) pos = doc.line(1).from;
     if (pos == null) return false;
+    // Map focus must not take DOM focus. The scroll target is this row, not the
+    // zone widget: a tall widget's end would sit on the lower half of the pane.
+    followSnapUntil.set(region, Date.now() + 500);
     z.dispatch({ selection: { anchor: pos }, effects: EditorView.scrollIntoView(pos, { y: 'center' }) });
+    const snap = () => { try { if (z.dom.isConnected) zoneKeepCaret(z, 'center'); } catch { /* zone gone */ } };
+    snap();
+    requestAnimationFrame(() => { snap(); requestAnimationFrame(snap); });
     return true;
   };
   /** A scoped id (`s:4:6`) or a region root (`s:4`). Null for a host-note id. Does not create a session. */
@@ -648,7 +817,7 @@ export function outlineEditor(opts: OutlineEditorOptions): Extension[] {
           revealSealed(view, sealed.region);
           return placeInZone(sealed.region, sealed.local);
         };
-        if (!place()) queueMicrotask(() => { try { place(); } catch { /* zone gone */ } });
+        if (!place()) requestAnimationFrame(() => { try { place(); } catch { /* zone gone */ } });
         return;
       }
       const local = id.includes(':') ? id.slice(id.lastIndexOf(':') + 1) : id;

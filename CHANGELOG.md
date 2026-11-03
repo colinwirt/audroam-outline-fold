@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.5.12 — 2026-11-03
+
+- Typing in an open secure zone no longer scrolls the text pane to the bottom of the zone. The caret stays on the row being edited. A wheel, touch, or drag still moves the pane.
+- Follow in text on a row near the top of a tall open zone shows that row. The pane does not stay on the lower half of the zone widget.
+
 ## 0.5.11 — 2026-11-03
 
 - A session id is `__tmp-7`. The same series is used on the main outline, in an open secure zone, and in a nested submap. It is not written into the note.
