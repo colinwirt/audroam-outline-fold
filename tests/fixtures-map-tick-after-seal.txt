@@ -1,0 +1,73 @@
+- Example map 1
+  - node
+    - Sealed branch <enc:k1> <id:4>
+  - 📚 node 4 with encrypted examples <id:18>
+    - child of 4 edit <enc:k2> <id:14>
+    - more text <enc:k2> <id:15>
+    - another enc with pub <enc:k2> <id:10>
+  - eg for k3
+    - 1st child for k3 <enc:k3> <id:22>
+
+- 🦋 issues
+  - [-] typing within secure zone scrolls the text window. continuing to type keeps flashing scroll down and then back up to the carret <id:27>
+    - [x] failed: scrolls to top -> retest
+    - [x] fixed, test after deploy
+    - [ ] better, but now flashes to the bottom of widget on save and jams caret to top of screen. Should not move scroll on save.
+  - [ ] map check does not function in child nodes above
+    - also does not work for this parent and this sibling below
+    - [ ] test at this level
+
+
+- done (+)
+  - [x] old one <id:29>
+  [x] tst 1
+  - 
+
+--- payloads ---
+10:
+  alg: of-seal-v3
+  pub: "another enc with pub"
+  ct: -----BEGIN OUTLINE-FOLD SEAL-----
+    AAZPRlNFQUwAATMABXhjMjBwAAtoa2RmLXNoYTI1NgAQqJp-3o1ME6tLFoNsBBrrzQACazIAEBXsIdeo_bnNN3TrnUatjZQABjA6Ym9kecIWemTSm4wkXcpJdZ5lshxqhjf-DWETAtJbMLGpNQXp-z1nGorRtlGNkr_5lIw7q58hdh2JUN7TaGqDts2u-v8dIWIgg0H4Wn6dEIqD88w8NZ00RI_4k4NcmzTFGNZcfWASiRxNP_9z5cubF7Ba-Q3ChjWeeP5H2ygUacL0u7NH34wn0poj-JGteKxKPqaiKOZI1A2cfw
+    480567ec
+    -----END OUTLINE-FOLD SEAL-----
+14:
+  alg: of-seal-v3
+  pub: "child of 4 edit"
+  ct: -----BEGIN OUTLINE-FOLD SEAL-----
+    AAZPRlNFQUwAATMABXhjMjBwAAtoa2RmLXNoYTI1NgAQFGrKUHYoGICpkxcMQp65-gACazIAEKDHDOcSzAKR3wjgYCN-emUABjA6Ym9keTCq6c3Movv3_UyWhL_bZ6nIEwQWHxw1502ILqQGo85H9oSpeosKUYhTRA_0j6Gp7TnVHU3NhRCFOywPiNQSN2O0uwoL5zUmjP9Ddd25lOgO3gJNZxJzB1jYZIcyQGl1UuwtGw2qRGHGu_MQtIz9Nx71aOGqBFnZVtotoqTpUHQAlM1f6_HXDxnsg6I1zGsWP_0
+    2dcfb344
+    -----END OUTLINE-FOLD SEAL-----
+15:
+  alg: of-seal-v3
+  pub: "more text"
+  ct: -----BEGIN OUTLINE-FOLD SEAL-----
+    AAZPRlNFQUwAATMABXhjMjBwAAtoa2RmLXNoYTI1NgAQcsKtcYdUoOX-8pmO0wPwNwACazIAEFmaW4g76txLSEZj_f-10aAABjA6Ym9keR51AE9L1znyIb4RBIUxGBz5XXTRZVFzWFpo0SixukUYtpwGwAx7cznyXBXbJaapnrB2lrugauMEk9t1IGwfhn4zqRm2v4kanQ1N713yz7HpBnTHjCc8Jz-alH_2e_eufcyXXrOnic3W7MwMjwerQ3CRDqMiH05Q7erzXjDW7Dk0ETPM8R14IeeyhEk
+    53847e59
+    -----END OUTLINE-FOLD SEAL-----
+22:
+  alg: of-seal-v3
+  pub: "1st child for k3"
+  ct: -----BEGIN OUTLINE-FOLD SEAL-----
+    AAZPRlNFQUwAATMABXhjMjBwAAtoa2RmLXNoYTI1NgAQrz_TM2c4cLMhMsGbjoex1gACazMAEIhmmpTjwRC8Jojl90p5FHkABjA6Ym9keR2YYb1MnsHb1NS1gceP6utkQQfmZKJQf-xPRt0IaHvE5_uwSqWY2h2CNeogOgUUlo6MC6av1ITVQ6qBmL1RmLVgDYj44gmxBBhtvwxgMQmpmzaBPv2Ez40GElbo_yzUlxAmaEaaR-SqMnye_WUSzSF4apCcGFqZbmAlJfuX4g5ybJYJWE8hcT0PWfRqV_mYF8PqvwXqbNBfBl03ic8FYduzzEnm2v8mOsi2CA2Jsrfufpt58J0Ask0
+    aacc999a
+    -----END OUTLINE-FOLD SEAL-----
+4:
+  alg: of-seal-v3
+  ct: -----BEGIN OUTLINE-FOLD SEAL-----
+    AAZPRlNFQUwAATMABXhjMjBwAAtoa2RmLXNoYTI1NgAQsCN3JTuzdMed8cAoXc-_cwACazEAEFD5VM5K5kIFTYDwqbwlxUsABjA6Ym9keTqGTs4_WMERY-_9GvKII1rezFWXcjXIF6b7r1TiorblPXe93ilM2mPDJm1KvaTzzXifbjipVnBH-IhWjCLWyJWSAyKBWh1gJh6ZZtOuSVwvepii8RSswkiUymVQY3jYoKb-U-NJK8HAL5dujncnkf2IPErwu7Mf3ogst0va0HRtFzCeP29sBg3-fGq-BeD5L4SfEDSnnDIMudH70FDinxNPSNbxIsuuTMWEdi3E-g
+    5726e3c2
+    -----END OUTLINE-FOLD SEAL-----
+---
+
+--- keyring ---
+k1:
+  kdf: $argon2id$v=19$m=65536,t=3,p=1$QCxskrCu5lH8rmm4G51snQ
+  wrap: a256gcm.mY6yDjPEb8X8TrHb.n_o4U45GB9A1A8TbsFahe96SokxfjGBwjNVl9ADRCggjVDqgsEnC7AjkxML83m0l
+k2:
+  kdf: $argon2id$v=19$m=65536,t=3,p=1$0ZIo78yyZFEhfOFbhxSsmg
+  wrap: a256gcm.c2i5Gb51WleSjY6J.TBA3O4h8kz4W8CXphk_fHcizXcXzH0AKbul49S8bzh_0zFsePUT8bpcefIUXyd0I
+k3:
+  kdf: $argon2id$v=19$m=65536,t=3,p=1$37ENF9pCsW_y3iuXvFY8Ow
+  wrap: a256gcm.p7qQrB8ge2Rm05iz.bgWqsUPxkm9qAXNFNDoRY9D1ayqwzyiPe_V10wkLKYc0sEA-j45SfXailaZIKTN3
+---

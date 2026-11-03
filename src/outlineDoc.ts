@@ -11,7 +11,8 @@
  * the doc dirty, keeps the auto-ct slot in the text, and schedules a retry `save-needed`.
  */
 import { parse } from './parse.js';
-import { toggleTaskAtLine, toggleTaskLine } from './task.js';
+import { toggleTaskAtLine } from './task.js';
+import { resolveMapRef, type MapNodeRef } from './mapRef.js';
 import type { TaskState } from './types.js';
 import { createIdAllocator, type IdDiagnostic, type IdScope } from './idAllocator.js';
 import { serialize } from './serialize.js';
@@ -68,6 +69,8 @@ type Events = {
   seal: { type: string; region?: RegionId; [k: string]: unknown };
   /** 0.4.9: a duplicate id was renumbered or flagged (bug C). */
   ids: IdDiagnostic;
+  /** 0.5.15: a Map edit was refused: its row could not be found for certain in the text. */
+  refused: { action: 'tick'; id: string; reason: 'not-found' | 'title-mismatch'; title?: string };
 };
 
 export interface Timers {
@@ -133,7 +136,7 @@ export interface OutlineDocHandle {
   toggleRegionFold(id: string): boolean;
   toggleRegionTask(id: string): boolean;
   /** 0.4.15: cycle a main-doc task marker as a one-line text edit (never re-serialises). */
-  toggleTask(id: string, ordinal?: number): { from: TaskState; to: TaskState } | null;
+  toggleTask(id: string, ref?: MapNodeRef | number): { from: TaskState; to: TaskState } | null;
   mapOptions(onUnlock?: (region: RegionId) => void, onMore?: (branchId: string, rect: DOMRect) => void): {
     getRegionHosts: () => RegionHostSpec[];
     regionFold: RegionFoldStore;
@@ -143,7 +146,7 @@ export interface OutlineDocHandle {
     onRegionTaskToggle: (id: string) => boolean;
     onRegionWidth: (id: string, w: number | null, wAuto?: string | null) => void;
     onRegionFoldSync: (region: string) => void;
-    onMainTaskToggle: (id: string, ordinal?: number) => { from: TaskState; to: TaskState } | null;
+    onMainTaskToggle: (id: string, ref?: MapNodeRef | number) => { from: TaskState; to: TaskState } | null;
   };
   unlock(branchId: string, anchorEl?: HTMLElement | null, o?: { label?: string; container?: HTMLElement; inline?: boolean }): Promise<boolean>;
   lock(branchId: string | 'all', reason?: LockReason): Promise<void>;
@@ -184,23 +187,6 @@ function pinIds(doc: OutlineFoldDoc | null): void {
       delete n.foldMark;
     } else if (n.foldMark === 'expanded') delete n.foldMark;
   });
-}
-
-/** Outline ordinal of a session-id task, or null when the id is written or not a task. */
-function sessionTaskOrdinal(text: string, id: string): number | null {
-  const view = parse(text, { sessionIds: true });
-  let n = 0;
-  let found: number | null = null;
-  const walkOrd = (list?: OutlineNode[]) => {
-    for (const node of list ?? []) {
-      if (found !== null) return;
-      if (node.id === id) found = node.autoId && node.task ? n : -1;
-      n += 1;
-      walkOrd(node.children);
-    }
-  };
-  walkOrd(view.nodes);
-  return found === null || found < 0 ? null : found;
 }
 
 /** Put a collapsed/expanded flag onto `doc.fold`. Returns true when the list changed. */
@@ -569,22 +555,19 @@ export function createOutlineDoc(o: OutlineDocOptions): OutlineDocHandle {
       sessions.markChanged(handle.scoped(id).region);
       return true;
     },
-    toggleTask(id, ordinal) {
+    toggleTask(id, ref) {
       const raw = handle.getText();
       const key = String(id);
-      // 0.5.14: a session id is only positional in a fresh parse. Rows added since the last save
-      // keep a host session id that a fresh parse gives to another row (or no row), so the Map
-      // passes the row's ordinal in its own doc; use that first when the id is not written.
-      if (ordinal !== undefined && ordinal >= 0) {
-        const w = toggleTaskLine(raw, key) ?? toggleTaskAtLine(raw, ordinal);
-        if (!w) return null;
-        handle.setText(w.text, { source: 'host' });
-        return { from: w.from, to: w.to };
+      // 0.5.15: resolve the row for certain against the whole text: written <id:N> or __tmp-N
+      // session id first, then the path from the shown top row, then the ordinal, each behind
+      // a title check. A row that cannot be found for certain is refused and reported.
+      const r0: MapNodeRef = typeof ref === 'number' ? { id: key, ordinal: ref } : ref ?? { id: key };
+      const hit = resolveMapRef(raw, { ...r0, id: key });
+      if (!hit.ok) {
+        emit('refused', { action: 'tick', id: key, reason: hit.reason, ...(r0.title !== undefined ? { title: r0.title } : {}) });
+        return null;
       }
-      // A written <id:> edits that line. A session id is not in the text: edit the outline
-      // line that parse assigns to it now, so a line inserted above cannot land on the wrong row.
-      const ord = sessionTaskOrdinal(raw, key);
-      const r = toggleTaskLine(raw, key) ?? (ord === null ? null : toggleTaskAtLine(raw, ord));
+      const r = toggleTaskAtLine(raw, hit.ordinal);
       if (!r) return null;
       handle.setText(r.text, { source: 'host' });
       return { from: r.from, to: r.to };
@@ -615,7 +598,7 @@ export function createOutlineDoc(o: OutlineDocOptions): OutlineDocHandle {
           sessions.markChanged(handle.scoped(id).region);
         },
         onRegionFoldSync: (region) => writeInnerFold(region),
-        onMainTaskToggle: (id, ordinal) => handle.toggleTask(id, ordinal),
+        onMainTaskToggle: (id, ref) => handle.toggleTask(id, ref),
       };
     },
     unlock(branchId, anchorEl, opt = {}) {

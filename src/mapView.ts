@@ -178,6 +178,7 @@ import {
   type NodeUriOption,
 } from './nodeMenu.js';
 import { toggleTask, nextTaskState, shouldFireAction } from './task.js';
+import { mapRefOf, type MapNodeRef } from './mapRef.js';
 import {
   TIME_LEAF_GAP_Y,
   TIME_LEAF_LETTER,
@@ -382,9 +383,9 @@ export interface MapViewOptions {
    * Null means the line was not edited. When this is set, the map does not fall through to
    * `setDoc` — that re-serialise inserted a second line for `[]` and for session ids.
    */
-  /** `ordinal`: the row's place in this view's doc (pre-order), the line to edit when `id` is
-   *  not written in the text (0.5.14). */
-  onMainTaskToggle?: (id: string, ordinal?: number) => { from: TaskState; to: TaskState } | null;
+  /** 0.5.15: `ref` names the row for certain (id, path from the shown top row, title), so the
+   *  text side resolves it against the whole note. A number is the 0.5.14 ordinal. */
+  onMainTaskToggle?: (id: string, ref?: MapNodeRef | number) => { from: TaskState; to: TaskState } | null;
   /** Map focus moved (click, keys, `setFocus`): scoped id (`region:node` inside a region). */
   onFocusChange?: (scopedId: string) => void;
   /**
@@ -4214,14 +4215,9 @@ export function createMapView(
       return;
     }
     if (opts.onMainTaskToggle) {
-      // 0.5.14: pass the clicked row's place in this doc. A session id kept by the host across
-      // edits is not the id a fresh parse would give, so the text side cannot find it alone.
-      let ord = -1, seen = 0;
-      const walkOrd = (list?: OutlineNode[]): void => {
-        for (const x of list ?? []) { if (ord >= 0) return; if (x === n) { ord = seen; return; } seen += 1; walkOrd(x.children); }
-      };
-      walkOrd(doc.nodes);
-      const viaText = opts.onMainTaskToggle(id, ord >= 0 ? ord : undefined);
+      // 0.5.15: a certain reference (id, path from the shown top row, title), resolved by the
+      // text side against the whole note, never by position within the shown subset.
+      const viaText = opts.onMainTaskToggle(id, mapRefOf(doc, n) ?? undefined);
       if (!viaText) return;
       const node = { ...n, task: viaText.to };
       onTaskToggle?.({ id, from: viaText.from, to: viaText.to, node });

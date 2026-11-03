@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.15
+
+- Map ticks name their row for certain. The Map passes a reference (the row's id, its path from the shown top row, and its title). The doc resolves that reference against a parse of the whole note: first the written `<id:N>` or `__tmp-N` session id, then the path, and last the 0.5.14 ordinal. Every step checks the title. "View from here" now ticks the right line.
+- If no candidate carries the row's title, the edit is refused. The text is left untouched and a `refused` event fires, so the host can tell the user. It never edits the wrong line.
+- New exports: `resolveMapRef` and `mapRefOf`. `onMainTaskToggle` and `toggleTask` take a `MapNodeRef`; a plain number still works as an ordinal.
+
 ## 0.5.14 — 2026-11-03
 
 - A Map tick on a row added since the last save, or on a nested row below it, now toggles that row's checkbox in place. Before, the tick looked the row up by a session id in a fresh parse of the text; the host keeps a row's session id across edits, so after an insert the id named another row or none, and the tick did nothing or hit the wrong line. The Map now passes the row's place in its own outline, and the text edit uses that line when no `<id:N>` is written.
