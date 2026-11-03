@@ -523,8 +523,10 @@ class SecureZone extends WidgetType {
       outer.scrollDOM.addEventListener('wheel', markUserScroll, { capture: true, passive: true });
       outer.scrollDOM.addEventListener('touchstart', markUserScroll, { capture: true, passive: true });
       outer.scrollDOM.addEventListener('pointerdown', markUserScroll, true);
-      const origMeasure = view.measure.bind(view);
-      view.measure = (flush?: boolean) => {
+      // measure() runs on each layout pass but is omitted from the public types.
+      const zoneView = view as EditorView & { measure(flush?: boolean): void };
+      const origMeasure = zoneView.measure.bind(zoneView);
+      zoneView.measure = (flush?: boolean) => {
         if (measuring) return;
         measuring = true;
         const scroller = outer.scrollDOM;
