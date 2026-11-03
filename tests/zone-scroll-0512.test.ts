@@ -36,11 +36,11 @@ describe('zone scroll after measure (0.5.12)', () => {
     })).toBe(500);
   });
 
-  it('does not touch the pane when the zone is not focused', () => {
+  it('0.5.15: an unfocused zone pass (after Save) puts the pane back, no caret nudge', () => {
     expect(zoneScrollAfterMeasure({
       before: 240, after: 1800, focused: false, userScrollAt: 0, now: 5000,
       caretTop: 180, caretBottom: 200, ...view,
-    })).toBe(1800);
+    })).toBe(240);
   });
 
   it('restores without a nudge when the caret box is unknown', () => {

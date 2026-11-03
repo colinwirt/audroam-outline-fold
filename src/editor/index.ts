@@ -192,6 +192,28 @@ function textPane(view: EditorView): HTMLElement | null {
   return own?.isConnected ? own : null;
 }
 
+/** 0.5.15: per region, the caret row's place in the pane (px from its top) before a save. */
+const caretAnchorAt = new Map<string, number>();
+function caretRowInPane(zone: EditorView): number | undefined {
+  const pane = textPane(zone);
+  const caret = pane ? caretViewport(zone) : null;
+  if (!pane || !caret) return undefined;
+  const box = pane.getBoundingClientRect();
+  if (box.height < 1) return undefined;
+  return caret.top - box.top;
+}
+/** Put the caret row back at `row` px from the pane top (by row, not a pixel guess of the
+ *  pane); with no saved row, only keep it on screen. */
+function zoneHoldRow(zone: EditorView, row?: number): boolean {
+  if (row === undefined) return zoneKeepCaret(zone);
+  const now = caretRowInPane(zone);
+  const pane = textPane(zone);
+  if (now === undefined || !pane) return zoneKeepCaret(zone);
+  const dy = now - row;
+  if (Math.abs(dy) > 1) pane.scrollTop += dy;
+  return true;
+}
+
 /**
  * Scroll the outer text pane so the zone caret line stays visible. Returns true so
  * CodeMirror does not walk ancestors itself. `center` is for an explicit follow;
@@ -227,10 +249,19 @@ export function zoneScrollAfterMeasure(o: {
   viewHeight?: number;
   /** `center` is a map follow. It runs even when the zone does not have focus. */
   y?: string;
+  /** 0.5.15: where the caret row sat in the pane (px from the pane top) before a save
+   *  rewrote the zone. The row is put back there, not just "on screen". */
+  caretAnchor?: number;
 }): number {
-  if (!o.focused && o.y !== 'center') return o.after;
+  // 0.5.15: the zone's own layout pass never moves the text pane, focused or not. Save blurs
+  // the zone (Save button / autosave re-render), and the old early return kept the pin to the
+  // widget's bottom: the flash to the bottom on save.
   const top = Math.abs(o.after - o.before) > 1 ? o.before : o.after;
+  if (!o.focused && o.y !== 'center') return top;
   if ((o.now ?? 0) - o.userScrollAt < 200) return top;
+  if (o.caretAnchor !== undefined && o.caretTop !== undefined && o.viewTop !== undefined) {
+    return top + (o.caretTop - o.viewTop - o.caretAnchor);
+  }
   const dy = caretDelta(o.caretTop ?? 0, o.caretBottom ?? 0, o.viewTop ?? 0, o.viewHeight ?? 0, o.y);
   return top + dy;
 }
@@ -482,6 +513,8 @@ class SecureZone extends WidgetType {
       const docNow = view.state.doc;
       const headLine = docNow.lineAt(here.head);
       const anchorLine = docNow.lineAt(here.anchor);
+      const row = caretRowInPane(view);
+      if (row !== undefined) caretAnchorAt.set(region, row);
       applying = true;
       try {
         view.dispatch({
@@ -496,7 +529,7 @@ class SecureZone extends WidgetType {
       // on screen. This runs without DOM focus when Save already blurred the zone.
       if (view.hasFocus || (zoneCaretHold.get(region) ?? 0) > Date.now()) {
         keepCaretUntil.set(region, Date.now() + 600);
-        const snap = () => { try { if (!gone && view.dom.isConnected) zoneKeepCaret(view); } catch { /* zone gone */ } };
+        const snap = () => { try { if (!gone && view.dom.isConnected) zoneHoldRow(view, caretAnchorAt.get(region)); } catch { /* zone gone */ } };
         queueMicrotask(snap);
         requestAnimationFrame(() => { snap(); requestAnimationFrame(snap); });
       }
@@ -518,6 +551,9 @@ class SecureZone extends WidgetType {
       const headLine = prevDoc.lineAt(sel.head);
       const anchorLine = prevDoc.lineAt(sel.anchor);
       const body = view.state.doc.toString();
+      const row = caretRowInPane(prev);
+      if (row !== undefined) caretAnchorAt.set(region, row);
+      const paneTop = textPane(prev)?.scrollTop;
       // Line and column, not a raw offset: a format refresh rewrites the text.
       view.dispatch({
         selection: {
@@ -527,7 +563,7 @@ class SecureZone extends WidgetType {
       });
       if (had || recent) {
         keepCaretUntil.set(region, Date.now() + 600);
-        const snap = () => { try { if (view.dom.isConnected) zoneKeepCaret(view); } catch { /* zone gone */ } };
+        const snap = () => { try { if (view.dom.isConnected) { const p = textPane(view); if (p && paneTop !== undefined && Math.abs(p.scrollTop - paneTop) > 1) p.scrollTop = paneTop; zoneHoldRow(view, caretAnchorAt.get(region)); } } catch { /* zone gone */ } };
         queueMicrotask(snap);
         requestAnimationFrame(() => { snap(); requestAnimationFrame(snap); });
       }
@@ -595,8 +631,10 @@ class SecureZone extends WidgetType {
         const box = track ? scroller.getBoundingClientRect() : null;
         try {
           origMeasure(flush);
-          if (gone || !track || !box || !scroller.isConnected) return;
+          if (gone || !scroller.isConnected) return;
+          const anchor = keep ? caretAnchorAt.get(region) : undefined;
           const next = zoneScrollAfterMeasure({
+            caretAnchor: anchor,
             before,
             after: scroller.scrollTop,
             focused: view.hasFocus || follow || keep,
@@ -604,8 +642,8 @@ class SecureZone extends WidgetType {
             now: Date.now(),
             caretTop: caret?.top,
             caretBottom: caret?.bottom,
-            viewTop: box.top,
-            viewHeight: box.height,
+            viewTop: box?.top,
+            viewHeight: box?.height,
             y: follow ? 'center' : undefined,
           });
           if (Math.abs(scroller.scrollTop - next) > 1) scroller.scrollTop = next;

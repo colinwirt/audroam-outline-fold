@@ -4,6 +4,7 @@
 
 - Map ticks name their row for certain. The Map passes a reference (the row's id, its path from the shown top row, and its title). The doc resolves that reference against a parse of the whole note: first the written `<id:N>` or `__tmp-N` session id, then the path, and last the 0.5.14 ordinal. Every step checks the title. "View from here" now ticks the right line.
 - If no candidate carries the row's title, the edit is refused. The text is left untouched and a `refused` event fires, so the host can tell the user. It never edits the wrong line.
+- Saving inside an unlocked secure zone (Save & re-seal or the autosave) no longer moves the Text pane. Before, Save blurred the zone, its layout pass ran untracked, and CodeMirror's pin of the pane to the widget's bottom stuck (the flash to the bottom). The caret snap then scrolled to "nearest", which left the caret row at the top edge. Now the pane is always put back, and the caret row returns to the same place on screen.
 - New exports: `resolveMapRef` and `mapRefOf`. `onMainTaskToggle` and `toggleTask` take a `MapNodeRef`; a plain number still works as an ordinal.
 
 ## 0.5.14 — 2026-11-03
