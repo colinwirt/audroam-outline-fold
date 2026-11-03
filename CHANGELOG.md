@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.5.13 — 2026-11-03
+
+- Typing on a row at the bottom of a tall open zone no longer scrolls the text pane to the top of the zone. The caret stays on the row being edited.
+- A format write-back or a save that rebuilds the zone keeps that caret row on screen. The Save button may take focus; the pane still moves only far enough to show the row.
+
 ## 0.5.12 — 2026-11-03
 
 - Typing in an open secure zone no longer scrolls the text pane to the bottom of the zone. The caret stays on the row being edited. A wheel, touch, or drag still moves the pane.

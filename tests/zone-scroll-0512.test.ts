@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { zoneRevealDelta, zoneScrollAfterMeasure } from '../src/editor/index.js';
+import { zoneCaretBox, zoneRevealDelta, zoneScrollAfterMeasure } from '../src/editor/index.js';
 
 // The zone layout pass sets the outer text scroller to its bottom. These cases
 // are the decision after that write. No DOM: happy-dom reports no pixel boxes.
@@ -55,6 +55,29 @@ describe('zone scroll after measure (0.5.12)', () => {
       before: 800, after: 2000, focused: false, userScrollAt: 0, now: 5000,
       caretTop: 40, caretBottom: 60, ...view, y: 'center',
     })).toBe(550);
+  });
+});
+
+describe('zone caret box (0.5.13)', () => {
+  it('rejects a placeholder rect on the first row when the caret is a later line', () => {
+    // The undrawn-line placeholder sits on the widget top. Using it scrolls the pane there.
+    const mapped = { top: 640, bottom: 664 };
+    expect(zoneCaretBox(12, -800, { top: -800, bottom: -776 }, mapped)).toEqual(mapped);
+  });
+
+  it('keeps a real rect for a later line that is on screen', () => {
+    const drawn = { top: 520, bottom: 544 };
+    expect(zoneCaretBox(12, -800, drawn, { top: 500, bottom: 530 })).toEqual(drawn);
+  });
+
+  it('keeps the first line when it really is the first row', () => {
+    const drawn = { top: 100, bottom: 124 };
+    expect(zoneCaretBox(1, 100, drawn, { top: 100, bottom: 124 })).toEqual(drawn);
+  });
+
+  it('uses the height map when the line is not drawn', () => {
+    const mapped = { top: 40, bottom: 64 };
+    expect(zoneCaretBox(3, -200, null, mapped)).toEqual(mapped);
   });
 });
 

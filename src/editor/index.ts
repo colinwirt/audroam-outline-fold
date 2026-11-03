@@ -118,34 +118,56 @@ function caretDelta(top: number, bottom: number, viewTop: number, viewHeight: nu
 }
 
 /**
- * Screen box of one zone line. A line CodeMirror has not drawn is placed by its
- * share of the zone widget, whose box is the whole block, including the part
- * above the pane. The first line is the top of that widget.
+ * Screen box of one zone line from the height map. Works for a line CodeMirror
+ * has not drawn. Sharing the widget's box by line count does not: a later row
+ * in a tall zone is then placed on the first row, and the pane scrolls there.
  */
-function lineBoxInZone(zone: EditorView, pos: number): { top: number; bottom: number } | null {
-  let dom: DOMRect;
-  try { dom = zone.dom.getBoundingClientRect(); } catch { return null; }
-  if (dom.height < 1) return null;
-  const doc = zone.state.doc;
-  if (!doc.lines) return null;
-  const line = doc.lineAt(pos);
-  const top = dom.top + (dom.height * (line.number - 1)) / doc.lines;
-  const bottom = dom.top + (dom.height * line.number) / doc.lines;
-  if (bottom - top < 1) return null;
-  return { top, bottom };
+function lineScreenBox(zone: EditorView, pos: number): { top: number; bottom: number } | null {
+  try {
+    const line = zone.state.doc.lineAt(pos);
+    const block = zone.lineBlockAt(pos);
+    // An unmeasured map reports every line at the top. That is not a place to scroll.
+    if (line.number > 1 && block.top < 1) return null;
+    const top = zone.documentTop + block.top;
+    const bottom = zone.documentTop + block.bottom;
+    if (bottom - top < 1) return null;
+    return { top, bottom };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Which box is the caret. A rect that sits on the first row while the caret is
+ * on a later line is the undrawn-line placeholder, not the row being edited.
+ * Trusting it scrolls the pane to the top of the zone.
+ */
+export function zoneCaretBox(
+  lineNo: number,
+  docTop: number,
+  drawn: { top: number; bottom: number } | null,
+  mapped: { top: number; bottom: number } | null,
+): { top: number; bottom: number } | null {
+  if (drawn && drawn.bottom - drawn.top >= 1) {
+    if (!(lineNo > 1 && Math.abs(drawn.top - docTop) < 4)) return drawn;
+  }
+  return mapped;
 }
 
 /** Screen box of the zone caret. A drawn line uses its real coordinates. */
 function caretViewport(zone: EditorView): { top: number; bottom: number } | null {
-  try {
-    const coords = zone.coordsAtPos(zone.state.selection.main.head);
-    if (coords && coords.bottom - coords.top >= 1) return { top: coords.top, bottom: coords.bottom };
-  } catch { /* not measured yet */ }
-  try {
-    return lineBoxInZone(zone, zone.state.selection.main.head);
-  } catch {
-    return null;
+  const head = zone.state.selection.main.head;
+  const lineNo = zone.state.doc.lineAt(head).number;
+  let drawn: { top: number; bottom: number } | null = null;
+  if (head >= zone.viewport.from && head <= zone.viewport.to) {
+    try {
+      const coords = zone.coordsAtPos(head);
+      if (coords && coords.bottom - coords.top >= 1) drawn = { top: coords.top, bottom: coords.bottom };
+    } catch { /* not measured yet */ }
   }
+  let docTop = 0;
+  try { docTop = zone.documentTop; } catch { /* view gone */ }
+  return zoneCaretBox(lineNo, docTop, drawn, lineScreenBox(zone, head));
 }
 
 /**
@@ -307,6 +329,14 @@ export function joinZoneText(body: string, trailer: string): string {
 const zoneViews = new Map<RegionId, EditorView>();
 /** Until this time, a map follow owns the pane: keep that zone's caret line centered. */
 const followSnapUntil = new Map<RegionId, number>();
+/**
+ * Until this time, typing, a format write-back, or a save refresh owns the pane.
+ * Keep that caret line on screen (nearest), even if Save moved DOM focus out of
+ * the zone. A wheel, touch, or drag still wins for a moment.
+ */
+const keepCaretUntil = new Map<RegionId, number>();
+/** The zone was focused this recently, so a save that blurs it first still has a caret to keep. */
+const zoneCaretHold = new Map<RegionId, number>();
 
 /** 0.4.5: caret and selection for the nested zone editor (the parent's drawSelection hides the native caret). */
 const zoneCaret = EditorView.theme({
@@ -462,7 +492,18 @@ class SecureZone extends WidgetType {
           },
         });
       } finally { applying = false; }
+      // A format write-back replaces the zone text. Keep the restored caret row
+      // on screen. This runs without DOM focus when Save already blurred the zone.
+      if (view.hasFocus || (zoneCaretHold.get(region) ?? 0) > Date.now()) {
+        keepCaretUntil.set(region, Date.now() + 600);
+        const snap = () => { try { if (!gone && view.dom.isConnected) zoneKeepCaret(view); } catch { /* zone gone */ } };
+        queueMicrotask(snap);
+        requestAnimationFrame(() => { snap(); requestAnimationFrame(snap); });
+      }
     });
+    const holdCaret = () => { zoneCaretHold.set(region, Date.now() + 2000); };
+    view.dom.addEventListener('focusin', holdCaret);
+    view.dom.addEventListener('focusout', holdCaret);
     // 0.4.9 (bug B1): a re-render (width change, refresh after a session transition) keeps
     // the caret: the new view takes the old one's selection and focus.
     const prev = zoneViews.get(region);
@@ -471,12 +512,26 @@ class SecureZone extends WidgetType {
       // that focus in the zone, or the next Tab leaves for the page.
       const zoneEl = prev.dom.closest('.of-secure-zone');
       const had = prev.hasFocus || (typeof document !== 'undefined' && !!document.activeElement && (prev.contentDOM.contains(document.activeElement) || !!zoneEl?.contains(document.activeElement)));
+      const recent = (zoneCaretHold.get(region) ?? 0) > Date.now();
       const sel = prev.state.selection.main;
-      const len = view.state.doc.length;
-      if (had) {
-        view.dispatch({ selection: { anchor: Math.min(sel.anchor, len), head: Math.min(sel.head, len) } });
-        queueMicrotask(() => { try { view.focus(); } catch { /* gone */ } });
+      const prevDoc = prev.state.doc;
+      const headLine = prevDoc.lineAt(sel.head);
+      const anchorLine = prevDoc.lineAt(sel.anchor);
+      const body = view.state.doc.toString();
+      // Line and column, not a raw offset: a format refresh rewrites the text.
+      view.dispatch({
+        selection: {
+          anchor: caretOnLine(body, anchorLine.number, sel.anchor - anchorLine.from),
+          head: caretOnLine(body, headLine.number, sel.head - headLine.from),
+        },
+      });
+      if (had || recent) {
+        keepCaretUntil.set(region, Date.now() + 600);
+        const snap = () => { try { if (view.dom.isConnected) zoneKeepCaret(view); } catch { /* zone gone */ } };
+        queueMicrotask(snap);
+        requestAnimationFrame(() => { snap(); requestAnimationFrame(snap); });
       }
+      if (had) queueMicrotask(() => { try { view.focus(); } catch { /* gone */ } });
     }
     zoneViews.set(region, view);
     zoneRenderFailures.delete(region);
@@ -534,7 +589,8 @@ class SecureZone extends WidgetType {
         // Sample the caret before the layout pass. That pass moves the pane, and the
         // caret's screen box moves with it.
         const follow = (followSnapUntil.get(region) ?? 0) > Date.now();
-        const track = view.hasFocus || follow;
+        const keep = (keepCaretUntil.get(region) ?? 0) > Date.now();
+        const track = view.hasFocus || follow || keep;
         const caret = track ? caretViewport(view) : null;
         const box = track ? scroller.getBoundingClientRect() : null;
         try {
@@ -543,7 +599,7 @@ class SecureZone extends WidgetType {
           const next = zoneScrollAfterMeasure({
             before,
             after: scroller.scrollTop,
-            focused: view.hasFocus || follow,
+            focused: view.hasFocus || follow || keep,
             userScrollAt,
             now: Date.now(),
             caretTop: caret?.top,
@@ -565,7 +621,8 @@ class SecureZone extends WidgetType {
       outer.requestMeasure();
       requestAnimationFrame(() => {
         const follow = (followSnapUntil.get(region) ?? 0) > Date.now();
-        if (gone || (!view.hasFocus && !follow) || !outer.scrollDOM.isConnected) return;
+        const keep = (keepCaretUntil.get(region) ?? 0) > Date.now();
+        if (gone || (!view.hasFocus && !follow && !keep) || !outer.scrollDOM.isConnected) return;
         if (Date.now() - userScrollAt < 200) return;
         if (Math.abs(outer.scrollDOM.scrollTop - before) <= 48) return;
         outer.scrollDOM.scrollTop = before;
