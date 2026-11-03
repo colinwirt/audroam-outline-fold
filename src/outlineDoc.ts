@@ -133,7 +133,7 @@ export interface OutlineDocHandle {
   toggleRegionFold(id: string): boolean;
   toggleRegionTask(id: string): boolean;
   /** 0.4.15: cycle a main-doc task marker as a one-line text edit (never re-serialises). */
-  toggleTask(id: string): { from: TaskState; to: TaskState } | null;
+  toggleTask(id: string, ordinal?: number): { from: TaskState; to: TaskState } | null;
   mapOptions(onUnlock?: (region: RegionId) => void, onMore?: (branchId: string, rect: DOMRect) => void): {
     getRegionHosts: () => RegionHostSpec[];
     regionFold: RegionFoldStore;
@@ -143,7 +143,7 @@ export interface OutlineDocHandle {
     onRegionTaskToggle: (id: string) => boolean;
     onRegionWidth: (id: string, w: number | null, wAuto?: string | null) => void;
     onRegionFoldSync: (region: string) => void;
-    onMainTaskToggle: (id: string) => { from: TaskState; to: TaskState } | null;
+    onMainTaskToggle: (id: string, ordinal?: number) => { from: TaskState; to: TaskState } | null;
   };
   unlock(branchId: string, anchorEl?: HTMLElement | null, o?: { label?: string; container?: HTMLElement; inline?: boolean }): Promise<boolean>;
   lock(branchId: string | 'all', reason?: LockReason): Promise<void>;
@@ -569,9 +569,18 @@ export function createOutlineDoc(o: OutlineDocOptions): OutlineDocHandle {
       sessions.markChanged(handle.scoped(id).region);
       return true;
     },
-    toggleTask(id) {
+    toggleTask(id, ordinal) {
       const raw = handle.getText();
       const key = String(id);
+      // 0.5.14: a session id is only positional in a fresh parse. Rows added since the last save
+      // keep a host session id that a fresh parse gives to another row (or no row), so the Map
+      // passes the row's ordinal in its own doc; use that first when the id is not written.
+      if (ordinal !== undefined && ordinal >= 0) {
+        const w = toggleTaskLine(raw, key) ?? toggleTaskAtLine(raw, ordinal);
+        if (!w) return null;
+        handle.setText(w.text, { source: 'host' });
+        return { from: w.from, to: w.to };
+      }
       // A written <id:> edits that line. A session id is not in the text: edit the outline
       // line that parse assigns to it now, so a line inserted above cannot land on the wrong row.
       const ord = sessionTaskOrdinal(raw, key);
@@ -606,7 +615,7 @@ export function createOutlineDoc(o: OutlineDocOptions): OutlineDocHandle {
           sessions.markChanged(handle.scoped(id).region);
         },
         onRegionFoldSync: (region) => writeInnerFold(region),
-        onMainTaskToggle: (id) => handle.toggleTask(id),
+        onMainTaskToggle: (id, ordinal) => handle.toggleTask(id, ordinal),
       };
     },
     unlock(branchId, anchorEl, opt = {}) {

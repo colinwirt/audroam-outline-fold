@@ -382,7 +382,9 @@ export interface MapViewOptions {
    * Null means the line was not edited. When this is set, the map does not fall through to
    * `setDoc` — that re-serialise inserted a second line for `[]` and for session ids.
    */
-  onMainTaskToggle?: (id: string) => { from: TaskState; to: TaskState } | null;
+  /** `ordinal`: the row's place in this view's doc (pre-order), the line to edit when `id` is
+   *  not written in the text (0.5.14). */
+  onMainTaskToggle?: (id: string, ordinal?: number) => { from: TaskState; to: TaskState } | null;
   /** Map focus moved (click, keys, `setFocus`): scoped id (`region:node` inside a region). */
   onFocusChange?: (scopedId: string) => void;
   /**
@@ -4212,7 +4214,14 @@ export function createMapView(
       return;
     }
     if (opts.onMainTaskToggle) {
-      const viaText = opts.onMainTaskToggle(id);
+      // 0.5.14: pass the clicked row's place in this doc. A session id kept by the host across
+      // edits is not the id a fresh parse would give, so the text side cannot find it alone.
+      let ord = -1, seen = 0;
+      const walkOrd = (list?: OutlineNode[]): void => {
+        for (const x of list ?? []) { if (ord >= 0) return; if (x === n) { ord = seen; return; } seen += 1; walkOrd(x.children); }
+      };
+      walkOrd(doc.nodes);
+      const viaText = opts.onMainTaskToggle(id, ord >= 0 ? ord : undefined);
       if (!viaText) return;
       const node = { ...n, task: viaText.to };
       onTaskToggle?.({ id, from: viaText.from, to: viaText.to, node });

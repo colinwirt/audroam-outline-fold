@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.5.14 — 2026-11-03
+
+- A Map tick on a row added since the last save, or on a nested row below it, now toggles that row's checkbox in place. Before, the tick looked the row up by a session id in a fresh parse of the text; the host keeps a row's session id across edits, so after an insert the id named another row or none, and the tick did nothing or hit the wrong line. The Map now passes the row's place in its own outline, and the text edit uses that line when no `<id:N>` is written.
+
 ## 0.5.13 — 2026-11-03
 
 - Typing on a row at the bottom of a tall open zone no longer scrolls the text pane to the top of the zone. The caret stays on the row being edited.
