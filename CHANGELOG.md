@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.5.17 — 2026-11-04
+
+- Typing in an open secure zone scrolls that zone's caret, and only when the row is outside the visible band. The outer editor's caret stays on the sealed line. A draft-save pause no longer pans the page to that line. A soft keyboard is not treated as visible space: the text pane moves only far enough to put the caret above it, and the window scroll is put back.
+
 ## 0.5.16 — 2026-11-04
 
 Seal v3 unlock-screen fixes (Design UX spec). No change to the seal format, save, re-seal or unlock of v1/v2/v3 seals.

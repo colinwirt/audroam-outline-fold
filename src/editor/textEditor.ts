@@ -19,7 +19,7 @@ const isSealedLine = (line: string): boolean => /<enc:[A-Za-z0-9_.-]+>/.test(lin
 import { Compartment, EditorState, StateEffect, Transaction, StateField, type Extension, type Text } from '@codemirror/state';
 import { EditorView, Decoration, WidgetType, keymap, drawSelection, highlightActiveLine, type DecorationSet } from '@codemirror/view';
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
-import { taskGlyphs, outlineEditor, refreshZones, missingZones, zoneRenderFailures, ZONE_ERROR_EVENT, type OutlineEditorOptions } from './index.js';
+import { taskGlyphs, outlineEditor, refreshZones, missingZones, zoneRenderFailures, scrollFocusedZone, ZONE_ERROR_EVENT, type OutlineEditorOptions } from './index.js';
 export { missingZones, zoneRenderFailures, ZONE_ERROR_EVENT };
 import { autoWrapCh } from '../mapFit.js';
 import { DEFAULT_WRAP_CH } from '../mapLabel.js';
@@ -399,7 +399,12 @@ function buildEditor(host: HTMLElement, initial: string, opts: TextEditorOptions
     selection: () => ({ from: view.state.selection.main.from, to: view.state.selection.main.to }),
     lineBox(pos: number) { const b = view.lineBlockAt(clamp(pos)); return { top: b.top, bottom: b.bottom }; },
     selectRange(from: number, to: number) { view.focus(); view.dispatch({ selection: { anchor: clamp(from), head: clamp(to) }, scrollIntoView: true }); },
-    markLine(from: number, to: number) { view.dispatch({ selection: { anchor: clamp(from), head: clamp(to) }, scrollIntoView: true }); },
+    // The zone has its own caret. Scrolling the outer selection reveals the sealed
+    // line and, on a phone, pans the window. Nearest on the zone caret instead.
+    markLine(from: number, to: number) {
+      if (scrollFocusedZone(view)) return;
+      view.dispatch({ selection: { anchor: clamp(from), head: clamp(to) }, scrollIntoView: true });
+    },
     setRegions(list: HostRegion[]) { view.dispatch({ effects: setHostRegions.of(list || []) }); },
     refresh() { view.dispatch({ effects: refreshZones.of(null) }); },
     zoneProblems(): RegionId[] { return opts.sessions ? missingZones(view.state.doc, opts.sessions) : []; },

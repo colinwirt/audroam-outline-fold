@@ -215,18 +215,124 @@ function zoneHoldRow(zone: EditorView, row?: number): boolean {
 }
 
 /**
+ * The part of the text pane the soft keyboard does not cover. Coordinates are
+ * the same space as getBoundingClientRect. No band: the keyboard is closed.
+ * A band that misses the pane is ignored, so a bad offset cannot blank the view.
+ */
+export function visiblePaneBox(
+  paneTop: number, paneBottom: number, bandTop: number | null, bandBottom: number | null,
+): { viewTop: number; viewHeight: number } {
+  const full = paneBottom - paneTop;
+  if (!(full > 0)) return { viewTop: paneTop, viewHeight: 0 };
+  if (bandTop == null || bandBottom == null || !(bandBottom > bandTop)) return { viewTop: paneTop, viewHeight: full };
+  const viewTop = Math.max(paneTop, bandTop);
+  const viewBottom = Math.min(paneBottom, bandBottom);
+  if (!(viewBottom > viewTop)) return { viewTop: paneTop, viewHeight: full };
+  return { viewTop, viewHeight: viewBottom - viewTop };
+}
+
+/**
+ * Visible client band while a soft keyboard covers the page. Null when it does not.
+ * fixedTop is getBoundingClientRect().top of position:fixed; top:0. That is 0 when
+ * client rects match the visual viewport, and about -offsetTop when they match the
+ * layout viewport. offsetTop 0 makes both answers the same.
+ */
+export function keyboardClientBand(
+  innerHeight: number,
+  vv: { offsetTop?: number; height?: number } | null,
+  fixedTop: number | null,
+): { top: number; bottom: number } | null {
+  if (!vv) return null;
+  const offsetTop = vv.offsetTop || 0;
+  const height = vv.height || 0;
+  if (!(height > 0)) return null;
+  if (innerHeight - height < 12 && offsetTop < 1) return null;
+  let top = 0;
+  let bottom = height;
+  if (offsetTop >= 1 && fixedTop != null && Math.abs(fixedTop + offsetTop) + 1 < Math.abs(fixedTop)) {
+    top = offsetTop;
+    bottom = offsetTop + height;
+  }
+  return { top, bottom };
+}
+
+let keyboardRectMode: '' | 'layout' | 'visual' = '';
+function keyboardBand(): { top: number; bottom: number } | null {
+  if (typeof window === 'undefined' || !window.visualViewport) return null;
+  const vv = window.visualViewport;
+  let fixedTop: number | null = null;
+  if ((vv.offsetTop || 0) >= 1 && typeof document !== 'undefined') {
+    if (!keyboardRectMode) {
+      const probe = document.createElement('div');
+      probe.style.cssText = 'position:fixed;top:0;left:0;width:0;height:0;pointer-events:none;visibility:hidden';
+      document.documentElement.append(probe);
+      const probeTop = probe.getBoundingClientRect().top;
+      probe.remove();
+      keyboardRectMode = Math.abs(probeTop + vv.offsetTop) + 1 < Math.abs(probeTop) ? 'layout' : 'visual';
+    }
+    fixedTop = keyboardRectMode === 'layout' ? -vv.offsetTop : 0;
+  }
+  return keyboardClientBand(window.innerHeight, vv, fixedTop);
+}
+
+/** Pane box clipped to the band above the soft keyboard. */
+function paneViewBox(pane: HTMLElement): { top: number; height: number } {
+  const box = pane.getBoundingClientRect();
+  const band = keyboardBand();
+  if (!band) return { top: box.top, height: box.height };
+  const view = visiblePaneBox(box.top, box.bottom, band.top, band.bottom);
+  return { top: view.viewTop, height: view.viewHeight };
+}
+
+function restoreWindow(x: number, y: number): void {
+  if (typeof window === 'undefined') return;
+  if (window.scrollX !== x || window.scrollY !== y) window.scrollTo(x, y);
+}
+
+/**
  * Scroll the outer text pane so the zone caret line stays visible. Returns true so
- * CodeMirror does not walk ancestors itself. `center` is for an explicit follow;
- * typing uses `nearest` and does not move when the line is already on screen.
+ * CodeMirror does not walk ancestors itself (including the window). `center` is for
+ * an explicit follow; typing uses `nearest` and does not move when the line is
+ * already in the band above the soft keyboard.
  */
 function zoneKeepCaret(zone: EditorView, y?: string): boolean {
+  const wx = typeof window === 'undefined' ? 0 : window.scrollX;
+  const wy = typeof window === 'undefined' ? 0 : window.scrollY;
   const pane = textPane(zone);
-  if (!pane) return true;
+  if (!pane) { restoreWindow(wx, wy); return true; }
   const caret = caretViewport(zone);
-  if (!caret) return true;
-  const box = pane.getBoundingClientRect();
+  if (!caret) { restoreWindow(wx, wy); return true; }
+  const box = paneViewBox(pane);
   const dy = caretDelta(caret.top, caret.bottom, box.top, box.height, y);
   if (dy) pane.scrollTop += dy;
+  restoreWindow(wx, wy);
+  return true;
+}
+
+/** The nested editor that holds the caret, when focus is inside a secure zone. */
+function focusedZoneView(outer: EditorView): EditorView | null {
+  if (typeof document === 'undefined') return null;
+  const active = document.activeElement;
+  if (!(active instanceof Element) || !outer.dom.contains(active)) return null;
+  const zone = active.closest('.of-secure-zone');
+  if (!zone || !outer.dom.contains(zone)) return null;
+  const ed = zone.querySelector('.cm-editor');
+  if (!(ed instanceof HTMLElement)) return null;
+  const inner = EditorView.findFromDOM(ed);
+  if (!inner || inner === outer) return null;
+  return inner;
+}
+
+/**
+ * Ensure the focused zone's own caret is visible. The outer editor's caret stays
+ * on the sealed line, so scrolling that caret moves the wrong row. Returns true
+ * when a zone has focus: the caller must not scroll the outer selection.
+ */
+export function scrollFocusedZone(outer: EditorView): boolean {
+  const inner = focusedZoneView(outer);
+  if (!inner) return false;
+  // Same path as typing. A second scrollIntoView here moved the pane again.
+  zoneKeepCaret(inner);
   return true;
 }
 
@@ -485,7 +591,8 @@ class SecureZone extends WidgetType {
           }),
           EditorView.lineWrapping,
           // Typing scrolls the caret. The default walk treats a tall zone block as the
-          // target and pins its bottom to the text pane. Scroll the caret line only.
+          // target and pins its bottom to the text pane, then the window. Scroll the
+          // caret line only, and only when it is outside the band above the keyboard.
           EditorView.scrollHandler.of((zv, _range, target) => zoneKeepCaret(zv, target?.y)),
         ],
       }),
@@ -609,6 +716,11 @@ class SecureZone extends WidgetType {
     let userScrollAt = 0;
     let measuring = false;
     let gone = false;
+    // The keyboard opening does not dispatch a CodeMirror scroll. Keep the caret
+    // above it, and put the window back if the browser panned the page.
+    const onKeyboard = () => { if (!gone && view.hasFocus) zoneKeepCaret(view); };
+    window.visualViewport?.addEventListener('resize', onKeyboard);
+    window.visualViewport?.addEventListener('scroll', onKeyboard);
     const markUserScroll = () => { userScrollAt = Date.now(); };
     if (outer) {
       outer.scrollDOM.addEventListener('wheel', markUserScroll, { capture: true, passive: true });
@@ -628,11 +740,16 @@ class SecureZone extends WidgetType {
         const keep = (keepCaretUntil.get(region) ?? 0) > Date.now();
         const track = view.hasFocus || follow || keep;
         const caret = track ? caretViewport(view) : null;
-        const box = track ? scroller.getBoundingClientRect() : null;
+        const raw = track ? scroller.getBoundingClientRect() : null;
+        // A saved row is measured from the full pane. The "keep on screen" path
+        // uses the band above the keyboard.
+        const box = raw && !keep ? paneViewBox(scroller) : raw;
         try {
           origMeasure(flush);
           if (gone || !scroller.isConnected) return;
           const anchor = keep ? caretAnchorAt.get(region) : undefined;
+          const wx = window.scrollX;
+          const wy = window.scrollY;
           const next = zoneScrollAfterMeasure({
             caretAnchor: anchor,
             before,
@@ -647,6 +764,7 @@ class SecureZone extends WidgetType {
             y: follow ? 'center' : undefined,
           });
           if (Math.abs(scroller.scrollTop - next) > 1) scroller.scrollTop = next;
+          restoreWindow(wx, wy);
         } finally { measuring = false; }
       };
     }
@@ -674,6 +792,8 @@ class SecureZone extends WidgetType {
       gone = true;
       offSync();
       wrap.removeEventListener('keydown', onZoneTab, true);
+      window.visualViewport?.removeEventListener('resize', onKeyboard);
+      window.visualViewport?.removeEventListener('scroll', onKeyboard);
       if (outer) {
         outer.scrollDOM.removeEventListener('wheel', markUserScroll, true);
         outer.scrollDOM.removeEventListener('touchstart', markUserScroll, true);
@@ -993,7 +1113,17 @@ export function outlineEditor(opts: OutlineEditorOptions): Extension[] {
     });
     return ok;
   });
-  return [field, guard, marks, live, follow, unlockClick, enterZone, zoneEdge, theme];
+  return [
+    field, guard, marks, live, follow, unlockClick, enterZone, zoneEdge, theme,
+    // A scroll aimed at the outer editor while the zone has focus would reveal
+    // the sealed line. Keep the zone caret and do not walk up to the window.
+    // Do not dispatch here: this handler already runs inside an update.
+    EditorView.scrollHandler.of((v) => {
+      const inner = focusedZoneView(v);
+      if (!inner) return false;
+      return zoneKeepCaret(inner);
+    }),
+  ];
 }
 
 const theme = EditorView.baseTheme({
