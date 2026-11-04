@@ -17,6 +17,7 @@ import { parseEncBody } from './sealed.js';
 import { parseLeadingTask } from './taskChrome.js';
 import { parseLeadingIcon } from './emoji/icons.js';
 import { canonTag } from './tagSpelling.js';
+import { NODE_COLOURS, COLOUR_ALIASES, resolveColour } from './nodeColour.js';
 import { markdownLinkSpans, parseHopTarget, parseNoteTarget } from './captionRich.js';
 import type {
   NodeLink,
@@ -72,6 +73,8 @@ const ENC_SPAN = ENC_RE.span;
 const ID_TRAILING = ID_RE.trailing;
 /** 0.5.18 (Q16): `<cloud>` / `<cloud:name>` at the line end. */
 const CLOUD_TRAILING = /\s*<cloud(?::([a-z][a-z0-9-]*))?>$/i;
+/** 0.5.19 (Q12): `<color:name>` / `<colour:name>` with a palette name (never hex). */
+const COLOR_TRAILING = new RegExp(`\\s*<\\s*colou?r\\s*:\\s*(${[...NODE_COLOURS, ...Object.keys(COLOUR_ALIASES)].join('|')})\\s*>\\s*$`, 'i');
 const KIND_TRAILING = new RegExp(
   `\\s*<(?:\\s*kind\\s*:\\s*(${KIND_TAG_WORDS})\\s*|(${KIND_WORDS}))>\\s*$`,
   'i',
@@ -271,6 +274,7 @@ function parseTitleAndMeta(
   task?: TaskState;
   icon?: string;
   cloud?: string;
+  color?: string;
   action?: string;
   thread?: string;
   noteLinks?: string[];
@@ -319,6 +323,7 @@ function parseTitleAndMeta(
   // 0.5.18 (EP-1): one leading icon after the task marker, before the title.
   let icon: string | undefined;
   let cloud: string | undefined;
+  let color: string | undefined;
   {
     const lead = parseLeadingIcon(rest.replace(/^[ \t]+/, ''));
     if (lead) {
@@ -531,6 +536,15 @@ function parseTitleAndMeta(
       continue;
     }
 
+    m = rest.match(COLOR_TRAILING);
+    if (m) {
+      color = resolveColour(m[1]) ?? undefined;
+      spell('color', m[0]);
+      rest = rest.slice(0, rest.length - m[0].length).trimEnd();
+      progressed = true;
+      continue;
+    }
+
     m = rest.match(CLOUD_TRAILING);
     if (m) {
       cloud = (m[1] ?? 'default').toLowerCase();
@@ -609,12 +623,13 @@ function parseTitleAndMeta(
     task,
     icon,
     cloud,
+    color,
     action,
     thread,
     noteLinks: noteLinks.length ? noteLinks : undefined,
     noteLinkTags: Object.keys(noteLinkTags).length ? noteLinkTags : undefined,
     links: links.length ? links : undefined,
-    tagSpellings: keptSpellings(spelling, { id, kind, action, thread, db: dbRef }),
+    tagSpellings: keptSpellings(spelling, { id, kind, action, thread, db: dbRef, color }),
   };
 }
 
@@ -638,7 +653,9 @@ function keptSpellings(
     const token = spelling[key];
     if (!value || !token) continue;
     const plain = `<${key}:${value}>`;
-    if (token !== plain && canonTag(token) === plain) out[key] = token;
+    // `<colour:x>` is the same tag as `<color:x>` (0.5.19).
+    const canon = key === 'color' ? canonTag(token).replace(/^<colour:/, '<color:') : canonTag(token);
+    if (token !== plain && canon === plain) out[key] = token;
   }
   return Object.keys(out).length ? out : undefined;
 }
@@ -712,6 +729,7 @@ export function parse(text: string, opts?: ParseOptions): OutlineFoldDoc {
     if (meta.task) node.task = meta.task;
     if (meta.icon) node.icon = meta.icon;
     if (meta.cloud) node.cloud = meta.cloud;
+    if (meta.color) node.color = meta.color;
     if (meta.action) node.action = meta.action;
     if (meta.thread) node.thread = meta.thread;
     if (meta.noteLinks) node.noteLinks = meta.noteLinks;

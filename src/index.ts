@@ -678,3 +678,4 @@ export { resolveMapRef, mapRefOf, type MapNodeRef, type MapRefResult } from './m
 export { parseZoneText, oneZoneRoot, pinZoneIds } from './zoneText.js';
 // 0.5.18: node icon slot, emoji / Map clipart picker, `:` typeahead (Design UX 2026-11-04 EP-1…EP-30).
 export * from './emoji/index.js';
+export * from './nodeColour.js';

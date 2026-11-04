@@ -217,6 +217,13 @@ export interface NodeMenuEntry {
   popup?: boolean;
   /** Toggle item (`Follow in text`): `menuitemcheckbox` with a ✓ when on. */
   checked?: boolean;
+  /**
+   * 0.5.19 (EP-31, EP-39): a colour swatch (`red` … or `none`). Consecutive swatch entries
+   * render as one horizontal `role=group` row of `menuitemradio` buttons named by `row`.
+   */
+  swatch?: string;
+  /** Name of the swatch row (default `Colour`). */
+  row?: string;
 }
 
 export interface NodeMenuView {
@@ -268,7 +275,34 @@ export function renderNodeMenu(opts: { title: string; entries: NodeMenuEntry[]; 
     const label = mk('div', 'map-node-menu-label', g);
     label.id = labelId;
     group.appendChild(label);
+    let swatchRow: HTMLElement | null = null;
     for (const e of list) {
+      if (e.swatch) {
+        const name = e.row ?? 'Colour';
+        if (!swatchRow || swatchRow.getAttribute('aria-label') !== name) {
+          swatchRow = mk('div', 'map-node-menu-swatches');
+          swatchRow.setAttribute('role', 'group');
+          swatchRow.setAttribute('aria-label', name);
+          const cap = mk('span', 'map-node-menu-swatch-cap', name);
+          cap.setAttribute('aria-hidden', 'true');
+          swatchRow.appendChild(cap);
+          group.appendChild(swatchRow);
+        }
+        const b = mk('button', `map-node-menu-swatch swatch-${e.swatch}`);
+        b.type = 'button';
+        b.tabIndex = -1;
+        b.setAttribute('role', 'menuitemradio');
+        b.setAttribute('aria-checked', e.checked ? 'true' : 'false');
+        b.setAttribute('aria-label', `${name}: ${e.label}`);
+        b.title = e.label;
+        b.dataset.item = e.key;
+        b.dataset.swatch = e.swatch;
+        if (e.swatch === 'none') b.textContent = '∅';
+        swatchRow.appendChild(b);
+        items.push(b);
+        continue;
+      }
+      swatchRow = null;
       const b = mk('button', 'map-node-menu-item', e.checked === undefined ? e.label : `${e.checked ? '✓ ' : ''}${e.label}`);
       b.type = 'button';
       b.tabIndex = -1;

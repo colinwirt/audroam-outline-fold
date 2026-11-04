@@ -10,6 +10,7 @@
  */
 import { iconGlyph, iconLabel, loadEmojiData } from './emoji/icons.js';
 import { openIconPicker } from './emoji/picker.js';
+import { applyNodePalette, colourGroups, colourLabel, isHighlighter, resolveColour } from './nodeColour.js';
 import { resolveFollowInText, setFollowInText, loadMapResume } from './mapResume.js';
 import { ALT_HOLD_MS, altDragCommits, altPressKind } from './altGesture.js';
 import { captionLinks, captionWithoutLinks, captionRegionRefs } from './captionRich.js';
@@ -501,6 +502,19 @@ export interface MapViewOptions {
    */
   nodeClouds?: boolean;
   /**
+   * 0.5.19: `Colour` swatches (palette group + Highlighter group + None, EP-31) in the node
+   * menu's Edit group and in the icon picker panel; with `nodeClouds` too, `Cloud colour`
+   * swatches on a cloud root (EP-39). Colours already on the line (`<color:moss>`,
+   * `<cloud:creek>`) always paint; this only adds the controls. Default false (opt-in).
+   */
+  nodeColours?: boolean;
+  /**
+   * 0.5.19: named palette for the colour roles (default `forest`). Tags store roles, so a
+   * different palette recolours the map without editing the text. Add sets with
+   * `registerNodePalette` (a token table). Adds `of-palette-<name>` to the host.
+   */
+  colourPalette?: string;
+  /**
    * `Follow in text` checkbox in the node menu's View group. Opt-in (0.4.1): the item
    * shows only when `followMenu: true`, so a plain node menu keeps its 0.3 items, focus
    * order and the read-only "no id, no menu" rule. The value resolves per-user resume
@@ -960,8 +974,11 @@ export function mapNodeClassNames(opts: {
   focused?: boolean;
   /** Time leaf (0.2.40): `time-leaf kind-time` / `time-leaf kind-session`. Leaves only. */
   timeLeaf?: TimeLeafKind | null;
+  /** 0.5.19 node colour token: `has-colour colour-<name>` (ignored on time leaves, TL7 / Q14). */
+  color?: string | null;
 }): string {
   const tl = !opts.foldable && opts.timeLeaf ? opts.timeLeaf : null;
+  const colour = !tl ? resolveColour(opts.color) : null;
   return [
     'map-node',
     opts.foldable ? '' : 'leaf',
@@ -971,6 +988,7 @@ export function mapNodeClassNames(opts: {
     opts.task === 'done' ? 'task-done' : opts.task === 'pending' ? 'task-pending' : opts.task ? 'task-open' : '',
     opts.bodyExpanded ? 'body-expanded' : '',
     opts.focused ? 'is-focused' : '',
+    colour ? `has-colour colour-${colour}${isHighlighter(colour) ? ' is-hl' : ''}` : '',
   ]
     .filter(Boolean)
     .join(' ');
@@ -1577,6 +1595,7 @@ export function createMapView(
     ? { ...optsIn.outlineDoc.mapOptions(optsIn.onRegionUnlock), ...Object.fromEntries(Object.entries(optsIn).filter(([, v]) => v !== undefined)) } as MapViewOptions
     : optsIn;
   host.classList.toggle('of-details', !!opts.details);
+  const paletteName = applyNodePalette(host, opts.colourPalette);
   let lastFocusEmit: string | null = null;
   let regionFocusRef: () => string | null = () => null;
   const emitFocus = () => {
@@ -1617,6 +1636,8 @@ export function createMapView(
     nodeMenu: nodeMenuOn = false,
     nodeIcons: nodeIconsOpt,
     nodeClouds: nodeCloudsOpt,
+    nodeColours: nodeColoursOpt,
+    colourPalette: colourPaletteOpt,
     followMenu = false,
     followResumeKey = null,
     onFollowInText,
@@ -2847,6 +2868,18 @@ export function createMapView(
 
   const nodeIconsOn = nodeIconsOpt ?? false;
   const nodeCloudsOn = nodeCloudsOpt ?? false;
+  const nodeColoursOn = nodeColoursOpt ?? false;
+  function swatchEntries(prefix: string, row: string, current: string | undefined): NodeMenuEntry[] {
+    // Two rows per target: `<row> · Forest` (with None first) and `<row> · Highlighter`.
+    const cur = resolveColour(current) ?? 'none';
+    const out: NodeMenuEntry[] = [];
+    colourGroups(paletteName).forEach((g, gi) => {
+      const r = `${row} · ${g.name}`;
+      if (gi === 0) out.push({ key: `${prefix}:none`, label: 'None', group: 'Edit', swatch: 'none', row: r, checked: cur === 'none' });
+      for (const c of g.colours) out.push({ key: `${prefix}:${c}`, label: colourLabel(c, paletteName), group: 'Edit', swatch: c, row: r, checked: cur === c });
+    });
+    return out;
+  }
   function nodeMenuEntries(key: string): NodeMenuEntry[] {
     const entries: NodeMenuEntry[] = [];
     if (nodeIconsOn) {
@@ -2855,6 +2888,10 @@ export function createMapView(
     }
     if (nodeCloudsOn && nodeByKey(key)) {
       entries.push({ key: 'cloud', label: 'Cloud', group: 'Edit', checked: !!nodeByKey(key)?.cloud });
+    }
+    if (nodeColoursOn && nodeByKey(key)) {
+      entries.push(...swatchEntries('color', 'Colour', nodeByKey(key)?.color));
+      if (nodeCloudsOn && nodeByKey(key)?.cloud) entries.push(...swatchEntries('cloud-color', 'Cloud colour', nodeByKey(key)?.cloud));
     }
     if (foldLevelPicker(getDoc(), key)) entries.push({ key: 'levels', label: 'Levels…', group: 'View', popup: true });
     if (followMenu) entries.push({ key: 'follow', label: 'Follow in text', group: 'View', checked: followInText() });
@@ -2900,6 +2937,12 @@ export function createMapView(
       openNodeIconPicker(key);
       return;
     }
+    if (entry.swatch) {
+      const c = entry.swatch === 'none' ? undefined : entry.swatch;
+      if (entry.key.startsWith('cloud-color:')) setNodeCloud(key, c ?? 'default');
+      else setNodeColour(key, c);
+      return;
+    }
     if (entry.key === 'cloud') {
       setNodeCloud(key, nodeByKey(key)?.cloud ? undefined : 'default');
       return;
@@ -2940,6 +2983,17 @@ export function createMapView(
     announce(color ? 'Cloud added' : 'Cloud removed');
   }
 
+  /** 0.5.19 EP-31: set or clear one node's colour token (never hex). */
+  function setNodeColour(key: string, color: string | undefined): void {
+    const n = nodeByKey(key);
+    if (!n || (n.color ?? undefined) === color) return;
+    if (color && resolveColour(color)) n.color = resolveColour(color)!;
+    else delete n.color;
+    setDoc(getDoc());
+    onChange?.();
+    announce(color ? `Colour: ${colourLabel(color, paletteName)}` : 'Colour removed');
+  }
+
   /** 0.5.18 EP-1 / EP-12: the picker for one node, opened on the panel (Map tab first). */
   function openNodeIconPicker(key: string): boolean {
     if (!nodeIconsOn || typeof document === 'undefined') return false;
@@ -2953,6 +3007,7 @@ export function createMapView(
       expanded: true,
       onPick: (token) => setNodeIcon(key, token),
       onRemove: nodeByKey(key)?.icon ? () => setNodeIcon(key, undefined) : undefined,
+      colour: nodeColoursOn ? { value: nodeByKey(key)?.color, palette: paletteName, onColour: (c) => setNodeColour(key, c) } : undefined,
       onClose: () => focusMapForKeys(),
     });
     return true;
@@ -3006,6 +3061,16 @@ export function createMapView(
       'keydown',
       (e) => {
         const i = m.items.indexOf(document.activeElement as HTMLElement);
+        // 0.5.19: ←/→ move along one target's swatches, across its Forest and Highlighter rows.
+        const sw = m.entries[i];
+        if (sw?.swatch && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
+          e.preventDefault();
+          e.stopPropagation();
+          const j = i + (e.key === 'ArrowRight' ? 1 : -1);
+          const pre = (k: string) => k.slice(0, k.indexOf(':'));
+          if (m.entries[j]?.swatch && pre(m.entries[j]!.key) === pre(sw.key)) focusNodeMenuItem(j);
+          return;
+        }
         const act = nodeMenuKeyAction(e.key, i, m.entries);
         // Every key stays inside the menu: no fold, zoom or host shortcut.
         e.stopPropagation();
@@ -4657,7 +4722,9 @@ export function createMapView(
             bodyExpanded,
             focused,
             timeLeaf,
+            color: n.color,
           });
+          const colourName = !timeLeaf ? resolveColour(n.color) : null;
           const foldCx = foldHandleGeometry(boxRight, foldSlot).cx;
           const foldHit = foldable
             ? `<rect class="map-fold-hit" x="${foldCx - 16}" y="${pos.y - 16}" width="32" height="32" fill="transparent" cursor="pointer"/>`
@@ -4736,10 +4803,10 @@ export function createMapView(
             })
             .join('');
           return `<g class="${cls}" id="${esc(mapNodeDomId(domPrefix, key))}" data-id="${esc(key)}" data-text-w="${textW}"
-      role="treeitem" aria-selected="${focused ? 'true' : 'false'}" aria-current="${focused ? 'true' : 'false'}" aria-label="${esc(timeLeaf ? timeLeafAriaLabel(timeLeaf, label) : label)}${task != null ? (task === 'done' ? ', task done' : task === 'pending' ? ', task pending' : ', task open') : ''}${foldable ? (col ? `, collapsed, ${foldCountLabel(hiddenCount)}` : ', expanded') : ''}${showMore ? ', more text available' : ''}${showLess ? ', showing full body' : ''}"
+      role="treeitem" aria-selected="${focused ? 'true' : 'false'}" aria-current="${focused ? 'true' : 'false'}" aria-label="${esc(timeLeaf ? timeLeafAriaLabel(timeLeaf, label) : label)}${colourName ? `, ${colourLabel(colourName, paletteName).toLowerCase()}` : ''}${task != null ? (task === 'done' ? ', task done' : task === 'pending' ? ', task pending' : ', task open') : ''}${foldable ? (col ? `, collapsed, ${foldCountLabel(hiddenCount)}` : ', expanded') : ''}${showMore ? ', more text available' : ''}${showLess ? ', showing full body' : ''}"
       ${foldable ? `aria-expanded="${col ? 'false' : 'true'}" aria-haspopup="menu"` : ''}${levelMenu && levelMenu.id === key ? ' data-level-open="true"' : ''}>
       <title>${esc(tip)}</title>
-      <rect class="map-pill" x="${x}" y="${y}" width="${boxW}" height="${h}" rx="18" ry="18"/>
+      ${colourName ? `<rect class="map-colour-ring" x="${x - 4}" y="${y - 4}" width="${boxW + 8}" height="${h + 8}" rx="22" ry="22"/>` : ''}<rect class="map-pill" x="${x}" y="${y}" width="${boxW}" height="${h}" rx="18" ry="18"/>
       ${taskLead0}
       ${globe}
       ${kindLetter}

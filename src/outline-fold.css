@@ -36,6 +36,30 @@
   --time-letter: #3fb950;
   --time-text: #e7ecf1;
   --time-edge: #2b8a3e;
+  /* 0.5.19 node colours (EP-32, EP-35): named tokens, retune per theme. Dark values are
+     >= 5.4:1 on --pill-fill and --map-bg; label text >= 10:1 on the 16% wash. Creek (water) is a
+     teal, not the #6cb6ff selection ring (EP-37). */
+  /* Forest palette (default; other palettes inject .of-palette-<name>) */
+  --node-moss: #a3b55a;
+  --node-fern: #6cc070;
+  --node-pine: #45a882;
+  --node-lichen: #c9b866;
+  --node-bark: #c09a74;
+  --node-creek: #4cc3c9;
+  --node-ember: #ff8a5c;
+  --node-slate: #8f9cc4;
+  --node-stone: #a3aab1;
+  /* Highlighter: --node-x is the edge (border, bar, cloud), --node-x-hl the fluoro wash. */
+  --node-lemon: #fff35c;
+  --node-lemon-hl: #fff35c;
+  --node-lime: #b6ff5c;
+  --node-lime-hl: #b6ff5c;
+  --node-flamingo: #ffc8f3;
+  --node-flamingo-hl: #ffc8f3;
+  --node-tangerine: #ffd296;
+  --node-tangerine-hl: #ffd296;
+  --node-aqua: #7af4ff;
+  --node-aqua-hl: #7af4ff;
 }
 
 /* Light theme tokens, opt-in: class="of-theme-light" on the map host or an
@@ -50,6 +74,24 @@
   /* Time leaves stay dark pills: same fill and text, border 4.0:1 on the canvas. */
   --time-stroke: #2b8a3e;
   --time-edge: #2b8a3e;
+  /* 0.5.19 node colours, light canvas: mid-tones >= 3:1 on the dark pills and on
+     --map-bg (3.1–4.8:1), and >= 3.4:1 on a white Outline. */
+  /* Forest palette (default; other palettes inject .of-palette-<name>) */
+  --node-moss: #6f7f2a;
+  --node-fern: #3a8a43;
+  --node-pine: #22795a;
+  --node-lichen: #8a7a1e;
+  --node-bark: #8a6440;
+  --node-creek: #127f86;
+  --node-ember: #c8501f;
+  --node-slate: #6672a3;
+  --node-stone: #727a82;
+  /* Highlighter: --node-x is the edge (border, bar, cloud), --node-x-hl the fluoro wash. */
+  --node-lemon: #8f8500;
+  --node-lime: #5c9a00;
+  --node-flamingo: #c9419f;
+  --node-tangerine: #c46a00;
+  --node-aqua: #00879a;
 }
 /* The Outline under the light theme (0.2.34): text, chip and link colours. Scoped to
    the Outline, because map labels sit on dark pills. */
@@ -1070,8 +1112,107 @@ div.of-unlock.of-unlock-sheet { border-radius: 12px 12px 8px 8px; border-left-wi
 /* 0.5.18 user clouds (EP-42): a 3px left bar spanning the cloud's rows in the Outline.
    Nested clouds give parallel bars (deeper levels beyond 3 share the third bar's indent). */
 .of-node.of-cloud {
-  box-shadow: inset 3px 0 0 var(--of-cloud-stroke, rgba(138, 141, 150, 0.7));
+  box-shadow: inset 3px 0 0 var(--of-cloud-bar, var(--of-cloud-stroke, rgba(138, 141, 150, 0.7)));
 }
 .of-node.of-cloud .of-node.of-cloud .of-node.of-cloud .of-node.of-cloud {
   box-shadow: none;
+}
+
+/* 0.5.19 node colours (EP-31…EP-37). Map: 2px border in the token and a 16% wash over the
+   pill fill; label text stays --of-text. Selection is the separate offset ring, so a colour
+   never reads as "selected". Time leaves stay green (TL7): .time-leaf rules win. */
+.map-node.has-colour { --nc: var(--node-grey); }
+.map-node.colour-moss { --nc: var(--node-moss); }
+.map-node.colour-fern { --nc: var(--node-fern); }
+.map-node.colour-pine { --nc: var(--node-pine); }
+.map-node.colour-lichen { --nc: var(--node-lichen); }
+.map-node.colour-bark { --nc: var(--node-bark); }
+.map-node.colour-creek { --nc: var(--node-creek); }
+.map-node.colour-ember { --nc: var(--node-ember); }
+.map-node.colour-slate { --nc: var(--node-slate); }
+.map-node.colour-stone { --nc: var(--node-stone); }
+.map-node.colour-lemon { --nc: var(--node-lemon); }
+.map-node.colour-lime { --nc: var(--node-lime); }
+.map-node.colour-flamingo { --nc: var(--node-flamingo); }
+.map-node.colour-tangerine { --nc: var(--node-tangerine); }
+.map-node.colour-aqua { --nc: var(--node-aqua); }
+.map-node.has-colour .map-pill {
+  fill: color-mix(in srgb, var(--nc) 16%, var(--pill-fill));
+  stroke: var(--nc);
+  stroke-width: 2;
+}
+.map-node.has-colour .map-label { fill: var(--of-text); }
+/* Highlighter: a strong 92% fluoro wash with dark ink label (>= 10:1 in both themes). */
+.map-node.colour-lemon { --nh: var(--node-lemon-hl); }
+.map-node.colour-lime { --nh: var(--node-lime-hl); }
+.map-node.colour-flamingo { --nh: var(--node-flamingo-hl); }
+.map-node.colour-tangerine { --nh: var(--node-tangerine-hl); }
+.map-node.colour-aqua { --nh: var(--node-aqua-hl); }
+.map-node.is-hl .map-pill { fill: color-mix(in srgb, var(--nh) 92%, var(--pill-fill)); }
+.map-node.is-hl .map-label, .map-node.is-hl text { fill: #0b1a21; }
+.map-colour-ring { fill: none; stroke: none; pointer-events: none; }
+.map-node.has-colour.is-focused .map-pill,
+.map-node.has-colour:focus-visible .map-pill { stroke: var(--nc); stroke-width: 2; }
+.map-node.has-colour.is-focused .map-colour-ring,
+.map-node.has-colour:focus-visible .map-colour-ring { stroke: var(--accent, var(--of-accent)); stroke-width: 2.5; }
+
+/* Outline (EP-34): a 3px left bar on the row; a 6px dot when the row is dense. The name
+   is never colour-only: the title carries a hidden ", red". */
+.of-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.of-node.of-colour-moss { --nc: var(--node-moss); }
+.of-node.of-colour-fern { --nc: var(--node-fern); }
+.of-node.of-colour-pine { --nc: var(--node-pine); }
+.of-node.of-colour-lichen { --nc: var(--node-lichen); }
+.of-node.of-colour-bark { --nc: var(--node-bark); }
+.of-node.of-colour-creek { --nc: var(--node-creek); }
+.of-node.of-colour-ember { --nc: var(--node-ember); }
+.of-node.of-colour-slate { --nc: var(--node-slate); }
+.of-node.of-colour-stone { --nc: var(--node-stone); }
+.of-node.of-colour-lemon { --nc: var(--node-lemon); }
+.of-node.of-colour-lime { --nc: var(--node-lime); }
+.of-node.of-colour-flamingo { --nc: var(--node-flamingo); }
+.of-node.of-colour-tangerine { --nc: var(--node-tangerine); }
+.of-node.of-colour-aqua { --nc: var(--node-aqua); }
+.of-node.of-colour > .of-row { box-shadow: inset 3px 0 0 var(--nc); padding-left: 6px; }
+.of-node.of-colour-lemon > .of-row > .of-title { background: var(--node-lemon-hl); color: #0b1a21; border-radius: 3px; padding: 0 3px; }
+.of-node.of-colour-lime > .of-row > .of-title { background: var(--node-lime-hl); color: #0b1a21; border-radius: 3px; padding: 0 3px; }
+.of-node.of-colour-flamingo > .of-row > .of-title { background: var(--node-flamingo-hl); color: #0b1a21; border-radius: 3px; padding: 0 3px; }
+.of-node.of-colour-tangerine > .of-row > .of-title { background: var(--node-tangerine-hl); color: #0b1a21; border-radius: 3px; padding: 0 3px; }
+.of-node.of-colour-aqua > .of-row > .of-title { background: var(--node-aqua-hl); color: #0b1a21; border-radius: 3px; padding: 0 3px; }
+.of-dense .of-node.of-colour > .of-row { box-shadow: none; }
+.of-dense .of-node.of-colour > .of-row::before { content: ""; display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--nc); margin-right: 4px; flex: 0 0 auto; }
+
+/* Swatches: node menu row and picker Colours row. */
+.map-node-menu-swatches, .of-ep-colours { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; padding: 4px 8px; }
+.map-node-menu-swatch-cap, .of-ep-colours-cap { flex: 1 0 100%; font-size: 11px; color: var(--of-muted, #8b9bab); }
+.map-node-menu-swatch, .of-ep-swatch { width: 22px; height: 22px; padding: 0; border-radius: 50%; border: 2px solid transparent; background: var(--sw, transparent); color: var(--of-muted, #8b9bab); font-size: 12px; line-height: 1; cursor: pointer; }
+.map-node-menu[data-pointer="coarse"] .map-node-menu-swatch { width: 36px; height: 36px; }
+.swatch-none { box-shadow: inset 0 0 0 1px var(--of-muted, #8b9bab); }
+.swatch-moss { --sw: var(--node-moss); }
+.swatch-fern { --sw: var(--node-fern); }
+.swatch-pine { --sw: var(--node-pine); }
+.swatch-lichen { --sw: var(--node-lichen); }
+.swatch-bark { --sw: var(--node-bark); }
+.swatch-creek { --sw: var(--node-creek); }
+.swatch-ember { --sw: var(--node-ember); }
+.swatch-slate { --sw: var(--node-slate); }
+.swatch-stone { --sw: var(--node-stone); }
+.swatch-lemon { --sw: var(--node-lemon); }
+.swatch-lime { --sw: var(--node-lime); }
+.swatch-flamingo { --sw: var(--node-flamingo); }
+.swatch-tangerine { --sw: var(--node-tangerine); }
+.swatch-aqua { --sw: var(--node-aqua); }
+.swatch-lemon { --sw: var(--node-lemon-hl); box-shadow: inset 0 0 0 2px var(--node-lemon); }
+.swatch-lime { --sw: var(--node-lime-hl); box-shadow: inset 0 0 0 2px var(--node-lime); }
+.swatch-flamingo { --sw: var(--node-flamingo-hl); box-shadow: inset 0 0 0 2px var(--node-flamingo); }
+.swatch-tangerine { --sw: var(--node-tangerine-hl); box-shadow: inset 0 0 0 2px var(--node-tangerine); }
+.swatch-aqua { --sw: var(--node-aqua-hl); box-shadow: inset 0 0 0 2px var(--node-aqua); }
+.map-node-menu-swatch[aria-checked="true"], .of-ep-swatch[aria-checked="true"] { border-color: var(--of-text, #e7ecf1); }
+.map-node-menu-swatch:focus-visible, .of-ep-swatch:focus-visible { outline: 2px solid var(--accent, var(--of-accent)); outline-offset: 2px; }
+
+@media (forced-colors: active) {
+  .map-node.has-colour .map-pill { stroke: CanvasText; fill: Canvas; }
+  .of-node.of-colour > .of-row { box-shadow: inset 3px 0 0 CanvasText; }
+  .map-cloud path { stroke: CanvasText; }
+  .map-node-menu-swatch, .of-ep-swatch { forced-color-adjust: none; border-color: CanvasText; }
 }

@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.5.19 — 2026-11-04
+
+Node colours (Design UX 2026-11-04, EP-31…EP-37), coloured named clouds, and swappable palettes.
+
+- New host option `nodeColours` (default `false`). It adds colour swatches to the node menu and to the icon picker. With `nodeClouds` also on, a cloud root gets **Cloud colour** swatches. Swatches are grouped **Forest** (None first) and **Highlighter**. The left and right arrow keys run across both groups.
+- New host option `colourPalette` (default `'forest'`). It picks a named set of `--node-*` tokens and adds `of-palette-<name>` to the host. Tags store the colour **role**, so switching palettes recolours the map without editing the text. A new palette needs only a token table: a label, plus a dark and a light hex for each role. Register it with `registerNodePalette`. Forest ships as the CSS default, and other palettes inject one scoped `<style>`. The Highlighter group is shared by every palette.
+- Tag `<color:role>` (`<colour:role>` also works and is kept as typed). It goes before `<cloud…>`, which goes before `<id:>`, with the same spacing rules as other tags. Hex values and unknown names stay as caption text. New field `OutlineNode.color`.
+- Forest roles: moss, fern, pine, lichen, bark, plus brighter flicks of water (creek), fire (ember) and rock (slate, stone). Highlighter roles: lemon, lime, flamingo, tangerine, aqua.
+- The earlier generic names are read as aliases and written back as the role: red→ember, amber→lichen, green→fern, teal→pine, blue→creek, violet→slate, pink→flamingo, grey/gray→stone.
+- Map: a 2px token border and a 16% wash on the pill. Highlighters get a 92% fluoro wash with dark ink text (#0b1a21). The selection ring is a separate offset rect, so a coloured pill keeps its colour when focused. The pill's accessible name ends with the colour label.
+- Outline: a 3px inset bar on the row (a dot under `.of-dense`). Highlighter titles get the fluoro background. A screen-reader-only colour name is added. A forced-colors fallback is included.
+- Named clouds (`<cloud:creek>` etc.) paint from the palette, including aliases. `<cloud>` and unknown names stay neutral.
+- Contrast, tested from the CSS: every edge token is at least 3:1 against the pill and the canvas in both themes. Label text is at least 10:1 on the wash, or dark ink at least 10:1 on a highlighter. Creek (water) differs in hue from the #6cb6ff selection ring.
+- Defaults chosen: colour applies to one node only, with no inheritance (Q13). Time leaves ignore colour (Q14). Colour does not tint clipart (Q15).
+
 ## 0.5.18 — 2026-11-04
 
 Node icon slot and emoji / Map clipart picker (Design UX 2026-11-04, EP-1…EP-30).

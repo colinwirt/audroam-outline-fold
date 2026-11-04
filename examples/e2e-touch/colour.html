@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>outline-fold e2e colours</title>
+<link rel="stylesheet" href="../../dist/outline-fold.css">
+<style>
+  html, body { margin: 0; height: 100%; background: #0d141b; color: #e7ecf1; font: 14px system-ui, sans-serif; }
+  header { height: 44px; display: flex; align-items: center; padding: 0 10px; gap: 8px; }
+  header h1 { font-size: 15px; margin: 0; }
+  #panel { position: absolute; top: 44px; left: 8px; width: 60%; bottom: 8px; border: 1px solid #2a3540; border-radius: 8px; overflow: hidden; }
+  #mapHost { position: absolute; inset: 0; }
+  #side { position: absolute; top: 44px; left: calc(60% + 16px); right: 8px; bottom: 8px; display: flex; flex-direction: column; gap: 8px; }
+  #outline { border: 1px solid #2a3540; border-radius: 8px; padding: 8px; }
+  #ta { height: 80px; background: #0f1a22; color: inherit; border: 1px solid #2a3540; border-radius: 6px; font: 14px/1.4 system-ui; padding: 6px; }
+</style>
+</head>
+<body>
+<header><h1>colours</h1><span id="tb"></span></header>
+<div id="panel"><div id="mapHost" class="map-wrap" aria-label="Map"></div></div>
+<div id="side"><div id="outline" data-testid="outline"></div><textarea id="ta" data-testid="ta" aria-label="Note"></textarea></div>
+<script type="module">
+import { parse, serialize, createMapView, toHtml, attachIconTypeahead, createIconToolbarButton, loadEmojiData } from '../../dist/index.js';
+await loadEmojiData();
+if (new URLSearchParams(location.search).get('theme') === 'light') { document.documentElement.classList.add('of-theme-light'); document.body.style.background = '#f3f6f9'; document.body.style.color = '#1d2a36'; }
+const md = await (await fetch('colour.md')).text();
+let doc = parse(md);
+const layout = { _source: 'auto-pack', nodes: {} };
+let focusId = new URLSearchParams(location.search).get('focus') || '';
+const out = document.getElementById('outline');
+const render = () => { out.innerHTML = toHtml(doc); };
+const map = createMapView(document.getElementById('mapHost'), {
+  getDoc: () => doc,
+  setDoc: (d) => { doc = d; },
+  nodeMenu: true,
+  nodeClouds: true,
+  nodeColours: true,
+  nodeIcons: true,
+  getRegions: () => [],
+  getLayout: () => layout,
+  getFocusId: () => focusId,
+  setFocusId: (id) => { focusId = id; },
+  onChange: () => { map.paint(); render(); },
+  isActive: () => true,
+});
+const ta = document.getElementById('ta');
+attachIconTypeahead(ta);
+document.getElementById('tb').appendChild(createIconToolbarButton({
+  mode: 'text',
+  onPick: (tok) => { ta.setRangeText(tok, ta.selectionStart, ta.selectionEnd, 'end'); },
+}));
+map.ensurePositions();
+map.bindGestures();
+map.bindKeyboard({});
+map.paint();
+render();
+await new Promise((r) => requestAnimationFrame(r));
+map.paint();
+map.fit();
+await new Promise((r) => setTimeout(r, 400));
+window.__map = map;
+window.__doc = () => doc;
+window.__serialize = () => serialize(doc);
+window.__setFocus = (id) => { focusId = id; map.paint(); };
+window.__ready = true;
+</script>
+</body>
+</html>

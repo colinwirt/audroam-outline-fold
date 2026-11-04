@@ -2,7 +2,7 @@ import { assertSealedSafe, syncSealedLabels, isEncRef } from './sealedState.js';
 import { assignPersistentId, isSessionId, linkPayloadNodes } from './nodeAddress.js';
 import { collectLayouts, collectPayloads, formatLayoutBlock, formatPayloadsBlock, formatKeysBlock, formatKeyringBlock } from './payloads.js';
 import { isSealedBranchPayload } from './sealedState.js';
-import { spelledTag } from './tagSpelling.js';
+import { canonTag, spelledTag } from './tagSpelling.js';
 import { markdownLinkSpans, parseHopTarget } from './captionRich.js';
 import type { OutlineFoldDoc, OutlineNode, TaskState } from './types.js';
 
@@ -136,6 +136,11 @@ function formatTrailingSpans(
     }
   }
   if (node.sealed?.kid && isEncRef(node.sealed)) parts.push(`<enc:${node.sealed.kid}>`);
+  if (node.color) {
+    const plain = `<color:${node.color}>`;
+    const k = kept?.color;
+    parts.push(k && canonTag(k).replace(/^<colour:/, '<color:') === plain ? k : plain);
+  }
   if (node.cloud) parts.push(node.cloud === 'default' ? '<cloud>' : `<cloud:${node.cloud}>`);
   if (node.id && !node.autoId) parts.push(spelledTag(kept?.id, `<id:${node.id}>`));
   return parts.length ? ' ' + parts.join(' ') : '';

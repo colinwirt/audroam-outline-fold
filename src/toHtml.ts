@@ -1,5 +1,6 @@
 import { isSealedBranchPayload } from './sealedState.js';
 import { nodeIconHtml } from './emoji/icons.js';
+import { resolveColour, colourVar } from './nodeColour.js';
 import { isCollapsed } from './fold.js';
 import { captionToHtml } from './captionRich.js';
 import { iconForNode, iconForTask } from './icons.js';
@@ -35,6 +36,9 @@ function renderNode(
   const ariaLevel = node.depth + 1;
   const interactiveTasks = opts.interactiveTasks !== false;
 
+  // 0.5.19 (EP-34, EP-42): colour bar on the row, named cloud colours its bar.
+  const colour = resolveColour(node.color);
+  const cloudColour = resolveColour(node.cloud);
   // data-kid only — never put raw ciphertext in the DOM / accessible name.
   const dataAttrs = [
     node.id ? `data-id="${esc(node.id)}"` : '',
@@ -52,6 +56,8 @@ function renderNode(
       : '',
     node.regionRoot ? `data-region-root="${esc(node.regionRoot)}"` : '',
     node.cloud ? `data-cloud="${esc(node.cloud)}"` : '',
+    colour ? `data-color="${colour}"` : '',
+    cloudColour ? `style="--of-cloud-bar: ${colourVar(cloudColour)}"` : '',
     node.task ? `data-task="${esc(node.task)}"` : '',
     node.action ? `data-action="${esc(node.action)}"` : '',
     node.thread ? `data-thread="${esc(node.thread)}"` : '',
@@ -151,8 +157,8 @@ function renderNode(
     ? ` aria-expanded="${collapsed ? 'false' : 'true'}"`
     : '';
 
-  return `<li role="treeitem" class="${p}-node${collapsed ? ` ${p}-collapsed` : ''}${locked ? ` ${p}-locked` : ''}${open ? ` ${p}-region-open` : ''}${node.regionRoot ? ` ${p}-region ${p}-region-${node.regionRoot}` : ''}${node.task ? ` ${p}-has-task` : ''}${node.cloud ? ` ${p}-cloud` : ''}" tabindex="-1" aria-level="${ariaLevel}"${ariaExpanded} ${dataAttrs}>
-  <div class="${p}-row">${foldBtn}${taskChrome}${icon}${node.icon ? nodeIconHtml(node.icon, p) : ''}<span class="${p}-title">${caption}</span>${threadChip}${noteChips}${jumpChips}${kidChip}${zoneTools}${unlockBtn}</div>
+  return `<li role="treeitem" class="${p}-node${collapsed ? ` ${p}-collapsed` : ''}${locked ? ` ${p}-locked` : ''}${open ? ` ${p}-region-open` : ''}${node.regionRoot ? ` ${p}-region ${p}-region-${node.regionRoot}` : ''}${node.task ? ` ${p}-has-task` : ''}${node.cloud ? ` ${p}-cloud` : ''}${cloudColour ? ` ${p}-cloud-${cloudColour}` : ''}${colour ? ` ${p}-colour ${p}-colour-${colour}` : ''}" tabindex="-1" aria-level="${ariaLevel}"${ariaExpanded} ${dataAttrs}>
+  <div class="${p}-row">${foldBtn}${taskChrome}${icon}${node.icon ? nodeIconHtml(node.icon, p) : ''}<span class="${p}-title">${caption}${colour ? `<span class="${p}-sr">, ${colour}</span>` : ''}</span>${threadChip}${noteChips}${jumpChips}${kidChip}${zoneTools}${unlockBtn}</div>
   ${body}${kids}
 </li>`;
 }

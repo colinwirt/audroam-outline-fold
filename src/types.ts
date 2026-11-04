@@ -106,6 +106,11 @@ export interface OutlineNode {
   /** 0.5.18 (EP-39, Q16): user cloud owned by this node: `default` (`<cloud>`) or a colour name (`<cloud:teal>`). */
   cloud?: string;
   /**
+   * 0.5.19 (EP-31, EP-32, Q12): node colour token from `<color:name>` (alias `<colour:name>`),
+   * one of `NODE_COLOURS`. Per node only; children do not inherit (Q13).
+   */
+  color?: string;
+  /**
    * Explicit action binding from `<action:https://…>` or `<action:event:…>`.
    * Host runs on open→done only (package emits onTaskToggle; never auto-fires caption https).
    */
@@ -301,4 +306,4 @@ export interface ToHtmlOptions {
 }
 
 /** How colon tags were written when not `<name:value>`. See `OutlineNode.tagSpellings`. */
-export type TagSpellings = Partial<Record<'id' | 'kind' | 'action' | 'thread' | 'db', string>>;
+export type TagSpellings = Partial<Record<'id' | 'kind' | 'action' | 'thread' | 'db' | 'color', string>>;

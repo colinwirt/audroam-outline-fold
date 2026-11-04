@@ -19,6 +19,8 @@ import {
   type IconPrefs,
 } from './icons.js';
 
+import { colourGroups, colourLabel, resolveColour } from '../nodeColour.js';
+
 export type PickerMode = 'node' | 'text';
 
 export interface IconPickerOptions {
@@ -30,6 +32,11 @@ export interface IconPickerOptions {
   /** Node mode with an icon set: footer shows `Remove icon` (EP-12). */
   onRemove?: () => void;
   onClose?: () => void;
+  /**
+   * 0.5.19 (EP-31): node mode `Colours` row above the footer: 8 swatches + None.
+   * Click or Enter sets the colour (`undefined` for None); the picker stays open.
+   */
+  colour?: { value?: string; palette?: string; onColour: (color: string | undefined) => void };
   /** Open on the panel instead of the quick row (node menu, toolbar, Ctrl/Cmd+.). */
   expanded?: boolean;
   prefs?: IconPrefs;
@@ -245,12 +252,46 @@ export function openIconPicker(opts: IconPickerOptions): IconPickerHandle {
     }, { signal: sig });
     footer.appendChild(q);
 
-    root.append(search, strip, grid, footer, live);
+    const colourRow = opts.mode === 'node' && opts.colour ? renderColourRow(opts.colour) : null;
+    root.append(search, strip, grid, ...(colourRow ? [colourRow] : []), footer, live);
     renderGrid();
     place();
     // EP-10: node mode opens on the Map tab.
     if (opts.mode === 'node') scrollToSection('map', false);
     search.focus({ preventScroll: true });
+  }
+
+  function renderColourRow(c: NonNullable<IconPickerOptions['colour']>): HTMLElement {
+    const row = h('div', 'of-ep-colours', { role: 'radiogroup', 'aria-label': 'Colours', 'data-testid': 'of-ep-colours' });
+    let cur: string = resolveColour(c.value) ?? 'none';
+    const names = ['none', ...colourGroups(c.palette).flatMap((g) => g.colours)];
+    const btns = names.map((name) => {
+      const label = name === 'none' ? 'None' : colourLabel(name, c.palette);
+      const b = h('button', `of-ep-swatch swatch-${name}`, { type: 'button', role: 'radio', 'aria-label': label, title: label, 'aria-checked': String(name === cur), tabindex: name === cur ? '0' : '-1', 'data-swatch': name, 'data-testid': `of-ep-swatch-${name}` }, name === 'none' ? '∅' : '');
+      b.addEventListener('click', () => {
+        cur = name;
+        for (const x of btns) { x.setAttribute('aria-checked', String(x === b)); x.tabIndex = x === b ? 0 : -1; }
+        c.onColour(name === 'none' ? undefined : name);
+        live.textContent = name === 'none' ? 'Colour removed' : `Colour: ${label}`;
+      }, { signal: sig });
+      return b;
+    });
+    // Forest (None first) then Highlighter, each with a caption; ←/→ run across both.
+    let k = 0;
+    for (const g of colourGroups(c.palette)) {
+      row.appendChild(h('span', 'of-ep-colours-cap', { 'aria-hidden': 'true' }, g.name));
+      const n = g.colours.length + (k === 0 ? 1 : 0);
+      row.append(...btns.slice(k, k + n));
+      k += n;
+    }
+    row.addEventListener('keydown', (e) => {
+      const i = btns.indexOf(document.activeElement as HTMLButtonElement);
+      if (i < 0 || (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft')) return;
+      e.preventDefault();
+      const n = (i + (e.key === 'ArrowRight' ? 1 : -1) + btns.length) % btns.length;
+      btns[n]!.focus();
+    }, { signal: sig });
+    return row;
   }
 
   function sections(): { key: string; label: string; items: IconItem[] }[] {
@@ -482,15 +523,17 @@ export function openIconPicker(opts: IconPickerOptions): IconPickerHandle {
         () => search,
         () => tabs.find((t) => t.tabIndex === 0) ?? tabs[0]!,
         () => cells[focusIndex] ?? null,
+        () => root.querySelector<HTMLElement>('.of-ep-swatch[tabindex="0"]'),
         () => footer.querySelector<HTMLElement>('button:not([disabled])'),
       ];
       const act = document.activeElement as HTMLElement;
-      const cur = [search.contains(act), strip.contains(act), grid.contains(act), footer.contains(act)].indexOf(true);
-      if (cur === 3 && !e.shiftKey && act !== footer.querySelector('.of-ep-help')) return; // move through footer buttons
-      if (cur === 3 && e.shiftKey && act !== footer.querySelector('button:not([disabled])')) return;
+      const colours = root.querySelector('.of-ep-colours');
+      const cur = [search.contains(act), strip.contains(act), grid.contains(act), !!colours?.contains(act), footer.contains(act)].indexOf(true);
+      if (cur === 4 && !e.shiftKey && act !== footer.querySelector('.of-ep-help')) return; // move through footer buttons
+      if (cur === 4 && e.shiftKey && act !== footer.querySelector('button:not([disabled])')) return;
       e.preventDefault();
-      for (let step = 1; step <= 4; step++) {
-        const z = zones[(((cur < 0 ? 0 : cur) + (e.shiftKey ? -step : step)) % 4 + 4) % 4]!();
+      for (let step = 1; step <= 5; step++) {
+        const z = zones[(((cur < 0 ? 0 : cur) + (e.shiftKey ? -step : step)) % 5 + 5) % 5]!();
         if (z) { z.focus({ preventScroll: true }); break; }
       }
     }
