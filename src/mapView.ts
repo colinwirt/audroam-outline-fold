@@ -9,8 +9,9 @@
  * Sealed nodes: omitted until unlocked (no gray stubs) — caller filters doc if needed.
  */
 import { iconGlyph, iconLabel, loadEmojiData } from './emoji/icons.js';
-import { openIconPicker } from './emoji/picker.js';
-import { applyNodePalette, setColourFill, colourGroups, colourLabel, isHighlighter, isAudroam, resolveColour } from './nodeColour.js';
+import { openIconPicker, type IconPickerHandle } from './emoji/picker.js';
+import { borderVars, borderDevicePx, snapEdge, BORDER_W } from './borderSnap.js';
+import { applyNodePalette, setColourFill, colourGroups, colourLabel, isHighlighter, isAudroam, resolveColour, isSolidColour } from './nodeColour.js';
 import { resolveFollowInText, setFollowInText, loadMapResume } from './mapResume.js';
 import { ALT_HOLD_MS, altDragCommits, altPressKind } from './altGesture.js';
 import { captionLinks, captionWithoutLinks, captionRegionRefs } from './captionRich.js';
@@ -712,6 +713,18 @@ export interface MapViewHandle {
   openNodeMenu: (id?: string, at?: { clientX: number; clientY: number }) => boolean;
   /** 0.5.18: open the icon picker (panel, Map tab) for a node. */
   openIconPicker: (id?: string) => boolean;
+  /**
+   * 0.5.30: toolbar toggle for the node icon picker. Open: closes it (returns false). Closed:
+   * opens it for the node, staying open across picks until toggled off or Esc. Pass the host's
+   * button as `toggle` so its own press is not read as an outside press.
+   */
+  toggleIconPicker: (id?: string, opts?: { toggle?: Element | null }) => boolean;
+  /** 0.5.30: close the map's icon picker if open. */
+  closeIconPicker: () => void;
+  /** 0.5.30: whether the map's icon picker is open (drive the toolbar's aria-pressed). */
+  isIconPickerOpen: () => boolean;
+  /** 0.5.30: called with true/false when the map's icon picker opens or closes. Returns unsubscribe. */
+  onIconPickerChange: (fn: (open: boolean) => void) => () => void;
   /** 0.2.39: close the package node menu if it is open. */
   closeNodeMenu: () => void;
   /**
@@ -1043,7 +1056,7 @@ export function mapNodeClassNames(opts: {
     opts.task === 'done' ? 'task-done' : opts.task === 'pending' ? 'task-pending' : opts.task ? 'task-open' : '',
     opts.bodyExpanded ? 'body-expanded' : '',
     opts.focused ? 'is-focused' : '',
-    colour ? `has-colour colour-${colour}${opts.colorFill ? ` colour-fill${isHighlighter(colour) ? ' is-hl' : isAudroam(colour) ? ' is-au' : ''}` : ''}` : '',
+    colour ? `has-colour colour-${colour}${opts.colorFill ? ` colour-fill${isSolidColour(colour) ? ' is-solid' : isHighlighter(colour) ? ' is-hl' : isAudroam(colour) ? ' is-au' : ''}` : ''}` : '',
   ]
     .filter(Boolean)
     .join(' ');
@@ -1223,12 +1236,12 @@ function taskGlyphSvg(state: TaskState, x: number, y: number): string {
   const stroke = state === 'open' ? '#8b9bab' : '#C9A227';
   const mark =
     state === 'done'
-      ? `<path d="M-4 0.5 l2.5 2.5 L4 -3" fill="none" stroke="${stroke}" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"/>`
+      ? `<path class="map-task-mark" d="M-4 0.5 l2.5 2.5 L4 -3" fill="none" stroke="${stroke}" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"/>`
       : state === 'pending'
-        ? `<path d="M-4 0 H4" fill="none" stroke="${stroke}" stroke-width="1.75" stroke-linecap="round"/>`
+        ? `<path class="map-task-mark" d="M-4 0 H4" fill="none" stroke="${stroke}" stroke-width="1.75" stroke-linecap="round"/>`
         : '';
   return `<g class="map-task-glyph" pointer-events="none" transform="translate(${x} ${y})" aria-hidden="true">
-    <rect x="-7" y="-7" width="14" height="14" rx="3" fill="none" stroke="${stroke}" stroke-width="1.75"/>
+    <rect class="map-task-box" x="-7" y="-7" width="14" height="14" rx="3" fill="none" stroke="${stroke}" stroke-width="1.75"/>
     ${mark}
   </g>`;
 }
@@ -3345,7 +3358,10 @@ export function createMapView(
   });
 
   /** 0.5.18 EP-1 / EP-12: the picker for one node, opened on the panel (Map tab first). */
-  function openNodeIconPicker(key: string): boolean {
+  let nodePicker: IconPickerHandle | null = null;
+  const pickerListeners = new Set<(open: boolean) => void>();
+  const emitPicker = (open: boolean) => { for (const f of pickerListeners) f(open); };
+  function openNodeIconPicker(key: string, how: { stayOpen?: boolean; toggle?: Element | null } = {}): boolean {
     if (!nodeIconsOn || typeof document === 'undefined') return false;
     const zn = zoneNode(key);
     const zel = zn && typeof document !== 'undefined' ? document.getElementById(regionDomId(key)) : null;
@@ -3354,15 +3370,20 @@ export function createMapView(
     if (!pill || !styleOf()) return false;
     closeMenus();
     void loadEmojiData();
-    openIconPicker({
-      anchor: pill,
+    const handle: IconPickerHandle = openIconPicker({
+      // 0.5.30: a toolbar toggle anchors the popover under itself.
+      anchor: how.toggle ?? pill,
       mode: 'node',
       expanded: true,
+      stayOpen: how.stayOpen,
+      toggle: how.toggle ?? null,
       onPick: (token) => setNodeIcon(key, token),
       onRemove: styleOf()?.icon ? () => setNodeIcon(key, undefined) : undefined,
       colour: nodeColoursOn ? { value: styleOf()?.color, palette: paletteName, onColour: (c) => setNodeColour(key, c) } : undefined,
-      onClose: () => focusMapForKeys(),
+      onClose: () => { if (nodePicker === handle) { nodePicker = null; emitPicker(false); } focusMapForKeys(); },
     });
+    nodePicker = handle;
+    emitPicker(true);
     return true;
   }
 
@@ -4047,6 +4068,21 @@ export function createMapView(
     return openWidthPopHook(key, { keyboard: true });
   }
 
+  /** 0.5.30: node borders paint whole device pixels at the current DPR and screen scale. */
+  let lastBorderKey = '';
+  function applyBorderSnap(g: Element): void {
+    const dpr = typeof window !== 'undefined' && window.devicePixelRatio > 0 ? window.devicePixelRatio : 1;
+    let k = cam.k;
+    try {
+      const m = (g as SVGGraphicsElement).getScreenCTM?.();
+      if (m && m.a > 0) k = m.a;
+    } catch { /* no layout */ }
+    const key = `${dpr}:${k.toFixed(4)}`;
+    if (key === lastBorderKey) return;
+    lastBorderKey = key;
+    for (const [n, v] of Object.entries(borderVars(dpr, k))) host.style.setProperty(n, v);
+  }
+
   function applyCam(): void {
     const g = host.querySelector('#mapViewport');
     if (!g) return;
@@ -4054,6 +4090,7 @@ export function createMapView(
       'transform',
       `translate(${cam.x} ${cam.y}) scale(${cam.k})`,
     );
+    applyBorderSnap(g);
     // L6: the menu follows its handle through pans and zooms.
     if (levelMenu) positionLevelMenu();
     if (linkPop) positionLinkPop();
@@ -4581,7 +4618,7 @@ export function createMapView(
             const grip = folded ? '' : widthGripSvg(boxRight, b.y, b.h, textW, regionFocus === b.key || widthHotKey === b.key);
             // 0.5.28: a zone node's own colour paints its body like a main pill (seal chrome keeps its look).
             const zc = node && !folded ? resolveColour(node.color) : null;
-            const zcls = zc ? ` has-colour colour-${zc}${node!.colorFill ? ` colour-fill${isHighlighter(zc) ? ' is-hl' : isAudroam(zc) ? ' is-au' : ''}` : ''}` : '';
+            const zcls = zc ? ` has-colour colour-${zc}${node!.colorFill ? ` colour-fill${isSolidColour(zc) ? ' is-solid' : isHighlighter(zc) ? ' is-hl' : isAudroam(zc) ? ' is-au' : ''}` : ''}` : '';
             return `<g class="map-region-node${zcls}${folded ? ' map-region-pill' : ''}${locked && r.host.kind === 'sealed' ? ' map-region-locked' : ''}${b.collapsed ? ' collapsed' : ''}" id="${esc(regionDomId(b.key))}" role="treeitem" aria-selected="false"${b.foldable ? ` aria-expanded="${b.collapsed ? 'false' : 'true'}"` : ''} aria-label="${esc(aria)}" data-scoped-id="${esc(b.key)}" data-region-id="${esc(r.host.id)}" data-text-w="${textW}"><rect class="map-region-body" x="${b.x}" y="${b.y}" width="${Math.max(1, b.w - slot)}" height="${b.h}" rx="${Math.min(14, b.h / 2)}"/>${textSvg}${chrome}${kidChip}${grip}</g>`;
           })
           .join('');
@@ -7333,6 +7370,17 @@ export function createMapView(
     openIconPicker: (id?: string) => {
       const k = id ?? getFocusId();
       return k ? openNodeIconPicker(k) : false;
+    },
+    toggleIconPicker: (id?: string, o: { toggle?: Element | null } = {}) => {
+      if (nodePicker) { nodePicker.close(true); return false; }
+      const k = id ?? getFocusId();
+      return k ? openNodeIconPicker(k, { stayOpen: true, toggle: o.toggle ?? null }) : false;
+    },
+    closeIconPicker: () => { nodePicker?.close(true); },
+    isIconPickerOpen: () => !!nodePicker,
+    onIconPickerChange: (fn: (open: boolean) => void) => {
+      pickerListeners.add(fn);
+      return () => { pickerListeners.delete(fn); };
     },
     openNodeMenu: (id?: string, at?: { clientX: number; clientY: number }) => {
       const target = id ?? getFocusId();

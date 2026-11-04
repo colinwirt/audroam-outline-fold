@@ -8,13 +8,14 @@ import { toHtml } from '../src/toHtml.js';
 import { cloudSvg } from '../src/mapRegion.js';
 import { mapNodeClassNames } from '../src/mapView.js';
 import { renderNodeMenu } from '../src/nodeMenu.js';
+import { isSolidColour } from '../src/nodeColour.js';
 import { NODE_COLOURS, BASE_ROLES, HIGHLIGHTER_COLOURS, FOREST_PALETTE, isNodeColour, isHighlighter, colourLabel, colourVar, colourGroups, resolveColour, registerNodePalette, nodePaletteNames, paletteCss, applyNodePalette } from '../src/nodeColour.js';
 
 const one = (line: string) => parse(`${line}\n`).nodes[0]!;
 
 describe('0.5.19 node colour tokens (EP-31, EP-32)', () => {
   it('fourteen roles: Forest then Highlighter', () => {
-    expect(NODE_COLOURS.length).toBe(23); // 0.5.23: + 9 Audroam roles
+    expect(NODE_COLOURS.length).toBe(55); // 0.5.23: + 9 Audroam roles; 0.5.30: + white, black, Bold/Pastel/Deep x 8, 6 rich Audroam
     expect(isNodeColour('creek')).toBe(true);
     expect(isNodeColour('red')).toBe(false);
     expect(isNodeColour('#ff0000')).toBe(false);
@@ -100,16 +101,16 @@ describe('0.5.19 node menu swatch row (EP-31, EP-39)', () => {
   it('swatch entries render as Forest and Highlighter rows, None first', () => {
     const entries = [
       { key: 'color:none', label: 'None', group: 'Edit' as const, swatch: 'none', row: 'Colour · Forest', checked: false },
-      ...NODE_COLOURS.map((c) => ({ key: `color:${c}`, label: colourLabel(c), group: 'Edit' as const, swatch: c, row: isHighlighter(c) ? 'Colour · Highlighter' : c.startsWith('audroam-') ? 'Colour · Audroam' : 'Colour · Forest', checked: c === 'ember' })),
+      ...colourGroups().flatMap((g) => [...g.colours] as string[]).map((c) => ({ key: `color:${c}`, label: colourLabel(c), group: 'Edit' as const, swatch: c, row: `Colour · ${colourGroups().find((g) => (g.colours as readonly string[]).includes(c))!.name}`, checked: c === 'ember' })),
     ];
     const v = renderNodeMenu({ title: 'Plan', entries, fine: true });
     const rows = [...v.el.querySelectorAll('.map-node-menu-swatches')];
-    expect(rows.map((r) => r.getAttribute('aria-label'))).toEqual(['Colour · Forest', 'Colour · Highlighter', 'Colour · Audroam']);
+    expect(rows.map((r) => r.getAttribute('aria-label'))).toEqual(['Colour · Forest', 'Colour · Neutral', 'Colour · Bold', 'Colour · Pastel', 'Colour · Deep', 'Colour · Highlighter', 'Colour · Audroam']); // 0.5.30
     expect(rows[0]!.querySelectorAll('[role="menuitemradio"]').length).toBe(10);
-    expect(rows[1]!.querySelectorAll('[role="menuitemradio"]').length).toBe(5);
+    expect(rows[5]!.querySelectorAll('[role="menuitemradio"]').length).toBe(5);
     expect(rows[0]!.querySelector('[data-item="color:ember"]')!.getAttribute('aria-checked')).toBe('true');
-    expect(rows[2]!.querySelectorAll('[role="menuitemradio"]').length).toBe(9);
-    expect(v.items.length).toBe(24);
+    expect(rows[6]!.querySelectorAll('[role="menuitemradio"]').length).toBe(15); // 0.5.30: 6 rich + 9 soft
+    expect(v.items.length).toBe(56);
   });
 });
 
@@ -129,12 +130,14 @@ describe('0.5.19 palette contrast (EP-35)', () => {
   const pill = '#0c222c';
   const hl = Object.fromEntries([...block(/:root\s*\{([^}]*)\}/).matchAll(/--node-([a-z]+)-hl:\s*(#[0-9a-fA-F]{6})/g)].map((m) => [m[1], m[2]]));
   it('both themes define every role (Forest + Highlighter edges)', () => {
-    expect(Object.keys(dark).sort()).toEqual([...NODE_COLOURS].sort());
-    expect(Object.keys(light).sort()).toEqual([...NODE_COLOURS].sort());
+    // 0.5.30: solid-palette roles ship in the generated block and are checked in palette-0530.
+    const LEGACY = NODE_COLOURS.filter((c) => !isSolidColour(c));
+    expect(Object.keys(dark).sort()).toEqual([...LEGACY].sort());
+    expect(Object.keys(light).sort()).toEqual([...LEGACY].sort());
   });
   it('>= 3:1 against the pill fill and the canvas; label >= 10:1 on the wash (dark ink on highlighter)', () => {
     for (const [set, canvas] of [[dark, '#0a1f28'], [light, '#f3f6f9']] as const) {
-      for (const c of NODE_COLOURS) {
+      for (const c of NODE_COLOURS.filter((x) => !isSolidColour(x))) {
         const v = set[c]!;
         expect(cr(v, pill), `${c} ${v} on pill`).toBeGreaterThanOrEqual(3);
         expect(cr(v, canvas), `${c} ${v} on canvas`).toBeGreaterThanOrEqual(3);
@@ -166,7 +169,7 @@ describe('0.5.19 palettes and aliases', () => {
   it('Forest (9 roles) + Highlighter (5), all distinct', () => {
     expect(BASE_ROLES).toEqual(['moss', 'fern', 'pine', 'lichen', 'bark', 'creek', 'ember', 'slate', 'stone']);
     expect(HIGHLIGHTER_COLOURS).toEqual(['lemon', 'lime', 'flamingo', 'tangerine', 'aqua']);
-    expect(colourGroups().map((g) => g.name)).toEqual(['Forest', 'Highlighter', 'Audroam']);
+    expect(colourGroups().map((g) => g.name)).toEqual(['Forest', 'Neutral', 'Bold', 'Pastel', 'Deep', 'Highlighter', 'Audroam']);
     const hexes = BASE_ROLES.map((r) => FOREST_PALETTE.roles[r].dark);
     expect(new Set(hexes).size).toBe(hexes.length);
   });

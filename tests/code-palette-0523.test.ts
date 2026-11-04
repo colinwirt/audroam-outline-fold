@@ -87,19 +87,19 @@ describe('0.5.23 code regions', () => {
 
 describe('0.5.23 palettes', () => {
   it('Audroam roles are namespaced, distinct from Highlighter and aliases', () => {
-    expect(AUDROAM_COLOURS).toEqual(['audroam-green', 'audroam-salmon', 'audroam-peach', 'audroam-sky', 'audroam-aqua', 'audroam-lemon', 'audroam-red', 'audroam-lavender', 'audroam-grey']);
+    expect(AUDROAM_COLOURS).toEqual(['audroam-danger', 'audroam-success', 'audroam-focus', 'audroam-steel', 'audroam-primary', 'audroam-white', 'audroam-green', 'audroam-salmon', 'audroam-peach', 'audroam-sky', 'audroam-aqua', 'audroam-lemon', 'audroam-red', 'audroam-lavender', 'audroam-grey']);
     for (const c of AUDROAM_COLOURS) { expect(isNodeColour(c)).toBe(true); expect(resolveColour(c.toUpperCase())).toBe(c); }
     expect(resolveColour('red')).toBe('ember');
     expect(resolveColour('aqua')).toBe('aqua');
     expect(colourLabel('audroam-sky')).toBe('Sky blue');
-    for (const c of AUDROAM_COLOURS) {
+    for (const c of AUDROAM_COLOURS.filter((x) => x in AUDROAM) as (keyof typeof AUDROAM)[]) {
       expect(tok(rootBlock, `node-${c}`)).toBe(AUDROAM[c].dark);
       expect(tok(lightBlock, `node-${c}`)).toBe(AUDROAM[c].light);
     }
   });
 
   it('colour groups list every palette row with labels', () => {
-    expect(colourGroups().map((g) => g.name)).toEqual(['Forest', 'Highlighter', 'Audroam']);
+    expect(colourGroups().map((g) => g.name)).toEqual(['Forest', 'Neutral', 'Bold', 'Pastel', 'Deep', 'Highlighter', 'Audroam']);
   });
 
   it('node menu shows a labelled row per palette', async () => {
@@ -108,9 +108,9 @@ describe('0.5.23 palettes', () => {
     mv.openNodeMenu('r');
     await new Promise((r) => setTimeout(r, 10));
     const rows = [...document.querySelectorAll('.map-node-menu-swatches')].map((r) => r.getAttribute('aria-label'));
-    expect(rows).toEqual(['Colour · Forest', 'Colour · Highlighter', 'Colour · Audroam']);
+    expect(rows).toEqual(['Colour · Forest', 'Colour · Neutral', 'Colour · Bold', 'Colour · Pastel', 'Colour · Deep', 'Colour · Highlighter', 'Colour · Audroam']);
     const au = document.querySelector('.map-node-menu-swatches[aria-label="Colour · Audroam"]')!;
-    expect(au.querySelectorAll('[role="menuitemradio"]').length).toBe(9);
+    expect(au.querySelectorAll('[role="menuitemradio"]').length).toBe(15); // 0.5.30: 6 rich + 9 soft
     expect(au.querySelector('[data-item="color:audroam-salmon"]')!.getAttribute('aria-label') ?? au.querySelector('[data-item="color:audroam-salmon"]')!.textContent).toMatch(/Salmon/);
     mv.destroy?.();
   });
@@ -120,8 +120,8 @@ describe('0.5.23 palettes', () => {
     document.body.appendChild(anchor);
     const p = openIconPicker({ mode: 'node', anchor, onPick: () => {}, expanded: true, colour: { onColour: () => {} } } as any);
     const row = document.querySelector('[data-testid="of-ep-colours"]')!;
-    expect([...row.querySelectorAll('.of-ep-colours-cap')].map((c) => c.textContent)).toEqual(['Forest', 'Highlighter', 'Audroam']);
-    expect(row.querySelectorAll('[role="radio"]').length).toBe(24);
+    expect([...row.querySelectorAll('.of-ep-colours-cap')].map((c) => c.textContent)).toEqual(['Forest', 'Neutral', 'Bold', 'Pastel', 'Deep', 'Highlighter', 'Audroam']);
+    expect(row.querySelectorAll('[role="radio"]').length).toBe(56); // 0.5.30: 55 roles + none
     expect(row.querySelector('[data-testid="of-ep-swatch-audroam-lavender"]')!.getAttribute('aria-label')).toBe('Lavender');
     p.close(false);
   });

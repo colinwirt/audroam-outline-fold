@@ -54,7 +54,7 @@ describe('0.5.25 wireframe default', () => {
     expect(g('d').getAttribute('class')).toContain('colour-fill');
   });
   it('uncoloured nodes: neutral thin border >= 3:1 on the canvas in both themes; time leaves stay green', () => {
-    expect(rule('.map-pill')).toMatch(/stroke: var\(--pill-stroke\);\s*stroke-width: 1\.25;/);
+    expect(rule('.map-pill')).toMatch(/stroke: var\(--pill-stroke\);\s*stroke-width: var\(--map-border-w, 1\.5px\);/);
     expect(ratio(tok(rootBlock, 'pill-stroke')!, tok(rootBlock, 'map-bg')!)).toBeGreaterThanOrEqual(3);
     expect(ratio(tok(lightBlock, 'pill-stroke')!, tok(lightBlock, 'map-bg')!)).toBeGreaterThanOrEqual(3);
     expect(rule('.map-node.time-leaf.time-leaf .map-pill')).toMatch(/stroke: var\(--time-stroke\)/);

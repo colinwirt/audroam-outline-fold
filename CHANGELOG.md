@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.5.30
+
+- Map borders: pill, task and region borders snap to whole device pixels at paint (`borderSnap.ts`, `--map-border-w` / `--map-border-w-strong` set on the host from DPR × zoom), with a 2 device-pixel floor and odd widths on the half pixel. Defaults are a touch heavier (1.5 / 2 css px, were 1.25 / 2). Connector lines are unchanged (1.4).
+- Checkbox on a filled node: the box and tick take `--task-ink`, a shade of the fill at >= 3:1 (WCAG non-text), generated per role and theme (`checkboxInk`, `contrastRatio`).
+- Palettes: new Neutral (White, Black), Bold, Pastel and Deep groups, solid fills with label ink chosen by contrast and borders shaded to >= 3:1 on each canvas. Forest Lichen moves to gold (#e0b440 / #9a7400) so it no longer sits on Moss. A CIE76 distinctness test guards every group. White in the light theme and Black in the dark theme get a subtle outline.
+- Audroam palette: rich colours sampled from the Audroam app CSS lead the row — `audroam-danger` #d9534f, `audroam-success` #5cb85c, `audroam-focus` #2a8a2a, `audroam-steel` #4682b4, `audroam-primary` #337ab7, `audroam-white` #ffffff — then the existing soft tints (all old `audroam-*` names unchanged).
+- Role CSS for the new groups is generated from `nodeColour.ts` (`rolesCss()`, `scripts/gen-palette-css.mjs`) between `@gen-roles` markers; a test keeps it in sync.
+- Icon picker: the toolbar Icon button is a toggle (`aria-pressed`), the palette stays open across picks, Esc closes it. Map API adds `toggleIconPicker(id?, {toggle})`, `closeIconPicker()`, `isIconPickerOpen()`, `onIconPickerChange(fn)` for host toolbars.
+- Icon picker sizing: a compact popover (7 × 40 px tiles, 26 px glyphs, 4 px gaps, 8 px padding, sized to content, max 320 px) on desktop and tablet, anchored under the toggle; the full-width bottom sheet is phone only (coarse pointer and <= 600 px wide).
+
+- Borders: strong border (open tasks, coloured nodes) is always at least 1 device px heavier than the base border (DPR 1: 2 / 3 device px; DPR 2: 3 / 4). Pill x/y are no longer snapped in user units (that only aligned at zoom 1 and shifted pills against their content).
+- Icon palette: the phone sheet now detects phones by `min(innerWidth, screen.width)` and overrides the 320px popover cap.
+- e2e: border checks read on-screen device px; new `e2e/rich-0530.spec.ts` (checkbox ≥ 3:1 on rich/neutral/bold/deep fills at DPR 1 and 2; whole-device-px borders at DPR 2).
+
 ## 0.5.29
 
 - Map: a collapsed node no longer draws a fold ring. The 0.5.20 `map-collapsed-ring` (the grey or branch-colour outer ring) is gone, and so is the gold 2.25 px stroke from `.map-node.collapsed .map-pill`. On sibling task nodes the two stacked into a thick gold border plus a grey halo. The gold ⊕ fold handle already shows hidden children. The pill keeps its normal border (task width included), and selection and focus styling are unchanged.

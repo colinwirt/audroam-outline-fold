@@ -37,6 +37,16 @@ export interface IconPickerOptions {
    * Click or Enter sets the colour (`undefined` for None); the picker stays open.
    */
   colour?: { value?: string; palette?: string; onColour: (color: string | undefined) => void };
+  /**
+   * 0.5.30: picks keep the picker open (a toolbar toggle owns closing it). Esc then closes
+   * outright instead of stepping back to the quick row.
+   */
+  stayOpen?: boolean;
+  /**
+   * 0.5.30: the host's toggle button. A pointerdown on it is not an "outside" press, so the
+   * button's own click can close the picker instead of the press closing and the click reopening.
+   */
+  toggle?: Element | null;
   /** Open on the panel instead of the quick row (node menu, toolbar, Ctrl/Cmd+.). */
   expanded?: boolean;
   prefs?: IconPrefs;
@@ -95,9 +105,13 @@ function anchorRect(a: IconPickerOptions['anchor']): { left: number; top: number
   return { left: a.x, top: a.y, bottom: a.y };
 }
 
+/** 0.5.30: viewport widths at or under this get the bottom sheet; tablets keep the popover. */
+export const PICKER_SHEET_MAX_W = 600;
 function coarse(): boolean {
   try {
-    return matchMedia('(pointer: coarse)').matches;
+    // Phone only: a coarse pointer AND a narrow viewport. A tablet gets the compact popover.
+    // screen.width too: a phone without a viewport meta lays out at 980 css px.
+    return matchMedia('(pointer: coarse)').matches && Math.min(window.innerWidth, screen.width || Infinity) <= PICKER_SHEET_MAX_W;
   } catch {
     return false;
   }
@@ -110,7 +124,7 @@ export function openIconPicker(opts: IconPickerOptions): IconPickerHandle {
   const prefs = opts.prefs ?? createIconPrefs();
   const returnTo = document.activeElement as HTMLElement | null;
   const sheet = opts.sheet ?? coarse();
-  const cols = sheet ? 7 : 8;
+  const cols = 7;
   const root = h('div', `of-ep${sheet ? ' of-ep-sheet' : ''}`, { 'data-testid': 'of-ep', 'data-mode': opts.mode });
   const abort = new AbortController();
   const sig = abort.signal;
@@ -122,7 +136,7 @@ export function openIconPicker(opts: IconPickerOptions): IconPickerHandle {
   const pick = (it: IconItem, keepOpen: boolean) => {
     prefs.useRecent(it.insert);
     opts.onPick(it.insert, { keepOpen, item: it });
-    if (!keepOpen) handle.close(true);
+    if (!keepOpen && !opts.stayOpen) handle.close(true);
     else if (state === 'panel') renderGrid();
   };
 
@@ -514,7 +528,7 @@ export function openIconPicker(opts: IconPickerOptions): IconPickerHandle {
     if (e.key === 'Escape') {
       e.preventDefault();
       if (help) { help.remove(); help = null; return; }
-      if (state === 'panel') { state = 'row'; root.removeAttribute('role'); renderRow(); return; }
+      if (state === 'panel' && !opts.stayOpen) { state = 'row'; root.removeAttribute('role'); renderRow(); return; }
       handle.close(true);
       return;
     }
@@ -543,6 +557,7 @@ export function openIconPicker(opts: IconPickerOptions): IconPickerHandle {
     const t = e.target as Node;
     if (root.contains(t)) return;
     if (opts.anchor instanceof Element && opts.anchor.contains(t)) return; // the toggle button
+    if (opts.toggle && opts.toggle.contains(t)) return; // 0.5.30 host toggle
     handle.close(false);
   }, { capture: true, signal: sig });
 
@@ -595,12 +610,24 @@ export function createIconToolbarButton(opts: Omit<IconPickerOptions, 'anchor' |
   b.title = opts.label ?? 'Emoji and clipart';
   b.setAttribute('aria-label', opts.label ?? 'Emoji and clipart');
   b.setAttribute('aria-haspopup', 'dialog');
+  // 0.5.30: a toggle. Pressed while the picker is open; picks keep it open; press again or Esc closes.
+  b.setAttribute('aria-pressed', 'false');
+  b.setAttribute('aria-expanded', 'false');
   b.dataset.testid = 'of-ep-toolbar';
   b.setAttribute('data-testid', 'of-ep-toolbar');
+  let mine: IconPickerHandle | null = null;
+  const set = (on: boolean) => { b.setAttribute('aria-pressed', String(on)); b.setAttribute('aria-expanded', String(on)); };
   b.addEventListener('click', () => {
-    if (currentIconPicker()) { currentIconPicker()!.close(true); return; }
-    b.setAttribute('aria-expanded', 'true');
-    openIconPicker({ ...opts, anchor: b, expanded: true, onClose: () => { b.setAttribute('aria-expanded', 'false'); opts.onClose?.(); } });
+    if (mine && currentIconPicker() === mine) { mine.close(true); return; }
+    set(true);
+    mine = openIconPicker({
+      stayOpen: true,
+      ...opts,
+      anchor: b,
+      toggle: b,
+      expanded: true,
+      onClose: () => { mine = null; set(false); opts.onClose?.(); },
+    });
   });
   return b;
 }

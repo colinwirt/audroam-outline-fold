@@ -62,8 +62,8 @@ describe('K4: open tasks stand out', () => {
   it('CSS: 2 px stroke and normal-weight label for open / pending (0.2.41: no bold), 1 px and muted text for done', () => {
     const stroke = cssBlock('.map-node.task-open .map-pill,');
     expect(stroke).toContain('.map-node.task-pending .map-pill');
-    expect(stroke).toContain('stroke-width: 2;');
-    expect(cssBlock('.map-node.task-done .map-pill {')).toContain('stroke-width: 1;');
+    expect(stroke).toContain('stroke-width: var(--map-border-w-strong, 2px);'); // 0.5.30 device-pixel snapped
+    expect(cssBlock('.map-node.task-done .map-pill {')).toContain('stroke-width: var(--map-border-w, 1.5px);');
     const label = cssBlock('.map-node.task-open .map-label,');
     expect(label).toContain('.map-node.task-pending .map-label');
     expect(label).toContain('font-weight: 400;');

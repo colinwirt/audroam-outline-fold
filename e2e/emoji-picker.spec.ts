@@ -110,3 +110,73 @@ test('toolbar button opens the text panel', async ({ page }) => {
   await expect(page.locator(PANEL)).toBeVisible();
   await expect(page.locator('[data-testid="of-ep-search"]')).toHaveAttribute('placeholder', 'Search · text');
 });
+
+/** 0.5.30 (Colin): the toolbar Icon button is a toggle; the palette stays open across picks. */
+test('0.5.30 text toolbar Icon button toggles the palette with aria-pressed', async ({ page }) => {
+  await open(page);
+  const b = page.locator('[data-testid="of-ep-toolbar"]');
+  await expect(b).toHaveAttribute('aria-pressed', 'false');
+  await b.click();
+  await expect(page.locator(PANEL)).toBeVisible();
+  await expect(b).toHaveAttribute('aria-pressed', 'true');
+  await b.click();
+  await expect(page.locator(PANEL)).toHaveCount(0);
+  await expect(b).toHaveAttribute('aria-pressed', 'false');
+});
+
+test('0.5.30 map Icon toggle: stays open across picks; press again closes; Esc closes', async ({ page }) => {
+  await open(page, '?focus=water');
+  const b = page.locator('[data-testid="map-icon-toggle"]');
+  await b.click();
+  await expect(page.locator(PANEL)).toBeVisible();
+  // 0.5.30: package palette at desktop — the tile sizing proposed for Audroam's Style strip.
+  if (process.env.SHOT_STRIP) await page.locator(PANEL).screenshot({ path: process.env.SHOT_STRIP });
+  await expect(b).toHaveAttribute('aria-pressed', 'true');
+  await page.waitForTimeout(200);
+  for (let i = 0; i < 3; i++) {
+    await page.locator(`${PANEL} .of-ep-grid .of-ep-cell`).nth(i).click();
+    await expect(page.locator(PANEL)).toBeVisible();
+  }
+  expect(await text(page)).toMatch(/Water the seedlings/);
+  await b.click();
+  await expect(page.locator(PANEL)).toHaveCount(0);
+  await expect(b).toHaveAttribute('aria-pressed', 'false');
+  await b.click();
+  await expect(page.locator(PANEL)).toBeVisible();
+  await page.locator(`${PANEL} .of-ep-search`).press('Escape');
+  await expect(page.locator(PANEL)).toHaveCount(0);
+  await expect(b).toHaveAttribute('aria-pressed', 'false');
+});
+
+for (const vp of [{ name: 'tablet', width: 820, height: 1180, sheet: false }, { name: 'phone', width: 390, height: 844, sheet: true }]) {
+  test.describe(`0.5.30 icon palette at ${vp.name} width`, () => {
+    test.use({ viewport: { width: vp.width, height: vp.height }, hasTouch: true, isMobile: true });
+    test(`${vp.name}: ${vp.sheet ? 'full-width bottom sheet' : 'compact popover <= 320px, 40px tiles, anchored under the button'}`, async ({ page }) => {
+      await open(page, '?focus=water');
+      const b = page.locator('[data-testid="map-icon-toggle"]');
+      await b.tap();
+      const p = page.locator(PANEL);
+      await expect(p).toBeVisible();
+      await page.waitForTimeout(250);
+      const box = (await p.boundingBox())!;
+      const cell = (await p.locator('.of-ep-grid .of-ep-cell').first().boundingBox())!;
+      if (vp.sheet) {
+        expect(box.width).toBeGreaterThanOrEqual(vp.width - 2);
+        await expect(p).toHaveClass(/of-ep-sheet/);
+      } else {
+        expect(box.width).toBeLessThanOrEqual(320);
+        expect(box.width).toBeGreaterThan(260);
+        await expect(p).not.toHaveClass(/of-ep-sheet/);
+        expect(Math.round(cell.width)).toBe(40);
+        const bb = (await b.boundingBox())!;
+        expect(box.y).toBeGreaterThanOrEqual(bb.y + bb.height - 1);
+        const fs = await p.locator('.of-ep-grid .of-ep-cell').first().evaluate((e) => parseFloat(getComputedStyle(e).fontSize));
+        expect(fs).toBeGreaterThanOrEqual(24);
+        // No empty stretched area right of the last tile: grid content fills the popover width.
+        const row = (await p.locator('.of-ep-grid-row').first().boundingBox())!;
+        expect(box.x + box.width - (row.x + row.width)).toBeLessThanOrEqual(12);
+        if (process.env.SHOT_TABLET) await page.screenshot({ path: process.env.SHOT_TABLET });
+      }
+    });
+  });
+}

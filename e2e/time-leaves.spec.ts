@@ -29,8 +29,9 @@ const pillBox = (page: Page, id: string) =>
 
 const pillStyle = (page: Page, id: string) =>
   page.evaluate((s) => {
-    const cs = getComputedStyle(document.querySelector(`${s} .map-pill`)!);
-    return { fill: cs.fill, stroke: cs.stroke, width: cs.strokeWidth };
+    const el = document.querySelector(`${s} .map-pill`)!;
+    const cs = getComputedStyle(el);
+    return { fill: cs.fill, stroke: cs.stroke, width: `${Math.round(parseFloat(cs.strokeWidth) * (el as SVGGraphicsElement).getScreenCTM()!.a * devicePixelRatio)}dp` }; // 0.5.30: device px
   }, node(id));
 
 /** The connector that ends at a pill's left edge (centre line). */
@@ -123,7 +124,7 @@ test.describe('time leaves (desktop)', () => {
 
   test('transparent fill (0.5.25 wireframe), green border, hover brightens, 1 px green connector; focus keeps the ring', async ({ page }) => {
     await open(page);
-    expect(await pillStyle(page, 't1')).toEqual({ fill: 'rgba(0, 0, 0, 0)', stroke: 'rgb(46, 160, 67)', width: '1.25px' });
+    expect(await pillStyle(page, 't1')).toEqual({ fill: 'rgba(0, 0, 0, 0)', stroke: 'rgb(46, 160, 67)', width: '2dp' });
     const letter = await page.evaluate((s) => getComputedStyle(document.querySelector(`${s} .map-kind-letter`)!).fill, node('t1'));
     expect(letter).toBe('rgb(63, 185, 80)');
     expect(await edgeInto(page, 't1')).toEqual({ cls: 'map-edge edge-time', stroke: 'rgb(43, 138, 62)', width: '1px', opacity: '1' });
@@ -152,7 +153,7 @@ test.describe('time leaves (desktop)', () => {
 
   test('light theme: #2b8a3e border, transparent fill', async ({ page }) => {
     await open(page, '&theme=light');
-    expect(await pillStyle(page, 't1')).toEqual({ fill: 'rgba(0, 0, 0, 0)', stroke: 'rgb(43, 138, 62)', width: '1.25px' });
+    expect(await pillStyle(page, 't1')).toEqual({ fill: 'rgba(0, 0, 0, 0)', stroke: 'rgb(43, 138, 62)', width: '2dp' });
   });
 
   test('no fold handle and no width grip on a time leaf', async ({ page }) => {

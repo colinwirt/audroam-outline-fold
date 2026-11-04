@@ -46,6 +46,13 @@ document.getElementById('tb').appendChild(createIconToolbarButton({
   mode: 'text',
   onPick: (tok) => { ta.setRangeText(tok, ta.selectionStart, ta.selectionEnd, 'end'); },
 }));
+// 0.5.30: a host toolbar Icon toggle driving the map's node picker.
+const mapIcon = document.createElement('button');
+mapIcon.type = 'button'; mapIcon.textContent = 'Icon'; mapIcon.dataset.testid = 'map-icon-toggle';
+mapIcon.setAttribute('data-testid', 'map-icon-toggle'); mapIcon.setAttribute('aria-pressed', 'false');
+mapIcon.addEventListener('click', () => { map.toggleIconPicker(undefined, { toggle: mapIcon }); });
+document.getElementById('tb').appendChild(mapIcon);
+map.onIconPickerChange((on) => mapIcon.setAttribute('aria-pressed', String(on)));
 map.ensurePositions();
 map.bindGestures();
 map.bindKeyboard({});

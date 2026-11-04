@@ -14,7 +14,8 @@ const text = (page: Page) => page.evaluate(() => (window as any).__serialize() a
 const pillStroke = (page: Page, id: string) =>
   page.locator(`${node(id)} .map-pill`).evaluate((el) => {
     const cs = getComputedStyle(el);
-    return { stroke: cs.stroke, width: cs.strokeWidth, fill: cs.fill };
+    // 0.5.30: border width in device pixels on screen (snapped; zoom-independent).
+    return { stroke: cs.stroke, width: `${Math.round(parseFloat(cs.strokeWidth) * (el as SVGGraphicsElement).getScreenCTM()!.a * devicePixelRatio)}dp`, fill: cs.fill };
   });
 const cssVar = (page: Page, name: string) =>
   page.evaluate((n) => getComputedStyle(document.querySelector('#mapHost')!).getPropertyValue(n).trim(), name);
@@ -25,7 +26,7 @@ test('coloured pills: 2px token border, wash, accessible name; coloured cloud; s
   const red = await cssVar(page, '--node-ember');
   const s = await pillStroke(page, 'fl');
   expect(s.stroke).toBe(rgb(red));
-  expect(s.width).toBe('2px');
+  expect(s.width).toBe('3dp'); // 0.5.30: strong border, 3 device px at DPR 1
   // Uncoloured node keeps the default pill.
   expect((await pillStroke(page, 'loose')).stroke).not.toBe(rgb(red));
   await expect(page.locator(node('fl'))).toHaveAttribute('aria-label', /Flights, ember/);
@@ -66,10 +67,11 @@ test('node menu Colour row writes the layout entry (0.5.22); None clears; cloud 
   await expect(row.locator('[role="menuitemradio"]')).toHaveCount(10);
   await expect(hlRow.locator('[role="menuitemradio"]')).toHaveCount(5);
   await expect(row.locator('[data-item="color:none"]')).toHaveAttribute('aria-checked', 'true');
-  // Right arrow runs from the last Forest swatch into the Highlighter row, and back.
+  // Right arrow runs from the last Forest swatch into the next row (0.5.30: Neutral), and back.
+  const neutralRow = page.locator('.map-node-menu .map-node-menu-swatches[aria-label="Colour · Neutral"]');
   await row.locator('[data-item="color:stone"]').focus();
   await page.keyboard.press('ArrowRight');
-  await expect(hlRow.locator('[data-item="color:lemon"]')).toBeFocused();
+  await expect(neutralRow.locator('[data-item="color:white"]')).toBeFocused();
   await page.keyboard.press('ArrowLeft');
   await expect(row.locator('[data-item="color:stone"]')).toBeFocused();
   await row.locator('[data-item="color:slate"]').click();
@@ -96,8 +98,8 @@ test('icon picker Colours row sets the colour (EP-31)', async ({ page }) => {
   await open(page);
   await page.evaluate(() => (window as any).__map.openIconPicker('mu'));
   const row = page.getByTestId('of-ep-colours');
-  await expect(row.locator('[role="radio"]')).toHaveCount(24); // 0.5.23: + Audroam row
-  expect(await row.locator('.of-ep-colours-cap').allTextContents()).toEqual(['Forest', 'Highlighter', 'Audroam']);
+  await expect(row.locator('[role="radio"]')).toHaveCount(56); // 0.5.23: + Audroam row
+  expect(await row.locator('.of-ep-colours-cap').allTextContents()).toEqual(['Forest', 'Neutral', 'Bold', 'Pastel', 'Deep', 'Highlighter', 'Audroam']);
   await row.getByTestId('of-ep-swatch-fern').click();
   // 0.5.22: migrated from the inline tag to the layout entry; fill kept on recolour (0.5.20).
   expect(await text(page)).toContain('- Museums <id:mu>');
@@ -170,9 +172,12 @@ test('0.5.23 picker lists every palette row; Audroam roles render and round-trip
   expect((await pillStroke(page, 'ap')).stroke).toBe(rgb(await cssVar(page, '--node-audroam-peach')));
   await page.evaluate(() => (window as any).__map.openNodeMenu('ap'));
   const rows = page.locator('.map-node-menu-swatches');
-  await expect(rows).toHaveCount(3);
-  expect(await rows.evaluateAll((els) => els.map((e) => e.getAttribute('aria-label')))).toEqual(['Colour · Forest', 'Colour · Highlighter', 'Colour · Audroam']);
-  await expect(page.locator('.map-node-menu-swatches[aria-label="Colour · Audroam"] [role="menuitemradio"]')).toHaveCount(9);
+  await expect(rows).toHaveCount(7);
+  expect(await rows.evaluateAll((els) => els.map((e) => e.getAttribute('aria-label')))).toEqual(['Colour · Forest', 'Colour · Neutral', 'Colour · Bold', 'Colour · Pastel', 'Colour · Deep', 'Colour · Highlighter', 'Colour · Audroam']);
+  // 0.5.30: 6 rich Audroam colours lead, then the 9 soft tints.
+  const au = page.locator('.map-node-menu-swatches[aria-label="Colour · Audroam"] [role="menuitemradio"]');
+  await expect(au).toHaveCount(15);
+  expect(await au.evaluateAll((els) => els.slice(0, 6).map((e) => e.getAttribute('data-item')))).toEqual(['color:audroam-danger', 'color:audroam-success', 'color:audroam-focus', 'color:audroam-steel', 'color:audroam-primary', 'color:audroam-white']);
   if (process.env.PALETTE_SHOT) await page.screenshot({ path: process.env.PALETTE_SHOT });
   await page.locator('[data-item="color:audroam-sky"]').click();
   await expect(page.locator(node('ap'))).toHaveClass(/colour-audroam-sky/);
@@ -190,7 +195,7 @@ for (const theme of ['dark', 'light'] as const) {
     const lab = await page.locator(`${node('loose')} .map-label`).evaluate((el) => getComputedStyle(el).fill);
     expect(lab).toBe(rgb(ink));
     // Neutral thin border on an uncoloured node (time leaves: unit-tested, folded here).
-    expect((await pillStroke(page, 'loose')).width).toBe('1.25px');
+    expect((await pillStroke(page, 'loose')).width).toBe('2dp'); // 0.5.30: base border, 2 device px at DPR 1
     // Focus without a fill: thicker accent border and a halo.
     const f = await page.locator(`${node('fl')} .map-pill`).evaluate((el) => [getComputedStyle(el).strokeWidth, getComputedStyle(el).filter]);
     expect(f[1]).toContain('drop-shadow');

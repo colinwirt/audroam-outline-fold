@@ -35,8 +35,10 @@ test('a thumbnail fills the node width with an 8px inset', async ({ page }) => {
   const pill = (await page.locator(`${node('dusk')} .map-pill`).boundingBox())!;
   const img = (await page.locator(`${node('dusk')} image.map-thumb`).boundingBox())!;
   const k = pill.width / Number(await page.locator(`${node('dusk')} .map-pill`).getAttribute('width'));
-  expect(Math.abs(img.x - pill.x - 8 * k)).toBeLessThan(1.5);
-  expect(Math.abs(img.width - (pill.width - 16 * k))).toBeLessThan(1.5);
+  // 0.5.30: the rendered pill box includes the (thicker, snapped) border; allow half of it each side.
+  const sw = await page.locator(`${node('dusk')} .map-pill`).evaluate((e) => parseFloat(getComputedStyle(e).strokeWidth));
+  expect(Math.abs(img.x - pill.x - 8 * k)).toBeLessThan(1.5 + sw * k / 2);
+  expect(Math.abs(img.width - (pill.width - 16 * k))).toBeLessThan(1.5 + sw * k);
   expect(Math.abs(img.height - img.width * 120 / 160)).toBeLessThan(2);
 });
 

@@ -63,15 +63,15 @@ test.describe('P1 tweaks on touch', () => {
       ['compost', 'beans', 'butt'].map((id) => {
         const g = document.querySelector(`.map-node[data-id="${id}"]`)!;
         return [
-          getComputedStyle(g.querySelector('.map-pill')!).strokeWidth,
+          Math.round(parseFloat(getComputedStyle(g.querySelector('.map-pill')!).strokeWidth) * (g.querySelector('.map-pill') as SVGGraphicsElement).getScreenCTM()!.a * devicePixelRatio),
           getComputedStyle(g.querySelector('.map-label')!).fontWeight,
         ];
       }),
     );
-    expect(got).toEqual([
-      ['2px', '400'],
-      ['2px', '400'],
-      ['1px', '400'],
-    ]);
+    // 0.5.30: whole device pixels; open / in-progress stay heavier than done at any DPR.
+    expect(got.map((g) => g[1])).toEqual(['400', '400', '400']);
+    expect(got[0]![0]).toBe(got[1]![0]);
+    expect(got[0]![0] as number).toBeGreaterThan(got[2]![0] as number);
+    expect(got[2]![0] as number).toBeGreaterThanOrEqual(2);
   });
 });
