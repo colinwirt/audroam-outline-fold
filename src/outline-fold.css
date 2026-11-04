@@ -80,12 +80,14 @@
   --node-audroam-red-hl: #f67e7e;
   --node-audroam-lavender-hl: #d3d3ff;
   --node-audroam-grey-hl: #d1d1d1;
-  /* 0.5.23 code regions: a lighter slate tint on the dark pill (never the branch wash). */
-  --map-code-bg: #22404f;
-  --map-code-stroke: #33576a;
-  --map-code-ink: #e7ecf1;
-  --of-code-bg: #1c2b36;
-  --of-code-ink: #e7ecf1;
+  /* 0.5.24 code regions, Slack style: orange mono ink on a chip a touch lighter than the
+     pill, faint 1px border. Never the branch wash. */
+  --map-code-bg: #1a2f39;
+  --map-code-stroke: #2c4552;
+  --map-code-ink: #e8912d;
+  --of-code-bg: #1a2f39;
+  --of-code-stroke: #2c4552;
+  --of-code-ink: #e8912d;
 }
 
 /* Light theme tokens, opt-in: class="of-theme-light" on the map host or an
@@ -128,9 +130,10 @@
   --node-audroam-red: #d16b6b;
   --node-audroam-lavender: #8787a3;
   --node-audroam-grey: #888888;
-  /* Code on the (still dark) pills: a touch lighter than in dark. */
-  --map-code-bg: #2a4a5b;
-  --map-code-stroke: #3d6378;
+  /* 0.5.24 light: darker orange on a pale grey chip (5.11:1). */
+  --map-code-bg: #f2f4f6;
+  --map-code-stroke: #dde2e7;
+  --map-code-ink: #b5410f;
 }
 /* The Outline under the light theme (0.2.34): text, chip and link colours. Scoped to
    the Outline, because map labels sit on dark pills. */
@@ -142,8 +145,9 @@
   --of-stroke: #c9d3dd;
   --of-hop: #0b5cad;
   --of-hop-hover: #083f78;
-  --of-code-bg: #eef1f4;
-  --of-code-ink: #1d2a36;
+  --of-code-bg: #f2f4f6;
+  --of-code-stroke: #dde2e7;
+  --of-code-ink: #b5410f;
   color: var(--text, var(--of-text));
 }
 
@@ -340,12 +344,13 @@
   font-size: 0.92em;
   background: var(--of-code-bg);
   color: var(--of-code-ink);
-  padding: 0 3px;
-  border-radius: 4px;
+  border: 1px solid var(--of-code-stroke);
+  padding: 2px 4px;
+  border-radius: 3px;
 }
 /* 0.5.23 Map code regions: a token fill behind each code run (and one per fenced block).
    It is its own rect, not the pill, so the branch wash (colour-fill, is-hl) never reaches it. */
-.map-code-bg { fill: var(--map-code-bg); stroke: var(--map-code-stroke); stroke-width: 0.75; pointer-events: none; }
+.map-code-bg { fill: var(--map-code-bg); stroke: var(--map-code-stroke); stroke-width: 1; pointer-events: none; }
 .of-unlock {
   flex: none;
   margin-left: 0.35rem;
@@ -1223,7 +1228,7 @@ div.of-unlock.of-unlock-sheet { border-radius: 12px 12px 8px 8px; border-left-wi
 .map-node.is-au .map-pill { fill: var(--nh); }
 .map-node.is-au .map-label, .map-node.is-au text { fill: #0b1a21; }
 /* Code text keeps its own ink on its own background, whatever the branch fill. */
-.map-node .map-label tspan.map-code { fill: var(--map-code-ink); }
+.map-node.map-node .map-label tspan.map-code { fill: var(--map-code-ink); }
 .map-colour-ring { fill: none; stroke: none; pointer-events: none; }
 /* 0.5.20: a collapsed node with hidden kids gets a rounded ring in its branch colour (neutral
    when uncoloured); it goes away on expand. */

@@ -54,14 +54,14 @@ describe('0.5.23 code regions', () => {
     expect(tok(rootBlock, 'of-code-bg')).toBeTruthy();
     expect(css).toMatch(/\.of-theme-light \.of-outline,\s*\.of-outline\.of-theme-light \{[^}]*--of-code-bg:\s*#/);
     expect(css).toMatch(/\.map-code-bg \{[^}]*fill: var\(--map-code-bg\)/);
-    expect(css).toMatch(/\.of-code \{[^}]*background: var\(--of-code-bg\)[^}]*border-radius: 4px/);
+    expect(css).toMatch(/\.of-code \{[^}]*background: var\(--of-code-bg\)[^}]*border-radius: 3px/);
   });
 
   it('inline and fenced code paint a rounded rect behind the run, the same inside a fill branch', async () => {
     const { g } = await paint('- Use `npm t` now <id:a>\n- Wash <color:ember:fill> <id:b>\n  - Run `npm t` here <id:c>\n- Block<br>```<br>a = 1<br>b = 2<br>``` <id:d>\n');
     const ra = g('a')!.querySelector('rect.map-code-bg')!;
     expect(ra).toBeTruthy();
-    expect(ra.getAttribute('rx')).toBe('4');
+    expect(ra.getAttribute('rx')).toBe('3');
     expect(g('c')!.getAttribute('class')).toContain('colour-fill');
     const rc = g('c')!.querySelector('rect.map-code-bg')!;
     expect(rc).toBeTruthy();
@@ -73,7 +73,7 @@ describe('0.5.23 code regions', () => {
     expect(css).not.toMatch(/\.colour-fill[^{},]*\.map-code-bg/);
     // Code ink outranks the dark-ink label rule of a Highlighter/Audroam fill.
     expect(g('c')!.querySelector('tspan.map-code')).toBeTruthy();
-    expect(css).toContain('.map-node .map-label tspan.map-code { fill: var(--map-code-ink); }');
+    expect(css).toContain('.map-node.map-node .map-label tspan.map-code { fill: var(--map-code-ink); }');
     const rd = [...g('d')!.querySelectorAll('rect.map-code-bg')];
     expect(rd.length).toBe(1); // two fenced lines join into one block
     expect(Number(rd[0]!.getAttribute('height'))).toBeGreaterThan(20);

@@ -1284,9 +1284,9 @@ function codeRegionRects(
   fontPx: number,
 ): string {
   if (!richLines || !richLines.some((l) => l.some((r) => r.code && r.text))) return '';
-  const PAD = 3;
+  const PAD = 4;
   const rect = (x: number, y: number, w: number, h: number) =>
-    `<rect class="map-code-bg" x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${Math.max(0, w).toFixed(1)}" height="${h.toFixed(1)}" rx="4" fill="var(--map-code-bg)"/>`;
+    `<rect class="map-code-bg" x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${Math.max(0, w).toFixed(1)}" height="${h.toFixed(1)}" rx="3" fill="var(--map-code-bg)"/>`;
   const allCode = richLines.map((l) => l.some((r) => r.text) && l.every((r) => r.code || !r.text.trim()));
   let out = '';
   for (let i = 0; i < richLines.length; i++) {

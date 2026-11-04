@@ -145,8 +145,19 @@ for (const theme of ['dark', 'light'] as const) {
     const ink = await page.locator(`${node('hl')} tspan.map-code`).evaluate((el) => getComputedStyle(el).fill);
     expect(ink).toBe(rgb(await cssVar(page, '--map-code-ink')));
     // Outline code: same token family.
-    const oc = await page.locator('#outline code.of-code').first().evaluate((el) => getComputedStyle(el).borderRadius);
-    expect(oc).toBe('4px');
+    const oc = await page.locator('#outline code.of-code').first().evaluate((el) => {
+      const c = getComputedStyle(el); return [c.borderRadius, c.borderTopWidth, c.paddingTop, c.paddingLeft, c.color];
+    });
+    expect(oc.slice(0, 4)).toEqual(['3px', '1px', '2px', '4px']);
+    // 0.5.24 Slack style: orange ink, same chip and ink in every fill (incl. Audroam solid).
+    const inkHex = theme === 'dark' ? '#e8912d' : '#b5410f';
+    expect(oc[4]).toBe(rgb(inkHex));
+    for (const id of ['b', 'wc', 'hl', 'ag']) {
+      expect(await codeFill(page, id)).toBe(plain);
+      expect(await page.locator(`${node(id)} tspan.map-code`).first().evaluate((el) => getComputedStyle(el).fill)).toBe(rgb(inkHex));
+    }
+    const ocs = await page.locator('#outline code.of-code').evaluateAll((els) => els.map((e) => getComputedStyle(e).color + getComputedStyle(e).backgroundColor));
+    expect(new Set(ocs).size).toBe(1);
     const shot = theme === 'dark' ? process.env.CODE_SHOT_DARK : process.env.CODE_SHOT_LIGHT;
     await page.locator('#panel').screenshot({ path: shot || `test-results/code-region-${theme}.png` });
   });

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.5.24
+
+- Code regions styled like Slack inline code, Map and Outline alike. Dark: ink `#e8912d` on chip `#1a2f39` (pill `#0c222c`), 1px border `#2c4552`. Light: ink `#b5410f` on pale grey chip `#f2f4f6`, border `#dde2e7`. Radius 3px, padding 2px/4px (Map rect: 4px side pad, rx 3, stroke 1). Fenced blocks get the same chip in block form. Chip and ink ignore the branch fill, including Highlighter and Audroam solid fills.
+
 ## 0.5.23
 
 - Map code regions: inline `code` and fenced ``` blocks paint a theme-token background rect (`--map-code-bg`/`--map-code-stroke`, rx 4, 3px pad) behind monospace runs; consecutive fenced lines share one block rect. Not washed by fills; code ink stays light inside Highlighter/Audroam fills. Outline `.of-code` gets the matching `--of-code-bg`/`--of-code-ink`, padding and 4px radius.
