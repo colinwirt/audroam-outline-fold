@@ -399,6 +399,12 @@ export interface MapViewOptions {
    */
   onRegionWidth?: (scopedId: string, w: number | null, wAuto?: string | null) => void;
   /**
+   * 0.5.28: a style change (icon, colour, fill, cloud) on a node inside an unlocked region.
+   * The map has written it onto that child as inline tags (never the plaintext layout block,
+   * which would leak sealed content). The host marks the region dirty so Save & re-seal keeps it.
+   */
+  onRegionStyle?: (scopedId: string) => void;
+  /**
    * An inner branch in a region was folded or expanded. The store already holds the new state.
    * The host copies it onto the child document so a sealed submap writes `(+)` on the next re-seal.
    */
@@ -678,6 +684,8 @@ export interface MapViewHandle {
   setDetails: (on: boolean) => void;
   /** 0.5.20: Fill (wash) on/off for a coloured node; false when the node has no own colour. */
   setNodeColourFill: (id: string, on: boolean) => boolean;
+  /** 0.5.28: add (`'default'` or a colour) or remove (undefined) a node's cloud; scoped ids style a zone node inline. */
+  setNodeCloud: (id: string, color: string | undefined) => void;
   /** 0.5.22: set or clear a node colour (written to its layout entry). */
   setNodeColour: (id: string, color: string | undefined) => void;
   /** 0.5.22: set or clear a node icon (written to its layout entry). */
@@ -3087,7 +3095,47 @@ export function createMapView(
     void copyNode(key, entry.key === 'copy-jump' ? 'jump' : 'link');
   }
 
+  /**
+   * 0.5.28: a node inside an unlocked region (scoped id `region:node`), from the region host's
+   * child doc. Null for a main-doc key, a region root, or a locked region.
+   */
+  function zoneNode(key: string): OutlineNode | null {
+    const { region, id } = parseScopedId(key);
+    if (!region || !id) return null;
+    const h = regionHosts().find((x) => x.id === region);
+    if (!h || !h.doc) return null;
+    return findNode(h.doc.nodes, id);
+  }
+  /**
+   * 0.5.28: style write on a zone node. Inline only: drop any layout copy so the node
+   * serialises `<color:…>`, `<cloud>` and its leading icon in the sealed body, never by id in
+   * the plaintext layout block. Returns false when nothing changed (or the zone is locked).
+   */
+  function zoneStyle(key: string, apply: (n: OutlineNode) => boolean, msg: string): boolean {
+    const n = zoneNode(key);
+    if (!n || !apply(n)) return false;
+    if (n.layout) {
+      delete n.layout.color; delete n.layout.colorFill; delete n.layout.colorKey; delete n.layout.icon;
+      if (!Object.keys(n.layout).length) delete n.layout;
+    }
+    delete n.inlineColor;
+    delete n.inlineIcon;
+    if (n.tagSpellings?.color) delete n.tagSpellings.color;
+    opts.onRegionStyle?.(key);
+    paint();
+    announce(msg);
+    return true;
+  }
+
   function setNodeIcon(key: string, token: string | undefined): void {
+    if (zoneNode(key)) {
+      zoneStyle(key, (z) => {
+        if ((z.icon ?? undefined) === token) return false;
+        if (token) z.icon = token; else delete z.icon;
+        return true;
+      }, token ? `Icon set: ${iconLabel(token)}` : 'Icon removed');
+      return;
+    }
     const n = nodeByKey(key);
     if (!n || (n.icon ?? undefined) === token) return;
     if (token) n.icon = token;
@@ -3134,6 +3182,14 @@ export function createMapView(
 
   /** 0.5.18 EP-39: add (neutral default) or remove the cloud owned by a node. */
   function setNodeCloud(key: string, color: string | undefined): void {
+    if (zoneNode(key)) {
+      zoneStyle(key, (z) => {
+        if ((z.cloud ?? undefined) === color) return false;
+        if (color) z.cloud = color; else delete z.cloud;
+        return true;
+      }, color ? 'Cloud added' : 'Cloud removed');
+      return;
+    }
     const n = nodeByKey(key);
     if (!n || (n.cloud ?? undefined) === color) return;
     if (color) n.cloud = color;
@@ -3145,6 +3201,15 @@ export function createMapView(
 
   /** 0.5.19 EP-31: set or clear one node's colour token (never hex). */
   function setNodeColour(key: string, color: string | undefined): void {
+    if (zoneNode(key)) {
+      zoneStyle(key, (z) => {
+        if ((z.color ?? undefined) === color) return false;
+        if (color && resolveColour(color)) z.color = resolveColour(color)!;
+        else { delete z.color; delete z.colorFill; }
+        return true;
+      }, color ? `Colour: ${colourLabel(color, paletteName)}` : 'Colour removed');
+      return;
+    }
     const n = nodeByKey(key);
     if (!n || (n.color ?? undefined) === color) return;
     if (color && resolveColour(color)) n.color = resolveColour(color)!;
@@ -3157,6 +3222,7 @@ export function createMapView(
 
   /** 0.5.20: Fill toggle for a node's own colour. */
   function setNodeColourFill(key: string, on: boolean): boolean {
+    if (zoneNode(key)) return zoneStyle(key, (z) => setColourFill(z, on), on ? 'Fill on' : 'Fill off');
     const n = nodeByKey(key);
     if (!n || !setColourFill(n, on)) return false;
     persistStyle(key, n);
@@ -3281,8 +3347,11 @@ export function createMapView(
   /** 0.5.18 EP-1 / EP-12: the picker for one node, opened on the panel (Map tab first). */
   function openNodeIconPicker(key: string): boolean {
     if (!nodeIconsOn || typeof document === 'undefined') return false;
-    const pill = nodeEl(key)?.querySelector('.map-pill') ?? nodeEl(key);
-    if (!pill || !nodeByKey(key)) return false;
+    const zn = zoneNode(key);
+    const zel = zn && typeof document !== 'undefined' ? document.getElementById(regionDomId(key)) : null;
+    const pill = zn ? (zel?.querySelector('.map-region-body') ?? zel) : (nodeEl(key)?.querySelector('.map-pill') ?? nodeEl(key));
+    const styleOf = () => zoneNode(key) ?? nodeByKey(key);
+    if (!pill || !styleOf()) return false;
     closeMenus();
     void loadEmojiData();
     openIconPicker({
@@ -3290,8 +3359,8 @@ export function createMapView(
       mode: 'node',
       expanded: true,
       onPick: (token) => setNodeIcon(key, token),
-      onRemove: nodeByKey(key)?.icon ? () => setNodeIcon(key, undefined) : undefined,
-      colour: nodeColoursOn ? { value: nodeByKey(key)?.color, palette: paletteName, onColour: (c) => setNodeColour(key, c) } : undefined,
+      onRemove: styleOf()?.icon ? () => setNodeIcon(key, undefined) : undefined,
+      colour: nodeColoursOn ? { value: styleOf()?.color, palette: paletteName, onColour: (c) => setNodeColour(key, c) } : undefined,
       onClose: () => focusMapForKeys(),
     });
     return true;
@@ -4439,6 +4508,31 @@ export function createMapView(
         const inner = innerRegionEdges(r.boxes)
           .map(([x1, y1, x2, y2]) => { const mx = (x1 + x2) / 2; return `<path class="map-region-edge map-region-inner-edge" d="M${x1} ${y1} C${mx} ${y1} ${mx} ${y2} ${x2} ${y2}" fill="none"/>`; })
           .join('');
+        // 0.5.28: user clouds on zone nodes (inline <cloud> in the sealed body), over the visible
+        // boxes of the node's subtree in this region, outer first, under the pills.
+        const zoneClouds: { svg: string; depth: number }[] = [];
+        if (r.host.doc && expandedCloud) {
+          const keys = new Map(r.boxes.filter((b) => b.localId).map((b) => [b.localId!, b]));
+          const walkZ = (list: OutlineNode[] | undefined, depth: number) => {
+            for (const n of list ?? []) {
+              let d = depth;
+              if (n.cloud && n.id && keys.has(n.id)) {
+                const ids = new Set<string>();
+                const walkI = (m: OutlineNode) => { if (m.id) ids.add(m.id); m.children?.forEach(walkI); };
+                walkI(n);
+                const pts = cloudHull(
+                  [...keys.entries()].filter(([id]) => ids.has(id)).map(([, b]) => ({ x: b.x, y: b.y, w: b.w, h: b.h })),
+                  cloudPad(depth),
+                );
+                if (pts) zoneClouds.push({ svg: cloudSvg({ rootId: scopeId(r.host.id, n.id), color: resolveColour(n.cloud) ?? n.cloud, depth }, pts), depth });
+                d = depth + 1;
+              }
+              walkZ(n.children, d);
+            }
+          };
+          walkZ(r.host.doc.nodes, 0);
+        }
+        const zoneCloudSvg = zoneClouds.sort((a, b) => a.depth - b.depth).map((c) => c.svg).join('');
         const pills = r.boxes
           .map((b) => {
             const folded = b.key === r.host.id;
@@ -4485,10 +4579,13 @@ export function createMapView(
             // Caption column, as a main pill's data-text-w: the measured width minus the fold slot and the task lead.
             const textW = Math.max(1, Math.round(b.w - slot - (task ? TASK_LEAD : 0)));
             const grip = folded ? '' : widthGripSvg(boxRight, b.y, b.h, textW, regionFocus === b.key || widthHotKey === b.key);
-            return `<g class="map-region-node${folded ? ' map-region-pill' : ''}${locked && r.host.kind === 'sealed' ? ' map-region-locked' : ''}${b.collapsed ? ' collapsed' : ''}" id="${esc(regionDomId(b.key))}" role="treeitem" aria-selected="false"${b.foldable ? ` aria-expanded="${b.collapsed ? 'false' : 'true'}"` : ''} aria-label="${esc(aria)}" data-scoped-id="${esc(b.key)}" data-region-id="${esc(r.host.id)}" data-text-w="${textW}"><rect class="map-region-body" x="${b.x}" y="${b.y}" width="${Math.max(1, b.w - slot)}" height="${b.h}" rx="${Math.min(14, b.h / 2)}"/>${textSvg}${chrome}${kidChip}${grip}</g>`;
+            // 0.5.28: a zone node's own colour paints its body like a main pill (seal chrome keeps its look).
+            const zc = node && !folded ? resolveColour(node.color) : null;
+            const zcls = zc ? ` has-colour colour-${zc}${node!.colorFill ? ` colour-fill${isHighlighter(zc) ? ' is-hl' : isAudroam(zc) ? ' is-au' : ''}` : ''}` : '';
+            return `<g class="map-region-node${zcls}${folded ? ' map-region-pill' : ''}${locked && r.host.kind === 'sealed' ? ' map-region-locked' : ''}${b.collapsed ? ' collapsed' : ''}" id="${esc(regionDomId(b.key))}" role="treeitem" aria-selected="false"${b.foldable ? ` aria-expanded="${b.collapsed ? 'false' : 'true'}"` : ''} aria-label="${esc(aria)}" data-scoped-id="${esc(b.key)}" data-region-id="${esc(r.host.id)}" data-text-w="${textW}"><rect class="map-region-body" x="${b.x}" y="${b.y}" width="${Math.max(1, b.w - slot)}" height="${b.h}" rx="${Math.min(14, b.h / 2)}"/>${textSvg}${chrome}${kidChip}${grip}</g>`;
           })
           .join('');
-        return cloud + edges + inner + pills + cloudFold + tools;
+        return cloud + zoneCloudSvg + edges + inner + pills + cloudFold + tools;
       })
       .join('');
   }
@@ -7219,6 +7316,7 @@ export function createMapView(
     setWholeMapLevel,
     setDetails,
     setNodeColourFill,
+    setNodeCloud: (id: string, c: string | undefined) => setNodeCloud(id, c),
     setNodeColour: (id: string, c: string | undefined) => setNodeColour(id, c),
     setNodeIcon: (id: string, t: string | undefined) => setNodeIcon(id, t),
     addImage,

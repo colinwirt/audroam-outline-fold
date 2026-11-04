@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.5.28
+
+- Style inside an unlocked secure zone. `setNodeIcon`, `setNodeColour`, `setNodeColourFill`, `setNodeCloud` (newly on the API) and `openIconPicker` take a scoped id (`region:node`). Root cause: they looked the node up with `nodeByKey`, which searches only the main doc, so a zone node was a silent no-op.
+- A zone node's style is written **inline** on the child in the zone doc (`<color:…>`, `<cloud>`, a leading icon), so it lands in the sealed body. It is never written to the plaintext layout block (the 0.5.22 by-id store), which would leak sealed content. New `onRegionStyle(scopedId)`; `outlineDoc.mapOptions()` wires it to mark the region dirty so Save & re-seal keeps it. A locked zone is a no-op.
+- Zone pills draw their own colour (`has-colour colour-*`, fill, highlighter) and user clouds inside the open zone. The seal chrome keeps its look.
+- Width check (no change): a zone node's width goes on the child's own layout, inside the sealed body, not in the plaintext layout block.
+
 ## 0.5.27
 
 - e2e only, no source change. Three desktop specs still asserted the old behaviour:

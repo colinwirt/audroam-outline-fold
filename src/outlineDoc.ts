@@ -145,6 +145,7 @@ export interface OutlineDocHandle {
     onRegionMore: (region: RegionId, rect: DOMRect) => void;
     onRegionTaskToggle: (id: string) => boolean;
     onRegionWidth: (id: string, w: number | null, wAuto?: string | null) => void;
+    onRegionStyle: (id: string) => void;
     onRegionFoldSync: (region: string) => void;
     onMainTaskToggle: (id: string, ref?: MapNodeRef | number) => { from: TaskState; to: TaskState } | null;
   };
@@ -597,6 +598,8 @@ export function createOutlineDoc(o: OutlineDocOptions): OutlineDocHandle {
           }
           sessions.markChanged(handle.scoped(id).region);
         },
+        // 0.5.28: zone style is inline in the child doc already; mark the region for re-seal.
+        onRegionStyle: (id) => { if (handle.regionNode(id)) sessions.markChanged(handle.scoped(id).region); },
         onRegionFoldSync: (region) => writeInnerFold(region),
         onMainTaskToggle: (id, ref) => handle.toggleTask(id, ref),
       };

@@ -1248,6 +1248,51 @@ div.of-unlock.of-unlock-sheet { border-radius: 12px 12px 8px 8px; border-left-wi
    when uncoloured); it goes away on expand. */
 .map-collapsed-ring { fill: none; stroke: var(--of-collapsed-ring, var(--muted, #8a8d96)); stroke-width: 1.25; stroke-opacity: 0.85; pointer-events: none; }
 .map-node.has-colour .map-collapsed-ring { stroke: var(--nc); }
+/* 0.5.28: a zone node's own colour (inline in the sealed body) paints its body like a main pill. */
+.map-region-node.has-colour { --nc: var(--node-grey); }
+.map-region-node.colour-moss { --nc: var(--node-moss); }
+.map-region-node.colour-fern { --nc: var(--node-fern); }
+.map-region-node.colour-pine { --nc: var(--node-pine); }
+.map-region-node.colour-lichen { --nc: var(--node-lichen); }
+.map-region-node.colour-bark { --nc: var(--node-bark); }
+.map-region-node.colour-creek { --nc: var(--node-creek); }
+.map-region-node.colour-ember { --nc: var(--node-ember); }
+.map-region-node.colour-slate { --nc: var(--node-slate); }
+.map-region-node.colour-stone { --nc: var(--node-stone); }
+.map-region-node.colour-lemon { --nc: var(--node-lemon); }
+.map-region-node.colour-lime { --nc: var(--node-lime); }
+.map-region-node.colour-flamingo { --nc: var(--node-flamingo); }
+.map-region-node.colour-tangerine { --nc: var(--node-tangerine); }
+.map-region-node.colour-aqua { --nc: var(--node-aqua); }
+.map-region-node.colour-audroam-green { --nc: var(--node-audroam-green); }
+.map-region-node.colour-audroam-salmon { --nc: var(--node-audroam-salmon); }
+.map-region-node.colour-audroam-peach { --nc: var(--node-audroam-peach); }
+.map-region-node.colour-audroam-sky { --nc: var(--node-audroam-sky); }
+.map-region-node.colour-audroam-aqua { --nc: var(--node-audroam-aqua); }
+.map-region-node.colour-audroam-lemon { --nc: var(--node-audroam-lemon); }
+.map-region-node.colour-audroam-red { --nc: var(--node-audroam-red); }
+.map-region-node.colour-audroam-lavender { --nc: var(--node-audroam-lavender); }
+.map-region-node.colour-audroam-grey { --nc: var(--node-audroam-grey); }
+.map-region-node.colour-lemon { --nh: var(--node-lemon-hl); }
+.map-region-node.colour-lime { --nh: var(--node-lime-hl); }
+.map-region-node.colour-flamingo { --nh: var(--node-flamingo-hl); }
+.map-region-node.colour-tangerine { --nh: var(--node-tangerine-hl); }
+.map-region-node.colour-aqua { --nh: var(--node-aqua-hl); }
+.map-region-node.colour-audroam-green { --nh: var(--node-audroam-green-hl); }
+.map-region-node.colour-audroam-salmon { --nh: var(--node-audroam-salmon-hl); }
+.map-region-node.colour-audroam-peach { --nh: var(--node-audroam-peach-hl); }
+.map-region-node.colour-audroam-sky { --nh: var(--node-audroam-sky-hl); }
+.map-region-node.colour-audroam-aqua { --nh: var(--node-audroam-aqua-hl); }
+.map-region-node.colour-audroam-lemon { --nh: var(--node-audroam-lemon-hl); }
+.map-region-node.colour-audroam-red { --nh: var(--node-audroam-red-hl); }
+.map-region-node.colour-audroam-lavender { --nh: var(--node-audroam-lavender-hl); }
+.map-region-node.colour-audroam-grey { --nh: var(--node-audroam-grey-hl); }
+.map-svg .map-region-node.has-colour > rect.map-region-body { stroke: var(--nc); stroke-width: 2; }
+.map-svg .map-region-node.colour-fill > rect.map-region-body { fill: color-mix(in srgb, var(--nc) 16%, var(--map-bg)); }
+.map-svg .map-region-node.is-hl > rect.map-region-body { fill: color-mix(in srgb, var(--nh) 92%, var(--map-bg)); }
+.map-svg .map-region-node.is-au > rect.map-region-body { fill: var(--nh); }
+.map-svg .map-region-node.is-hl text, .map-svg .map-region-node.is-au text { fill: #0b1a21; }
+.map-region-node.has-colour.is-focused > rect.map-region-body { stroke: var(--map-focus, #c9a227); stroke-width: 2.4; }
 .map-node.has-colour.is-focused .map-pill,
 .map-node.has-colour:focus-visible .map-pill { stroke: var(--nc); stroke-width: 2; }
 .map-node.has-colour.is-focused .map-colour-ring,
