@@ -121,9 +121,9 @@ test.describe('time leaves (desktop)', () => {
     expect(check.y - (s1.y + s1.h)).toBeCloseTo(14, 1);
   });
 
-  test('green fill and border, hover brightens, 1 px green connector; focus keeps the ring', async ({ page }) => {
+  test('transparent fill (0.5.25 wireframe), green border, hover brightens, 1 px green connector; focus keeps the ring', async ({ page }) => {
     await open(page);
-    expect(await pillStyle(page, 't1')).toEqual({ fill: 'rgb(14, 42, 34)', stroke: 'rgb(46, 160, 67)', width: '1.25px' });
+    expect(await pillStyle(page, 't1')).toEqual({ fill: 'rgba(0, 0, 0, 0)', stroke: 'rgb(46, 160, 67)', width: '1.25px' });
     const letter = await page.evaluate((s) => getComputedStyle(document.querySelector(`${s} .map-kind-letter`)!).fill, node('t1'));
     expect(letter).toBe('rgb(63, 185, 80)');
     expect(await edgeInto(page, 't1')).toEqual({ cls: 'map-edge edge-time', stroke: 'rgb(43, 138, 62)', width: '1px', opacity: '1' });
@@ -132,9 +132,9 @@ test.describe('time leaves (desktop)', () => {
     const b = (await page.locator(`${node('s2')} .map-pill`).boundingBox())!;
     await page.mouse.move(b.x + 4, b.y + b.height / 2);
     await expect.poll(async () => (await pillStyle(page, 's2')).stroke).toBe('rgb(63, 185, 80)');
-    // Focus ring.
+    // Focus: the 0.5.25 wireframe accent border (--map-accent #9ecbff).
     await page.evaluate(() => (window as any).__setFocus('t1'));
-    await expect.poll(async () => (await pillStyle(page, 't1')).stroke).toBe('rgb(108, 182, 255)');
+    await expect.poll(async () => (await pillStyle(page, 't1')).stroke).toBe('rgb(158, 203, 255)');
   });
 
   test('stays green under a branch colour rule', async ({ page }) => {
@@ -150,9 +150,9 @@ test.describe('time leaves (desktop)', () => {
     expect((await edgeInto(page, 't1'))!.stroke).toBe('rgb(43, 138, 62)');
   });
 
-  test('light theme: #2b8a3e border, same dark fill', async ({ page }) => {
+  test('light theme: #2b8a3e border, transparent fill', async ({ page }) => {
     await open(page, '&theme=light');
-    expect(await pillStyle(page, 't1')).toEqual({ fill: 'rgb(14, 42, 34)', stroke: 'rgb(43, 138, 62)', width: '1.25px' });
+    expect(await pillStyle(page, 't1')).toEqual({ fill: 'rgba(0, 0, 0, 0)', stroke: 'rgb(43, 138, 62)', width: '1.25px' });
   });
 
   test('no fold handle and no width grip on a time leaf', async ({ page }) => {

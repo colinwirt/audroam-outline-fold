@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.5.27
+
+- e2e only, no source change. Three desktop specs still asserted the old behaviour:
+  - `emoji-picker` (since 0.5.22): picking an icon now writes it to the node's layout entry (`water:\n  icon: …`), not into the title line.
+  - `map-p1-tweaks` K4 (since 0.5.25): plain pills use the 1.25px wireframe border.
+  - `time-leaves` (since 0.5.25): transparent fill, and focus uses the `--map-accent` border (#9ecbff).
+- react-live specs need `VITE_BASE=/audroam-outline-fold/react-live/ npm run demo:react:build && npm run build:site:e2e`. A plain `build:site` copies a react-live build with base `/` and its assets 404. Full e2e (chromium, touch-pixel, touch-iphone): 344 passed.
+
 ## 0.5.26
 
 - Secure zones: the `:` emoji/clipart typeahead now runs in the zone editor (it was only in the main editor).

@@ -54,10 +54,13 @@ test('node menu Icon… opens the 320px panel on the Map tab; pick sets :name:; 
   await page.screenshot({ path: 'test-results/emoji-panel.png' });
   await page.locator('[data-testid="of-ep-cell-compass"]').first().click();
   await expect(panel).toHaveCount(0);
-  expect(await text(page)).toContain(':compass: Water the seedlings');
+  // 0.5.22: the icon is stored per id in the layout block; the title line stays as typed.
+  expect(await text(page)).toContain('- Water the seedlings <id:water>');
+  expect(await text(page)).toMatch(/\n\s*water:\n\s*icon: :compass:/);
   await rightClickPill(page, 'water');
   await page.locator('.map-node-menu [role="menuitem"]', { hasText: 'Remove icon' }).click();
-  expect(await text(page)).toContain('- Water the seedlings');
+  expect(await text(page)).toContain('- Water the seedlings <id:water>');
+  expect(await text(page)).not.toContain('icon: :compass:');
 });
 
 test('keyboard: Ctrl+. opens, typing searches, arrows move, Enter picks, Esc steps back then closes', async ({ page }) => {
@@ -70,7 +73,8 @@ test('keyboard: Ctrl+. opens, typing searches, arrows move, Enter picks, Esc ste
   await page.keyboard.press('ArrowDown');
   await expect(page.locator('[data-testid="of-ep-name"]')).toContainText(/pizza/i);
   await page.keyboard.press('Enter');
-  expect(await text(page)).toContain('🍕 Water the seedlings');
+  expect(await text(page)).toMatch(/\n\s*water:\n\s*icon: 🍕/);
+  await expect(page.locator('.map-node[data-id="water"]')).toContainText('🍕');
   // Esc: panel → quick row → closed.
   await page.keyboard.press('Control+.');
   await expect(page.locator(PANEL)).toBeVisible();

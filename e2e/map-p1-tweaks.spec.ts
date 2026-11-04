@@ -61,8 +61,8 @@ test.describe('K4: the open tasks stand out', () => {
     expect(butt.weight).toBe('400');
     expect(butt.fill).toBe('rgb(139, 155, 171)');
     expect(butt.hit).toBe('true');
-    // Plain pills keep 1.5 px.
-    expect((await paint(page, 'three')).stroke).toBe('1.5px');
+    // Plain pills: the 0.5.25 wireframe border, 1.25 px.
+    expect((await paint(page, 'three')).stroke).toBe('1.25px');
     // Semibold text stays inside its pill (measured at 600).
     for (const p of [compost, beans]) expect(p.textRight).toBeLessThan(p.pillRight - 4);
   });
