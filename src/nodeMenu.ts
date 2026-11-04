@@ -206,7 +206,7 @@ export function copyText(text: string): Promise<boolean> {
 
 // ── Menu view (M2 groups, M8 keys, M9 ARIA) ─────────────────────────────────
 
-export type NodeMenuGroup = 'Edit' | 'View' | 'Open';
+export type NodeMenuGroup = 'Create' | 'Edit' | 'View' | 'Open';
 
 export interface NodeMenuEntry {
   /** `levels`, `copy-jump`, `copy-link`. */
@@ -256,7 +256,7 @@ export function renderNodeMenu(opts: { title: string; entries: NodeMenuEntry[]; 
   el.style.position = 'absolute';
   el.style.zIndex = '7';
   const items: HTMLElement[] = [];
-  const groups: NodeMenuGroup[] = ['Edit', 'View', 'Open'];
+  const groups: NodeMenuGroup[] = ['Create', 'Edit', 'View', 'Open'];
   let first = true;
   for (const g of groups) {
     const list = opts.entries.filter((e) => e.group === g);

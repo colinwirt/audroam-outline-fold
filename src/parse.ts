@@ -72,6 +72,8 @@ const ENC_SPAN = ENC_RE.span;
 
 const ID_TRAILING = ID_RE.trailing;
 /** 0.5.18 (Q16): `<cloud>` / `<cloud:name>` at the line end. */
+/** 0.5.21: `<img:key>` thumbnail asset key at the line end. */
+const IMG_TRAILING = /\s*<img:([A-Za-z0-9][A-Za-z0-9_-]*)>$/i;
 const CLOUD_TRAILING = /\s*<cloud(?::([a-z][a-z0-9-]*))?>$/i;
 /** 0.5.19 (Q12): `<color:name>` / `<colour:name>` with a palette name (never hex). */
 const COLOR_TRAILING = new RegExp(`\\s*<\\s*colou?r\\s*:\\s*(${[...NODE_COLOURS, ...Object.keys(COLOUR_ALIASES)].join('|')})\\s*(?::\\s*(fill)\\s*)?>\\s*$`, 'i');
@@ -274,6 +276,7 @@ function parseTitleAndMeta(
   task?: TaskState;
   icon?: string;
   cloud?: string;
+  img?: string;
   color?: string;
   colorFill?: true;
   action?: string;
@@ -324,6 +327,7 @@ function parseTitleAndMeta(
   // 0.5.18 (EP-1): one leading icon after the task marker, before the title.
   let icon: string | undefined;
   let cloud: string | undefined;
+  let img: string | undefined;
   let color: string | undefined;
   let colorFill: true | undefined;
   {
@@ -548,6 +552,14 @@ function parseTitleAndMeta(
       continue;
     }
 
+    m = rest.match(IMG_TRAILING);
+    if (m) {
+      img = m[1];
+      rest = rest.slice(0, rest.length - m[0].length).trimEnd();
+      progressed = true;
+      continue;
+    }
+
     m = rest.match(CLOUD_TRAILING);
     if (m) {
       cloud = (m[1] ?? 'default').toLowerCase();
@@ -626,6 +638,7 @@ function parseTitleAndMeta(
     task,
     icon,
     cloud,
+    img,
     color,
     colorFill,
     action,
@@ -733,6 +746,7 @@ export function parse(text: string, opts?: ParseOptions): OutlineFoldDoc {
     if (meta.task) node.task = meta.task;
     if (meta.icon) node.icon = meta.icon;
     if (meta.cloud) node.cloud = meta.cloud;
+    if (meta.img) node.img = meta.img;
     if (meta.color) node.color = meta.color;
     if (meta.color && meta.colorFill) node.colorFill = true;
     if (meta.action) node.action = meta.action;
@@ -818,6 +832,7 @@ export function parse(text: string, opts?: ParseOptions): OutlineFoldDoc {
     fold: { mode, ids: [...ids] },
     ...(peeled.keys.length ? { keys: peeled.keys } : {}),
     ...(peeled.keyring.length ? { keyring: peeled.keyring } : {}),
+    ...(peeled.assets.length ? { assets: peeled.assets } : {}),
     ...(orphans ? { sealedOrphans: orphans } : {}),
   };
 }

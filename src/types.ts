@@ -105,6 +105,8 @@ export interface OutlineNode {
   icon?: string;
   /** 0.5.18 (EP-39, Q16): user cloud owned by this node: `default` (`<cloud>`) or a colour name (`<cloud:teal>`). */
   cloud?: string;
+  /** 0.5.21: thumbnail asset key from `<img:key>` (entry in `--- assets ---`). */
+  img?: string;
   /**
    * 0.5.19 (EP-31, EP-32, Q12): node colour token from `<color:name>` (alias `<colour:name>`),
    * one of `NODE_COLOURS`. 0.5.20: rendering paints the whole branch (nearest coloured
@@ -270,6 +272,8 @@ export interface OutlineFoldDoc {
   keys?: SealKeyEntry[];
   /** of-seal-v2 keyring (wrapped entries only). */
   keyring?: SealKeyringEntry[];
+  /** 0.5.21: `--- assets ---` entries (thumbnails), kept byte-exact while unchanged. */
+  assets?: import('./thumbnails.js').AssetEntry[];
   /** Sealed-branch payloads whose node id vanished from the text (kept; save refuses). */
   sealedOrphans?: Record<string, SealedPayload>;
 }

@@ -224,6 +224,18 @@ import {
   type LevelHold,
   type WholeMapLevel,
 } from './foldLevelMenu.js';
+import {
+  THUMB_DEFAULT_W,
+  THUMB_INSET,
+  THUMB_RADIUS,
+  assetKeyFor,
+  clampThumbWidth,
+  defaultImageAdd,
+  imageFilesOf,
+  safeAssetSrc,
+  thumbBox,
+  type ImageAddHook,
+} from './thumbnails.js';
 
 export interface MapPoint {
   x: number;
@@ -321,9 +333,20 @@ export interface PillSizeOptions {
    * letter. `fontSize` is the size to paint at (see `timeLeafNodeFontPx`).
    */
   timeLeaf?: TimeLeafKind | null;
+  /** 0.5.21: thumbnail above the caption (T5/T6). `src` is a checked source (T4). */
+  thumb?: ThumbSpec | null;
+}
+
+export interface ThumbSpec {
+  src: string | null;
+  natW?: number;
+  natH?: number;
+  alt?: string;
 }
 
 export interface PillSize {
+  /** 0.5.21: drawn thumbnail box (image width/height, crop when the 1.25× cap applies). */
+  thumb?: { w: number; h: number; crop: boolean; src: string | null; alt?: string };
   w: number;
   h: number;
   textW: number;
@@ -502,6 +525,15 @@ export interface MapViewOptions {
    */
   nodeClouds?: boolean;
   /**
+   * 0.5.21: editors can add thumbnails (Create › Image…, paste, drop) and resize a
+   * selected thumbnail with its frame handle. Thumbnails render either way.
+   */
+  nodeImages?: boolean;
+  /** 0.5.21: store an added image file. Default: an embedded data URL. */
+  onImageAdd?: ImageAddHook;
+  /** 0.5.21: URL to draw for an `att:` source (never written to the doc). Null: placeholder. */
+  resolveImageSrc?: (src: string) => string | null;
+  /**
    * 0.5.19: `Colour` swatches (palette group + Highlighter group + None, EP-31) in the node
    * menu's Edit group and in the icon picker panel; with `nodeClouds` too, `Cloud colour`
    * swatches on a cloud root (EP-39). Colours already on the line (`<color:moss>`,
@@ -646,6 +678,12 @@ export interface MapViewHandle {
   setDetails: (on: boolean) => void;
   /** 0.5.20: Fill (wash) on/off for a coloured node; false when the node has no own colour. */
   setNodeColourFill: (id: string, on: boolean) => boolean;
+  /** 0.5.21: add an image under a node as a thumbnail child (editors). Resolves the child key, or null. */
+  addImage: (id: string, file: File) => Promise<string | null>;
+  /** 0.5.21: set a thumbnail node's width (clamped 120–480), one undo step. */
+  setThumbWidth: (id: string, w: number) => boolean;
+  /** 0.5.21: the node menu entries for a node (for hosts and tests). */
+  nodeMenuEntries: (id: string) => NodeMenuEntry[];
   /** Whether secondary chrome is showing. */
   details: () => boolean;
   /** Every root to a level (toolbar Levels, L8). */
@@ -1041,9 +1079,10 @@ export function pillSize(label: string, opts: PillSizeOptions = {}): PillSize {
       jumps: opts.jumps,
     });
   }
+  const thumb = opts.thumb;
   const measured = measurePill(label, {
     wrapCh: opts.wrapCh ?? DEFAULT_WRAP_CH,
-    widthPx: opts.widthPx,
+    widthPx: thumb ? opts.widthPx ?? THUMB_DEFAULT_W : opts.widthPx,
     maxLines: opts.maxLines,
     bodyExpanded: opts.bodyExpanded,
     fontSize: opts.fontSize,
@@ -1056,6 +1095,11 @@ export function pillSize(label: string, opts: PillSizeOptions = {}): PillSize {
     jumps: opts.jumps,
     semibold: opts.semibold,
   });
+  if (thumb) {
+    // T5: the image fills the box (minus the fold slot) with an 8px inset; T6 cap.
+    const box = thumbBox(measured.w - measured.foldSlot - THUMB_INSET * 2, thumb.natW, thumb.natH);
+    return { ...measured, h: measured.h + box.h + THUMB_INSET, thumb: { ...box, src: thumb.src, alt: thumb.alt } };
+  }
   return measured;
 }
 
@@ -1117,13 +1161,18 @@ function timeLeafPaintOpts(
  * Chips after the caption (0.2.34): thread pill, `#N` notes (`<t:N>`, then
  * caption `[label](#pnid:N)`), `<r:x>` jumps labelled with the target's caption.
  */
-function nodeChips(n: OutlineNode, doc?: OutlineFoldDoc): MapChipSpec {
+function nodeChips(n: OutlineNode, doc?: OutlineFoldDoc): MapChipSpec & { thumb?: ThumbSpec } {
   const notes = resolveNoteLinks(n);
   for (const l of captionLinks(n.title || '')) if (l.pnid && !notes.includes(l.pnid)) notes.push(l.pnid);
   const jumps = resolveJumps(n).map((id) => ({ id, label: jumpChipLabel(doc, id) }));
   // `<r:REGION:N>` chips: the click goes through setFocus → revealScoped.
   for (const id of captionRegionRefs(n.title || '')) jumps.push({ id, label: jumpChipLabel(null, id) });
-  return { thread: !!resolveThread(n), noteLinks: notes, jumps };
+  const out: MapChipSpec & { thumb?: ThumbSpec } = { thread: !!resolveThread(n), noteLinks: notes, jumps };
+  if (n.img && !timeLeafKind(n)) {
+    const a = doc?.assets?.find((e) => e.key === n.img);
+    out.thumb = { src: safeAssetSrc(a?.src), natW: a?.w, natH: a?.h, alt: a?.alt };
+  }
+  return out;
 }
 
 function connectorPath(x1: number, y1: number, x2: number, y2: number): string {
@@ -1188,6 +1237,19 @@ function widthGripSvg(boxRight: number, y: number, h: number, textW: number, sho
         <path d="M ${boxRight - 10} ${y + h + 5} H ${boxRight + 5} V ${y + h - 10}"/>
       </g>
       <rect class="map-width-hit" data-text-w="${textW}" x="${boxRight - 6}" y="${y + h - 6}" width="18" height="18" fill="transparent" cursor="ew-resize" pointer-events="${shown ? 'all' : 'none'}"/>`;
+}
+
+/**
+ * 0.5.21 (T13 merged with the selection frame): a dashed frame round a selected
+ * thumbnail node and ONE square handle at its bottom-right. The handle is the width
+ * grip: its hit rect is the same `.map-width-hit` the width drag uses.
+ */
+function thumbFrameSvg(x: number, y: number, boxW: number, h: number, textW: number): string {
+  const r = x + boxW;
+  const b = y + h;
+  return `<rect class="map-thumb-frame" x="${x - 4}" y="${y - 4}" width="${boxW + 8}" height="${h + 8}" rx="6" ry="6" fill="none" stroke="#8ec8ff" stroke-width="1.25" stroke-dasharray="5 4" pointer-events="none"/>
+      <rect class="map-thumb-handle" x="${r}" y="${b}" width="8" height="8" fill="#0f1720" stroke="#8ec8ff" stroke-width="1.5" pointer-events="none"/>
+      <rect class="map-width-hit" data-text-w="${textW}" x="${r - 6}" y="${b - 6}" width="20" height="20" fill="transparent" cursor="nwse-resize" pointer-events="all"/>`;
 }
 
 /** TL3: a `●` in a time leaf caption (`● open`) paints in the kind letter's green. */
@@ -1641,6 +1703,9 @@ export function createMapView(
     nodeMenu: nodeMenuOn = false,
     nodeIcons: nodeIconsOpt,
     nodeClouds: nodeCloudsOpt,
+    nodeImages: nodeImagesOpt,
+    onImageAdd,
+    resolveImageSrc,
     nodeColours: nodeColoursOpt,
     colourPalette: colourPaletteOpt,
     followMenu = false,
@@ -2887,6 +2952,7 @@ export function createMapView(
   }
   function nodeMenuEntries(key: string): NodeMenuEntry[] {
     const entries: NodeMenuEntry[] = [];
+    if (imagesEditable() && nodeByKey(key)) entries.push({ key: 'image', label: 'Image…', group: 'Create', popup: true });
     if (nodeIconsOn) {
       entries.push({ key: 'icon', label: 'Icon…', group: 'Edit', popup: true });
       if (nodeByKey(key)?.icon) entries.push({ key: 'icon-remove', label: 'Remove icon', group: 'Edit' });
@@ -2941,6 +3007,10 @@ export function createMapView(
     closeNodeMenu(entry.key !== 'icon');
     if (entry.key === 'icon') {
       openNodeIconPicker(key);
+      return;
+    }
+    if (entry.key === 'image') {
+      pickImageFile(key);
       return;
     }
     if (entry.swatch) {
@@ -3013,6 +3083,118 @@ export function createMapView(
     announce(on ? 'Fill on' : 'Fill off');
     return true;
   }
+
+  // ── 0.5.21 thumbnails ────────────────────────────────────────────────
+  /** Editors only: `nodeImages` on and widths may be written (not read-only). */
+  function imagesEditable(): boolean {
+    return !!nodeImagesOpt && widthsPersist();
+  }
+
+  /** T4/T16: the URL to draw. `att:` goes through the host; https and checked data as stored. */
+  function thumbHref(src: string | null): string | null {
+    if (!src) return null;
+    if (src.startsWith('att:')) {
+      const r = resolveImageSrc?.(src);
+      // The resolved URL must itself be same-origin relative or https.
+      return typeof r === 'string' && (/^\/(?!\/)[^\s]*$/.test(r) || /^https:\/\//i.test(r) || /^blob:/i.test(r)) ? r : null;
+    }
+    return src;
+  }
+
+  /** T5/T6: the image, inset 8px, 11px radius, centre-cropped past 1.25×; or a placeholder. */
+  function thumbSvg(key: string, t: NonNullable<PillSize['thumb']>, x: number, y: number, _boxW: number): string {
+    const ix = x + THUMB_INSET;
+    const iy = y + THUMB_INSET;
+    const href = thumbHref(t.src);
+    if (!href) {
+      return `<rect class="map-thumb-ph" x="${ix}" y="${iy}" width="${t.w}" height="${t.h}" rx="${THUMB_RADIUS}" ry="${THUMB_RADIUS}" pointer-events="none"/>`;
+    }
+    const clipId = `${domPrefix}-thumb-${String(key).replace(/[^A-Za-z0-9_-]/g, '_')}`;
+    return `<clipPath id="${esc(clipId)}" class="map-thumb-clip"><rect x="${ix}" y="${iy}" width="${t.w}" height="${t.h}" rx="${THUMB_RADIUS}" ry="${THUMB_RADIUS}"/></clipPath><image class="map-thumb" href="${esc(href)}" x="${ix}" y="${iy}" width="${t.w}" height="${t.h}" preserveAspectRatio="xMidYMid slice" clip-path="url(#${esc(clipId)})" pointer-events="none"${t.alt ? ` aria-label="${esc(t.alt)}"` : ''}/>`;
+  }
+
+  /** Create › Image…, paste and drop all land here: one thumbnail CHILD per file. */
+  async function addImage(key: string, file: File): Promise<string | null> {
+    if (!imagesEditable() || !file || !imageFilesOf([file]).length) return null;
+    const parent = nodeByKey(key);
+    if (!parent) return null;
+    let res;
+    try {
+      res = await (onImageAdd ?? defaultImageAdd)(file, { key });
+    } catch {
+      announce('Image could not be added');
+      return null;
+    }
+    const src = safeAssetSrc(res?.src);
+    if (!src) {
+      announce('Image source refused');
+      return null;
+    }
+    const doc = getDoc();
+    const assets = (doc.assets ??= []);
+    const assetKey = assetKeyFor(file.name || 'image', assets.map((a) => a.key));
+    const w = Math.max(0, Math.round(Number(res.w) || 0));
+    const h = Math.max(0, Math.round(Number(res.h) || 0));
+    assets.push({ key: assetKey, src, ...(w ? { w } : {}), ...(h ? { h } : {}), ...(res.alt ? { alt: res.alt } : {}) });
+    const title = (file.name || 'Image').replace(/\.[A-Za-z0-9]+$/, '').trim() || 'Image';
+    const child: OutlineNode = { title, depth: parent.depth + 1, img: assetKey };
+    (parent.children ??= []).push(child);
+    setDoc(doc);
+    const childKey = keyOfNode(child);
+    setFocusId(childKey);
+    onChange?.();
+    announce(`Image added: ${title}`);
+    return childKey;
+  }
+
+  /** The frame handle's width (T13): clamped 120–480, height follows (T6). One undo step. */
+  function setThumbWidth(key: string, w: number): boolean {
+    const n = nodeByKey(key);
+    if (!n?.img || !imagesEditable()) return false;
+    const next = clampThumbWidth(w);
+    return !!commitWidthStep('drag', key, [{ key, before: readWidth(key, n), after: { w: next, wAuto: null }, idState: idStateOf(n) }], { toast: false });
+  }
+
+  function pickImageFile(key: string): void {
+    if (typeof document === 'undefined') return;
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/png,image/jpeg,image/gif,image/webp,image/avif,image/svg+xml';
+    input.className = 'map-image-input';
+    input.style.display = 'none';
+    input.addEventListener('change', () => {
+      const f = imageFilesOf(input.files)[0];
+      input.remove();
+      if (f) void addImage(key, f);
+    });
+    host.appendChild(input);
+    input.click();
+  }
+
+  host.addEventListener('paste', (e: ClipboardEvent) => {
+    if (!imagesEditable()) return;
+    const key = getFocusId();
+    if (!key || !nodeByKey(key)) return;
+    const files = imageFilesOf(e.clipboardData?.files);
+    if (!files.length) return;
+    e.preventDefault();
+    for (const f of files) void addImage(key, f);
+  });
+  host.addEventListener('dragover', (e: DragEvent) => {
+    if (!imagesEditable() || !Array.from(e.dataTransfer?.types ?? []).includes('Files')) return;
+    e.preventDefault();
+    if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+  });
+  host.addEventListener('drop', (e: DragEvent) => {
+    if (!imagesEditable()) return;
+    const files = imageFilesOf(e.dataTransfer?.files);
+    if (!files.length) return;
+    const t = (e.target as Element | null)?.closest?.('.map-node[data-id]');
+    const key = t?.getAttribute('data-id') ?? getFocusId();
+    if (!key || !nodeByKey(key)) return;
+    e.preventDefault();
+    for (const f of files) void addImage(key, f);
+  });
 
   /** 0.5.18 EP-1 / EP-12: the picker for one node, opened on the panel (Map tab first). */
   function openNodeIconPicker(key: string): boolean {
@@ -4582,6 +4764,7 @@ export function createMapView(
     /** 0.5.20 branch colour per node: nearest coloured ancestor (or self) wins. */
     const branchColour = new Map<OutlineNode, { c: string; fill: boolean }>();
     type NodePaint = {
+      thumb?: PillSize['thumb'];
       n: OutlineNode;
       key: string;
       pos: MapPoint;
@@ -4662,6 +4845,7 @@ export function createMapView(
         bodyExpanded: size.bodyExpanded,
         fontPx: size.fontPx,
         timeLeaf,
+        thumb: size.thumb,
       });
 
       if (foldable && !col) {
@@ -4728,6 +4912,7 @@ export function createMapView(
           bodyExpanded,
           fontPx,
           timeLeaf,
+          thumb,
         }) => {
           const x = pos.x - w / 2;
           const y = pos.y - h / 2;
@@ -4736,7 +4921,9 @@ export function createMapView(
           const boxW = Math.max(1, w - foldSlot);
           const boxRight = x + boxW;
           const affordance = showMore || showLess ? MORE_AFFORDANCE_H : 0;
-          const textCentreY = pos.y - affordance / 2;
+          // 0.5.21: a thumbnail sits above the caption; the caption block moves down.
+          const thumbDrop = thumb ? (thumb.h + THUMB_INSET) / 2 : 0;
+          const textCentreY = pos.y - affordance / 2 + thumbDrop;
           const focused = key === focusId;
           const widthHot = key === widthHotKey;
           const widthShown = widthHot || focused;
@@ -4842,7 +5029,8 @@ export function createMapView(
       ${chipSvg}
       ${foldChrome}
       ${foldHit}
-      ${timeLeaf ? '' : widthGripSvg(boxRight, y, h, textW, widthShown)}
+      ${thumb ? thumbSvg(key, thumb, x, y, boxW) : ''}
+      ${timeLeaf ? '' : thumb ? (imagesEditable() && focused ? thumbFrameSvg(x, y, boxW, h, textW) : '') : widthGripSvg(boxRight, y, h, textW, widthShown)}
     </g>`;
         },
       )
@@ -5160,7 +5348,8 @@ export function createMapView(
     }
 
     function applyWidth(key: string, w: number): void {
-      const clamped = Math.max(MIN_COL, Math.min(MAX_COL, Math.round(w)));
+      // 0.5.21: a thumbnail node's handle clamps to 120–480 (T13).
+      const clamped = nodeByKey(key)?.img ? clampThumbWidth(w) : Math.max(MIN_COL, Math.min(MAX_COL, Math.round(w)));
       const node = regionWidthTarget(key);
       if (node) {
         resizingWidthKey = key;
@@ -6946,6 +7135,9 @@ export function createMapView(
     setWholeMapLevel,
     setDetails,
     setNodeColourFill,
+    addImage,
+    setThumbWidth,
+    nodeMenuEntries: (id: string) => nodeMenuEntries(id),
     details: () => host.classList.contains('of-details'),
     currentWholeMapLevel: () => currentWholeMapLevel(getDoc()),
     onPaint: (fn: () => void) => {

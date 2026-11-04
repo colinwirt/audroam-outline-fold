@@ -1224,3 +1224,9 @@ div.of-unlock.of-unlock-sheet { border-radius: 12px 12px 8px 8px; border-left-wi
   .map-cloud path { stroke: CanvasText; }
   .map-node-menu-swatch, .of-ep-swatch { forced-color-adjust: none; border-color: CanvasText; }
 }
+
+/* 0.5.21: Map thumbnails (T5, T8 placeholder) and the selected-thumbnail frame (T13). */
+.map-thumb-ph { fill: rgba(139, 155, 171, 0.18); }
+.map-thumb-frame { stroke: var(--of-focus, #8ec8ff); }
+.map-thumb-handle { stroke: var(--of-focus, #8ec8ff); }
+.map-image-input { display: none; }

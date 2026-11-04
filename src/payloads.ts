@@ -1,3 +1,4 @@
+import { parseAssetsBlock, type AssetEntry } from './thumbnails.js';
 import { headerKid, isLineSealAlg, isSealedBranchPayload } from './sealedState.js';
 import { parseEncBody } from './sealed.js';
 import { parseAutoWidth } from './mapFit.js';
@@ -34,6 +35,7 @@ export function peelTrailingSections(body: string): {
   layouts: LayoutMap;
   keys: SealKeyEntry[];
   keyring: SealKeyringEntry[];
+  assets: AssetEntry[];
 } {
   let rest = body.replace(/\s+$/, '');
   const trailingFm: OutlineFrontmatter = {};
@@ -42,6 +44,7 @@ export function peelTrailingSections(body: string): {
   let layoutFm: OutlineFrontmatter | undefined;
   let keys: SealKeyEntry[] = [];
   let keyring: SealKeyringEntry[] = [];
+  let assets: AssetEntry[] = [];
 
   const takeLayout = (inner: string) => {
     const parsed = parseLayoutBlock(inner);
@@ -66,6 +69,14 @@ export function peelTrailingSections(body: string): {
     if (layBol) {
       takeLayout(layBol[1]!);
       rest = '';
+      peeled = true;
+      continue;
+    }
+
+    const assetBlk = rest.match(/(?:^|\n)---\s*assets\s*---\r?\n([\s\S]*?)\r?\n---\s*$/i);
+    if (assetBlk) {
+      assets = [...parseAssetsBlock(assetBlk[1]!), ...assets];
+      rest = rest.slice(0, assetBlk.index).replace(/\s+$/, '');
       peeled = true;
       continue;
     }
@@ -125,6 +136,7 @@ export function peelTrailingSections(body: string): {
     layouts,
     keys,
     keyring,
+    assets,
   };
 }
 

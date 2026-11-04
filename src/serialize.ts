@@ -1,3 +1,4 @@
+import { formatAssetsBlock } from './thumbnails.js';
 import { assertSealedSafe, syncSealedLabels, isEncRef } from './sealedState.js';
 import { assignPersistentId, isSessionId, linkPayloadNodes } from './nodeAddress.js';
 import { collectLayouts, collectPayloads, formatLayoutBlock, formatPayloadsBlock, formatKeysBlock, formatKeyringBlock } from './payloads.js';
@@ -142,6 +143,7 @@ function formatTrailingSpans(
     parts.push(k && canonTag(k).replace(/^<colour:/, '<color:') === plain ? k : plain);
   }
   if (node.cloud) parts.push(node.cloud === 'default' ? '<cloud>' : `<cloud:${node.cloud}>`);
+  if (node.img) parts.push(`<img:${node.img}>`);
   if (node.id && !node.autoId) parts.push(spelledTag(kept?.id, `<id:${node.id}>`));
   return parts.length ? ' ' + parts.join(' ') : '';
 }
@@ -297,6 +299,11 @@ export function serialize(doc: OutlineFoldDoc): string {
   if (keyBlock) {
     if (lines.length) lines.push('');
     lines.push(keyBlock);
+  }
+  const assetsBlock = formatAssetsBlock(doc.assets);
+  if (assetsBlock) {
+    if (lines.length) lines.push('');
+    lines.push(assetsBlock);
   }
   // Document keys live in the layout trailer so a pilot_note summary is the
   // first outline line, not a leading `---` fence.

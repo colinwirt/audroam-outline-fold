@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.5.21 — 2026-11-04
+
+Minimal Map thumbnails (spec 20261006-map-node-thumbnails-ux: T4, T5, T6, T13, T16).
+
+- New `<img:key>` node tag, written after `<color:…>`/`<cloud>` and before `<id:…>`. A trailing `--- assets ---` block (between keys and layout) holds `key:` entries with `src`, `w`, `h` (optional `alt`). It round-trips byte for byte, and edited entries are rewritten canonically.
+- The image fills the node width (8px inset, 11px radius) and keeps its aspect ratio, capped at 1.25 × width with a centre crop. The default thumb text width is 264. Missing or unsafe sources draw a placeholder.
+- Safety: only `att:` (through `resolveImageSrc`), `https:` without userinfo, and raster `data:image/*;base64` are allowed. SVG data is sanitised by a fail-closed allowlist. `data:` is honoured only inside the assets block, and `javascript:` and everything else are refused.
+- Editors only (`nodeImages` and persisted widths): Create › Image… in the node menu (file picker), paste onto the selected node, or drop onto a node. Each adds a thumbnail child. Host hook `onImageAdd(file, node) => Promise<{src,w,h}>`; the default is a data URL. Read-only shows none of this.
+- A selected thumbnail shows a dashed frame and one square handle at the bottom-right. The handle is the width grip: it sets layout `w`, clamped to 120–480, and the height follows. Thumb nodes have no separate width grip.
+- Handle API: `addImage`, `setThumbWidth`, `nodeMenuEntries`.
+
 ## 0.5.20 — 2026-11-04
 
 Branch colour (Colin, 4 Nov). Replaces the 0.5.19 per-node-only default (Q13).
