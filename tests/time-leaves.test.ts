@@ -268,7 +268,7 @@ describe('CSS tokens (TL2, TL4, TL6, TL7)', () => {
 
   it('pill, hover, focus, letter and edge rules', () => {
     const pill = block('.map-node.time-leaf.time-leaf .map-pill');
-    expect(decl(pill, 'fill')).toBe('var(--time-fill)');
+    expect(decl(pill, 'fill')).toBe('var(--map-node-bg)');
     expect(decl(pill, 'stroke')).toBe('var(--time-stroke)');
     expect(decl(pill, 'stroke-width')).toBe('1.25');
     expect(decl(block('.map-node.time-leaf.time-leaf:hover .map-pill'), 'stroke')).toBe('var(--time-stroke-hover)');

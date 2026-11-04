@@ -67,7 +67,7 @@ describe('K4: open tasks stand out', () => {
     const label = cssBlock('.map-node.task-open .map-label,');
     expect(label).toContain('.map-node.task-pending .map-label');
     expect(label).toContain('font-weight: 400;');
-    expect(cssBlock('.map-node.task-done .map-label {')).toContain('fill: var(--muted, var(--of-muted));');
+    expect(cssBlock('.map-node.task-done .map-label {')).toContain('fill: var(--map-node-muted);');
   });
 
   it('CSS: the folded gold stroke, focus ring and cue text still win (later, same or higher specificity)', () => {

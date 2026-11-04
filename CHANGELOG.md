@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.25
+
+- Wireframe Map by default: nodes are border + text (`--map-node-bg: transparent`) in dark and light; light theme nodes sit on the light canvas with dark ink `#1d2a36` (13.5:1 on `#f3f6f9`), muted `#566676` (5.4:1), accent `#0b5cad` (6.2:1). Only `:fill` (own or inherited) paints a background: the 16% wash is now mixed into the canvas, Highlighter 92% into the canvas, Audroam solid unchanged.
+- Uncoloured nodes: neutral 1.25px border (`#7a9bb0` dark 5.8:1, `#7b8a99` light 3.3:1). Time leaves keep the green border; their fill is transparent too, light theme letter `#1f7a33` (5.0:1) and text `#1d2a36`.
+- Focus without a fill: 2.5px accent border plus a drop-shadow halo. Code chips follow the theme.
+
 ## 0.5.24
 
 - Code regions styled like Slack inline code, Map and Outline alike. Dark: ink `#e8912d` on chip `#1a2f39` (pill `#0c222c`), 1px border `#2c4552`. Light: ink `#b5410f` on pale grey chip `#f2f4f6`, border `#dde2e7`. Radius 3px, padding 2px/4px (Map rect: 4px side pad, rx 3, stroke 1). Fenced blocks get the same chip in block form. Chip and ink ignore the branch fill, including Highlighter and Audroam solid fills.

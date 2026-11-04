@@ -178,3 +178,23 @@ test('0.5.23 picker lists every palette row; Audroam roles render and round-trip
   await expect(page.locator(node('ap'))).toHaveClass(/colour-audroam-sky/);
   expect(await text(page)).toMatch(/ap:\n\s+colou?r: audroam-sky/);
 });
+
+/** 0.5.25 wireframe default: no node background unless :fill; text and chips follow the theme. */
+for (const theme of ['dark', 'light'] as const) {
+  test(`0.5.25 wireframe (${theme}): border + text by default, background only with :fill`, async ({ page }) => {
+    await open(page, `?focus=fl${theme === 'light' ? '&theme=light' : ''}`);
+    const clear = ['rgba(0, 0, 0, 0)', 'transparent', 'none'];
+    for (const id of ['loose', 'fl', 'trip', 'bd']) expect(clear, id).toContain((await pillStroke(page, id)).fill);
+    for (const id of ['wa', 'dr', 'mu']) expect(clear, id).not.toContain((await pillStroke(page, id)).fill);
+    const ink = theme === 'dark' ? '#e7ecf1' : '#1d2a36';
+    const lab = await page.locator(`${node('loose')} .map-label`).evaluate((el) => getComputedStyle(el).fill);
+    expect(lab).toBe(rgb(ink));
+    // Neutral thin border on an uncoloured node (time leaves: unit-tested, folded here).
+    expect((await pillStroke(page, 'loose')).width).toBe('1.25px');
+    // Focus without a fill: thicker accent border and a halo.
+    const f = await page.locator(`${node('fl')} .map-pill`).evaluate((el) => [getComputedStyle(el).strokeWidth, getComputedStyle(el).filter]);
+    expect(f[1]).toContain('drop-shadow');
+    const shot = theme === 'dark' ? process.env.WIRE_SHOT_DARK : process.env.WIRE_SHOT_LIGHT;
+    await page.locator('#panel').screenshot({ path: shot || `test-results/wireframe-${theme}.png` });
+  });
+}

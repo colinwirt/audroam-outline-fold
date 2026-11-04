@@ -13,6 +13,11 @@
   --cue-text: #e8f5ee;
   --connector: #9bb0d0;
   --pill-fill: #0c222c;
+  /* 0.5.25 wireframe default: nodes are border + text; only :fill paints a background. */
+  --map-node-bg: transparent;
+  --map-node-text: #e7ecf1;
+  --map-node-muted: #8b9bab;
+  --map-accent: #9ecbff;
   --pill-stroke: #7a9bb0;
   /* Fold handle and connector hooks (0.2.32). --map-halo is not set here: its
      default follows the nearest --map-bg (see .map-fold-halo). */
@@ -102,6 +107,13 @@
   /* Time leaves stay dark pills: same fill and text, border 4.0:1 on the canvas. */
   --time-stroke: #2b8a3e;
   --time-edge: #2b8a3e;
+  /* 0.5.25 wireframe: light nodes on the light canvas, dark ink (13.5:1), neutral border 3.3:1. */
+  --pill-stroke: #7b8a99;
+  --map-node-text: #1d2a36;
+  --map-node-muted: #566676;
+  --map-accent: #0b5cad;
+  --time-text: #1d2a36;
+  --time-letter: #1f7a33;
   /* 0.5.19 node colours, light canvas: mid-tones >= 3:1 on the dark pills and on
      --map-bg (3.1–4.8:1), and >= 3.4:1 on a white Outline. */
   /* Forest palette (default; other palettes inject .of-palette-<name>) */
@@ -421,9 +433,9 @@
   cursor: default;
 }
 .map-pill {
-  fill: var(--pill-fill);
+  fill: var(--map-node-bg);
   stroke: var(--pill-stroke);
-  stroke-width: 1.5;
+  stroke-width: 1.25;
 }
 /* K4 task emphasis (0.2.38): an open [ ] or in-progress [-] task has a 2 px
    stroke and a semibold label; done [x] drops to 1 px with muted text
@@ -441,7 +453,7 @@
   font-weight: 400;
 }
 .map-node.task-done .map-label {
-  fill: var(--muted, var(--of-muted));
+  fill: var(--map-node-muted);
 }
 .map-node.cue .map-pill {
   fill: var(--cue);
@@ -456,8 +468,9 @@
 }
 .map-node.is-focused .map-pill,
 .map-node:focus-visible .map-pill {
-  stroke: var(--accent, var(--of-accent));
+  stroke: var(--map-accent);
   stroke-width: 2.5;
+  filter: drop-shadow(0 0 3px var(--map-accent));
 }
 .map-width-hit {
   cursor: ew-resize;
@@ -477,7 +490,7 @@
    branch colour (.has-branch, K1): time stays green everywhere (TL7). Focus
    keeps the standard ring. */
 .map-node.time-leaf.time-leaf .map-pill {
-  fill: var(--time-fill);
+  fill: var(--map-node-bg);
   stroke: var(--time-stroke);
   stroke-width: 1.25;
 }
@@ -486,7 +499,8 @@
 }
 .map-node.time-leaf.time-leaf.is-focused .map-pill,
 .map-node.time-leaf.time-leaf:focus-visible .map-pill {
-  stroke: var(--accent, var(--of-accent));
+  stroke: var(--map-accent);
+  filter: drop-shadow(0 0 3px var(--map-accent));
   stroke-width: 2;
 }
 .map-node.time-leaf .map-label {
@@ -506,7 +520,7 @@
   opacity: 1;
 }
 .map-label {
-  fill: var(--text, var(--of-text));
+  fill: var(--map-node-text);
   font-family: var(--of-font);
   font-weight: 400;
   pointer-events: auto;
@@ -515,7 +529,7 @@
   user-select: text;
 }
 .map-note-link {
-  fill: var(--accent, var(--of-accent));
+  fill: var(--map-accent);
   font-family: var(--of-font);
   font-size: 12px;
   font-weight: 400;
@@ -537,7 +551,7 @@
 }
 /* `<r:x>` jump chip (0.2.34): selects and pans to that node. */
 .map-jump-link {
-  fill: #9ecbff;
+  fill: var(--map-accent);
   font-family: var(--of-font);
   font-size: 12px;
   font-weight: 400;
@@ -982,9 +996,9 @@
    from the --of-seal-* host vars, so a dark host never gets light text on a white pill. */
 /* 0.4.3 (Colin, tablet): region nodes use the normal map pill (--pill-fill / --text), only the
    stroke is the green zone accent; never a white pill with light text on a dark host. */
-.map-svg .map-region-node > rect.map-region-body { fill: var(--pill-fill, #0c222c); stroke: var(--of-unlocked-stroke, var(--of-region-stroke, rgba(46, 160, 67, 0.75))); stroke-width: 1.4; }
+.map-svg .map-region-node > rect.map-region-body { fill: var(--map-node-bg, transparent); stroke: var(--of-unlocked-stroke, var(--of-region-stroke, rgba(46, 160, 67, 0.75))); stroke-width: 1.4; }
 /* 0.4.4: font size comes from the node font (font-size attribute), as normal map pills. */
-.map-svg .map-region-node > text { fill: var(--text, var(--of-text, #e7ecf1)); }
+.map-svg .map-region-node > text { fill: var(--map-node-text); }
 .map-svg .map-region-pill > rect.map-region-body { fill: var(--of-region-fill, rgba(46, 160, 67, 0.14)); }
 /* 0.4.12: only the pill body (.map-region-body) is painted; task/fold hit rects stay transparent. */
 .map-region-node .map-task-hit { fill: transparent; stroke: none; }
@@ -1065,7 +1079,7 @@ div.of-unlock.of-unlock-sheet { border-radius: 12px 12px 8px 8px; border-left-wi
 .map-svg .map-region-locked > text { fill: var(--of-seal-ink, #4a5560); }
 /* 0.4.4: only the pill is tinted (a bare `> rect` also filled the fold hit box white, and the
    light caption vanished on the pale fill). Normal dark pill, green accent stroke. */
-.map-node.is-unlocked-anchor .map-pill { fill: var(--pill-fill, #0c222c); stroke: var(--of-unlocked-stroke, #3d8a5f); stroke-width: 2; }
+.map-node.is-unlocked-anchor .map-pill { fill: var(--map-node-bg); stroke: var(--of-unlocked-stroke, #3d8a5f); stroke-width: 2; }
 .map-region-kid > rect { fill: var(--of-chip-k-bg, #eef2fa); stroke: var(--of-chip-k-stroke, #b5c6e6); stroke-width: 1; }
 .map-region-kid > text { font-size: 10px; fill: var(--of-chip-k-ink, #244a8a); }
 .map-region-unlocked .map-region-label { fill: var(--of-unlocked-ink, #245c3c); }
@@ -1203,17 +1217,17 @@ div.of-unlock.of-unlock-sheet { border-radius: 12px 12px 8px 8px; border-left-wi
   stroke-width: 2;
 }
 /* 0.5.20: the wash is opt-in (`<color:x:fill>`), inherited down the branch with the colour. */
-.map-node.colour-fill .map-pill { fill: color-mix(in srgb, var(--nc) 16%, var(--pill-fill)); }
+.map-node.colour-fill .map-pill { fill: color-mix(in srgb, var(--nc) 16%, var(--map-bg)); }
 /* 0.5.20: connectors inside a coloured branch take the colour (time edges stay green). */
 .map-edge.edge-colour { stroke: var(--ec); stroke-opacity: 0.6; }
-.map-node.has-colour .map-label { fill: var(--of-text); }
+.map-node.has-colour .map-label { fill: var(--map-node-text); }
 /* Highlighter: a strong 92% fluoro wash with dark ink label (>= 10:1 in both themes). */
 .map-node.colour-lemon { --nh: var(--node-lemon-hl); }
 .map-node.colour-lime { --nh: var(--node-lime-hl); }
 .map-node.colour-flamingo { --nh: var(--node-flamingo-hl); }
 .map-node.colour-tangerine { --nh: var(--node-tangerine-hl); }
 .map-node.colour-aqua { --nh: var(--node-aqua-hl); }
-.map-node.is-hl .map-pill { fill: color-mix(in srgb, var(--nh) 92%, var(--pill-fill)); }
+.map-node.is-hl .map-pill { fill: color-mix(in srgb, var(--nh) 92%, var(--map-bg)); }
 .map-node.is-hl .map-label, .map-node.is-hl text { fill: #0b1a21; }
 /* 0.5.23 Audroam fill: the button colour as Audroam paints it, solid, with dark ink. */
 .map-node.colour-audroam-green { --nh: var(--node-audroam-green-hl); }
