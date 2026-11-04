@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.26
+
+- Secure zones: the `:` emoji/clipart typeahead now runs in the zone editor (it was only in the main editor).
+- A stored known emoji `:code:` (e.g. `:locked: encryption at rest`) displays as its emoji in the Map label, the Outline HTML, and the text editors (main and zone, including decrypted sealed content). The stored text keeps the code; in the editors the raw code shows while the caret is on it. Unknown codes, clipart names (`:name:` icons), mid-word colons and `code` spans stay as text. New `displayShortcodes()` export; Map loads the emoji table at creation and repaints.
+- `audroam-outline-fold/editor` exports `iconTypeahead()` and `shortcodeGlyphs()` so a host Map node editor can wire the typeahead (`attachIconTypeahead()` covers a plain textarea/input). This package has no inline Map node editor of its own.
+
 ## 0.5.25
 
 - Wireframe Map by default: nodes are border + text (`--map-node-bg: transparent`) in dark and light; light theme nodes sit on the light canvas with dark ink `#1d2a36` (13.5:1 on `#f3f6f9`), muted `#566676` (5.4:1), accent `#0b5cad` (6.2:1). Only `:fill` (own or inherited) paints a background: the 16% wash is now mixed into the canvas, Highlighter 92% into the canvas, Audroam solid unchanged.

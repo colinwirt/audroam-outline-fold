@@ -1144,3 +1144,6 @@ const theme = EditorView.baseTheme({
   '.of-cm-id': { opacity: '0.55' },
   '.of-cm-r, .of-cm-t': { textDecoration: 'underline dotted' },
 });
+
+// 0.5.26: CodeMirror hooks for a host's Map node editor: `:` typeahead + stored-code emoji display.
+export { iconTypeahead, shortcodeGlyphs } from './iconTypeahead.js';

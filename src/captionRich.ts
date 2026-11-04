@@ -6,6 +6,7 @@
  */
 
 import { displayTags } from './tagSpelling.js';
+import { displayShortcodes } from './emoji/icons.js';
 
 function esc(s: string): string {
   return String(s)
@@ -233,7 +234,7 @@ function parseInlineRuns(text: string): CaptionStyleRun[] {
 
 /** Visible plain text after break-normalize + tiny-HTML strip (for wrap/measure). */
 export function captionVisibleText(text: string): string {
-  const normalized = normalizeCaptionBreaks(displayTags(text));
+  const normalized = normalizeCaptionBreaks(displayShortcodes(displayTags(text)));
   return parseTinyHtmlRuns(normalized)
     .map((r) => r.text)
     .join('');
@@ -241,7 +242,7 @@ export function captionVisibleText(text: string): string {
 
 /** Style runs after break-normalize (Map paint). */
 export function captionStyleRuns(text: string): CaptionStyleRun[] {
-  return parseTinyHtmlRuns(normalizeCaptionBreaks(displayTags(text)));
+  return parseTinyHtmlRuns(normalizeCaptionBreaks(displayShortcodes(displayTags(text))));
 }
 
 type Token =
@@ -508,7 +509,7 @@ export function captionLinks(title: string): CaptionLink[] {
 
 export function captionToHtml(title: string, opts: CaptionHtmlOptions = {}): string {
   if (!title) return '';
-  const normalized = normalizeCaptionBreaks(displayTags(title));
+  const normalized = normalizeCaptionBreaks(displayShortcodes(displayTags(title)));
   return tokenize(normalized)
     .map((t) => {
       if (t.kind === 'text') return tinyHtmlToSafeHtml(t.value);

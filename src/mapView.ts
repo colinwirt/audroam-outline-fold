@@ -4826,6 +4826,8 @@ export function createMapView(
     }
   }
 
+  // 0.5.26: stored `:code:` labels show as emoji once the table loads (display only).
+  void loadEmojiData().then(() => { try { paint(); } catch { /* destroyed */ } });
   function paint(): void {
     invalidateContentUnion();
     // Boolean snapshot BEFORE the DOM rebuild (an element ref would be detached

@@ -14,7 +14,7 @@
  * - `setRegions()` still accepts host block widgets (e.g. notes) keyed by a line substring.
  */
 import { outlineKeys } from './outlineKeys.js';
-import { iconTypeahead } from './iconTypeahead.js';
+import { iconTypeahead, shortcodeGlyphs } from './iconTypeahead.js';
 
 const isSealedLine = (line: string): boolean => /<enc:[A-Za-z0-9_.-]+>/.test(line);
 import { Compartment, EditorState, StateEffect, Transaction, StateField, type Extension, type Text } from '@codemirror/state';
@@ -293,6 +293,7 @@ function buildEditor(host: HTMLElement, initial: string, opts: TextEditorOptions
     taskGlyphs,
     // 0.5.18: `:` emoji / clipart typeahead (EP-2).
     iconTypeahead(),
+    shortcodeGlyphs(),
     // 0.4.13: standard CM commands behind the outline keys (Enter, Tab, Backspace); one
     // keymap for the main text and every zone. A sealed `<enc:…>` line takes no children here.
     ...outlineKeys(isSealedLine),
@@ -360,7 +361,7 @@ function buildEditor(host: HTMLElement, initial: string, opts: TextEditorOptions
     ext.push(outlineEditor({
       sessions: opts.sessions,
       askPassphrase: opts.askPassphrase,
-      childExtensions: [history(), highlightActiveLine(), ...outlineKeys(), keymap.of([...defaultKeymap, ...historyKeymap]), ...(opts.childExtensions ?? [])],
+      childExtensions: [history(), highlightActiveLine(), iconTypeahead(), shortcodeGlyphs(), ...outlineKeys(), keymap.of([...defaultKeymap, ...historyKeymap]), ...(opts.childExtensions ?? [])],
       textWidthCh: widthCh,
       focus: opts.focus,
       followInText: opts.followInText,

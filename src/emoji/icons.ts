@@ -274,6 +274,25 @@ export function resolveTypedShortcode(text: string, caret: number): { from: numb
   return e ? { from, to: caret, insert: e.char } : null;
 }
 
+/**
+ * 0.5.26: display form of stored text. A known emoji `:code:` (on a word boundary, outside
+ * backtick code) shows as its character; clipart names, unknown codes and code spans stay
+ * as typed. The stored text is never rewritten. Needs `loadEmojiData()` first (else a no-op).
+ */
+export function displayShortcodes(text: string): string {
+  const s = String(text ?? '');
+  if (!byCode || !s.includes(':')) return s;
+  return s
+    .split(/(```[\s\S]*?```|`[^`\n]+`)/)
+    .map((seg, i) => (i % 2 ? seg : seg.replace(/(^|[\s([{"'>])(:([a-z0-9][a-z0-9_+-]*):)(?=$|[\s.,;:!?)\]}"'<])/gi, (all, pre: string, _tok: string, code: string) => {
+      const c = code.toLowerCase();
+      if (clipartByName(c) && !isReservedIconName(c)) return all;
+      const e = byCode!.get(c);
+      return e ? pre + e.char : all;
+    })))
+    .join('');
+}
+
 // ── Pinned / recent (EP-9) ─────────────────────────────────────────────────
 
 export const MAX_PINNED = 8;
