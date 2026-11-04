@@ -678,6 +678,10 @@ export interface MapViewHandle {
   setDetails: (on: boolean) => void;
   /** 0.5.20: Fill (wash) on/off for a coloured node; false when the node has no own colour. */
   setNodeColourFill: (id: string, on: boolean) => boolean;
+  /** 0.5.22: set or clear a node colour (written to its layout entry). */
+  setNodeColour: (id: string, color: string | undefined) => void;
+  /** 0.5.22: set or clear a node icon (written to its layout entry). */
+  setNodeIcon: (id: string, token: string | undefined) => void;
   /** 0.5.21: add an image under a node as a thumbnail child (editors). Resolves the child key, or null. */
   addImage: (id: string, file: File) => Promise<string | null>;
   /** 0.5.21: set a thumbnail node's width (clamped 120–480), one undo step. */
@@ -3047,9 +3051,44 @@ export function createMapView(
     if (!n || (n.icon ?? undefined) === token) return;
     if (token) n.icon = token;
     else delete n.icon;
+    persistStyle(key, n);
     setDoc(getDoc());
     onChange?.();
     announce(token ? `Icon set: ${iconLabel(token)}` : 'Icon removed');
+  }
+
+  /**
+   * 0.5.22: a UI colour / fill / icon write lands in the node's layout entry (by id,
+   * minted like a width) and drops the inline tag it replaces. Returns the node's key.
+   */
+  function persistStyle(key: string, n: OutlineNode): string {
+    const doc = getDoc();
+    const wantColour = !!n.color;
+    const wantIcon = !!n.icon;
+    const nl: NonNullable<OutlineNode['layout']> = { ...(n.layout || {}) };
+    if (wantColour) {
+      nl.color = n.color!;
+      if (n.colorFill) nl.colorFill = true;
+      else delete nl.colorFill;
+      nl.colorKey = nl.colorKey ?? colourKeyFor(doc, n);
+    } else {
+      delete nl.color; delete nl.colorFill; delete nl.colorKey;
+    }
+    if (wantIcon) nl.icon = n.icon!;
+    else delete nl.icon;
+    delete n.inlineColor;
+    delete n.inlineIcon;
+    if (n.tagSpellings?.color) delete n.tagSpellings.color;
+    if (Object.keys(nl).length) n.layout = nl;
+    else delete n.layout;
+    if (!wantColour && !wantIcon) return key;
+    const id = assignPersistentId(doc, n);
+    if (id !== key) {
+      const layout = getLayout();
+      if (layout.nodes?.[key]) { layout.nodes[id] = layout.nodes[key]!; delete layout.nodes[key]; }
+      if (getFocusId() === key) setFocusId(id);
+    }
+    return id;
   }
 
   /** 0.5.18 EP-39: add (neutral default) or remove the cloud owned by a node. */
@@ -3069,6 +3108,7 @@ export function createMapView(
     if (!n || (n.color ?? undefined) === color) return;
     if (color && resolveColour(color)) n.color = resolveColour(color)!;
     else { delete n.color; delete n.colorFill; }
+    persistStyle(key, n);
     setDoc(getDoc());
     onChange?.();
     announce(color ? `Colour: ${colourLabel(color, paletteName)}` : 'Colour removed');
@@ -3078,6 +3118,7 @@ export function createMapView(
   function setNodeColourFill(key: string, on: boolean): boolean {
     const n = nodeByKey(key);
     if (!n || !setColourFill(n, on)) return false;
+    persistStyle(key, n);
     setDoc(getDoc());
     onChange?.();
     announce(on ? 'Fill on' : 'Fill off');
@@ -7135,6 +7176,8 @@ export function createMapView(
     setWholeMapLevel,
     setDetails,
     setNodeColourFill,
+    setNodeColour: (id: string, c: string | undefined) => setNodeColour(id, c),
+    setNodeIcon: (id: string, t: string | undefined) => setNodeIcon(id, t),
     addImage,
     setThumbWidth,
     nodeMenuEntries: (id: string) => nodeMenuEntries(id),
@@ -7271,4 +7314,19 @@ export function mountMapControls(
 /** 0.5.18: Map pills are SVG text, so a node icon leads the label as its glyph (clipart → fallback emoji). */
 function withNodeIcon(n: { icon?: string }, label: string): string {
   return n.icon ? `${iconGlyph(n.icon)} ${label}` : label;
+}
+
+/** 0.5.22: `colour` when this node's old tag or the document already spells it so, else `color`. */
+function colourKeyFor(doc: OutlineFoldDoc, n: OutlineNode): 'color' | 'colour' {
+  if (/^<\s*colour/i.test(n.tagSpellings?.color ?? '')) return 'colour';
+  let found: 'colour' | undefined;
+  const walk = (list: OutlineNode[]) => {
+    for (const c of list) {
+      if (c.layout?.colorKey === 'colour' || /^<\s*colour/i.test(c.tagSpellings?.color ?? '')) { found = 'colour'; return; }
+      if (c.children?.length) walk(c.children);
+      if (found) return;
+    }
+  };
+  walk(doc.nodes);
+  return found ?? 'color';
 }

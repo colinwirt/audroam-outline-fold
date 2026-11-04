@@ -782,6 +782,7 @@ export function parse(text: string, opts?: ParseOptions): OutlineFoldDoc {
   attachPayloads(roots, peeled.payloads);
   // Layout keys are ids, or a 1-based position when the line has no id.
   attachLayouts(roots, peeled.layouts);
+  applyLayoutStyle(roots);
 
   if (opts?.sessionIds) {
     const prefix = typeof opts.sessionIds === 'object' ? (opts.sessionIds.prefix ?? SESSION_ID_PREFIX) : SESSION_ID_PREFIX;
@@ -835,4 +836,25 @@ export function parse(text: string, opts?: ParseOptions): OutlineFoldDoc {
     ...(peeled.assets.length ? { assets: peeled.assets } : {}),
     ...(orphans ? { sealedOrphans: orphans } : {}),
   };
+}
+
+/**
+ * 0.5.22: colour / icon from the layout block win over inline tags. The shadowed
+ * inline value is kept on the node so an untouched line serializes unchanged.
+ */
+function applyLayoutStyle(list: OutlineNode[]): void {
+  for (const n of list) {
+    const l = n.layout;
+    if (l?.color) {
+      if (n.color) n.inlineColor = n.colorFill ? { color: n.color, fill: true } : { color: n.color };
+      n.color = l.color;
+      if (l.colorFill) n.colorFill = true;
+      else delete n.colorFill;
+    }
+    if (l?.icon) {
+      if (n.icon) n.inlineIcon = n.icon;
+      n.icon = l.icon;
+    }
+    if (n.children?.length) applyLayoutStyle(n.children);
+  }
 }

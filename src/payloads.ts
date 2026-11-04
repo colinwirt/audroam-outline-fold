@@ -320,19 +320,22 @@ export function parseLayoutBlock(block: string): {
   let current: string | null = null;
   let width: number | undefined;
   let wAuto: string | undefined;
+  let style: NodeLayout = {};
 
   const flush = () => {
-    if (!current || width == null) {
-      current = null;
-      width = undefined;
-      wAuto = undefined;
-      return;
+    if (current && (width != null || Object.keys(style).length)) {
+      const e: NodeLayout = {};
+      // `w-auto` rides on `w` (F5a): without a `w` it is ignored, as older parsers do.
+      if (width != null) {
+        e.w = width;
+        if (wAuto) e.wAuto = wAuto;
+      }
+      out[current] = { ...e, ...style };
     }
-    // `w-auto` rides on `w` (F5a): without a `w` the entry is ignored, as older parsers do.
-    out[current] = wAuto ? { w: width, wAuto } : { w: width };
     current = null;
     width = undefined;
     wAuto = undefined;
+    style = {};
   };
 
   for (const raw of block.split(/\r?\n/)) {
@@ -345,6 +348,16 @@ export function parseLayoutBlock(block: string): {
       }
       const auto = raw.match(/^\s+w-auto\s*:\s*([A-Za-z][\w-]*)\s*$/i);
       if (auto && current) wAuto = auto[1]!.toLowerCase();
+      // 0.5.22: colour / icon by node id.
+      const col = raw.match(/^\s+(colou?r)\s*:\s*([A-Za-z][\w-]*)(\s*:\s*fill)?\s*$/i);
+      if (col && current) {
+        style.color = col[2]!.toLowerCase();
+        style.colorKey = col[1]!.toLowerCase() === 'colour' ? 'colour' : 'color';
+        if (col[3]) style.colorFill = true;
+        else delete style.colorFill;
+      }
+      const ic = raw.match(/^\s+icon\s*:\s*([^\s<>]+)\s*$/i);
+      if (ic && current) style.icon = ic[1]!;
       continue;
     }
     const line = raw.trim();
@@ -527,8 +540,19 @@ export function collectLayouts(nodes: OutlineNode[]): LayoutMap {
   const out: LayoutMap = {};
   const walk = (list: OutlineNode[]) => {
     for (const n of list) {
-      if (n.id && typeof n.layout?.w === 'number' && n.layout.w > 0) {
-        out[n.id] = n.layout.wAuto ? { w: n.layout.w, wAuto: n.layout.wAuto } : { w: n.layout.w };
+      if (n.id && n.layout) {
+        const e: NodeLayout = {};
+        if (typeof n.layout.w === 'number' && n.layout.w > 0) {
+          e.w = n.layout.w;
+          if (n.layout.wAuto) e.wAuto = n.layout.wAuto;
+        }
+        if (n.layout.color) {
+          e.color = n.layout.color;
+          if (n.layout.colorFill) e.colorFill = true;
+          if (n.layout.colorKey) e.colorKey = n.layout.colorKey;
+        }
+        if (n.layout.icon) e.icon = n.layout.icon;
+        if (Object.keys(e).length) out[n.id] = e;
       }
       if (n.children?.length) walk(n.children);
     }
@@ -580,12 +604,20 @@ export function formatLayoutBlock(
   }
   const keys = Object.keys(layouts).sort();
   for (const id of keys) {
-    const w = layouts[id]?.w;
-    if (typeof w !== 'number' || !(w > 0)) continue;
+    const e = layouts[id]!;
+    const w = e.w;
+    const hasW = typeof w === 'number' && w > 0;
+    const color = e.color && /^[A-Za-z][\w-]*$/.test(e.color) ? e.color : undefined;
+    const icon = e.icon && /^[^\s<>]+$/.test(e.icon) ? e.icon : undefined;
+    if (!hasW && !color && !icon) continue;
     lines.push(`${id}:`);
-    lines.push(`  w: ${Math.round(w)}`);
-    const mode = layouts[id]?.wAuto;
-    if (mode && /^[A-Za-z][\w-]*$/.test(mode)) lines.push(`  w-auto: ${mode}`);
+    if (hasW) {
+      lines.push(`  w: ${Math.round(w!)}`);
+      const mode = e.wAuto;
+      if (mode && /^[A-Za-z][\w-]*$/.test(mode)) lines.push(`  w-auto: ${mode}`);
+    }
+    if (color) lines.push(`  ${e.colorKey === 'colour' ? 'colour' : 'color'}: ${color}${e.colorFill ? ':fill' : ''}`);
+    if (icon) lines.push(`  icon: ${icon}`);
   }
   if (lines.length === 1) return '';
   lines.push('---');

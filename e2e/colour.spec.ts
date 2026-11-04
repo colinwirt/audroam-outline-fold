@@ -56,7 +56,7 @@ test('selection keeps the separate offset ring on a coloured node (EP-33, EP-37)
   expect(await cssVar(page, '--node-creek')).not.toBe('#6cb6ff');
 });
 
-test('node menu Colour row sets <color:> before <id:>; None clears; cloud colour row', async ({ page }) => {
+test('node menu Colour row writes the layout entry (0.5.22); None clears; cloud colour row', async ({ page }) => {
   await open(page);
   const b = (await page.locator(`${node('loose')} .map-pill`).boundingBox())!;
   const menu = async () => page.mouse.click(b.x + 5, b.y + b.height / 2, { button: 'right' });
@@ -73,20 +73,23 @@ test('node menu Colour row sets <color:> before <id:>; None clears; cloud colour
   await page.keyboard.press('ArrowLeft');
   await expect(row.locator('[data-item="color:stone"]')).toBeFocused();
   await row.locator('[data-item="color:slate"]').click();
-  expect(await text(page)).toContain('- Loose note <color:slate> <id:loose>');
+  expect(await text(page)).toContain('- Loose note <id:loose>');
+  expect(await text(page)).toMatch(/\nloose:\n  color: slate\n/);
   await expect(page.locator(node('loose'))).toHaveClass(/colour-slate/);
   // Add a cloud, then colour it from the Cloud colour row.
   await menu();
   await page.locator('.map-node-menu [role="menuitemcheckbox"]', { hasText: 'Cloud' }).click();
   await menu();
   await page.locator('.map-node-menu-swatches[aria-label="Cloud colour · Forest"] [data-item="cloud-color:lichen"]').click();
-  expect(await text(page)).toContain('- Loose note <color:slate> <cloud:lichen> <id:loose>');
+  expect(await text(page)).toContain('- Loose note <cloud:lichen> <id:loose>');
+  expect(await text(page)).toMatch(/\nloose:\n  color: slate\n/);
   await expect(page.locator(`${cloud('loose')} path`)).toHaveAttribute('stroke', 'var(--node-lichen)');
   // Keyboard: Enter on None clears.
   await menu();
   await page.locator('.map-node-menu-swatches[aria-label="Colour · Forest"] [data-item="color:none"]').focus();
   await page.keyboard.press('Enter');
   expect(await text(page)).toContain('- Loose note <cloud:lichen> <id:loose>');
+  expect(await text(page)).not.toMatch(/\nloose:\n  colou?r:/);
 });
 
 test('icon picker Colours row sets the colour (EP-31)', async ({ page }) => {
@@ -95,7 +98,9 @@ test('icon picker Colours row sets the colour (EP-31)', async ({ page }) => {
   const row = page.getByTestId('of-ep-colours');
   await expect(row.locator('[role="radio"]')).toHaveCount(15);
   await row.getByTestId('of-ep-swatch-fern').click();
-  expect(await text(page)).toContain('- Museums <color:fern:fill> <id:mu>'); // 0.5.20: fill kept on recolour
+  // 0.5.22: migrated from the inline tag to the layout entry; fill kept on recolour (0.5.20).
+  expect(await text(page)).toContain('- Museums <id:mu>');
+  expect(await text(page)).toMatch(/\nmu:\n  color: fern:fill\n/);
   await expect(row.getByTestId('of-ep-swatch-fern')).toHaveAttribute('aria-checked', 'true');
 });
 

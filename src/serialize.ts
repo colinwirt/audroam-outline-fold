@@ -137,8 +137,10 @@ function formatTrailingSpans(
     }
   }
   if (node.sealed?.kid && isEncRef(node.sealed)) parts.push(`<enc:${node.sealed.kid}>`);
-  if (node.color) {
-    const plain = `<color:${node.color}${node.colorFill ? ':fill' : ''}>`;
+  // 0.5.22: a layout colour is written in the layout block; only a shadowed inline tag stays.
+  const inlineCol = node.layout?.color ? node.inlineColor : node.color ? { color: node.color, fill: node.colorFill } : undefined;
+  if (inlineCol) {
+    const plain = `<color:${inlineCol.color}${inlineCol.fill ? ':fill' : ''}>`;
     const k = kept?.color;
     parts.push(k && canonTag(k).replace(/^<colour:/, '<color:') === plain ? k : plain);
   }
@@ -157,7 +159,7 @@ function serializeNode(
     doc.frontmatter?.collapsedMarker ?? DEFAULT_COLLAPSED;
   const expandedMarker = doc.frontmatter?.expandedMarker;
   const indent = '  '.repeat(node.depth);
-  const lead = (node.task ? taskMarker(node.task) : '') + (node.icon ? `${node.icon} ` : '');
+  const lead = (node.task ? taskMarker(node.task) : '') + (leadIcon(node) ? `${leadIcon(node)} ` : '');
   const inline = inlineLinks(node);
   let line = `${indent}- ${lead}${inline.title}${formatTrailingSpans(node, inline)}`;
   // Under fold+ every line off the list is collapsed; a session-id leaf has no fold to mark.
@@ -342,4 +344,9 @@ export function serialize(doc: OutlineFoldDoc): string {
   }
   lines.push('');
   return lines.join('\n');
+}
+
+/** 0.5.22: the leading icon to write inline (a layout icon lives in the layout block). */
+function leadIcon(node: OutlineNode): string | undefined {
+  return node.layout?.icon ? node.inlineIcon : node.icon;
 }

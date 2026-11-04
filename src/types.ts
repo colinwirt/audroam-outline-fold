@@ -115,6 +115,10 @@ export interface OutlineNode {
   color?: string;
   /** 0.5.20: `<color:name:fill>` adds the wash; inherited with the colour. Default border + lines only. */
   colorFill?: boolean;
+  /** 0.5.22: an inline `<color:…>` shadowed by a layout colour, kept so the line round-trips. */
+  inlineColor?: { color: string; fill?: boolean };
+  /** 0.5.22: a leading inline icon shadowed by a layout icon, kept so the line round-trips. */
+  inlineIcon?: string;
   /**
    * Explicit action binding from `<action:https://…>` or `<action:event:…>`.
    * Host runs on open→done only (package emits onTaskToggle; never auto-fires caption https).
@@ -190,6 +194,13 @@ export interface NodeLayout {
    * An unknown mode is kept as written and falls back to `w`.
    */
   wAuto?: string;
+  /** 0.5.22: node colour token stored here (`color:` / `colour:` key, `name` or `name:fill`). Wins over an inline tag. */
+  color?: string;
+  colorFill?: boolean;
+  /** Spelling of the colour key as read (`colour` or `color`); new writes follow the document. */
+  colorKey?: 'color' | 'colour';
+  /** 0.5.22: node icon token (emoji or `:name:`). Wins over a leading inline icon. */
+  icon?: string;
 }
 
 export interface OutlineFrontmatter {

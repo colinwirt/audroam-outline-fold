@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.5.22 — 2026-11-04
+
+Node colour and icon in the layout block (Colin, 4 Nov).
+
+- Colour, fill and icon are now stored per node id in `--- layout ---`, next to `w`:
+  ```
+  r:
+    w: 300
+    colour: moss:fill
+    icon: :star:
+  ```
+  The key is `color:` or `colour:`, and its spelling is kept. `:fill` adds the wash. The icon is an emoji or `:name:`. An entry may have no `w` (older parsers ignore entries without one).
+- Reading: a layout value wins. Inline `<color:…>` / `<colour:…>` and leading icons are still honoured. When a layout value shadows an inline one, the inline one is kept so the line round-trips.
+- Map UI writes (node menu Colour / Fill, icon picker, icon remove, and the new handle `setNodeColour` / `setNodeIcon`) go to the layout entry only. They mint an id the same way width writes do, and drop the inline tag they replace. A clear removes the layout key, and an empty entry disappears.
+- New colour keys follow the node's old tag spelling, then any `colour` already in the document, and fall back to `color`.
+- Inheritance, fill and clouds are unchanged from 0.5.20.
+
 ## 0.5.21 — 2026-11-04
 
 Minimal Map thumbnails (spec 20261006-map-node-thumbnails-ux: T4, T5, T6, T13, T16).
