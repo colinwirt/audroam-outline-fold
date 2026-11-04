@@ -10,7 +10,7 @@
  */
 import { iconGlyph, iconLabel, loadEmojiData } from './emoji/icons.js';
 import { openIconPicker } from './emoji/picker.js';
-import { applyNodePalette, setColourFill, colourGroups, colourLabel, isHighlighter, resolveColour } from './nodeColour.js';
+import { applyNodePalette, setColourFill, colourGroups, colourLabel, isHighlighter, isAudroam, resolveColour } from './nodeColour.js';
 import { resolveFollowInText, setFollowInText, loadMapResume } from './mapResume.js';
 import { ALT_HOLD_MS, altDragCommits, altPressKind } from './altGesture.js';
 import { captionLinks, captionWithoutLinks, captionRegionRefs } from './captionRich.js';
@@ -1035,7 +1035,7 @@ export function mapNodeClassNames(opts: {
     opts.task === 'done' ? 'task-done' : opts.task === 'pending' ? 'task-pending' : opts.task ? 'task-open' : '',
     opts.bodyExpanded ? 'body-expanded' : '',
     opts.focused ? 'is-focused' : '',
-    colour ? `has-colour colour-${colour}${opts.colorFill ? ` colour-fill${isHighlighter(colour) ? ' is-hl' : ''}` : ''}` : '',
+    colour ? `has-colour colour-${colour}${opts.colorFill ? ` colour-fill${isHighlighter(colour) ? ' is-hl' : isAudroam(colour) ? ' is-au' : ''}` : ''}` : '',
   ]
     .filter(Boolean)
     .join(' ');
@@ -1270,6 +1270,46 @@ function globeGlyphSvg(x: number, y: number): string {
   </g>`;
 }
 
+/**
+ * 0.5.23 code regions: a rounded rect (`.map-code-bg`, token fill) behind each inline code run;
+ * neighbouring lines that are all code (a fenced block) share one rect across the text width.
+ * Painted before the text, beside the pill, so the branch wash never tints it.
+ */
+function codeRegionRects(
+  textX: number,
+  blockTop: number,
+  box: number,
+  textW: number,
+  richLines: CaptionStyleRun[][] | undefined,
+  fontPx: number,
+): string {
+  if (!richLines || !richLines.some((l) => l.some((r) => r.code && r.text))) return '';
+  const PAD = 3;
+  const rect = (x: number, y: number, w: number, h: number) =>
+    `<rect class="map-code-bg" x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${Math.max(0, w).toFixed(1)}" height="${h.toFixed(1)}" rx="4" fill="var(--map-code-bg)"/>`;
+  const allCode = richLines.map((l) => l.some((r) => r.text) && l.every((r) => r.code || !r.text.trim()));
+  let out = '';
+  for (let i = 0; i < richLines.length; i++) {
+    const runs = richLines[i]!;
+    const block = allCode[i] && (allCode[i - 1] || allCode[i + 1]);
+    if (block) {
+      if (allCode[i - 1]) continue;
+      let j = i;
+      while (allCode[j + 1]) j++;
+      const w = Math.min(Math.max(textW, 0) || Infinity, Math.max(...richLines.slice(i, j + 1).map((l) => lineWidth(l, fontPx))));
+      out += rect(textX - PAD, blockTop + i * box + 1, w + PAD * 2, (j - i + 1) * box - 2);
+      continue;
+    }
+    let x = textX;
+    for (const r of runs) {
+      const w = lineWidth([r], fontPx);
+      if (r.code && r.text) out += rect(x - PAD, blockTop + i * box + 1, w + PAD * 2, box - 2);
+      x += w;
+    }
+  }
+  return out;
+}
+
 function multiLineText(
   lines: string[],
   textX: number,
@@ -1283,6 +1323,7 @@ function multiLineText(
   const box = lineBox(fontPx);
   const blockH = n * box;
   const top = centreY - blockH / 2 + box * 0.75;
+  const codeBg = codeRegionRects(textX, centreY - blockH / 2, box, _textW, richLines, fontPx);
   const tspans = lines
     .map((line, i) => {
       const dy = i === 0 ? 0 : box;
@@ -1301,7 +1342,7 @@ function multiLineText(
       return `<tspan x="${textX}" dy="${dy}">${show}</tspan>`;
     })
     .join('');
-  return `<text class="map-label" x="${textX}" y="${top}" text-anchor="start" font-size="${fontPx}" font-weight="${fontWeight}" font-family="${LABEL_FONT_FAMILY}">${tspans}</text>`;
+  return `${codeBg}<text class="map-label" x="${textX}" y="${top}" text-anchor="start" font-size="${fontPx}" font-weight="${fontWeight}" font-family="${LABEL_FONT_FAMILY}">${tspans}</text>`;
 }
 
 /**

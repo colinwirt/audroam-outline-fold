@@ -14,7 +14,16 @@ export const BASE_ROLES = ['moss', 'fern', 'pine', 'lichen', 'bark', 'creek', 'e
 export const HIGHLIGHTER_COLOURS = ['lemon', 'lime', 'flamingo', 'tangerine', 'aqua'] as const;
 /** @deprecated alias of BASE_ROLES. */
 export const FOREST_COLOURS = BASE_ROLES;
-export const NODE_COLOURS = [...BASE_ROLES, ...HIGHLIGHTER_COLOURS] as const;
+/**
+ * 0.5.23 Audroam palette: a fixed role group (like Highlighter) sampled from Audroam's
+ * action buttons. Roles are namespaced `audroam-<role>` so they never clash with a base role,
+ * a Highlighter role (`aqua`, `lemon`) or an alias (`red`, `grey`).
+ */
+export const AUDROAM_COLOURS = [
+  'audroam-green', 'audroam-salmon', 'audroam-peach', 'audroam-sky', 'audroam-aqua',
+  'audroam-lemon', 'audroam-red', 'audroam-lavender', 'audroam-grey',
+] as const;
+export const NODE_COLOURS = [...BASE_ROLES, ...HIGHLIGHTER_COLOURS, ...AUDROAM_COLOURS] as const;
 export type BaseRole = (typeof BASE_ROLES)[number];
 export type NodeColour = (typeof NODE_COLOURS)[number];
 
@@ -56,6 +65,24 @@ export const HIGHLIGHTER: Record<(typeof HIGHLIGHTER_COLOURS)[number], { label: 
   aqua: { label: 'Aqua', wash: '#7af4ff', dark: '#7af4ff', light: '#00879a' },
 };
 
+/**
+ * Audroam (shared). Source: the action-pack `cssStyle.background` values in Audroam
+ * `code/app/ui/js/data/*.ts` (release-20261027). They are rgba washes on a white page, so
+ * `dark` is the colour as painted (rgba composited over #ffffff); Audroam has only the one
+ * value, so `light` is that colour darkened (RGB scaled) until >= 3.2:1 on the light canvas.
+ */
+export const AUDROAM: Record<(typeof AUDROAM_COLOURS)[number], { label: string; source: string; dark: string; light: string }> = {
+  'audroam-green': { label: 'Soft green', source: "defaultActions1.ts:25 rgba(30,240,30,0.3)", dark: '#bcfbbc', light: '#6d916d' },
+  'audroam-salmon': { label: 'Salmon', source: "actions2.ts:12 rgba(229,53,41,0.3)", dark: '#f7c2bf', light: '#a3807e' },
+  'audroam-peach': { label: 'Peach', source: "defaultActions1.ts:332 rgba(240,80,30,0.3)", dark: '#fbcbbc', light: '#a08278' },
+  'audroam-sky': { label: 'Sky blue', source: "reuseActions.ts:85 rgba(100,150,255,0.4)", dark: '#c1d5ff', light: '#7c88a3' },
+  'audroam-aqua': { label: 'Aqua', source: "defaultActions1.ts:190 rgba(30,240,240,0.3)", dark: '#bcfbfb', light: '#6b8f8f' },
+  'audroam-lemon': { label: 'Lemon', source: "reuseActions.ts:45 Yellow", dark: '#ffff00', light: '#8c8c00' },
+  'audroam-red': { label: 'Red', source: "actions2.ts:358 rgba(240,40,40,0.6)", dark: '#f67e7e', light: '#d16b6b' },
+  'audroam-lavender': { label: 'Lavender', source: "actions2.ts:510 rgba(200,200,255,0.8)", dark: '#d3d3ff', light: '#8787a3' },
+  'audroam-grey': { label: 'Grey', source: "actions2.ts:487 rgba(140,140,140,0.4)", dark: '#d1d1d1', light: '#888888' },
+};
+
 const palettes = new Map<string, NodePalette>([['forest', FOREST_PALETTE]]);
 export const DEFAULT_PALETTE = 'forest';
 
@@ -70,11 +97,16 @@ export function nodePaletteNames(): string[] {
   return [...palettes.keys()];
 }
 
-/** Menu / picker groups for a palette: `<palette label>` (base roles) then `Highlighter`. */
+/**
+ * Menu / picker groups, one labelled row per palette: `<palette label>` (base roles, the
+ * active base palette), `Highlighter`, `Audroam`. Other registered base palettes recolour the
+ * same role keys, so they switch via `colourPalette` instead of adding duplicate rows.
+ */
 export function colourGroups(palette?: string | null): { name: string; colours: readonly NodeColour[] }[] {
   return [
     { name: nodePalette(palette).label, colours: BASE_ROLES },
     { name: 'Highlighter', colours: HIGHLIGHTER_COLOURS },
+    { name: 'Audroam', colours: AUDROAM_COLOURS },
   ];
 }
 /** Default (Forest) groups. */
@@ -100,10 +132,16 @@ export function isHighlighter(name: unknown): boolean {
   return typeof name === 'string' && (HIGHLIGHTER_COLOURS as readonly string[]).includes(name);
 }
 
+/** 0.5.23: an Audroam role (`audroam-*`); its fill paints the sampled button colour solid. */
+export function isAudroam(name: unknown): boolean {
+  return typeof name === 'string' && (AUDROAM_COLOURS as readonly string[]).includes(name);
+}
+
 /** Role → its label in a palette (`moss` → `Moss`; menu labels, live region, accessible name). */
 export function colourLabel(name: string, palette?: string | null): string {
   const r = resolveColour(name);
   if (r && isHighlighter(r)) return HIGHLIGHTER[r as keyof typeof HIGHLIGHTER].label;
+  if (r && r in AUDROAM) return AUDROAM[r as keyof typeof AUDROAM].label;
   if (r) return nodePalette(palette).roles[r as BaseRole].label;
   return name ? name[0]!.toUpperCase() + name.slice(1) : name;
 }

@@ -96,7 +96,8 @@ test('icon picker Colours row sets the colour (EP-31)', async ({ page }) => {
   await open(page);
   await page.evaluate(() => (window as any).__map.openIconPicker('mu'));
   const row = page.getByTestId('of-ep-colours');
-  await expect(row.locator('[role="radio"]')).toHaveCount(15);
+  await expect(row.locator('[role="radio"]')).toHaveCount(24); // 0.5.23: + Audroam row
+  expect(await row.locator('.of-ep-colours-cap').allTextContents()).toEqual(['Forest', 'Highlighter', 'Audroam']);
   await row.getByTestId('of-ep-swatch-fern').click();
   // 0.5.22: migrated from the inline tag to the layout entry; fill kept on recolour (0.5.20).
   expect(await text(page)).toContain('- Museums <id:mu>');
@@ -122,4 +123,47 @@ test('0.5.20 branch colour: grandchild border, no wash by default, :fill inherit
   expect((await pillStroke(page, 'dr')).fill).not.toBe((await pillStroke(page, 'loose')).fill);
   await expect(page.locator(`${cloud('sh')} path`)).toHaveAttribute('stroke', 'var(--node-moss)');
   await page.locator('#panel').screenshot({ path: 'test-results/colour-inherit.png' });
+});
+
+/** 0.5.23 code regions and palettes. Fixture: examples/e2e-touch/code.md via ?md=code.md. */
+const codeFill = (page: Page, id: string) =>
+  page.locator(`${node(id)} rect.map-code-bg`).first().evaluate((el) => getComputedStyle(el).fill);
+for (const theme of ['dark', 'light'] as const) {
+  test(`0.5.23 code regions (${theme}): own background, unchanged inside a fill branch`, async ({ page }) => {
+    await open(page, `?md=code.md${theme === 'light' ? '&theme=light' : ''}`);
+    const plain = await codeFill(page, 'b');
+    expect(plain).toBe(rgb(await cssVar(page, '--map-code-bg')));
+    expect(plain).not.toBe((await pillStroke(page, 'b')).fill);
+    // Inside an ember:fill branch and a Highlighter fill: the same code background.
+    expect(await codeFill(page, 'wc')).toBe(plain);
+    expect(await codeFill(page, 'hl')).toBe(plain);
+    expect((await pillStroke(page, 'wc')).fill).not.toBe((await pillStroke(page, 'b')).fill);
+    // Fenced block: one rect for the two lines, no fence glyphs painted.
+    await expect(page.locator(`${node('blk')} rect.map-code-bg`)).toHaveCount(1);
+    await expect(page.locator(`${node('blk')} .map-label`)).not.toContainText('```');
+    // Code ink stays light on the dark code background inside a dark-ink fill.
+    const ink = await page.locator(`${node('hl')} tspan.map-code`).evaluate((el) => getComputedStyle(el).fill);
+    expect(ink).toBe(rgb(await cssVar(page, '--map-code-ink')));
+    // Outline code: same token family.
+    const oc = await page.locator('#outline code.of-code').first().evaluate((el) => getComputedStyle(el).borderRadius);
+    expect(oc).toBe('4px');
+    const shot = theme === 'dark' ? process.env.CODE_SHOT_DARK : process.env.CODE_SHOT_LIGHT;
+    await page.locator('#panel').screenshot({ path: shot || `test-results/code-region-${theme}.png` });
+  });
+}
+
+test('0.5.23 picker lists every palette row; Audroam roles render and round-trip', async ({ page }) => {
+  await open(page, '?md=code.md&focus=ap');
+  // Audroam fill paints the sampled colour solid.
+  expect((await pillStroke(page, 'ag')).fill).toBe(rgb(await cssVar(page, '--node-audroam-green-hl')));
+  expect((await pillStroke(page, 'ap')).stroke).toBe(rgb(await cssVar(page, '--node-audroam-peach')));
+  await page.evaluate(() => (window as any).__map.openNodeMenu('ap'));
+  const rows = page.locator('.map-node-menu-swatches');
+  await expect(rows).toHaveCount(3);
+  expect(await rows.evaluateAll((els) => els.map((e) => e.getAttribute('aria-label')))).toEqual(['Colour · Forest', 'Colour · Highlighter', 'Colour · Audroam']);
+  await expect(page.locator('.map-node-menu-swatches[aria-label="Colour · Audroam"] [role="menuitemradio"]')).toHaveCount(9);
+  if (process.env.PALETTE_SHOT) await page.screenshot({ path: process.env.PALETTE_SHOT });
+  await page.locator('[data-item="color:audroam-sky"]').click();
+  await expect(page.locator(node('ap'))).toHaveClass(/colour-audroam-sky/);
+  expect(await text(page)).toMatch(/ap:\n\s+colou?r: audroam-sky/);
 });

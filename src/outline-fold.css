@@ -60,6 +60,32 @@
   --node-tangerine-hl: #ffd296;
   --node-aqua: #7af4ff;
   --node-aqua-hl: #7af4ff;
+  /* 0.5.23 Audroam (shared): action-button colours as painted on white (see nodeColour.ts). */
+  --node-audroam-green: #bcfbbc;
+  --node-audroam-salmon: #f7c2bf;
+  --node-audroam-peach: #fbcbbc;
+  --node-audroam-sky: #c1d5ff;
+  --node-audroam-aqua: #bcfbfb;
+  --node-audroam-lemon: #ffff00;
+  --node-audroam-red: #f67e7e;
+  --node-audroam-lavender: #d3d3ff;
+  --node-audroam-grey: #d1d1d1;
+  /* Audroam fill: the sampled colour itself, solid, both themes (dark ink label). */
+  --node-audroam-green-hl: #bcfbbc;
+  --node-audroam-salmon-hl: #f7c2bf;
+  --node-audroam-peach-hl: #fbcbbc;
+  --node-audroam-sky-hl: #c1d5ff;
+  --node-audroam-aqua-hl: #bcfbfb;
+  --node-audroam-lemon-hl: #ffff00;
+  --node-audroam-red-hl: #f67e7e;
+  --node-audroam-lavender-hl: #d3d3ff;
+  --node-audroam-grey-hl: #d1d1d1;
+  /* 0.5.23 code regions: a lighter slate tint on the dark pill (never the branch wash). */
+  --map-code-bg: #22404f;
+  --map-code-stroke: #33576a;
+  --map-code-ink: #e7ecf1;
+  --of-code-bg: #1c2b36;
+  --of-code-ink: #e7ecf1;
 }
 
 /* Light theme tokens, opt-in: class="of-theme-light" on the map host or an
@@ -92,6 +118,19 @@
   --node-flamingo: #c9419f;
   --node-tangerine: #c46a00;
   --node-aqua: #00879a;
+  /* 0.5.23 Audroam, light: the sampled colour darkened to >= 3.2:1 on --map-bg. */
+  --node-audroam-green: #6d916d;
+  --node-audroam-salmon: #a3807e;
+  --node-audroam-peach: #a08278;
+  --node-audroam-sky: #7c88a3;
+  --node-audroam-aqua: #6b8f8f;
+  --node-audroam-lemon: #8c8c00;
+  --node-audroam-red: #d16b6b;
+  --node-audroam-lavender: #8787a3;
+  --node-audroam-grey: #888888;
+  /* Code on the (still dark) pills: a touch lighter than in dark. */
+  --map-code-bg: #2a4a5b;
+  --map-code-stroke: #3d6378;
 }
 /* The Outline under the light theme (0.2.34): text, chip and link colours. Scoped to
    the Outline, because map labels sit on dark pills. */
@@ -103,6 +142,8 @@
   --of-stroke: #c9d3dd;
   --of-hop: #0b5cad;
   --of-hop-hover: #083f78;
+  --of-code-bg: #eef1f4;
+  --of-code-ink: #1d2a36;
   color: var(--text, var(--of-text));
 }
 
@@ -297,7 +338,14 @@
 .of-code {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 0.92em;
+  background: var(--of-code-bg);
+  color: var(--of-code-ink);
+  padding: 0 3px;
+  border-radius: 4px;
 }
+/* 0.5.23 Map code regions: a token fill behind each code run (and one per fenced block).
+   It is its own rect, not the pill, so the branch wash (colour-fill, is-hl) never reaches it. */
+.map-code-bg { fill: var(--map-code-bg); stroke: var(--map-code-stroke); stroke-width: 0.75; pointer-events: none; }
 .of-unlock {
   flex: none;
   margin-left: 0.35rem;
@@ -1136,6 +1184,15 @@ div.of-unlock.of-unlock-sheet { border-radius: 12px 12px 8px 8px; border-left-wi
 .map-node.colour-flamingo { --nc: var(--node-flamingo); }
 .map-node.colour-tangerine { --nc: var(--node-tangerine); }
 .map-node.colour-aqua { --nc: var(--node-aqua); }
+.map-node.colour-audroam-green { --nc: var(--node-audroam-green); }
+.map-node.colour-audroam-salmon { --nc: var(--node-audroam-salmon); }
+.map-node.colour-audroam-peach { --nc: var(--node-audroam-peach); }
+.map-node.colour-audroam-sky { --nc: var(--node-audroam-sky); }
+.map-node.colour-audroam-aqua { --nc: var(--node-audroam-aqua); }
+.map-node.colour-audroam-lemon { --nc: var(--node-audroam-lemon); }
+.map-node.colour-audroam-red { --nc: var(--node-audroam-red); }
+.map-node.colour-audroam-lavender { --nc: var(--node-audroam-lavender); }
+.map-node.colour-audroam-grey { --nc: var(--node-audroam-grey); }
 .map-node.has-colour .map-pill {
   stroke: var(--nc);
   stroke-width: 2;
@@ -1153,6 +1210,20 @@ div.of-unlock.of-unlock-sheet { border-radius: 12px 12px 8px 8px; border-left-wi
 .map-node.colour-aqua { --nh: var(--node-aqua-hl); }
 .map-node.is-hl .map-pill { fill: color-mix(in srgb, var(--nh) 92%, var(--pill-fill)); }
 .map-node.is-hl .map-label, .map-node.is-hl text { fill: #0b1a21; }
+/* 0.5.23 Audroam fill: the button colour as Audroam paints it, solid, with dark ink. */
+.map-node.colour-audroam-green { --nh: var(--node-audroam-green-hl); }
+.map-node.colour-audroam-salmon { --nh: var(--node-audroam-salmon-hl); }
+.map-node.colour-audroam-peach { --nh: var(--node-audroam-peach-hl); }
+.map-node.colour-audroam-sky { --nh: var(--node-audroam-sky-hl); }
+.map-node.colour-audroam-aqua { --nh: var(--node-audroam-aqua-hl); }
+.map-node.colour-audroam-lemon { --nh: var(--node-audroam-lemon-hl); }
+.map-node.colour-audroam-red { --nh: var(--node-audroam-red-hl); }
+.map-node.colour-audroam-lavender { --nh: var(--node-audroam-lavender-hl); }
+.map-node.colour-audroam-grey { --nh: var(--node-audroam-grey-hl); }
+.map-node.is-au .map-pill { fill: var(--nh); }
+.map-node.is-au .map-label, .map-node.is-au text { fill: #0b1a21; }
+/* Code text keeps its own ink on its own background, whatever the branch fill. */
+.map-node .map-label tspan.map-code { fill: var(--map-code-ink); }
 .map-colour-ring { fill: none; stroke: none; pointer-events: none; }
 /* 0.5.20: a collapsed node with hidden kids gets a rounded ring in its branch colour (neutral
    when uncoloured); it goes away on expand. */
@@ -1180,6 +1251,15 @@ div.of-unlock.of-unlock-sheet { border-radius: 12px 12px 8px 8px; border-left-wi
 .of-node.of-colour-flamingo { --nc: var(--node-flamingo); }
 .of-node.of-colour-tangerine { --nc: var(--node-tangerine); }
 .of-node.of-colour-aqua { --nc: var(--node-aqua); }
+.of-node.of-colour-audroam-green { --nc: var(--node-audroam-green); }
+.of-node.of-colour-audroam-salmon { --nc: var(--node-audroam-salmon); }
+.of-node.of-colour-audroam-peach { --nc: var(--node-audroam-peach); }
+.of-node.of-colour-audroam-sky { --nc: var(--node-audroam-sky); }
+.of-node.of-colour-audroam-aqua { --nc: var(--node-audroam-aqua); }
+.of-node.of-colour-audroam-lemon { --nc: var(--node-audroam-lemon); }
+.of-node.of-colour-audroam-red { --nc: var(--node-audroam-red); }
+.of-node.of-colour-audroam-lavender { --nc: var(--node-audroam-lavender); }
+.of-node.of-colour-audroam-grey { --nc: var(--node-audroam-grey); }
 .of-node.of-colour > .of-row { box-shadow: inset 3px 0 0 var(--nc); padding-left: 6px; }
 .of-node.of-colour-fill.of-colour-lemon > .of-row > .of-title { background: var(--node-lemon-hl); color: #0b1a21; border-radius: 3px; padding: 0 3px; }
 .of-node.of-colour-fill.of-colour-lime > .of-row > .of-title { background: var(--node-lime-hl); color: #0b1a21; border-radius: 3px; padding: 0 3px; }
@@ -1210,6 +1290,15 @@ div.of-unlock.of-unlock-sheet { border-radius: 12px 12px 8px 8px; border-left-wi
 .swatch-flamingo { --sw: var(--node-flamingo); }
 .swatch-tangerine { --sw: var(--node-tangerine); }
 .swatch-aqua { --sw: var(--node-aqua); }
+.swatch-audroam-green { --sw: var(--node-audroam-green); }
+.swatch-audroam-salmon { --sw: var(--node-audroam-salmon); }
+.swatch-audroam-peach { --sw: var(--node-audroam-peach); }
+.swatch-audroam-sky { --sw: var(--node-audroam-sky); }
+.swatch-audroam-aqua { --sw: var(--node-audroam-aqua); }
+.swatch-audroam-lemon { --sw: var(--node-audroam-lemon); }
+.swatch-audroam-red { --sw: var(--node-audroam-red); }
+.swatch-audroam-lavender { --sw: var(--node-audroam-lavender); }
+.swatch-audroam-grey { --sw: var(--node-audroam-grey); }
 .swatch-lemon { --sw: var(--node-lemon-hl); box-shadow: inset 0 0 0 2px var(--node-lemon); }
 .swatch-lime { --sw: var(--node-lime-hl); box-shadow: inset 0 0 0 2px var(--node-lime); }
 .swatch-flamingo { --sw: var(--node-flamingo-hl); box-shadow: inset 0 0 0 2px var(--node-flamingo); }

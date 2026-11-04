@@ -24,7 +24,8 @@
 import { parse, serialize, createMapView, toHtml, attachIconTypeahead, createIconToolbarButton, loadEmojiData } from '../../dist/index.js';
 await loadEmojiData();
 if (new URLSearchParams(location.search).get('theme') === 'light') { document.documentElement.classList.add('of-theme-light'); document.body.style.background = '#f3f6f9'; document.body.style.color = '#1d2a36'; }
-const md = await (await fetch('colour.md')).text();
+const mdName = new URLSearchParams(location.search).get('md') || 'colour.md';
+const md = await (await fetch(/^[\w-]+\.md$/.test(mdName) ? mdName : 'colour.md')).text();
 let doc = parse(md);
 const layout = { _source: 'auto-pack', nodes: {} };
 let focusId = new URLSearchParams(location.search).get('focus') || '';

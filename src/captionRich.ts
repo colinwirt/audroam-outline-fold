@@ -194,7 +194,29 @@ function parseTagRuns(text: string): CaptionStyleRun[] {
 
 /** Backticks and <code> become code runs. Backtick contents are not parsed as HTML. */
 export function parseTinyHtmlRuns(text: string): CaptionStyleRun[] {
-  const s = String(text ?? '');
+  // 0.5.23: a fenced block (``` line, body, ``` line) is one code run; the fence lines go.
+  const src = String(text ?? '');
+  const fence = /(^|\n)```[^\n`]*\n([\s\S]*?)\n```[ \t]*(?=\n|$)/g;
+  if (src.includes('```')) {
+    const out: CaptionStyleRun[] = [];
+    let at = 0;
+    let f: RegExpExecArray | null;
+    while ((f = fence.exec(src)) !== null) {
+      const head = src.slice(at, f.index) + f[1];
+      if (head) out.push(...parseInlineRuns(head));
+      out.push({ text: f[2]!, bold: false, italic: false, code: true });
+      at = f.index + f[0].length;
+    }
+    if (at > 0) {
+      if (at < src.length) out.push(...parseInlineRuns(src.slice(at)));
+      return out;
+    }
+  }
+  return parseInlineRuns(src);
+}
+
+function parseInlineRuns(text: string): CaptionStyleRun[] {
+  const s = text;
   const runs: CaptionStyleRun[] = [];
   const re = /`([^`\n]+)`/g;
   let last = 0;
@@ -504,7 +526,7 @@ export function captionRunToTspanInner(run: CaptionStyleRun): string {
   const attrs: string[] = [];
   if (run.bold) attrs.push('font-weight="700"');
   if (run.italic) attrs.push('font-style="italic"');
-  if (run.code) attrs.push('font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace"');
+  if (run.code) attrs.push('class="map-code" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace"');
   const a = attrs.length ? ' ' + attrs.join(' ') : '';
   return `<tspan${a}>${show}</tspan>`;
 }

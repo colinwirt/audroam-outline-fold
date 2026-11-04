@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.5.23
+
+- Map code regions: inline `code` and fenced ``` blocks paint a theme-token background rect (`--map-code-bg`/`--map-code-stroke`, rx 4, 3px pad) behind monospace runs; consecutive fenced lines share one block rect. Not washed by fills; code ink stays light inside Highlighter/Audroam fills. Outline `.of-code` gets the matching `--of-code-bg`/`--of-code-ink`, padding and 4px radius.
+- Colour picker (node menu and icon picker) shows one labelled row per palette: Forest, Highlighter, Audroam.
+- New Audroam palette, `audroam-green|salmon|peach|sky|aqua|lemon|red|lavender|grey`, sampled from Audroam action-pack `cssStyle.background` values (composited over white); light-theme variants darkened to >=3.2:1. `:fill` paints the sampled colour solid with dark ink. Roles serialise into the layout block colour.
+- e2e colour fixture page accepts `?md=<name>.md`; new `code.md` fixture.
+
 ## 0.5.22 — 2026-11-04
 
 Node colour and icon in the layout block (Colin, 4 Nov).

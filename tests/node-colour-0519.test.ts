@@ -14,7 +14,7 @@ const one = (line: string) => parse(`${line}\n`).nodes[0]!;
 
 describe('0.5.19 node colour tokens (EP-31, EP-32)', () => {
   it('fourteen roles: Forest then Highlighter', () => {
-    expect(NODE_COLOURS.length).toBe(14);
+    expect(NODE_COLOURS.length).toBe(23); // 0.5.23: + 9 Audroam roles
     expect(isNodeColour('creek')).toBe(true);
     expect(isNodeColour('red')).toBe(false);
     expect(isNodeColour('#ff0000')).toBe(false);
@@ -100,15 +100,16 @@ describe('0.5.19 node menu swatch row (EP-31, EP-39)', () => {
   it('swatch entries render as Forest and Highlighter rows, None first', () => {
     const entries = [
       { key: 'color:none', label: 'None', group: 'Edit' as const, swatch: 'none', row: 'Colour · Forest', checked: false },
-      ...NODE_COLOURS.map((c) => ({ key: `color:${c}`, label: colourLabel(c), group: 'Edit' as const, swatch: c, row: isHighlighter(c) ? 'Colour · Highlighter' : 'Colour · Forest', checked: c === 'ember' })),
+      ...NODE_COLOURS.map((c) => ({ key: `color:${c}`, label: colourLabel(c), group: 'Edit' as const, swatch: c, row: isHighlighter(c) ? 'Colour · Highlighter' : c.startsWith('audroam-') ? 'Colour · Audroam' : 'Colour · Forest', checked: c === 'ember' })),
     ];
     const v = renderNodeMenu({ title: 'Plan', entries, fine: true });
     const rows = [...v.el.querySelectorAll('.map-node-menu-swatches')];
-    expect(rows.map((r) => r.getAttribute('aria-label'))).toEqual(['Colour · Forest', 'Colour · Highlighter']);
+    expect(rows.map((r) => r.getAttribute('aria-label'))).toEqual(['Colour · Forest', 'Colour · Highlighter', 'Colour · Audroam']);
     expect(rows[0]!.querySelectorAll('[role="menuitemradio"]').length).toBe(10);
     expect(rows[1]!.querySelectorAll('[role="menuitemradio"]').length).toBe(5);
     expect(rows[0]!.querySelector('[data-item="color:ember"]')!.getAttribute('aria-checked')).toBe('true');
-    expect(v.items.length).toBe(15);
+    expect(rows[2]!.querySelectorAll('[role="menuitemradio"]').length).toBe(9);
+    expect(v.items.length).toBe(24);
   });
 });
 
@@ -116,7 +117,7 @@ describe('0.5.19 node menu swatch row (EP-31, EP-39)', () => {
 describe('0.5.19 palette contrast (EP-35)', () => {
   const css = readFileSync(join(__dirname, '../src/outline-fold.css'), 'utf8');
   const block = (sel: RegExp) => css.match(sel)![1]!;
-  const tokens = (b: string) => Object.fromEntries([...b.matchAll(/--node-([a-z]+):\s*(#[0-9a-fA-F]{6})/g)].map((m) => [m[1], m[2]]));
+  const tokens = (b: string) => Object.fromEntries([...b.matchAll(/--node-([a-z-]+):\s*(#[0-9a-fA-F]{6})/g)].filter((m) => !m[1]!.endsWith('-hl')).map((m) => [m[1], m[2]]));
   const lum = (h: string) => {
     const c = [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16) / 255).map((v) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4));
     return 0.2126 * c[0]! + 0.7152 * c[1]! + 0.0722 * c[2]!;
@@ -137,7 +138,11 @@ describe('0.5.19 palette contrast (EP-35)', () => {
         const v = set[c]!;
         expect(cr(v, pill), `${c} ${v} on pill`).toBeGreaterThanOrEqual(3);
         expect(cr(v, canvas), `${c} ${v} on canvas`).toBeGreaterThanOrEqual(3);
-        if (!isHighlighter(c)) expect(cr('#e7ecf1', mix(v, pill, 0.16)), `${c} text on wash`).toBeGreaterThanOrEqual(10);
+        if (c.startsWith('audroam-')) {
+          // 0.5.23: Audroam fill is the sampled colour solid under dark ink; red is 6.9:1 (AA, judgment call).
+          const au = dark[c]!;
+          expect(cr('#0b1a21', au), `${c} ink on Audroam fill`).toBeGreaterThanOrEqual(c === 'audroam-red' ? 4.5 : 10);
+        } else if (!isHighlighter(c)) expect(cr('#e7ecf1', mix(v, pill, 0.16)), `${c} text on wash`).toBeGreaterThanOrEqual(10);
         else expect(cr('#0b1a21', mix(hl[c]!, pill, 0.92)), `${c} ink on highlighter`).toBeGreaterThanOrEqual(10);
       }
     }
@@ -161,7 +166,7 @@ describe('0.5.19 palettes and aliases', () => {
   it('Forest (9 roles) + Highlighter (5), all distinct', () => {
     expect(BASE_ROLES).toEqual(['moss', 'fern', 'pine', 'lichen', 'bark', 'creek', 'ember', 'slate', 'stone']);
     expect(HIGHLIGHTER_COLOURS).toEqual(['lemon', 'lime', 'flamingo', 'tangerine', 'aqua']);
-    expect(colourGroups().map((g) => g.name)).toEqual(['Forest', 'Highlighter']);
+    expect(colourGroups().map((g) => g.name)).toEqual(['Forest', 'Highlighter', 'Audroam']);
     const hexes = BASE_ROLES.map((r) => FOREST_PALETTE.roles[r].dark);
     expect(new Set(hexes).size).toBe(hexes.length);
   });
