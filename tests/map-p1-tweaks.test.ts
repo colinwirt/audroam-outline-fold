@@ -70,12 +70,11 @@ describe('K4: open tasks stand out', () => {
     expect(cssBlock('.map-node.task-done .map-label {')).toContain('fill: var(--map-node-muted);');
   });
 
-  it('CSS: the folded gold stroke, focus ring and cue text still win (later, same or higher specificity)', () => {
+  it('CSS: focus ring and cue text still win (later, same or higher specificity); 0.5.29 no folded gold stroke', () => {
     const task = css.indexOf('.map-node.task-open .map-pill,');
-    expect(css.indexOf('.map-node.collapsed .map-pill {')).toBeGreaterThan(task);
+    expect(css.indexOf('.map-node.collapsed .map-pill {')).toBe(-1);
     expect(css.indexOf('.map-node.is-focused .map-pill,')).toBeGreaterThan(task);
     expect(css.indexOf('.map-node.cue .map-label {')).toBeGreaterThan(css.indexOf('.map-node.task-done .map-label {'));
-    expect(cssBlock('.map-node.collapsed .map-pill {')).toContain('stroke: var(--gold);');
   });
 
   it('class names carry the task state the CSS keys on', () => {

@@ -137,6 +137,10 @@ test.describe('K6: a folded node shows its hidden-child count', () => {
     // The folded handle keeps its gold disc.
     const gold = await seeds.locator('.map-fold-indicator circle').evaluate((c) => getComputedStyle(c).fill);
     expect(gold).toBe('rgb(201, 162, 39)');
+    // 0.5.29: the handle is the only fold cue: no collapsed ring, no gold pill stroke.
+    await expect(page.locator('.map-collapsed-ring')).toHaveCount(0);
+    const pill = await seeds.locator('.map-pill').evaluate((r) => getComputedStyle(r).stroke);
+    expect(pill).not.toBe('rgb(201, 162, 39)');
   });
 });
 

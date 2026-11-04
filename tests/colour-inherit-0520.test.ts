@@ -179,15 +179,15 @@ describe('0.5.20 collapsed ring and light clouds (iThoughts look)', () => {
     await new Promise((r) => setTimeout(r, 20));
     return { host, mv };
   }
-  it('collapsed node with hidden kids gets a ring; expanded does not', async () => {
-    const { host, mv } = await paintWith('---\nfold-: c\n---\n- Root <color:moss> <id:r>\n  - C <id:c>\n    - G <id:g>\n  - D <id:d>\n    - E <id:e>\n');
-    expect(host.querySelector('.map-node[data-id="c"] .map-collapsed-ring')).not.toBeNull();
-    expect(host.querySelector('.map-node[data-id="d"] .map-collapsed-ring')).toBeNull();
+  it('0.5.29: no collapsed ring, collapsed or expanded (the fold handle shows the children)', async () => {
+    const { host, mv } = await paintWith('---\nfold-: c\n---\n- Root <color:moss> <id:r>\n  - C <id:c>\n    - G <id:g>\n  - D <id:d>\n    - E <id:e>\n  - [ ] T <id:t>\n    - U <id:u>\n');
+    expect(host.querySelector('.map-collapsed-ring')).toBeNull();
+    expect(host.querySelector('.map-node[data-id="c"] .map-fold-indicator, .map-node[data-id="c"] .map-fold-hit')).not.toBeNull();
     mv.destroy?.();
   });
-  it('ring uses the branch colour; uncoloured branch uses neutral', () => {
-    expect(css).toMatch(/\.map-node\.has-colour \.map-collapsed-ring \{[^}]*stroke: var\(--nc\)/);
-    expect(css).toMatch(/\.map-collapsed-ring \{[^}]*fill: none[^}]*stroke: var\(--of-collapsed-ring/);
+  it('0.5.29: no collapsed-ring CSS and no gold stroke on a collapsed pill', () => {
+    expect(css).not.toMatch(/map-collapsed-ring/);
+    expect(css).not.toMatch(/\.map-node\.collapsed \.map-pill\s*\{/);
   });
   it('a coloured cloud fill stays light (<= 6%)', async () => {
     const { cloudSvg } = await import('../src/mapRegion.js');

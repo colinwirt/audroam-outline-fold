@@ -5201,7 +5201,7 @@ export function createMapView(
       role="treeitem" aria-selected="${focused ? 'true' : 'false'}" aria-current="${focused ? 'true' : 'false'}" aria-label="${esc(timeLeaf ? timeLeafAriaLabel(timeLeaf, label) : label)}${colourName ? `, ${colourLabel(colourName, paletteName).toLowerCase()}` : ''}${task != null ? (task === 'done' ? ', task done' : task === 'pending' ? ', task pending' : ', task open') : ''}${foldable ? (col ? `, collapsed, ${foldCountLabel(hiddenCount)}` : ', expanded') : ''}${showMore ? ', more text available' : ''}${showLess ? ', showing full body' : ''}"
       ${foldable ? `aria-expanded="${col ? 'false' : 'true'}" aria-haspopup="menu"` : ''}${levelMenu && levelMenu.id === key ? ' data-level-open="true"' : ''}>
       <title>${esc(tip)}</title>
-      ${col ? `<rect class="map-collapsed-ring" x="${x - 5}" y="${y - 5}" width="${boxW + 10}" height="${h + 10}" rx="23" ry="23"/>` : ''}${colourName ? `<rect class="map-colour-ring" x="${x - 4}" y="${y - 4}" width="${boxW + 8}" height="${h + 8}" rx="22" ry="22"/>` : ''}<rect class="map-pill" x="${x}" y="${y}" width="${boxW}" height="${h}" rx="18" ry="18"/>
+      ${colourName ? `<rect class="map-colour-ring" x="${x - 4}" y="${y - 4}" width="${boxW + 8}" height="${h + 8}" rx="22" ry="22"/>` : ''}<rect class="map-pill" x="${x}" y="${y}" width="${boxW}" height="${h}" rx="18" ry="18"/>
       ${taskLead0}
       ${globe}
       ${kindLetter}

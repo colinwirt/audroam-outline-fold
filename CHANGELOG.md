@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.5.29
+
+- Map: a collapsed node no longer draws a fold ring. The 0.5.20 `map-collapsed-ring` (the grey or branch-colour outer ring) is gone, and so is the gold 2.25 px stroke from `.map-node.collapsed .map-pill`. On sibling task nodes the two stacked into a thick gold border plus a grey halo. The gold ⊕ fold handle already shows hidden children. The pill keeps its normal border (task width included), and selection and focus styling are unchanged.
+- Tests: `colour-inherit-0520` now asserts that no ring is drawn, collapsed or expanded, and that the CSS has no ring or gold collapsed stroke. `map-p1-tweaks` (unit and e2e) asserts the same.
+
 ## 0.5.28
 
 - Style inside an unlocked secure zone. `setNodeIcon`, `setNodeColour`, `setNodeColourFill`, `setNodeCloud` (newly on the API) and `openIconPicker` take a scoped id (`region:node`). Root cause: they looked the node up with `nodeByKey`, which searches only the main doc, so a zone node was a silent no-op.
