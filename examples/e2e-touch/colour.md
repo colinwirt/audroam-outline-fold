@@ -9,9 +9,16 @@
   - Gear <color:bark> <id:ge>
   - Budget <color:stone> <id:bu>
 - Ideas <cloud:ember> <id:ideas>
-  - Museums <color:lemon> <id:mu>
-  - Markets <color:lime> <id:mk>
-  - Night swim <color:aqua> <id:ns>
-  - Gelato <color:flamingo> <id:gl>
-  - Sunset <color:tangerine> <id:ss>
+  - Museums <color:lemon:fill> <id:mu>
+  - Markets <color:lime:fill> <id:mk>
+  - Night swim <color:aqua:fill> <id:ns>
+  - Gelato <color:flamingo:fill> <id:gl>
+  - Sunset <color:tangerine:fill> <id:ss>
+- Garden <color:moss> <id:gd>
+  - Beds <id:bd>
+    - Tomatoes <id:tm>
+  - Water <color:creek:fill> <id:wa>
+    - Drip line <id:dr>
+  - Shed <cloud> <id:sh>
+    - Tools <id:to>
 - Loose note <id:loose>

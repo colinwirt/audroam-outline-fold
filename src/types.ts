@@ -107,9 +107,12 @@ export interface OutlineNode {
   cloud?: string;
   /**
    * 0.5.19 (EP-31, EP-32, Q12): node colour token from `<color:name>` (alias `<colour:name>`),
-   * one of `NODE_COLOURS`. Per node only; children do not inherit (Q13).
+   * one of `NODE_COLOURS`. 0.5.20: rendering paints the whole branch (nearest coloured
+   * ancestor wins); the field itself stays per node.
    */
   color?: string;
+  /** 0.5.20: `<color:name:fill>` adds the wash; inherited with the colour. Default border + lines only. */
+  colorFill?: boolean;
   /**
    * Explicit action binding from `<action:https://…>` or `<action:event:…>`.
    * Host runs on open→done only (package emits onTaskToggle; never auto-fires caption https).

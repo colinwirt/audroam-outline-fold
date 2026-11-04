@@ -1,6 +1,7 @@
 import { isSealedBranchPayload } from './sealedState.js';
 import { nodeIconHtml } from './emoji/icons.js';
 import { resolveColour, colourVar } from './nodeColour.js';
+import { timeLeafKind } from './timeLeaf.js';
 import { isCollapsed } from './fold.js';
 import { captionToHtml } from './captionRich.js';
 import { iconForNode, iconForTask } from './icons.js';
@@ -21,6 +22,7 @@ function renderNode(
   doc: OutlineFoldDoc,
   opts: Required<Pick<ToHtmlOptions, 'classPrefix' | 'lockedChrome'>> &
     ToHtmlOptions & { ids: Set<string> },
+  inherited: { c: string; fill: boolean } | null = null,
 ): string {
   const p = opts.classPrefix;
   const collapsed = node.id ? isCollapsed(doc, node.id) : false;
@@ -37,8 +39,13 @@ function renderNode(
   const interactiveTasks = opts.interactiveTasks !== false;
 
   // 0.5.19 (EP-34, EP-42): colour bar on the row, named cloud colours its bar.
-  const colour = resolveColour(node.color);
-  const cloudColour = resolveColour(node.cloud);
+  // 0.5.20: the branch colour (nearest coloured ancestor or self); time leaves stay green.
+  const own = resolveColour(node.color);
+  const bc = own ? { c: own, fill: !!node.colorFill } : inherited;
+  const isTime = !!timeLeafKind(node);
+  const colour = isTime ? null : bc?.c ?? null;
+  const fill = !!colour && !!bc?.fill;
+  const cloudColour = node.cloud ? resolveColour(node.cloud) ?? bc?.c ?? null : null;
   // data-kid only — never put raw ciphertext in the DOM / accessible name.
   const dataAttrs = [
     node.id ? `data-id="${esc(node.id)}"` : '',
@@ -150,14 +157,14 @@ function renderNode(
 
   // Keep children in the DOM when collapsed (CSS hides). Focus + a11y stable.
   const kids = hasKids
-    ? `<ul class="${p}-children" role="group">${node.children!.map((c) => renderNode(c, doc, opts)).join('')}</ul>`
+    ? `<ul class="${p}-children" role="group">${node.children!.map((c) => renderNode(c, doc, opts, bc)).join('')}</ul>`
     : '';
 
   const ariaExpanded = hasKids
     ? ` aria-expanded="${collapsed ? 'false' : 'true'}"`
     : '';
 
-  return `<li role="treeitem" class="${p}-node${collapsed ? ` ${p}-collapsed` : ''}${locked ? ` ${p}-locked` : ''}${open ? ` ${p}-region-open` : ''}${node.regionRoot ? ` ${p}-region ${p}-region-${node.regionRoot}` : ''}${node.task ? ` ${p}-has-task` : ''}${node.cloud ? ` ${p}-cloud` : ''}${cloudColour ? ` ${p}-cloud-${cloudColour}` : ''}${colour ? ` ${p}-colour ${p}-colour-${colour}` : ''}" tabindex="-1" aria-level="${ariaLevel}"${ariaExpanded} ${dataAttrs}>
+  return `<li role="treeitem" class="${p}-node${collapsed ? ` ${p}-collapsed` : ''}${locked ? ` ${p}-locked` : ''}${open ? ` ${p}-region-open` : ''}${node.regionRoot ? ` ${p}-region ${p}-region-${node.regionRoot}` : ''}${node.task ? ` ${p}-has-task` : ''}${node.cloud ? ` ${p}-cloud` : ''}${cloudColour ? ` ${p}-cloud-${cloudColour}` : ''}${colour ? ` ${p}-colour ${p}-colour-${colour}${fill ? ` ${p}-colour-fill` : ''}` : ''}" tabindex="-1" aria-level="${ariaLevel}"${ariaExpanded} ${dataAttrs}>
   <div class="${p}-row">${foldBtn}${taskChrome}${icon}${node.icon ? nodeIconHtml(node.icon, p) : ''}<span class="${p}-title">${caption}${colour ? `<span class="${p}-sr">, ${colour}</span>` : ''}</span>${threadChip}${noteChips}${jumpChips}${kidChip}${zoneTools}${unlockBtn}</div>
   ${body}${kids}
 </li>`;

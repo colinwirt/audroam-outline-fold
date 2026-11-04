@@ -88,7 +88,7 @@ describe('0.5.19 Map pill and cloud (EP-33, EP-38)', () => {
     const pts = [{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 10 }, { x: 0, y: 10 }];
     const s = cloudSvg({ rootId: 'f', color: 'creek', depth: 0 }, pts);
     expect(s).toContain('stroke="var(--node-creek)"');
-    expect(s).toMatch(/fill="var\(--node-creek\)" fill-opacity="0.14"/);
+    expect(s).toMatch(/fill="var\(--node-creek\)" fill-opacity="0.06"/);
     const d = cloudSvg({ rootId: 'f', color: 'default', depth: 0 }, pts);
     expect(d).toContain('var(--of-cloud-stroke');
     const u = cloudSvg({ rootId: 'f', color: 'moose', depth: 0 }, pts);
@@ -185,6 +185,7 @@ describe('0.5.19 palettes and aliases', () => {
     expect(el.classList.contains('of-palette-space-test')).toBe(true);
     expect(document.getElementById('of-palette-style-space-test')).toBeTruthy();
     expect(applyNodePalette(el, 'nope')).toBe('forest');
-    expect(mapNodeClassNames({ color: 'lemon' })).toContain('is-hl');
+    expect(mapNodeClassNames({ color: 'lemon' })).not.toContain('is-hl'); // 0.5.20: wash is opt-in
+    expect(mapNodeClassNames({ color: 'lemon', colorFill: true })).toContain('is-hl');
   });
 });

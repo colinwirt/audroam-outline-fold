@@ -95,7 +95,7 @@ test('icon picker Colours row sets the colour (EP-31)', async ({ page }) => {
   const row = page.getByTestId('of-ep-colours');
   await expect(row.locator('[role="radio"]')).toHaveCount(15);
   await row.getByTestId('of-ep-swatch-fern').click();
-  expect(await text(page)).toContain('- Museums <color:fern> <id:mu>');
+  expect(await text(page)).toContain('- Museums <color:fern:fill> <id:mu>'); // 0.5.20: fill kept on recolour
   await expect(row.getByTestId('of-ep-swatch-fern')).toHaveAttribute('aria-checked', 'true');
 });
 
@@ -106,4 +106,15 @@ test('light theme: tokens retune, pills keep coloured borders', async ({ page })
   // Highlighter keeps dark ink on the fluoro wash.
   expect(await page.locator(`${node('mu')} .map-label`).evaluate((el) => getComputedStyle(el).fill)).toBe(rgb('#0b1a21'));
   await page.locator('#panel').screenshot({ path: 'test-results/colour-light.png' });
+});
+
+test('0.5.20 branch colour: grandchild border, no wash by default, :fill inherited, cloud tint', async ({ page }) => {
+  await open(page);
+  const moss = rgb(await cssVar(page, '--node-moss'));
+  const tm = await pillStroke(page, 'tm');
+  expect(tm.stroke).toBe(moss);
+  expect(tm.fill).toBe((await pillStroke(page, 'loose')).fill);
+  expect((await pillStroke(page, 'dr')).fill).not.toBe((await pillStroke(page, 'loose')).fill);
+  await expect(page.locator(`${cloud('sh')} path`)).toHaveAttribute('stroke', 'var(--node-moss)');
+  await page.locator('#panel').screenshot({ path: 'test-results/colour-inherit.png' });
 });

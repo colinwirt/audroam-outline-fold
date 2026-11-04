@@ -1137,10 +1137,13 @@ div.of-unlock.of-unlock-sheet { border-radius: 12px 12px 8px 8px; border-left-wi
 .map-node.colour-tangerine { --nc: var(--node-tangerine); }
 .map-node.colour-aqua { --nc: var(--node-aqua); }
 .map-node.has-colour .map-pill {
-  fill: color-mix(in srgb, var(--nc) 16%, var(--pill-fill));
   stroke: var(--nc);
   stroke-width: 2;
 }
+/* 0.5.20: the wash is opt-in (`<color:x:fill>`), inherited down the branch with the colour. */
+.map-node.colour-fill .map-pill { fill: color-mix(in srgb, var(--nc) 16%, var(--pill-fill)); }
+/* 0.5.20: connectors inside a coloured branch take the colour (time edges stay green). */
+.map-edge.edge-colour { stroke: var(--ec); stroke-opacity: 0.6; }
 .map-node.has-colour .map-label { fill: var(--of-text); }
 /* Highlighter: a strong 92% fluoro wash with dark ink label (>= 10:1 in both themes). */
 .map-node.colour-lemon { --nh: var(--node-lemon-hl); }
@@ -1151,6 +1154,10 @@ div.of-unlock.of-unlock-sheet { border-radius: 12px 12px 8px 8px; border-left-wi
 .map-node.is-hl .map-pill { fill: color-mix(in srgb, var(--nh) 92%, var(--pill-fill)); }
 .map-node.is-hl .map-label, .map-node.is-hl text { fill: #0b1a21; }
 .map-colour-ring { fill: none; stroke: none; pointer-events: none; }
+/* 0.5.20: a collapsed node with hidden kids gets a rounded ring in its branch colour (neutral
+   when uncoloured); it goes away on expand. */
+.map-collapsed-ring { fill: none; stroke: var(--of-collapsed-ring, var(--muted, #8a8d96)); stroke-width: 1.25; stroke-opacity: 0.85; pointer-events: none; }
+.map-node.has-colour .map-collapsed-ring { stroke: var(--nc); }
 .map-node.has-colour.is-focused .map-pill,
 .map-node.has-colour:focus-visible .map-pill { stroke: var(--nc); stroke-width: 2; }
 .map-node.has-colour.is-focused .map-colour-ring,
@@ -1174,11 +1181,12 @@ div.of-unlock.of-unlock-sheet { border-radius: 12px 12px 8px 8px; border-left-wi
 .of-node.of-colour-tangerine { --nc: var(--node-tangerine); }
 .of-node.of-colour-aqua { --nc: var(--node-aqua); }
 .of-node.of-colour > .of-row { box-shadow: inset 3px 0 0 var(--nc); padding-left: 6px; }
-.of-node.of-colour-lemon > .of-row > .of-title { background: var(--node-lemon-hl); color: #0b1a21; border-radius: 3px; padding: 0 3px; }
-.of-node.of-colour-lime > .of-row > .of-title { background: var(--node-lime-hl); color: #0b1a21; border-radius: 3px; padding: 0 3px; }
-.of-node.of-colour-flamingo > .of-row > .of-title { background: var(--node-flamingo-hl); color: #0b1a21; border-radius: 3px; padding: 0 3px; }
-.of-node.of-colour-tangerine > .of-row > .of-title { background: var(--node-tangerine-hl); color: #0b1a21; border-radius: 3px; padding: 0 3px; }
-.of-node.of-colour-aqua > .of-row > .of-title { background: var(--node-aqua-hl); color: #0b1a21; border-radius: 3px; padding: 0 3px; }
+.of-node.of-colour-fill.of-colour-lemon > .of-row > .of-title { background: var(--node-lemon-hl); color: #0b1a21; border-radius: 3px; padding: 0 3px; }
+.of-node.of-colour-fill.of-colour-lime > .of-row > .of-title { background: var(--node-lime-hl); color: #0b1a21; border-radius: 3px; padding: 0 3px; }
+.of-node.of-colour-fill.of-colour-flamingo > .of-row > .of-title { background: var(--node-flamingo-hl); color: #0b1a21; border-radius: 3px; padding: 0 3px; }
+.of-node.of-colour-fill.of-colour-tangerine > .of-row > .of-title { background: var(--node-tangerine-hl); color: #0b1a21; border-radius: 3px; padding: 0 3px; }
+.of-node.of-colour-fill.of-colour-aqua > .of-row > .of-title { background: var(--node-aqua-hl); color: #0b1a21; border-radius: 3px; padding: 0 3px; }
+.of-node.of-colour-fill > .of-row { background: color-mix(in srgb, var(--nc) 12%, transparent); }
 .of-dense .of-node.of-colour > .of-row { box-shadow: none; }
 .of-dense .of-node.of-colour > .of-row::before { content: ""; display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--nc); margin-right: 4px; flex: 0 0 auto; }
 

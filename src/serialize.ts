@@ -137,7 +137,7 @@ function formatTrailingSpans(
   }
   if (node.sealed?.kid && isEncRef(node.sealed)) parts.push(`<enc:${node.sealed.kid}>`);
   if (node.color) {
-    const plain = `<color:${node.color}>`;
+    const plain = `<color:${node.color}${node.colorFill ? ':fill' : ''}>`;
     const k = kept?.color;
     parts.push(k && canonTag(k).replace(/^<colour:/, '<color:') === plain ? k : plain);
   }

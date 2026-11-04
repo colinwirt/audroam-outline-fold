@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.5.20 — 2026-11-04
+
+Branch colour (Colin, 4 Nov). Replaces the 0.5.19 per-node-only default (Q13).
+
+- A node colour now paints its whole branch, in Map and Outline. The nearest coloured ancestor wins, and a descendant's own `<color:…>` tag overrides it for its sub-branch. Untagged descendants simply inherit. The `color` field stays per node; only rendering inherits.
+- Default `<color:role>` / `<colour:role>` tints only the node borders (Map pill stroke, Outline row bar) and the connector lines in that branch (`map-edge edge-colour edge-colour-<role>`, 60% opacity). No wash. Existing tags render this way.
+- New opt-in `:fill` flag, `<color:moss:fill>` (or `<colour:moss:fill>`), adds the wash (Map 16% pill fill / highlighter fluoro; Outline 12% row tint / highlighter title). It is inherited with the colour unless a descendant's own tag overrides it. Round-trips with the spelling kept. New field `OutlineNode.colorFill`.
+- Fill toggle: the Map node menu shows **Fill** (off by default) on a node with its own colour. New helper `setColourFill(node, on)` and handle method `setNodeColourFill(id, on)`. Clearing a colour also clears fill.
+- Clouds: a plain `<cloud>` on a coloured node or inside a coloured branch takes the branch colour (translucent fill plus thin stroke; Outline cloud bar too). An explicit `<cloud:role>` still wins, and clouds in uncoloured branches stay neutral grey.
+- iThoughts look: node fills stay plain unless `:fill`. Coloured clouds are a thin 1px outline in the role with a very light fill (6%, was 14%).
+- New collapsed cue: a collapsed node with hidden children gets a rounded `map-collapsed-ring` around the pill in its branch colour (neutral `--of-collapsed-ring` / muted when uncoloured). It goes away on expand.
+- Time leaves stay green (no colour class, no coloured connector).
+- No way to stop inheritance yet (skipped: it would need new tag grammar).
+
 ## 0.5.19 — 2026-11-04
 
 Node colours (Design UX 2026-11-04, EP-31…EP-37), coloured named clouds, and swappable palettes.

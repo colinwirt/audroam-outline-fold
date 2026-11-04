@@ -153,10 +153,10 @@ export function cloudPath(pts: CloudPoint[], r = 6): string {
 
 /** SVG for one user cloud (drawn under sealed / record regions, edges and pills). */
 export function cloudSvg(cloud: MapCloud, pts: CloudPoint[]): string {
-  // 0.5.19 (EP-38): a palette name tints fill (14%) and stroke with its node colour token.
+  // 0.5.19 (EP-38): a palette name tints fill (0.5.20: 6%, iThoughts look) and stroke with its node colour token.
   const cc = resolveColour(cloud.color);
   const paint = cc
-    ? `fill="${colourVar(cc)}" fill-opacity="0.14" stroke="${colourVar(cc)}"`
+    ? `fill="${colourVar(cc)}" fill-opacity="0.06" stroke="${colourVar(cc)}"`
     : 'fill="var(--of-cloud-fill, rgba(138,141,150,0.14))" stroke="var(--of-cloud-stroke, rgba(138,141,150,0.7))"';
   return `<g class="map-cloud map-cloud-${esc(cloud.color)}" data-cloud="${esc(cloud.rootId)}" data-cloud-color="${esc(cloud.color)}" data-cloud-depth="${cloud.depth}" aria-hidden="true"><path d="${cloudPath(pts)}" ${paint} stroke-width="1" stroke-linejoin="round"/></g>`;
 }

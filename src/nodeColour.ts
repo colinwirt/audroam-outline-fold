@@ -140,3 +140,11 @@ export function applyNodePalette(el: HTMLElement, name?: string | null): string 
   }
   return p.name;
 }
+
+/** 0.5.20: turn the opt-in wash (`<color:x:fill>`) on or off for a node that has a colour. */
+export function setColourFill(node: { color?: string; colorFill?: boolean }, on: boolean): boolean {
+  if (!node.color) return false;
+  if (on) node.colorFill = true;
+  else delete node.colorFill;
+  return true;
+}

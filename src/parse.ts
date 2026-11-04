@@ -74,7 +74,7 @@ const ID_TRAILING = ID_RE.trailing;
 /** 0.5.18 (Q16): `<cloud>` / `<cloud:name>` at the line end. */
 const CLOUD_TRAILING = /\s*<cloud(?::([a-z][a-z0-9-]*))?>$/i;
 /** 0.5.19 (Q12): `<color:name>` / `<colour:name>` with a palette name (never hex). */
-const COLOR_TRAILING = new RegExp(`\\s*<\\s*colou?r\\s*:\\s*(${[...NODE_COLOURS, ...Object.keys(COLOUR_ALIASES)].join('|')})\\s*>\\s*$`, 'i');
+const COLOR_TRAILING = new RegExp(`\\s*<\\s*colou?r\\s*:\\s*(${[...NODE_COLOURS, ...Object.keys(COLOUR_ALIASES)].join('|')})\\s*(?::\\s*(fill)\\s*)?>\\s*$`, 'i');
 const KIND_TRAILING = new RegExp(
   `\\s*<(?:\\s*kind\\s*:\\s*(${KIND_TAG_WORDS})\\s*|(${KIND_WORDS}))>\\s*$`,
   'i',
@@ -275,6 +275,7 @@ function parseTitleAndMeta(
   icon?: string;
   cloud?: string;
   color?: string;
+  colorFill?: true;
   action?: string;
   thread?: string;
   noteLinks?: string[];
@@ -324,6 +325,7 @@ function parseTitleAndMeta(
   let icon: string | undefined;
   let cloud: string | undefined;
   let color: string | undefined;
+  let colorFill: true | undefined;
   {
     const lead = parseLeadingIcon(rest.replace(/^[ \t]+/, ''));
     if (lead) {
@@ -539,6 +541,7 @@ function parseTitleAndMeta(
     m = rest.match(COLOR_TRAILING);
     if (m) {
       color = resolveColour(m[1]) ?? undefined;
+      colorFill = !!m[2] || undefined;
       spell('color', m[0]);
       rest = rest.slice(0, rest.length - m[0].length).trimEnd();
       progressed = true;
@@ -624,12 +627,13 @@ function parseTitleAndMeta(
     icon,
     cloud,
     color,
+    colorFill,
     action,
     thread,
     noteLinks: noteLinks.length ? noteLinks : undefined,
     noteLinkTags: Object.keys(noteLinkTags).length ? noteLinkTags : undefined,
     links: links.length ? links : undefined,
-    tagSpellings: keptSpellings(spelling, { id, kind, action, thread, db: dbRef, color }),
+    tagSpellings: keptSpellings(spelling, { id, kind, action, thread, db: dbRef, color: color && colorFill ? `${color}:fill` : color }),
   };
 }
 
@@ -730,6 +734,7 @@ export function parse(text: string, opts?: ParseOptions): OutlineFoldDoc {
     if (meta.icon) node.icon = meta.icon;
     if (meta.cloud) node.cloud = meta.cloud;
     if (meta.color) node.color = meta.color;
+    if (meta.color && meta.colorFill) node.colorFill = true;
     if (meta.action) node.action = meta.action;
     if (meta.thread) node.thread = meta.thread;
     if (meta.noteLinks) node.noteLinks = meta.noteLinks;

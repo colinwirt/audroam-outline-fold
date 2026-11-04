@@ -10,7 +10,7 @@
  */
 import { iconGlyph, iconLabel, loadEmojiData } from './emoji/icons.js';
 import { openIconPicker } from './emoji/picker.js';
-import { applyNodePalette, colourGroups, colourLabel, isHighlighter, resolveColour } from './nodeColour.js';
+import { applyNodePalette, setColourFill, colourGroups, colourLabel, isHighlighter, resolveColour } from './nodeColour.js';
 import { resolveFollowInText, setFollowInText, loadMapResume } from './mapResume.js';
 import { ALT_HOLD_MS, altDragCommits, altPressKind } from './altGesture.js';
 import { captionLinks, captionWithoutLinks, captionRegionRefs } from './captionRich.js';
@@ -644,6 +644,8 @@ export interface MapViewHandle {
   applyFoldLevel: (id: string, level: FoldLevelKey) => void;
   /** Show or hide secondary chrome (counts, key hints); see `details`. */
   setDetails: (on: boolean) => void;
+  /** 0.5.20: Fill (wash) on/off for a coloured node; false when the node has no own colour. */
+  setNodeColourFill: (id: string, on: boolean) => boolean;
   /** Whether secondary chrome is showing. */
   details: () => boolean;
   /** Every root to a level (toolbar Levels, L8). */
@@ -950,8 +952,9 @@ export function childConnectorPath(
  * A connector. `timeLeaf` marks the edge into a time leaf (0.2.40, TL4):
  * `map-edge edge-time`, 1 px `--time-edge`.
  */
-export function mapEdgeSvg(d: string, opts: { timeLeaf?: boolean } = {}): string {
-  return `<path class="map-edge${opts.timeLeaf ? ' edge-time' : ''}" d="${d}"/>`;
+export function mapEdgeSvg(d: string, opts: { timeLeaf?: boolean; colour?: string | null } = {}): string {
+  const c = !opts.timeLeaf ? resolveColour(opts.colour) : null;
+  return `<path class="map-edge${opts.timeLeaf ? ' edge-time' : ''}${c ? ` edge-colour edge-colour-${c}` : ''}" d="${d}"${c ? ` style="--ec: var(--node-${c})"` : ''}/>`;
 }
 
 export { DEFAULT_WRAP_CH, DEFAULT_MAX_LINES, SOFT_SAFETY_MAX_LINES, SOFT_SAFETY_MAX_CHARS, TASK_LEAD };
@@ -976,6 +979,8 @@ export function mapNodeClassNames(opts: {
   timeLeaf?: TimeLeafKind | null;
   /** 0.5.19 node colour token: `has-colour colour-<name>` (ignored on time leaves, TL7 / Q14). */
   color?: string | null;
+  /** 0.5.20: `colour-fill` adds the wash (`<color:x:fill>`); default is border only. */
+  colorFill?: boolean;
 }): string {
   const tl = !opts.foldable && opts.timeLeaf ? opts.timeLeaf : null;
   const colour = !tl ? resolveColour(opts.color) : null;
@@ -988,7 +993,7 @@ export function mapNodeClassNames(opts: {
     opts.task === 'done' ? 'task-done' : opts.task === 'pending' ? 'task-pending' : opts.task ? 'task-open' : '',
     opts.bodyExpanded ? 'body-expanded' : '',
     opts.focused ? 'is-focused' : '',
-    colour ? `has-colour colour-${colour}${isHighlighter(colour) ? ' is-hl' : ''}` : '',
+    colour ? `has-colour colour-${colour}${opts.colorFill ? ` colour-fill${isHighlighter(colour) ? ' is-hl' : ''}` : ''}` : '',
   ]
     .filter(Boolean)
     .join(' ');
@@ -2891,6 +2896,7 @@ export function createMapView(
     }
     if (nodeColoursOn && nodeByKey(key)) {
       entries.push(...swatchEntries('color', 'Colour', nodeByKey(key)?.color));
+      if (nodeByKey(key)?.color) entries.push({ key: 'colour-fill', label: 'Fill', group: 'Edit', checked: !!nodeByKey(key)?.colorFill });
       if (nodeCloudsOn && nodeByKey(key)?.cloud) entries.push(...swatchEntries('cloud-color', 'Cloud colour', nodeByKey(key)?.cloud));
     }
     if (foldLevelPicker(getDoc(), key)) entries.push({ key: 'levels', label: 'Levels…', group: 'View', popup: true });
@@ -2943,6 +2949,10 @@ export function createMapView(
       else setNodeColour(key, c);
       return;
     }
+    if (entry.key === 'colour-fill') {
+      setNodeColourFill(key, !nodeByKey(key)?.colorFill);
+      return;
+    }
     if (entry.key === 'cloud') {
       setNodeCloud(key, nodeByKey(key)?.cloud ? undefined : 'default');
       return;
@@ -2988,10 +2998,20 @@ export function createMapView(
     const n = nodeByKey(key);
     if (!n || (n.color ?? undefined) === color) return;
     if (color && resolveColour(color)) n.color = resolveColour(color)!;
-    else delete n.color;
+    else { delete n.color; delete n.colorFill; }
     setDoc(getDoc());
     onChange?.();
     announce(color ? `Colour: ${colourLabel(color, paletteName)}` : 'Colour removed');
+  }
+
+  /** 0.5.20: Fill toggle for a node's own colour. */
+  function setNodeColourFill(key: string, on: boolean): boolean {
+    const n = nodeByKey(key);
+    if (!n || !setColourFill(n, on)) return false;
+    setDoc(getDoc());
+    onChange?.();
+    announce(on ? 'Fill on' : 'Fill off');
+    return true;
   }
 
   /** 0.5.18 EP-1 / EP-12: the picker for one node, opened on the panel (Map tab first). */
@@ -4558,7 +4578,9 @@ export function createMapView(
     const layout = getLayout();
     const vb = layout.viewBox!;
     const focusId = getFocusId();
-    const edges: { d: string; timeLeaf?: boolean }[] = [];
+    const edges: { d: string; timeLeaf?: boolean; colour?: string | null }[] = [];
+    /** 0.5.20 branch colour per node: nearest coloured ancestor (or self) wins. */
+    const branchColour = new Map<OutlineNode, { c: string; fill: boolean }>();
     type NodePaint = {
       n: OutlineNode;
       key: string;
@@ -4589,7 +4611,10 @@ export function createMapView(
     const order = indexOutline(doc.nodes);
 
     const anchors = unlockedAnchorKeys();
-    function walk(n: OutlineNode): void {
+    function walk(n: OutlineNode, inherited: { c: string; fill: boolean } | null = null): void {
+      const own = resolveColour(n.color);
+      const bc = own ? { c: own, fill: !!n.colorFill } : inherited;
+      if (bc) branchColour.set(n, bc);
       const key = nodeMapKey(n, order.get(n) || 0);
       const pos = layout.nodes![key] || { x: 100, y: 100 };
       const label = anchorCaption(key, withNodeIcon(n, captionWithoutLinks(displayCaption(n.title))), anchors);
@@ -4663,8 +4688,9 @@ export function createMapView(
               { x: cpos.x, y: cpos.y, w: cs.w },
             ),
             timeLeaf: !!timeLeafKind(c),
+            colour: resolveColour(c.color) ?? bc?.c ?? null,
           });
-          walk(c);
+          walk(c, bc);
         }
       }
     }
@@ -4674,7 +4700,7 @@ export function createMapView(
     const casing = connectorCasingOn();
     const edgeSvg =
       (casing ? edges.map((e) => mapEdgeCasingSvg(e.d)).join('') : '') +
-      edges.map((e) => mapEdgeSvg(e.d, { timeLeaf: e.timeLeaf })).join('');
+      edges.map((e) => mapEdgeSvg(e.d, { timeLeaf: e.timeLeaf, colour: e.colour })).join('');
     const nodeSvg = nodes
       .map(
         ({
@@ -4722,9 +4748,10 @@ export function createMapView(
             bodyExpanded,
             focused,
             timeLeaf,
-            color: n.color,
+            color: branchColour.get(n)?.c,
+            colorFill: branchColour.get(n)?.fill,
           });
-          const colourName = !timeLeaf ? resolveColour(n.color) : null;
+          const colourName = !timeLeaf ? resolveColour(branchColour.get(n)?.c) : null;
           const foldCx = foldHandleGeometry(boxRight, foldSlot).cx;
           const foldHit = foldable
             ? `<rect class="map-fold-hit" x="${foldCx - 16}" y="${pos.y - 16}" width="32" height="32" fill="transparent" cursor="pointer"/>`
@@ -4806,7 +4833,7 @@ export function createMapView(
       role="treeitem" aria-selected="${focused ? 'true' : 'false'}" aria-current="${focused ? 'true' : 'false'}" aria-label="${esc(timeLeaf ? timeLeafAriaLabel(timeLeaf, label) : label)}${colourName ? `, ${colourLabel(colourName, paletteName).toLowerCase()}` : ''}${task != null ? (task === 'done' ? ', task done' : task === 'pending' ? ', task pending' : ', task open') : ''}${foldable ? (col ? `, collapsed, ${foldCountLabel(hiddenCount)}` : ', expanded') : ''}${showMore ? ', more text available' : ''}${showLess ? ', showing full body' : ''}"
       ${foldable ? `aria-expanded="${col ? 'false' : 'true'}" aria-haspopup="menu"` : ''}${levelMenu && levelMenu.id === key ? ' data-level-open="true"' : ''}>
       <title>${esc(tip)}</title>
-      ${colourName ? `<rect class="map-colour-ring" x="${x - 4}" y="${y - 4}" width="${boxW + 8}" height="${h + 8}" rx="22" ry="22"/>` : ''}<rect class="map-pill" x="${x}" y="${y}" width="${boxW}" height="${h}" rx="18" ry="18"/>
+      ${col ? `<rect class="map-collapsed-ring" x="${x - 5}" y="${y - 5}" width="${boxW + 10}" height="${h + 10}" rx="23" ry="23"/>` : ''}${colourName ? `<rect class="map-colour-ring" x="${x - 4}" y="${y - 4}" width="${boxW + 8}" height="${h + 8}" rx="22" ry="22"/>` : ''}<rect class="map-pill" x="${x}" y="${y}" width="${boxW}" height="${h}" rx="18" ry="18"/>
       ${taskLead0}
       ${globe}
       ${kindLetter}
@@ -4856,7 +4883,7 @@ export function createMapView(
             nodes.filter((p) => ids.has(p.key)).map((p) => ({ x: p.pos.x - p.w / 2, y: p.pos.y - p.h / 2, w: p.w, h: p.h })),
             cloudPad(depth),
           );
-          if (pts) cloudItems.push({ svg: cloudSvg({ rootId: n.id, color: n.cloud, depth }, pts), depth });
+          if (pts) cloudItems.push({ svg: cloudSvg({ rootId: n.id, color: resolveColour(n.cloud) ?? branchColour.get(n)?.c ?? n.cloud, depth }, pts), depth });
           d = depth + 1;
         }
         walkC(n.children, d);
@@ -6918,6 +6945,7 @@ export function createMapView(
     applyFoldLevel,
     setWholeMapLevel,
     setDetails,
+    setNodeColourFill,
     details: () => host.classList.contains('of-details'),
     currentWholeMapLevel: () => currentWholeMapLevel(getDoc()),
     onPaint: (fn: () => void) => {
