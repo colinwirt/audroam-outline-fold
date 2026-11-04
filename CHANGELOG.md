@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.5.18 — 2026-11-04
+
+Node icon slot and emoji / Map clipart picker (Design UX 2026-11-04, EP-1…EP-30).
+
+- One icon per node, in a fixed slot after the task box and before the title (beside the kind icon in the Outline). In the text it is the first token after the task marker: a Unicode emoji (stored as the character) or Map clipart as `:name:` (Unicode fallback on export). `<icon:name>` is read as an alias for `:name:` and written back unchanged. A lone emoji title, `:unknown:`, icon-pack names (`:lock:`) and emoji mid-title stay plain text. New field `OutlineNode.icon`.
+- **Breaking for hosts that read `node.title`:** a line led by an emoji followed by text now puts that emoji in `node.icon`, not the title. Show `iconGlyph(node.icon)` before the title (the Map, Outline and 3D example do).
+- Map node menu (`nodeIcons: true`, opt-in next to `nodeMenu`): `Icon…` opens the panel on the Map tab, `Remove icon` clears; Ctrl/⌘+. opens it for the selected node; `map.openIconPicker(id?)`. Map pills are SVG text, so clipart shows its fallback emoji there.
+- Picker: quick row (6 + ＋), 320×360 panel with search, category strip (Recent, Pinned, Unicode groups, Map), Pinned and Recent sections, 8-column grid (7 × 44 px on touch sheet), footer with name, Pin, Remove icon and ?. Keyboard: arrows, Enter, Shift+Enter keeps open, P pins, Tab cycles, Esc steps back to the row then closes, typing goes to search. Live region announces. Reduced motion respected; light theme.
+- `:` typeahead (~6 rows, name + keyword match, recent first; Enter/Tab insert, Esc leaves the text, `:pizza:` typed in full resolves) in the CodeMirror text editor and for any textarea via `attachIconTypeahead`. Toolbar button: `createIconToolbarButton`.
+- Emoji render with the system font (no bundled images). Names and keywords: Unicode emoji-test 16.0 groups + CLDR 45 English annotations (Unicode licence), in a lazily loaded module (`loadEmojiData`; inlined in `editor.bundle.js`). Map clipart: 20 self-authored `currentColor` SVGs.
+
+- **Cloud regions (EP-38…EP-43).** `<cloud>` / `<cloud:name>` trailing tag on a branch root (Q16) wraps the subtree on the Map in an angled hull: convex hull of the padded (12px), corner-chamfered pills, vertices rounded 6px, single neutral fill (14%) and 1px stroke (`--of-cloud-fill` / `--of-cloud-stroke`). Live on every paint; a folded branch shrinks to its pill; nested clouds inset 6px and paint above the outer one. Sealed / record regions (mapRegion.ts) stay dashed rects with their icon and paint above every cloud. Node menu `Cloud` checkbox (opt-in `nodeClouds: true`). Outline: 3px left bar on cloud rows (`of-cloud`, `data-cloud`). New exports in mapRegion: `cloudHull`, `cloudPath`, `cloudSvg`, `cloudPad`.
+
 ## 0.5.17 — 2026-11-04
 
 - Typing in an open secure zone scrolls that zone's caret, and only when the row is outside the visible band. The outer editor's caret stays on the sealed line. A draft-save pause no longer pans the page to that line. A soft keyboard is not treated as visible space: the text pane moves only far enough to put the caret above it, and the window scroll is put back.

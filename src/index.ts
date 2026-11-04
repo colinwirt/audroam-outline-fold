@@ -676,3 +676,5 @@ export { createIdAllocator, linksTo, type IdAllocator, type IdScope, type IdDiag
 export { mergeKeeping } from './textMerge.js';
 export { resolveMapRef, mapRefOf, type MapNodeRef, type MapRefResult } from './mapRef.js';
 export { parseZoneText, oneZoneRoot, pinZoneIds } from './zoneText.js';
+// 0.5.18: node icon slot, emoji / Map clipart picker, `:` typeahead (Design UX 2026-11-04 EP-1…EP-30).
+export * from './emoji/index.js';

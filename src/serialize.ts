@@ -136,6 +136,7 @@ function formatTrailingSpans(
     }
   }
   if (node.sealed?.kid && isEncRef(node.sealed)) parts.push(`<enc:${node.sealed.kid}>`);
+  if (node.cloud) parts.push(node.cloud === 'default' ? '<cloud>' : `<cloud:${node.cloud}>`);
   if (node.id && !node.autoId) parts.push(spelledTag(kept?.id, `<id:${node.id}>`));
   return parts.length ? ' ' + parts.join(' ') : '';
 }
@@ -149,7 +150,7 @@ function serializeNode(
     doc.frontmatter?.collapsedMarker ?? DEFAULT_COLLAPSED;
   const expandedMarker = doc.frontmatter?.expandedMarker;
   const indent = '  '.repeat(node.depth);
-  const lead = node.task ? taskMarker(node.task) : '';
+  const lead = (node.task ? taskMarker(node.task) : '') + (node.icon ? `${node.icon} ` : '');
   const inline = inlineLinks(node);
   let line = `${indent}- ${lead}${inline.title}${formatTrailingSpans(node, inline)}`;
   // Under fold+ every line off the list is collapsed; a session-id leaf has no fold to mark.

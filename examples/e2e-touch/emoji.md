@@ -1,0 +1,5 @@
+- Garden plan <id:plan>
+  - [ ] 🧭 Walk the beds <id:walk>
+    - :flag: Mark the north corner <id:north>
+    - Water the seedlings <id:water>
+  - <icon:star> Order mulch <id:mulch>

@@ -98,6 +98,14 @@ export interface OutlineNode {
   /** Leading `[ ]` / `[x]` / `[-]` → task chrome (ASCII stripped from visible label). */
   task?: TaskState;
   /**
+   * 0.5.18 (EP-1): the node icon, a leading token after the task marker: one emoji
+   * character, a built-in clipart `:name:`, or its `<icon:name>` alias, kept as written.
+   * The title does not include it.
+   */
+  icon?: string;
+  /** 0.5.18 (EP-39, Q16): user cloud owned by this node: `default` (`<cloud>`) or a colour name (`<cloud:teal>`). */
+  cloud?: string;
+  /**
    * Explicit action binding from `<action:https://…>` or `<action:event:…>`.
    * Host runs on open→done only (package emits onTaskToggle; never auto-fires caption https).
    */

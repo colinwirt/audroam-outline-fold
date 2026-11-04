@@ -1,4 +1,5 @@
 import { isSealedBranchPayload } from './sealedState.js';
+import { nodeIconHtml } from './emoji/icons.js';
 import { isCollapsed } from './fold.js';
 import { captionToHtml } from './captionRich.js';
 import { iconForNode, iconForTask } from './icons.js';
@@ -50,6 +51,7 @@ function renderNode(
       ? `data-sealed-mode="${node.sealed?.uri && !node.sealed?.ciphertext ? 'remote' : 'inline'}"`
       : '',
     node.regionRoot ? `data-region-root="${esc(node.regionRoot)}"` : '',
+    node.cloud ? `data-cloud="${esc(node.cloud)}"` : '',
     node.task ? `data-task="${esc(node.task)}"` : '',
     node.action ? `data-action="${esc(node.action)}"` : '',
     node.thread ? `data-thread="${esc(node.thread)}"` : '',
@@ -149,8 +151,8 @@ function renderNode(
     ? ` aria-expanded="${collapsed ? 'false' : 'true'}"`
     : '';
 
-  return `<li role="treeitem" class="${p}-node${collapsed ? ` ${p}-collapsed` : ''}${locked ? ` ${p}-locked` : ''}${open ? ` ${p}-region-open` : ''}${node.regionRoot ? ` ${p}-region ${p}-region-${node.regionRoot}` : ''}${node.task ? ` ${p}-has-task` : ''}" tabindex="-1" aria-level="${ariaLevel}"${ariaExpanded} ${dataAttrs}>
-  <div class="${p}-row">${foldBtn}${taskChrome}${icon}<span class="${p}-title">${caption}</span>${threadChip}${noteChips}${jumpChips}${kidChip}${zoneTools}${unlockBtn}</div>
+  return `<li role="treeitem" class="${p}-node${collapsed ? ` ${p}-collapsed` : ''}${locked ? ` ${p}-locked` : ''}${open ? ` ${p}-region-open` : ''}${node.regionRoot ? ` ${p}-region ${p}-region-${node.regionRoot}` : ''}${node.task ? ` ${p}-has-task` : ''}${node.cloud ? ` ${p}-cloud` : ''}" tabindex="-1" aria-level="${ariaLevel}"${ariaExpanded} ${dataAttrs}>
+  <div class="${p}-row">${foldBtn}${taskChrome}${icon}${node.icon ? nodeIconHtml(node.icon, p) : ''}<span class="${p}-title">${caption}</span>${threadChip}${noteChips}${jumpChips}${kidChip}${zoneTools}${unlockBtn}</div>
   ${body}${kids}
 </li>`;
 }

@@ -15,6 +15,7 @@ import {
 import { collectNodeIds, nextAutoId } from './nodeAddress.js';
 import { parseEncBody } from './sealed.js';
 import { parseLeadingTask } from './taskChrome.js';
+import { parseLeadingIcon } from './emoji/icons.js';
 import { canonTag } from './tagSpelling.js';
 import { markdownLinkSpans, parseHopTarget, parseNoteTarget } from './captionRich.js';
 import type {
@@ -69,6 +70,8 @@ const ENC_RE = tagRe('enc', FREE_VALUE);
 const ENC_SPAN = ENC_RE.span;
 
 const ID_TRAILING = ID_RE.trailing;
+/** 0.5.18 (Q16): `<cloud>` / `<cloud:name>` at the line end. */
+const CLOUD_TRAILING = /\s*<cloud(?::([a-z][a-z0-9-]*))?>$/i;
 const KIND_TRAILING = new RegExp(
   `\\s*<(?:\\s*kind\\s*:\\s*(${KIND_TAG_WORDS})\\s*|(${KIND_WORDS}))>\\s*$`,
   'i',
@@ -266,6 +269,8 @@ function parseTitleAndMeta(
   inlineCollapsed?: boolean;
   inlineExpanded?: boolean;
   task?: TaskState;
+  icon?: string;
+  cloud?: string;
   action?: string;
   thread?: string;
   noteLinks?: string[];
@@ -309,6 +314,16 @@ function parseTitleAndMeta(
     if (leading) {
       task = leading.state;
       rest = leading.label;
+    }
+  }
+  // 0.5.18 (EP-1): one leading icon after the task marker, before the title.
+  let icon: string | undefined;
+  let cloud: string | undefined;
+  {
+    const lead = parseLeadingIcon(rest.replace(/^[ \t]+/, ''));
+    if (lead) {
+      icon = lead.icon;
+      rest = lead.rest;
     }
   }
 
@@ -516,6 +531,14 @@ function parseTitleAndMeta(
       continue;
     }
 
+    m = rest.match(CLOUD_TRAILING);
+    if (m) {
+      cloud = (m[1] ?? 'default').toLowerCase();
+      rest = rest.slice(0, rest.length - m[0].length).trimEnd();
+      progressed = true;
+      continue;
+    }
+
     m = rest.match(ID_TRAILING);
     if (m) {
       id = m[1]; // trailing overrides leading
@@ -584,6 +607,8 @@ function parseTitleAndMeta(
     inlineCollapsed,
     inlineExpanded,
     task,
+    icon,
+    cloud,
     action,
     thread,
     noteLinks: noteLinks.length ? noteLinks : undefined,
@@ -685,6 +710,8 @@ export function parse(text: string, opts?: ParseOptions): OutlineFoldDoc {
     if (meta.dbRef) node.dbRef = meta.dbRef;
     if (meta.sealed) node.sealed = meta.sealed;
     if (meta.task) node.task = meta.task;
+    if (meta.icon) node.icon = meta.icon;
+    if (meta.cloud) node.cloud = meta.cloud;
     if (meta.action) node.action = meta.action;
     if (meta.thread) node.thread = meta.thread;
     if (meta.noteLinks) node.noteLinks = meta.noteLinks;

@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { CSS2DObject, CSS2DRenderer } from 'three/addons/renderers/CSS2DRenderer.js';
 import { loadDoc } from '../_shared/parseDoc.js';
 import { findNode, listSealed, loadDemoPassword, openAll, tryUnlock } from '../_shared/unlock.js';
-import { toggleFold, isCollapsed } from '../../dist/index.js';
+import { toggleFold, isCollapsed, iconGlyph } from '../../dist/index.js';
 
 let { doc } = await loadDoc(new URL('../cafe-map.md', import.meta.url));
 const revealed = {};
@@ -53,7 +53,7 @@ function labelFor(n) {
   const el = document.createElement('div');
   el.className = 'label';
   el.dataset.id = n.id;
-  el.textContent = n.title;
+  el.textContent = n.icon ? `${iconGlyph(n.icon)} ${n.title}` : n.title; // 0.5.18: the node icon slot
   let state = null;
   if (isLocked(n)) {
     el.dataset.state = revealed[n.id] != null ? 'unlocked' : 'locked';

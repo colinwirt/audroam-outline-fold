@@ -14,6 +14,7 @@
  * - `setRegions()` still accepts host block widgets (e.g. notes) keyed by a line substring.
  */
 import { outlineKeys } from './outlineKeys.js';
+import { iconTypeahead } from './iconTypeahead.js';
 
 const isSealedLine = (line: string): boolean => /<enc:[A-Za-z0-9_.-]+>/.test(line);
 import { Compartment, EditorState, StateEffect, Transaction, StateField, type Extension, type Text } from '@codemirror/state';
@@ -290,6 +291,8 @@ function buildEditor(host: HTMLElement, initial: string, opts: TextEditorOptions
     // Grey caret row. Follow in text moves this caret when Map focus changes.
     highlightActiveLine(),
     taskGlyphs,
+    // 0.5.18: `:` emoji / clipart typeahead (EP-2).
+    iconTypeahead(),
     // 0.4.13: standard CM commands behind the outline keys (Enter, Tab, Backspace); one
     // keymap for the main text and every zone. A sealed `<enc:…>` line takes no children here.
     ...outlineKeys(isSealedLine),

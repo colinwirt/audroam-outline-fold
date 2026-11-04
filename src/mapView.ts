@@ -8,6 +8,8 @@
  * Scrapbook (0.2.8+): multi-line wrap, task lead SVG, text click ≠ fold; label text selectable (0.2.10); pan clears selection (0.2.11); keyboard only when Map focused (0.2.12); rich caption breaks+HTML + focus-on-click + camera follow/clamp (0.2.13); proportion follow + cameraRecentre + edit ensure (0.2.14); focusId is-focused ring (0.2.15); single stable focus owner = host tabindex=0 + aria-activedescendant, keydown on host (0.2.16).
  * Sealed nodes: omitted until unlocked (no gray stubs) — caller filters doc if needed.
  */
+import { iconGlyph, iconLabel, loadEmojiData } from './emoji/icons.js';
+import { openIconPicker } from './emoji/picker.js';
 import { resolveFollowInText, setFollowInText, loadMapResume } from './mapResume.js';
 import { ALT_HOLD_MS, altDragCommits, altPressKind } from './altGesture.js';
 import { captionLinks, captionWithoutLinks, captionRegionRefs } from './captionRich.js';
@@ -51,7 +53,7 @@ import {
   type PinchAnchor,
   type Pt,
 } from './mapGesture.js';
-import { regionHull, regionSvg, wrapPlain, type MapRegion } from './mapRegion.js';
+import { cloudHull, cloudPad, cloudSvg, regionHull, regionSvg, wrapPlain, type MapRegion } from './mapRegion.js';
 import { placeRegions, innerRegionEdges, type PlacedBox, type PlacedRegion, type RegionHostSpec } from './regionLayout.js';
 import { createRegionFoldStore, isMemoryOnlyRegion, revealScopedId, type RegionFoldStore } from './regionFold.js';
 import { parseScopedId, scopeId } from './scopedId.js';
@@ -489,6 +491,16 @@ export interface MapViewOptions {
    */
   nodeMenu?: boolean;
   /**
+   * 0.5.18: `Icon…` / `Remove icon` in the package node menu and Ctrl/⌘+. on the
+   * selected node (emoji / clipart picker, EP-1). Default false (opt-in, so existing node menus keep their items).
+   */
+  nodeIcons?: boolean;
+  /**
+   * 0.5.18: `Cloud` checkbox in the node menu's Edit group (EP-39). Clouds already on the
+   * line (`<cloud>`) always paint; this only adds the menu toggle. Default false (opt-in).
+   */
+  nodeClouds?: boolean;
+  /**
    * `Follow in text` checkbox in the node menu's View group. Opt-in (0.4.1): the item
    * shows only when `followMenu: true`, so a plain node menu keeps its 0.3 items, focus
    * order and the read-only "no id, no menu" rule. The value resolves per-user resume
@@ -632,6 +644,8 @@ export interface MapViewHandle {
    * bindGestures(). False when nothing in it applies.
    */
   openNodeMenu: (id?: string, at?: { clientX: number; clientY: number }) => boolean;
+  /** 0.5.18: open the icon picker (panel, Map tab) for a node. */
+  openIconPicker: (id?: string) => boolean;
   /** 0.2.39: close the package node menu if it is open. */
   closeNodeMenu: () => void;
   /**
@@ -1237,7 +1251,7 @@ export function autoPackPositions(
 
   function layoutSubtree(n: OutlineNode, groupLeft: number, top: number): number {
     const key = nodeMapKey(n, order.get(n) || 0);
-    const label = captionWithoutLinks(displayCaption(n.title));
+    const label = withNodeIcon(n, captionWithoutLinks(displayCaption(n.title)));
     const painted = pillSize(label, nodePillOpts(n, nodeLayout, defaults, key, doc));
     paintedSize.set(key, { w: painted.w, h: painted.h });
     const x = groupLeft + painted.w / 2;
@@ -1601,6 +1615,8 @@ export function createMapView(
     canPersistWidths: canPersistWidthsOpt,
     onWidthStep,
     nodeMenu: nodeMenuOn = false,
+    nodeIcons: nodeIconsOpt,
+    nodeClouds: nodeCloudsOpt,
     followMenu = false,
     followResumeKey = null,
     onFollowInText,
@@ -1684,7 +1700,7 @@ export function createMapView(
       const key = nodeMapKey(n, order.get(n) || 0);
       if (!layout.nodes?.[key]) return;
       const pos = layout.nodes[key]!;
-      const label = captionWithoutLinks(displayCaption(n.title));
+      const label = withNodeIcon(n, captionWithoutLinks(displayCaption(n.title)));
       const foldable = hasKids(n);
       const size = pillSize(label, timeLeafPaintOpts(n, pos, layout.fontSize, doc.frontmatter?.fontSize, doc) ?? {
         reserveFold: foldable,
@@ -2829,8 +2845,17 @@ export function createMapView(
     onChange?.();
   }
 
+  const nodeIconsOn = nodeIconsOpt ?? false;
+  const nodeCloudsOn = nodeCloudsOpt ?? false;
   function nodeMenuEntries(key: string): NodeMenuEntry[] {
     const entries: NodeMenuEntry[] = [];
+    if (nodeIconsOn) {
+      entries.push({ key: 'icon', label: 'Icon…', group: 'Edit', popup: true });
+      if (nodeByKey(key)?.icon) entries.push({ key: 'icon-remove', label: 'Remove icon', group: 'Edit' });
+    }
+    if (nodeCloudsOn && nodeByKey(key)) {
+      entries.push({ key: 'cloud', label: 'Cloud', group: 'Edit', checked: !!nodeByKey(key)?.cloud });
+    }
     if (foldLevelPicker(getDoc(), key)) entries.push({ key: 'levels', label: 'Levels…', group: 'View', popup: true });
     if (followMenu) entries.push({ key: 'follow', label: 'Follow in text', group: 'View', checked: followInText() });
     for (const it of copyItemsFor(key)) {
@@ -2870,7 +2895,19 @@ export function createMapView(
     const entry = m.entries[index];
     if (!entry) return;
     const key = m.key;
-    closeNodeMenu(true);
+    closeNodeMenu(entry.key !== 'icon');
+    if (entry.key === 'icon') {
+      openNodeIconPicker(key);
+      return;
+    }
+    if (entry.key === 'cloud') {
+      setNodeCloud(key, nodeByKey(key)?.cloud ? undefined : 'default');
+      return;
+    }
+    if (entry.key === 'icon-remove') {
+      setNodeIcon(key, undefined);
+      return;
+    }
     if (entry.key === 'levels') {
       openLevelMenu(key);
       return;
@@ -2880,6 +2917,45 @@ export function createMapView(
       return;
     }
     void copyNode(key, entry.key === 'copy-jump' ? 'jump' : 'link');
+  }
+
+  function setNodeIcon(key: string, token: string | undefined): void {
+    const n = nodeByKey(key);
+    if (!n || (n.icon ?? undefined) === token) return;
+    if (token) n.icon = token;
+    else delete n.icon;
+    setDoc(getDoc());
+    onChange?.();
+    announce(token ? `Icon set: ${iconLabel(token)}` : 'Icon removed');
+  }
+
+  /** 0.5.18 EP-39: add (neutral default) or remove the cloud owned by a node. */
+  function setNodeCloud(key: string, color: string | undefined): void {
+    const n = nodeByKey(key);
+    if (!n || (n.cloud ?? undefined) === color) return;
+    if (color) n.cloud = color;
+    else delete n.cloud;
+    setDoc(getDoc());
+    onChange?.();
+    announce(color ? 'Cloud added' : 'Cloud removed');
+  }
+
+  /** 0.5.18 EP-1 / EP-12: the picker for one node, opened on the panel (Map tab first). */
+  function openNodeIconPicker(key: string): boolean {
+    if (!nodeIconsOn || typeof document === 'undefined') return false;
+    const pill = nodeEl(key)?.querySelector('.map-pill') ?? nodeEl(key);
+    if (!pill || !nodeByKey(key)) return false;
+    closeMenus();
+    void loadEmojiData();
+    openIconPicker({
+      anchor: pill,
+      mode: 'node',
+      expanded: true,
+      onPick: (token) => setNodeIcon(key, token),
+      onRemove: nodeByKey(key)?.icon ? () => setNodeIcon(key, undefined) : undefined,
+      onClose: () => focusMapForKeys(),
+    });
+    return true;
   }
 
   /** Host-local point under the pill's left edge, for a keyboard open. */
@@ -3140,7 +3216,7 @@ export function createMapView(
     const layout = getLayout();
     const pos = layout.nodes?.[key];
     return {
-      label: captionWithoutLinks(displayCaption(n.title)),
+      label: withNodeIcon(n, captionWithoutLinks(displayCaption(n.title))),
       opts: {
         fontSize: resolveFontPx(pos?.fontSize, layout.fontSize, getDoc().frontmatter?.fontSize),
         reserveTask: !!resolveTask(n),
@@ -3898,7 +3974,7 @@ export function createMapView(
     return key !== undefined && anchors.has(key) ? UNLOCK_MARK + label : label;
   }
   function nodeMeasure(d: OutlineFoldDoc, n: OutlineNode, pos: MapPoint | undefined, key?: string) {
-    const label = anchorCaption(key, captionWithoutLinks(displayCaption(n.title)));
+    const label = anchorCaption(key, withNodeIcon(n, captionWithoutLinks(displayCaption(n.title))));
     const live = regionWidthLive.get(n);
     return pillSize(label, {
       reserveFold: hasKids(n),
@@ -4451,7 +4527,7 @@ export function createMapView(
     function walk(n: OutlineNode): void {
       const key = nodeMapKey(n, order.get(n) || 0);
       const pos = layout.nodes![key] || { x: 100, y: 100 };
-      const label = anchorCaption(key, captionWithoutLinks(displayCaption(n.title)), anchors);
+      const label = anchorCaption(key, withNodeIcon(n, captionWithoutLinks(displayCaption(n.title))), anchors);
       const foldable = hasKids(n);
       const col = foldable && !!n.id && isCollapsed(doc, n.id);
       const taskParsed = resolveTask(n);
@@ -4502,7 +4578,7 @@ export function createMapView(
         for (const c of n.children!) {
           const cKey = nodeMapKey(c, order.get(c) || 0);
           const cpos = layout.nodes![cKey] || { x: pos.x + 200, y: pos.y };
-          const clabel = anchorCaption(cKey, captionWithoutLinks(displayCaption(c.title)), anchors);
+          const clabel = anchorCaption(cKey, withNodeIcon(c, captionWithoutLinks(displayCaption(c.title))), anchors);
           const cTask = resolveTask(c);
           const cs = pillSize(clabel, timeLeafPaintOpts(c, cpos, layout.fontSize, doc.frontmatter?.fontSize, doc) ?? {
             reserveFold: hasKids(c),
@@ -4698,6 +4774,29 @@ export function createMapView(
       nodeMenu && typeof document !== 'undefined'
         ? nodeMenu.items.indexOf(document.activeElement as HTMLElement)
         : -1;
+    // 0.5.18 user clouds (EP-38…41): live angled hulls over the visible pills of each
+    // cloud's subtree (a folded branch shrinks to its pill), outer first so inner clouds
+    // (inset 6px) paint above; sealed / record regions paint above every cloud.
+    const cloudItems: { svg: string; depth: number }[] = [];
+    const walkC = (list: OutlineNode[] | undefined, depth: number) => {
+      for (const n of list ?? []) {
+        let d = depth;
+        if (n.cloud && n.id) {
+          const ids = new Set<string>();
+          const walkI = (m: OutlineNode) => { if (m.id) ids.add(m.id); m.children?.forEach(walkI); };
+          walkI(n);
+          const pts = cloudHull(
+            nodes.filter((p) => ids.has(p.key)).map((p) => ({ x: p.pos.x - p.w / 2, y: p.pos.y - p.h / 2, w: p.w, h: p.h })),
+            cloudPad(depth),
+          );
+          if (pts) cloudItems.push({ svg: cloudSvg({ rootId: n.id, color: n.cloud, depth }, pts), depth });
+          d = depth + 1;
+        }
+        walkC(n.children, d);
+      }
+    };
+    walkC(doc.nodes, 0);
+    const cloudLayer = cloudItems.sort((a, b) => a.depth - b.depth).map((c) => c.svg).join('');
     const regionLayer = (opts.getRegions?.() ?? [])
       .map((rg) => {
         const root = findNode(doc.nodes, rg.rootId);
@@ -4716,6 +4815,7 @@ export function createMapView(
       <rect width="100%" height="100%" fill="var(--map-bg)"/>
       <g id="mapViewport">
         <rect x="0" y="0" width="${vb.w}" height="${vb.h}" fill="var(--map-bg)" opacity="0"/>
+        ${cloudLayer}
         ${regionLayer}
         ${edgeSvg}
         ${nodeSvg}
@@ -6539,7 +6639,7 @@ export function createMapView(
           activeElement: document.activeElement,
           host,
           modeButton,
-          modifier: e.ctrlKey || e.metaKey || e.altKey,
+          modifier: (e.ctrlKey || e.metaKey || e.altKey) && !(e.key === '.' && nodeIconsOn && !e.altKey),
         })
       ) {
         return;
@@ -6563,6 +6663,14 @@ export function createMapView(
       // node menu M1, 2026-10-08): no preventDefault, so the platform
       // contextmenu event reaches the host. A host reaches the level picker
       // with map.openLevelMenu(id) (its `Levels…` item).
+      // 0.5.18 EP-30: Ctrl/⌘+. opens the icon picker for the selected node.
+      if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key === '.' && nodeIconsOn && focusId) {
+        if (openNodeIconPicker(focusId)) {
+          e.preventDefault();
+          e.stopPropagation();
+        }
+        return;
+      }
       if (e.key === 'ContextMenu' || (e.key === 'F10' && e.shiftKey)) {
         // With the package node menu on (0.2.39) it opens for the selected node.
         if (nodeMenuOn && focusId && openNodeMenu(focusId, null, { fine: true })) {
@@ -6751,6 +6859,10 @@ export function createMapView(
         paintListeners.delete(fn);
       };
     },
+    openIconPicker: (id?: string) => {
+      const k = id ?? getFocusId();
+      return k ? openNodeIconPicker(k) : false;
+    },
     openNodeMenu: (id?: string, at?: { clientX: number; clientY: number }) => {
       const target = id ?? getFocusId();
       return target ? openNodeMenu(target, at ?? null) : false;
@@ -6867,4 +6979,9 @@ export function mountMapControls(
   }
   container.appendChild(bar);
   return bar;
+}
+
+/** 0.5.18: Map pills are SVG text, so a node icon leads the label as its glyph (clipart → fallback emoji). */
+function withNodeIcon(n: { icon?: string }, label: string): string {
+  return n.icon ? `${iconGlyph(n.icon)} ${label}` : label;
 }

@@ -73,3 +73,84 @@ export function wrapPlain(text: string, ch: number): string[] {
   if (cur) out.push(cur);
   return out;
 }
+
+// ── 0.5.18 user clouds (Design UX 2026-11-04 EP-38…EP-43) ──
+// An angled hull: the convex hull of the subtree's padded, corner-chamfered boxes, drawn as a
+// polygon with softly rounded vertices. Sealed / record regions keep `regionSvg` (dashed,
+// rounded rect + lock/doc icon) and paint above every cloud, so a cloud never reads as a
+// security cue.
+
+export interface CloudPoint {
+  x: number;
+  y: number;
+}
+
+export interface MapCloud {
+  rootId: string;
+  /** Colour name from the line (`<cloud:teal>`), or `default`. Rendered neutral until node colours land. */
+  color: string;
+  /** Nesting depth (0 = outermost). */
+  depth: number;
+}
+
+/** Padding for a cloud at a nesting depth (EP-41: inner clouds inset by 6px). */
+export function cloudPad(depth: number, pad = 12): number {
+  return Math.max(4, pad - 6 * depth);
+}
+
+/** Angled hull points (clockwise in screen space) around the boxes, or null for none. */
+export function cloudHull(boxes: RegionBox[], pad = 12): CloudPoint[] | null {
+  if (!boxes.length) return null;
+  const pts: CloudPoint[] = [];
+  for (const b of boxes) {
+    const x0 = b.x - pad, y0 = b.y - pad, x1 = b.x + b.w + pad, y1 = b.y + b.h + pad;
+    // Chamfer each padded corner so the hull has angled corners, not right angles.
+    const c = Math.min(pad * 0.8, (x1 - x0) / 3, (y1 - y0) / 3);
+    pts.push(
+      { x: x0 + c, y: y0 }, { x: x1 - c, y: y0 }, { x: x1, y: y0 + c }, { x: x1, y: y1 - c },
+      { x: x1 - c, y: y1 }, { x: x0 + c, y: y1 }, { x: x0, y: y1 - c }, { x: x0, y: y0 + c },
+    );
+  }
+  // Monotone chain convex hull.
+  pts.sort((a, b) => a.x - b.x || a.y - b.y);
+  const cross = (o: CloudPoint, a: CloudPoint, b: CloudPoint) => (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
+  const lower: CloudPoint[] = [];
+  for (const p of pts) {
+    while (lower.length >= 2 && cross(lower[lower.length - 2]!, lower[lower.length - 1]!, p) <= 0) lower.pop();
+    lower.push(p);
+  }
+  const upper: CloudPoint[] = [];
+  for (let i = pts.length - 1; i >= 0; i--) {
+    const p = pts[i]!;
+    while (upper.length >= 2 && cross(upper[upper.length - 2]!, upper[upper.length - 1]!, p) <= 0) upper.pop();
+    upper.push(p);
+  }
+  upper.pop();
+  lower.pop();
+  const hull = lower.concat(upper);
+  return hull.map((p) => ({ x: Math.round(p.x * 10) / 10, y: Math.round(p.y * 10) / 10 }));
+}
+
+/** SVG path for a polygon with every vertex rounded by about `r` px. */
+export function cloudPath(pts: CloudPoint[], r = 6): string {
+  const n = pts.length;
+  if (n < 3) return '';
+  const f = (v: number) => Math.round(v * 10) / 10;
+  const toward = (a: CloudPoint, b: CloudPoint, d: number): CloudPoint => {
+    const len = Math.hypot(b.x - a.x, b.y - a.y) || 1;
+    const t = Math.min(d, len / 2) / len;
+    return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t };
+  };
+  let d = '';
+  for (let i = 0; i < n; i++) {
+    const p = pts[i]!, prev = pts[(i + n - 1) % n]!, next = pts[(i + 1) % n]!;
+    const a = toward(p, prev, r), b = toward(p, next, r);
+    d += `${i ? 'L' : 'M'}${f(a.x)} ${f(a.y)}Q${f(p.x)} ${f(p.y)} ${f(b.x)} ${f(b.y)}`;
+  }
+  return d + 'Z';
+}
+
+/** SVG for one user cloud (drawn under sealed / record regions, edges and pills). */
+export function cloudSvg(cloud: MapCloud, pts: CloudPoint[]): string {
+  return `<g class="map-cloud map-cloud-${esc(cloud.color)}" data-cloud="${esc(cloud.rootId)}" data-cloud-color="${esc(cloud.color)}" data-cloud-depth="${cloud.depth}" aria-hidden="true"><path d="${cloudPath(pts)}" fill="var(--of-cloud-fill, rgba(138,141,150,0.14))" stroke="var(--of-cloud-stroke, rgba(138,141,150,0.7))" stroke-width="1" stroke-linejoin="round"/></g>`;
+}

@@ -1001,3 +1001,77 @@ div.of-unlock.of-unlock-sheet { border-radius: 12px 12px 8px 8px; border-left-wi
 .of-rename-plain { font-size: 12px; }
 .of-rename-warn { font-size: 12px; color: var(--of-danger, #b42318); margin-top: 6px; }
 .of-rename-row { display: flex; justify-content: flex-end; gap: 6px; margin-top: 10px; }
+
+/* ── 0.5.18 node icon slot + emoji / Map clipart picker (Design UX 2026-11-04 EP-1…EP-30) ── */
+.of-node-icon { display: inline-flex; align-items: center; justify-content: center; min-width: 1.15em; margin-right: .3em; vertical-align: -0.1em; line-height: 1; }
+.of-node-icon svg { width: 1em; height: 1em; }
+.of-ep {
+  --ep-bg: #1E1F24; --ep-raise: #26282E; --ep-line: #34363D; --ep-text: #E6E6E9; --ep-muted: #8A8D96; --ep-ring: #5B8CFF;
+  position: fixed; z-index: 1000; box-sizing: border-box; color: var(--ep-text); background: var(--ep-bg);
+  border: 1px solid var(--ep-line); border-radius: 10px; box-shadow: 0 8px 28px rgba(0,0,0,.45);
+  font: 13px/1.3 var(--of-font, system-ui, sans-serif);
+}
+.of-theme-light .of-ep, .of-ep.of-ep-light {
+  --ep-bg: #FFFFFF; --ep-raise: #F2F3F5; --ep-line: #D9DBE0; --ep-text: #1F2126; --ep-muted: #6B6F78; --ep-ring: #3A6FF0;
+  box-shadow: 0 8px 24px rgba(20,30,50,.18);
+}
+.of-ep :focus-visible { outline: 2px solid var(--ep-ring); outline-offset: 1px; }
+.of-ep-row { display: flex; gap: 2px; padding: 4px; }
+.of-ep.of-ep-panel { width: 320px; height: 360px; display: flex; flex-direction: column; overflow: hidden; }
+.of-ep-search { margin: 8px 8px 4px; height: 30px; padding: 0 10px; border: 1px solid var(--ep-line); border-radius: 6px; background: var(--ep-raise); color: inherit; font: inherit; }
+.of-ep-search::placeholder { color: var(--ep-muted); }
+.of-ep-strip { display: flex; gap: 1px; padding: 0 6px 4px; border-bottom: 1px solid var(--ep-line); }
+.of-ep-tab { flex: 1 1 0; height: 28px; min-width: 0; border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--ep-muted); font-size: 15px; cursor: pointer; padding: 0; }
+.of-ep-tab svg { width: 16px; height: 16px; }
+.of-ep-tab[aria-selected="true"] { color: var(--ep-text); border-bottom-color: var(--ep-ring); }
+.of-ep-grid { flex: 1 1 auto; overflow-y: auto; padding: 0 6px 6px; }
+.of-ep-section-head { position: sticky; top: 0; z-index: 1; margin: 0; padding: 6px 4px 4px; background: var(--ep-bg); color: var(--ep-muted); font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
+.of-ep-grid-row { display: grid; grid-template-columns: repeat(var(--of-ep-cols, 8), 32px); gap: 4px; justify-content: space-between; margin-bottom: 4px; }
+.of-ep-cell { width: 32px; height: 32px; border: 0; border-radius: 6px; background: transparent; color: inherit; font-size: 22px; line-height: 32px; padding: 0; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; }
+.of-ep-cell svg { width: 20px; height: 20px; }
+.of-ep-cell:hover, .of-ep-cell:focus { background: var(--ep-raise); }
+.of-ep-cell:focus-visible { outline: none; box-shadow: inset 0 0 0 2px var(--ep-ring); }
+.of-ep-empty { padding: 24px 8px; color: var(--ep-muted); text-align: center; }
+.of-ep-footer { display: flex; align-items: center; gap: 6px; height: 34px; padding: 0 8px; border-top: 1px solid var(--ep-line); }
+.of-ep-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ep-muted); }
+.of-ep-footer button { height: 24px; padding: 0 8px; border: 1px solid var(--ep-line); border-radius: 5px; background: transparent; color: inherit; font: inherit; font-size: 12px; cursor: pointer; }
+.of-ep-footer button[hidden] { display: none; }
+.of-ep-live { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+.of-ep.of-ep-sheet, .of-ep.of-ep-sheet-row { position: fixed;  left: 0 !important; right: 0; bottom: 0; top: auto !important; width: auto; height: min(60vh, 420px); border-radius: 14px 14px 0 0; }
+.of-ep.of-ep-sheet .of-ep-grid-row { grid-template-columns: repeat(var(--of-ep-cols, 7), 44px); }
+.of-ep.of-ep-sheet .of-ep-cell, .of-ep.of-ep-sheet-row .of-ep-cell { width: 44px; height: 44px; font-size: 28px; }
+.of-ta { position: fixed; z-index: 1000; min-width: 220px; max-width: 320px; padding: 4px; background: #1E1F24; color: #E6E6E9; border: 1px solid #34363D; border-radius: 8px; box-shadow: 0 6px 20px rgba(0,0,0,.4); font: 13px/1.3 var(--of-font, system-ui, sans-serif); }
+.of-theme-light .of-ta { background: #fff; color: #1F2126; border-color: #D9DBE0; }
+.of-ta-row { display: flex; align-items: center; gap: 8px; height: 28px; padding: 0 8px; border-radius: 5px; cursor: pointer; }
+.of-ta-row.is-active { background: #26282E; box-shadow: inset 0 0 0 2px #5B8CFF; }
+.of-theme-light .of-ta-row.is-active { background: #F2F3F5; }
+.of-ta-glyph { width: 20px; font-size: 18px; text-align: center; }
+.of-ta-glyph svg { width: 16px; height: 16px; }
+.of-ta-name { flex: 1 1 auto; }
+.of-ta-tag { color: #8A8D96; font-size: 11px; }
+.of-ta.of-ta-touch { display: flex; overflow-x: auto; max-width: none; border-radius: 0; }
+.of-ta.of-ta-touch .of-ta-row { height: 44px; min-width: 44px; flex: 0 0 auto; }
+.of-ta.of-ta-touch .of-ta-name, .of-ta.of-ta-touch .of-ta-tag { display: none; }
+.of-ta.of-ta-touch .of-ta-glyph { font-size: 26px; width: 32px; }
+@media (prefers-reduced-motion: no-preference) { .of-ep { animation: of-ep-in 120ms ease-out; } }
+@keyframes of-ep-in { from { opacity: 0; transform: translateY(-4px); } }
+.of-ep-glyph { display: inline-flex; align-items: center; justify-content: center; line-height: 1; }
+.of-ep-glyph svg { width: 20px; height: 20px; }
+.of-ep-tab.is-active { color: var(--ep-text); }
+.of-ep-strip-dim .of-ep-tab { opacity: .45; }
+.of-ep-preview { font-size: 18px; width: 22px; text-align: center; }
+.of-ep-preview svg { width: 18px; height: 18px; }
+.of-ep-section-head [role="columnheader"] { display: block; }
+.of-ep-help-pop { position: absolute; left: 8px; right: 8px; bottom: 40px; padding: 8px 10px; background: var(--ep-raise); border: 1px solid var(--ep-line); border-radius: 6px; color: var(--ep-text); font-size: 12px; white-space: pre-line; }
+.of-ep-pressed { box-shadow: inset 0 0 0 2px var(--ep-ring); }
+.of-ep-toolbar-btn { min-width: 32px; height: 32px; border: 1px solid var(--of-stroke, #2a3540); border-radius: 6px; background: transparent; color: inherit; font-size: 16px; cursor: pointer; }
+.of-ep-tab.of-ep-tab-map { flex: 0 0 auto; padding: 0 6px; font-size: 12px; white-space: nowrap; }
+
+/* 0.5.18 user clouds (EP-42): a 3px left bar spanning the cloud's rows in the Outline.
+   Nested clouds give parallel bars (deeper levels beyond 3 share the third bar's indent). */
+.of-node.of-cloud {
+  box-shadow: inset 3px 0 0 var(--of-cloud-stroke, rgba(138, 141, 150, 0.7));
+}
+.of-node.of-cloud .of-node.of-cloud .of-node.of-cloud .of-node.of-cloud {
+  box-shadow: none;
+}
