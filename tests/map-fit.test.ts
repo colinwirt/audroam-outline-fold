@@ -227,7 +227,7 @@ describe('hold-to-fit P1: mapView wiring (source)', () => {
 
   it('Ctrl/⌘+Z: view mode only, and only when a width step was undone', () => {
     expect(src).toMatch(/\(e\.key === 'z' \|\| e\.key === 'Z'\) &&\s+!isEditing\(\) &&/);
-    expect(src).toMatch(/const done = e\.shiftKey \? redoWidth\(\) : undoWidth\(\);\s+if \(done\) \{\s+e\.preventDefault\(\);/);
+    expect(src).toMatch(/const done = e\.shiftKey \? redoMapEdit\(\) : undoMapEdit\(\);\s+if \(done\) \{\s+e\.preventDefault\(\);/);
   });
 
   it('the toast survives paint and is outside the gesture handlers', () => {

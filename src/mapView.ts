@@ -680,6 +680,12 @@ export interface MapViewHandle {
   /** Undo / redo the last width step on the package's own stack. False when there is none. */
   undoWidth: () => boolean;
   redoWidth: () => boolean;
+  /**
+   * Undo / redo the last map chrome edit (width or style: colour / fill / cloud / icon).
+   * Ctrl/⌘+Z and Shift+Ctrl/⌘+Z call these. `undoWidth` / `redoWidth` only touch width steps.
+   */
+  undoMapEdit: () => boolean;
+  redoMapEdit: () => boolean;
   /** Apply a level under a node, as a menu pick does (anchors the handle, announces). */
   applyFoldLevel: (id: string, level: FoldLevelKey) => void;
   /** Show or hide secondary chrome (counts, key hints); see `details`. */
@@ -3074,17 +3080,56 @@ export function createMapView(
     }
   }
 
+  /** Colour / fill / cloud / icon-remove stay open so the user can preview (t2498u). */
+  function isStyleMenuPick(entry: NodeMenuEntry): boolean {
+    return !!(
+      entry.swatch ||
+      entry.key === 'colour-fill' ||
+      entry.key === 'cloud' ||
+      entry.key === 'icon-remove'
+    );
+  }
+
+  /**
+   * Rebuild the open node menu in place (same node, pointer size, roughly same
+   * screen position) so checked swatches / toggles match the doc after a
+   * stay-open style apply. Focus returns to the same entry key when possible.
+   */
+  function refreshOpenNodeMenu(focusEntryKey?: string): void {
+    const m = nodeMenu;
+    if (!m) return;
+    const key = m.key;
+    const fine = m.el.dataset.pointer !== 'coarse';
+    const focusKey =
+      focusEntryKey ??
+      (() => {
+        const i = m.items.indexOf(document.activeElement as HTMLElement);
+        return i >= 0 ? m.entries[i]?.key : undefined;
+      })();
+    const r = m.el.getBoundingClientRect();
+    m.abort.abort();
+    m.el.remove();
+    nodeEl(m.key)?.removeAttribute('data-node-menu-open');
+    nodeMenu = null;
+    if (!openNodeMenu(key, { clientX: r.left, clientY: r.top }, { fine })) return;
+    if (!focusKey || !nodeMenu) return;
+    const idx = nodeMenu.entries.findIndex((e) => e.key === focusKey);
+    if (idx >= 0) focusNodeMenuItem(idx);
+  }
+
   function pickNodeMenuItem(index: number): void {
     const m = nodeMenu;
     if (!m) return;
     const entry = m.entries[index];
     if (!entry) return;
     const key = m.key;
-    closeNodeMenu(entry.key !== 'icon');
+    const styleStayOpen = isStyleMenuPick(entry);
     if (entry.key === 'icon') {
+      closeNodeMenu(false);
       openNodeIconPicker(key);
       return;
     }
+    if (!styleStayOpen) closeNodeMenu(true);
     if (entry.key === 'image') {
       pickImageFile(key);
       return;
@@ -3093,18 +3138,22 @@ export function createMapView(
       const c = entry.swatch === 'none' ? undefined : entry.swatch;
       if (entry.key.startsWith('cloud-color:')) setNodeCloud(key, c ?? 'default');
       else setNodeColour(key, c);
+      if (styleStayOpen) refreshOpenNodeMenu(entry.key);
       return;
     }
     if (entry.key === 'colour-fill') {
       setNodeColourFill(key, !fillShownOn(key));
+      if (styleStayOpen) refreshOpenNodeMenu(entry.key);
       return;
     }
     if (entry.key === 'cloud') {
       setNodeCloud(key, nodeByKey(key)?.cloud ? undefined : 'default');
+      if (styleStayOpen) refreshOpenNodeMenu(entry.key);
       return;
     }
     if (entry.key === 'icon-remove') {
       setNodeIcon(key, undefined);
+      if (styleStayOpen) refreshOpenNodeMenu(entry.key);
       return;
     }
     if (entry.key === 'levels') {
@@ -3152,20 +3201,25 @@ export function createMapView(
 
   function setNodeIcon(key: string, token: string | undefined): void {
     if (zoneNode(key)) {
-      zoneStyle(key, (z) => {
+      const z0 = zoneNode(key);
+      const before = readStyleSnap(z0);
+      const ok = zoneStyle(key, (z) => {
         if ((z.icon ?? undefined) === token) return false;
         if (token) z.icon = token; else delete z.icon;
         return true;
       }, token ? `Icon set: ${iconLabel(token)}` : 'Icon removed');
+      if (ok) commitStyleStep(key, before, readStyleSnap(zoneNode(key)));
       return;
     }
     const n = nodeByKey(key);
     if (!n || (n.icon ?? undefined) === token) return;
+    const before = readStyleSnap(n);
     if (token) n.icon = token;
     else delete n.icon;
-    persistStyle(key, n);
+    const id = persistStyle(key, n);
     setDoc(getDoc());
     onChange?.();
+    commitStyleStep(id, before, readStyleSnap(nodeByKey(id) ?? n));
     announce(token ? `Icon set: ${iconLabel(token)}` : 'Icon removed');
   }
 
@@ -3209,31 +3263,37 @@ export function createMapView(
   /** 0.5.18 EP-39: add (neutral default) or remove the cloud owned by a node. */
   function setNodeCloud(key: string, color: string | undefined): void {
     if (zoneNode(key)) {
-      zoneStyle(key, (z) => {
+      const before = readStyleSnap(zoneNode(key));
+      const ok = zoneStyle(key, (z) => {
         if ((z.cloud ?? undefined) === color) return false;
         if (color) z.cloud = color; else delete z.cloud;
         return true;
       }, color ? 'Cloud added' : 'Cloud removed');
+      if (ok) commitStyleStep(key, before, readStyleSnap(zoneNode(key)));
       return;
     }
     const n = nodeByKey(key);
     if (!n || (n.cloud ?? undefined) === color) return;
+    const before = readStyleSnap(n);
     if (color) n.cloud = color;
     else delete n.cloud;
     setDoc(getDoc());
     onChange?.();
+    commitStyleStep(key, before, readStyleSnap(n));
     announce(color ? 'Cloud added' : 'Cloud removed');
   }
 
   /** 0.5.19 EP-31: set or clear one node's colour token (never hex). */
   function setNodeColour(key: string, color: string | undefined): void {
     if (zoneNode(key)) {
-      zoneStyle(key, (z) => {
+      const before = readStyleSnap(zoneNode(key));
+      const ok = zoneStyle(key, (z) => {
         if ((z.color ?? undefined) === color) return false;
         if (color && resolveColour(color)) z.color = resolveColour(color)!;
         else { delete z.color; delete z.colorFill; }
         return true;
       }, color ? `Colour: ${colourLabel(color, paletteName)}` : 'Colour removed');
+      if (ok) commitStyleStep(key, before, readStyleSnap(zoneNode(key)));
       return;
     }
     const n = nodeByKey(key);
@@ -3241,11 +3301,13 @@ export function createMapView(
     // 0.6.2: None on a node that would still inherit a wash writes an explicit `fill: none`.
     const wantNoFill = !color && inheritedFillOf(key);
     if ((n.color ?? undefined) === color && !!n.noFill === wantNoFill) return;
+    const before = readStyleSnap(n);
     if (color && resolveColour(color)) { n.color = resolveColour(color)!; delete n.noFill; }
     else { delete n.color; delete n.colorFill; if (wantNoFill) n.noFill = true; else delete n.noFill; }
-    persistStyle(key, n);
+    const id = persistStyle(key, n);
     setDoc(getDoc());
     onChange?.();
+    commitStyleStep(id, before, readStyleSnap(nodeByKey(id) ?? n));
     announce(color ? `Colour: ${colourLabel(color, paletteName)}` : 'Colour removed');
   }
 
@@ -3297,20 +3359,25 @@ export function createMapView(
   /** 0.5.20 / 0.6.1: Fill toggle. With no own colour, promote the branch colour (else white) then fill. */
   function setNodeColourFill(key: string, on: boolean): boolean {
     if (zoneNode(key)) {
-      return zoneStyle(key, (z) => {
+      const before = readStyleSnap(zoneNode(key));
+      const ok = zoneStyle(key, (z) => {
         if (on && !z.color) z.color = resolveColour(branchColourOf(key)) || 'white';
         return setColourFill(z, on);
       }, on ? 'Fill on' : 'Fill off');
+      if (ok) commitStyleStep(key, before, readStyleSnap(zoneNode(key)));
+      return ok;
     }
     const n = nodeByKey(key);
     if (!n) return false;
+    const before = readStyleSnap(n);
     if (!on && !n.color) {
       // 0.6.2: no own colour: Fill off on a node inside a washed branch writes `fill: none`.
       if (!inheritedFillOf(key) || n.noFill) return false;
       n.noFill = true;
-      persistStyle(key, n);
+      const id = persistStyle(key, n);
       setDoc(getDoc());
       onChange?.();
+      commitStyleStep(id, before, readStyleSnap(nodeByKey(id) ?? n));
       announce('Fill off');
       return true;
     }
@@ -3320,13 +3387,15 @@ export function createMapView(
     }
     if (on) delete n.noFill;
     if (!setColourFill(n, on)) return false;
-    persistStyle(key, n);
+    const id = persistStyle(key, n);
     setDoc(getDoc());
     onChange?.();
+    commitStyleStep(id, before, readStyleSnap(nodeByKey(id) ?? n));
     announce(on ? 'Fill on' : 'Fill off');
     return true;
   }
 
+  
   // ── 0.5.21 thumbnails ────────────────────────────────────────────────
   /** Editors only: `nodeImages` on and widths may be written (not read-only). */
   function imagesEditable(): boolean {
@@ -3531,6 +3600,15 @@ export function createMapView(
           if (m.entries[j]?.swatch && pre(m.entries[j]!.key) === pre(sw.key)) focusNodeMenuItem(j);
           return;
         }
+        // t2499u: undo/redo while the stay-open style menu has focus.
+        if ((e.ctrlKey || e.metaKey) && !e.altKey && (e.key === 'z' || e.key === 'Z')) {
+          e.preventDefault();
+          e.stopPropagation();
+          if (!isEditing() && (e.shiftKey ? redoMapEdit() : undoMapEdit())) {
+            /* refreshOpenNodeMenu already runs from style undo/redo when menu matches */
+          }
+          return;
+        }
         const act = nodeMenuKeyAction(e.key, i, m.entries);
         // Every key stays inside the menu: no fold, zoom or host shortcut.
         e.stopPropagation();
@@ -3571,8 +3649,10 @@ export function createMapView(
     document.addEventListener(
       'keydown',
       (e) => {
+        // Capture-phase Escape always dismisses, including when focus is inside
+        // the menu (t2498u). Relying only on the menu bubble handler fails if an
+        // older aborted-less listener stopPropagation'd first.
         if (e.key !== 'Escape' || nodeMenu !== m) return;
-        if (m.el.contains(e.target as Node)) return;
         e.preventDefault();
         e.stopPropagation();
         closeNodeMenu(true);
@@ -3646,8 +3726,19 @@ export function createMapView(
     /** Open region whose children this step sizes. Absent for a host-doc step. */
     region?: string;
   };
-  const widthUndoStack: WidthStepRec[] = [];
-  const widthRedoStack: WidthStepRec[] = [];
+  type StyleSnap = {
+    color?: string;
+    colorFill?: boolean;
+    noFill?: boolean;
+    cloud?: string;
+    icon?: string;
+  };
+  type StyleStepRec = { key: string; before: StyleSnap; after: StyleSnap };
+  type MapEditRec = { type: 'width'; rec: WidthStepRec } | { type: 'style'; rec: StyleStepRec };
+  const editUndoStack: MapEditRec[] = [];
+  const editRedoStack: MapEditRec[] = [];
+  /** While applying an undo/redo snap, setters must not push another step. */
+  let suppressStyleStep = false;
   /** Pill being dragged: its live width wins over `w-auto` until the drag commits. */
   let resizingWidthKey: string | null = null;
   /** Last single-line width per key, kept while that caption is being edited (F5a). */
@@ -3927,20 +4018,122 @@ export function createMapView(
     announce(WIDTHS_REDONE);
   }
 
-  function undoWidth(): boolean {
-    const rec = widthUndoStack.pop();
-    if (!rec) return false;
-    runWidthUndo(rec);
-    widthRedoStack.push(rec);
+  function readStyleSnap(n: OutlineNode | null | undefined): StyleSnap {
+    if (!n) return {};
+    return {
+      color: n.color,
+      colorFill: n.colorFill || undefined,
+      noFill: n.noFill || undefined,
+      cloud: n.cloud,
+      icon: n.icon,
+    };
+  }
+
+  function sameStyleSnap(a: StyleSnap, b: StyleSnap): boolean {
+    return (
+      (a.color ?? undefined) === (b.color ?? undefined) &&
+      !!a.colorFill === !!b.colorFill &&
+      !!a.noFill === !!b.noFill &&
+      (a.cloud ?? undefined) === (b.cloud ?? undefined) &&
+      (a.icon ?? undefined) === (b.icon ?? undefined)
+    );
+  }
+
+  /** Restore a style snapshot without pushing a new undo step. */
+  function writeStyleSnap(key: string, snap: StyleSnap): string {
+    suppressStyleStep = true;
+    try {
+      if (zoneNode(key)) {
+        zoneStyle(
+          key,
+          (z) => {
+            if (snap.color) z.color = snap.color;
+            else delete z.color;
+            if (snap.colorFill) z.colorFill = true;
+            else delete z.colorFill;
+            if (snap.noFill) z.noFill = true;
+            else delete z.noFill;
+            if (snap.cloud) z.cloud = snap.cloud;
+            else delete z.cloud;
+            if (snap.icon) z.icon = snap.icon;
+            else delete z.icon;
+            return true;
+          },
+          'Style restored.',
+        );
+        return key;
+      }
+      const n = nodeByKey(key);
+      if (!n) return key;
+      if (snap.color) n.color = snap.color;
+      else delete n.color;
+      if (snap.colorFill) n.colorFill = true;
+      else delete n.colorFill;
+      if (snap.noFill) n.noFill = true;
+      else delete n.noFill;
+      if (snap.cloud) n.cloud = snap.cloud;
+      else delete n.cloud;
+      if (snap.icon) n.icon = snap.icon;
+      else delete n.icon;
+      const id = persistStyle(key, n);
+      setDoc(getDoc());
+      onChange?.();
+      return id;
+    } finally {
+      suppressStyleStep = false;
+    }
+  }
+
+  function runStyleUndo(rec: StyleStepRec): void {
+    const key = writeStyleSnap(rec.key, rec.before);
+    if (key !== rec.key) rec.key = key;
+    announce('Style restored.');
+    if (nodeMenu?.key === rec.key || nodeMenu?.key === key) refreshOpenNodeMenu();
+  }
+
+  function runStyleRedo(rec: StyleStepRec): void {
+    const key = writeStyleSnap(rec.key, rec.after);
+    if (key !== rec.key) rec.key = key;
+    announce('Style applied again.');
+    if (nodeMenu?.key === rec.key || nodeMenu?.key === key) refreshOpenNodeMenu();
+  }
+
+  function commitStyleStep(key: string, before: StyleSnap, after: StyleSnap): void {
+    if (suppressStyleStep) return;
+    if (sameStyleSnap(before, after)) return;
+    const rec: StyleStepRec = { key, before, after };
+    editUndoStack.push({ type: 'style', rec });
+    editRedoStack.length = 0;
+  }
+
+  function undoMapEdit(): boolean {
+    const edit = editUndoStack.pop();
+    if (!edit) return false;
+    if (edit.type === 'width') runWidthUndo(edit.rec);
+    else runStyleUndo(edit.rec);
+    editRedoStack.push(edit);
     return true;
   }
 
-  function redoWidth(): boolean {
-    const rec = widthRedoStack.pop();
-    if (!rec) return false;
-    runWidthRedo(rec);
-    widthUndoStack.push(rec);
+  function redoMapEdit(): boolean {
+    const edit = editRedoStack.pop();
+    if (!edit) return false;
+    if (edit.type === 'width') runWidthRedo(edit.rec);
+    else runStyleRedo(edit.rec);
+    editUndoStack.push(edit);
     return true;
+  }
+
+  function undoWidth(): boolean {
+    const top = editUndoStack[editUndoStack.length - 1];
+    if (!top || top.type !== 'width') return false;
+    return undoMapEdit();
+  }
+
+  function redoWidth(): boolean {
+    const top = editRedoStack[editRedoStack.length - 1];
+    if (!top || top.type !== 'width') return false;
+    return redoMapEdit();
   }
 
   /**
@@ -3970,8 +4163,8 @@ export function createMapView(
     const step = stepFor(rec);
     const hostTook = onWidthStep?.(step) === true;
     if (!hostTook) {
-      widthUndoStack.push(rec);
-      widthRedoStack.length = 0;
+      editUndoStack.push({ type: 'width', rec });
+      editRedoStack.length = 0;
       if (how.toast) showWidthToast(rec);
     }
     return step;
@@ -4121,7 +4314,8 @@ export function createMapView(
         ev.preventDefault();
         ev.stopPropagation();
         // Undo the step this toast is for, if it is still the latest.
-        if (widthUndoStack[widthUndoStack.length - 1] === rec) undoWidth();
+        const top = editUndoStack[editUndoStack.length - 1];
+        if (top?.type === 'width' && top.rec === rec) undoMapEdit();
         else dismissWidthToast();
       },
       { signal: ac.signal },
@@ -7172,7 +7366,19 @@ export function createMapView(
       // A button in the resize popover or in controls a host put inside the
       // map keeps its own Enter / Space (no fold toggle on the way).
       const kt = e.target as Element | null;
-      if (kt?.closest?.('.map-width-pop, .of-map-controls, .map-level-menu, .map-link-pop, .map-toast, .map-node-menu, .map-copied')) return;
+      // t2499u: Ctrl/⌘+Z (undo/redo) must reach the map even while a node menu /
+      // width pop is focused — style preview stays open across undos.
+      const isMapUndoKey =
+        (e.ctrlKey || e.metaKey) &&
+        !e.altKey &&
+        (e.key === 'z' || e.key === 'Z');
+      if (
+        !isMapUndoKey &&
+        kt?.closest?.(
+          '.map-width-pop, .of-map-controls, .map-level-menu, .map-link-pop, .map-toast, .map-node-menu, .map-copied',
+        )
+      )
+        return;
       // Enter / Space on a focused chip (the #N chip's SVG anchor) opens its popover.
       const chipSel = '.map-note-link-hit, .map-jump-hit, .map-thread-hit, .map-link-hit';
       const chip =
@@ -7184,9 +7390,8 @@ export function createMapView(
         activateNodeHit(chipNode, chip, e);
         return;
       }
-      // F7: in view mode Ctrl/⌘+Z and Shift+Ctrl/⌘+Z undo / redo width steps
-      // on the package's own stack. Edit mode, an empty stack or a host that
-      // takes the steps (onWidthStep) leave the keys alone.
+      // F7 / t2499u: in view mode Ctrl/⌘+Z and Shift+Ctrl/⌘+Z undo / redo map
+      // chrome edits (width + style). Edit mode or an empty stack leave the keys alone.
       if (
         (e.ctrlKey || e.metaKey) &&
         !e.altKey &&
@@ -7201,7 +7406,7 @@ export function createMapView(
           modifier: false,
         })
       ) {
-        const done = e.shiftKey ? redoWidth() : undoWidth();
+        const done = e.shiftKey ? redoMapEdit() : undoMapEdit();
         if (done) {
           e.preventDefault();
           e.stopPropagation();
@@ -7424,6 +7629,8 @@ export function createMapView(
     applyWidthPick: (id: string, kind: LegacyWidthPickKind) => applyWidthPick(id, kind) !== false,
     undoWidth,
     redoWidth,
+    undoMapEdit,
+    redoMapEdit,
     applyFoldLevel,
     setWholeMapLevel,
     setDetails,
