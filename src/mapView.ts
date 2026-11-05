@@ -3112,8 +3112,10 @@ export function createMapView(
     nodeEl(m.key)?.removeAttribute('data-node-menu-open');
     nodeMenu = null;
     if (!openNodeMenu(key, { clientX: r.left, clientY: r.top }, { fine })) return;
-    if (!focusKey || !nodeMenu) return;
-    const idx = nodeMenu.entries.findIndex((e) => e.key === focusKey);
+    // CFA does not see openNodeMenu's write to nodeMenu after the nulling above.
+    const opened = nodeMenu as NodeMenuState | null;
+    if (!focusKey || !opened) return;
+    const idx = opened.entries.findIndex((e: NodeMenuEntry) => e.key === focusKey);
     if (idx >= 0) focusNodeMenuItem(idx);
   }
 

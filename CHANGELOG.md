@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.6.3 — 2026-11-06
+
+### Stay-open style preview + style undo/redo; mouse swatches on hybrid devices
+
+- **Node menu stay-open (t2498u):** colour swatches, Fill, Cloud, and icon-remove keep `.map-node-menu` mounted so the user can preview; Escape and outside click still dismiss; Icon… / Copy / Levels and other non-style actions still close. Checked state refreshes in place after each apply.
+- **Unified map edit undo (t2499u):** colour / fill / cloud / icon joins the same stack as width picks (`editUndoStack` / `editRedoStack`). Existing Ctrl/⌘+Z and Shift+Ctrl/⌘+Z redo binding undoes and redoes style steps in order, including while the stay-open menu has focus. `undoWidth` / `redoWidth` remain for width-on-top.
+- **Mouse swatches on hybrid (t2497u):** mouse (and empty `pointerType`) opens use `data-pointer=fine` (22px) even when `(pointer: coarse)` matches; touch/pen stays 36px.
+
+0.6.2 fill:none / icon visibility / picker clamp / layout __tmp are unchanged.
+
+
 ## 0.6.2 — 2026-11-05
 
 ### Fill:none, icon visibility, picker clamp, layout __tmp / mid-line id
