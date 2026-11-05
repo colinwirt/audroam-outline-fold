@@ -52,6 +52,11 @@ export interface IconPickerOptions {
   prefs?: IconPrefs;
   /** Parent for the floating element. Default document.body. */
   container?: HTMLElement;
+  /**
+   * 0.6.2: clamp the popover inside this element's box as well as the viewport
+   * (e.g. the map host). When omitted, only the viewport is used.
+   */
+  bounds?: Element | { getBoundingClientRect(): DOMRectReadOnly };
   /** Force the touch sheet (default: `(pointer: coarse)`). */
   sheet?: boolean;
 }
@@ -115,6 +120,36 @@ function coarse(): boolean {
   } catch {
     return false;
   }
+}
+
+/**
+ * 0.6.2: place a floating popover under `anchor`, never past the viewport or an
+ * optional map/container `bounds`. Prefers below the anchor; flips above when needed.
+ */
+export function clampPopoverPlace(opts: {
+  anchor: { left: number; top: number; bottom: number };
+  size: { w: number; h: number };
+  viewport: { w: number; h: number };
+  bounds?: { left: number; top: number; right: number; bottom: number };
+  inset?: number;
+}): { left: number; top: number; flip: 'above' | 'below' } {
+  const inset = opts.inset ?? 4;
+  const { anchor: a, size, viewport: vp } = opts;
+  const minL = opts.bounds ? Math.max(inset, opts.bounds.left + inset) : inset;
+  const maxR = opts.bounds ? Math.min(vp.w - inset, opts.bounds.right - inset) : vp.w - inset;
+  const minT = opts.bounds ? Math.max(inset, opts.bounds.top + inset) : inset;
+  const maxB = opts.bounds ? Math.min(vp.h - inset, opts.bounds.bottom - inset) : vp.h - inset;
+  const maxLeft = Math.max(minL, maxR - size.w);
+  let left = Math.min(Math.max(a.left, minL), maxLeft);
+  let top = a.bottom + 6;
+  let flip: 'above' | 'below' = 'below';
+  if (top + size.h > maxB && a.top - size.h - 6 >= minT) {
+    top = a.top - size.h - 6;
+    flip = 'above';
+  }
+  const maxTop = Math.max(minT, maxB - size.h);
+  top = Math.min(Math.max(top, minT), maxTop);
+  return { left: Math.round(left), top: Math.round(top), flip };
 }
 
 /** Opens the picker. One at a time: an open picker closes first. */
@@ -407,6 +442,9 @@ export function openIconPicker(opts: IconPickerOptions): IconPickerHandle {
       else grid.appendChild(h('div', 'of-ep-empty', { 'data-testid': 'of-ep-empty' }, 'No matches'));
       live.textContent = hits.length ? `${hits.length} result${hits.length === 1 ? '' : 's'}` : 'No matches';
       strip.classList.add('of-ep-strip-dim');
+      // 0.6.2: node mode opens scrolled to Map; keep Results at the top of the scrollport
+      // (Colin phone: typed Clo while colours were in view — Results were above the fold).
+      if (body) body.scrollTop = 0;
     } else {
       strip.classList.remove('of-ep-strip-dim');
       for (const s of sections()) if (s.items.length || s.key === 'map') addSection(s.key, s.label, s.items);
@@ -547,18 +585,25 @@ export function openIconPicker(opts: IconPickerOptions): IconPickerHandle {
       return;
     }
     const a = anchorRect(opts.anchor);
-    const w = root.offsetWidth || (state === 'panel' ? 320 : 240);
-    const hgt = root.offsetHeight || (state === 'panel' ? 360 : 36);
-    const vw = window.innerWidth;
-    const vh = window.innerHeight;
-    const left = Math.max(4, Math.min(a.left, vw - w - 4));
-    // EP-5: flip above when there is no room below.
-    let top = a.bottom + 6;
-    if (top + hgt > vh - 4 && a.top - hgt - 6 >= 4) top = a.top - hgt - 6;
-    top = Math.max(4, Math.min(top, vh - hgt - 4));
-    root.style.left = `${left}px`;
-    root.style.top = `${top}px`;
-    root.dataset.flip = top < a.top ? 'above' : 'below';
+    const br = root.getBoundingClientRect();
+    // Prefer measured size; fall back to the design defaults when layout has not run yet.
+    // Under-estimating width used to leave a right-edge toolbar row past the viewport.
+    const w = Math.max(root.offsetWidth || 0, br.width || 0, state === 'panel' ? 320 : 240);
+    const hgt = Math.max(root.offsetHeight || 0, br.height || 0, state === 'panel' ? 360 : 36);
+    let bounds: { left: number; top: number; right: number; bottom: number } | undefined;
+    if (opts.bounds) {
+      const r = opts.bounds.getBoundingClientRect();
+      bounds = { left: r.left, top: r.top, right: r.right, bottom: r.bottom };
+    }
+    const placed = clampPopoverPlace({
+      anchor: a,
+      size: { w, h: hgt },
+      viewport: { w: window.innerWidth, h: window.innerHeight },
+      bounds,
+    });
+    root.style.left = `${placed.left}px`;
+    root.style.top = `${placed.top}px`;
+    root.dataset.flip = placed.flip;
   }
 
   // ── global keys: Tab cycle, Esc steps back (EP-15) ──

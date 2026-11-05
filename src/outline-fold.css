@@ -1321,6 +1321,8 @@ div.of-unlock.of-unlock-sheet { border-radius: 12px 12px 8px 8px; border-left-wi
 
 /* Swatches: node menu row and picker Colours row. */
 .map-node-menu-swatches, .of-ep-colours { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; padding: 4px 8px; flex: 0 0 auto; }
+/* 0.6.2: author display:flex would otherwise override UA [hidden] and leave an empty colour strip visible while searching. */
+.of-ep-colours[hidden] { display: none; }
 .map-node-menu-swatch-cap, .of-ep-colours-cap { flex: 1 0 100%; font-size: 11px; color: var(--of-muted, #8b9bab); }
 .map-node-menu-swatch, .of-ep-swatch { width: 22px; height: 22px; padding: 0; border-radius: 50%; border: 2px solid transparent; background: var(--sw, transparent); color: var(--of-muted, #8b9bab); font-size: 12px; line-height: 1; cursor: pointer; }
 .map-node-menu[data-pointer="coarse"] .map-node-menu-swatch { width: 36px; height: 36px; }

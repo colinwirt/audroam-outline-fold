@@ -3459,6 +3459,8 @@ export function createMapView(
       expanded: true,
       stayOpen: how.stayOpen,
       toggle: how.toggle ?? null,
+      // 0.6.2: keep the popover inside the map host as well as the viewport.
+      bounds: host,
       onPick: (token) => setNodeIcon(key, token),
       onRemove: styleOf()?.icon ? () => setNodeIcon(key, undefined) : undefined,
       colour: nodeColoursOn ? { value: styleOf()?.color, palette: paletteName, onColour: (c) => setNodeColour(key, c) } : undefined,
