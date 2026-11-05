@@ -711,7 +711,7 @@ export interface MapViewHandle {
    * at a client point or under the pill. Needs `nodeMenu: true` and
    * bindGestures(). False when nothing in it applies.
    */
-  openNodeMenu: (id?: string, at?: { clientX: number; clientY: number }) => boolean;
+  openNodeMenu: (id?: string, at?: { clientX: number; clientY: number }, how?: { fine?: boolean; pointerType?: string }) => boolean;
   /** 0.5.18: open the icon picker (panel, Map tab) for a node. */
   openIconPicker: (id?: string) => boolean;
   /**
@@ -3480,7 +3480,7 @@ export function createMapView(
     return { x: r.left - hr.left, y: r.bottom - hr.top + 4 };
   }
 
-  function openNodeMenu(key: string, at?: { clientX: number; clientY: number } | null, how: { fine?: boolean } = {}): boolean {
+  function openNodeMenu(key: string, at?: { clientX: number; clientY: number } | null, how: { fine?: boolean; pointerType?: string } = {}): boolean {
     if (!nodeMenuOn || typeof document === 'undefined') return false;
     closeMenus();
     const node = nodeByKey(key);
@@ -3494,7 +3494,9 @@ export function createMapView(
       onChange?.();
     }
     if (getComputedStyle(host).position === 'static') host.style.position = 'relative';
-    const fine = how.fine ?? !coarsePointer();
+    // Mouse → fine (22px) even on hybrid coarse matchMedia; touch/pen → coarse (36px).
+    const pt = how.pointerType ?? '';
+    const fine = how.fine ?? (pt === 'touch' || pt === 'pen' ? false : pt === 'mouse' ? true : !coarsePointer());
     const view = renderNodeMenu({ title: widthTitle(node), entries, fine, nodeId: key });
     const abort = new AbortController();
     const m: NodeMenuState = { key, el: view.el, items: view.items, entries, abort };
@@ -6292,7 +6294,7 @@ export function createMapView(
         } catch {
           /* vibrate not allowed */
         }
-        const fine = h.pointerType === 'mouse' && !coarsePointer();
+        const fine = h.pointerType === 'mouse';
         if (!openLevelMenu(h.id, { fine, dragPointer: h.pointerId })) return;
       }, LEVEL_HOLD_MS);
     }
@@ -7026,8 +7028,12 @@ export function createMapView(
       const selected = !!sel && !sel.isCollapsed && !!sel.toString().trim();
       if (onLabel && (pt === 'touch' || pt === 'pen' || selected)) return false;
       if (nodeMenu && nodeMenu.key === pillKey) return own();
+      // Mouse (and engines that omit pointerType on contextmenu) → fine 22px
+      // swatches even when the device also matches (pointer: coarse). Touch/pen
+      // opens go through the hold path with fine: false (36px).
       const opened = openNodeMenu(pillKey, { clientX: e.clientX, clientY: e.clientY }, {
-        fine: pt === 'mouse' || (!pt && !coarsePointer()),
+        fine: pt !== 'touch' && pt !== 'pen',
+        pointerType: pt,
       });
       if (!opened) return false;
       if (nodeHold) {
@@ -7094,7 +7100,7 @@ export function createMapView(
       e.preventDefault();
       e.stopPropagation();
       e.stopImmediatePropagation();
-      if (act === 'open') openLevelMenu(id, { fine: !coarsePointer() || pt === 'mouse' });
+      if (act === 'open') openLevelMenu(id, { fine: pt !== 'touch' && pt !== 'pen' });
     }, { capture: true, signal });
     window.addEventListener('blur', () => resetPointers(), { signal });
     document.addEventListener('visibilitychange', () => {
@@ -7453,9 +7459,9 @@ export function createMapView(
       pickerListeners.add(fn);
       return () => { pickerListeners.delete(fn); };
     },
-    openNodeMenu: (id?: string, at?: { clientX: number; clientY: number }) => {
+    openNodeMenu: (id?: string, at?: { clientX: number; clientY: number }, how?: { fine?: boolean; pointerType?: string }) => {
       const target = id ?? getFocusId();
-      return target ? openNodeMenu(target, at ?? null) : false;
+      return target ? openNodeMenu(target, at ?? null, how ?? {}) : false;
     },
     closeNodeMenu: () => closeNodeMenu(false),
     nodeCopyItems: (id?: string) => {
