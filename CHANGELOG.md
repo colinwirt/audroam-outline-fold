@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.6.4 — 2026-11-06
+
+### Width panel: two-step Copy to, stay-open panel, unstuck width handle
+
+- **Removed** the one-step "1 line siblings" and "1 line: all at this level" picks.
+- **Two-step Copy to (t2502u/t2503u):** set this node's width first (Fit text, 1 line, Wide, Auto, or a drag), then pick **Copy to: siblings** or **Copy to: all at this level**. Copy writes this node's current width state (`w` / `wAuto`, Auto as cleared) onto every node in scope; time leaves are skipped (TL1). One undo step. New exports `isCopyScopeKind`, `copyWidthEntry` (`isOneLineScopeKind` kept as a deprecated alias).
+- **Width panel stays open (t2501u):** picks apply and refresh the panel in place (checked state, same position, same focus); Escape and click-away close it.
+- **Unstuck width handle (t2501u):** a width drag whose pointerup never arrived (lost capture, release outside, buttonless mouse move) is released, and a corner press on another node ends any stale gesture, so a sibling can start a resize.
+
 ## 0.6.3 — 2026-11-06
 
 ### Stay-open style preview + style undo/redo; mouse swatches on hybrid devices
