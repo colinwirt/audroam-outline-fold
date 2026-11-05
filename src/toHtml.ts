@@ -41,7 +41,7 @@ function renderNode(
   // 0.5.19 (EP-34, EP-42): colour bar on the row, named cloud colours its bar.
   // 0.5.20: the branch colour (nearest coloured ancestor or self); time leaves stay green.
   const own = resolveColour(node.color);
-  const bc = own ? { c: own, fill: !!node.colorFill } : inherited;
+  const bc = own ? { c: own, fill: !!node.colorFill } : inherited && node.noFill ? { c: inherited.c, fill: false } : inherited;
   const isTime = !!timeLeafKind(node);
   const colour = isTime ? null : bc?.c ?? null;
   const fill = !!colour && !!bc?.fill;

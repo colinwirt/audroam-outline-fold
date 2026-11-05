@@ -115,6 +115,8 @@ export interface OutlineNode {
   color?: string;
   /** 0.5.20: `<color:name:fill>` adds the wash; inherited with the colour. Default border + lines only. */
   colorFill?: boolean;
+  /** 0.6.2: explicit "no fill" (layout `fill: none`): stops an inherited wash on this node and its sub-branch. */
+  noFill?: boolean;
   /** 0.5.22: an inline `<color:…>` shadowed by a layout colour, kept so the line round-trips. */
   inlineColor?: { color: string; fill?: boolean };
   /** 0.5.22: a leading inline icon shadowed by a layout icon, kept so the line round-trips. */
@@ -199,6 +201,8 @@ export interface NodeLayout {
   colorFill?: boolean;
   /** Spelling of the colour key as read (`colour` or `color`); new writes follow the document. */
   colorKey?: 'color' | 'colour';
+  /** 0.6.2: `fill: none` — overrides a fill inherited from an ancestor. */
+  noFill?: boolean;
   /** 0.5.22: node icon token (emoji or `:name:`). Wins over a leading inline icon. */
   icon?: string;
 }

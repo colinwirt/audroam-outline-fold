@@ -525,6 +525,8 @@ export interface MapViewOptions {
    * selected node (emoji / clipart picker, EP-1). Default false (opt-in, so existing node menus keep their items).
    */
   nodeIcons?: boolean;
+  /** 0.6.2: draw node icons in Map labels (default true). Toggle later with `map.setNodeIconsVisible`. */
+  showNodeIcons?: boolean;
   /**
    * 0.5.18: `Cloud` checkbox in the node menu's Edit group (EP-39). Clouds already on the
    * line (`<cloud>`) always paint; this only adds the menu toggle. Default false (opt-in).
@@ -718,6 +720,10 @@ export interface MapViewHandle {
    * button as `toggle` so its own press is not read as an outside press.
    */
   toggleIconPicker: (id?: string, opts?: { toggle?: Element | null }) => boolean;
+  /** 0.6.2: show or hide every node icon / emoji in Map labels (view only; the text is unchanged). Repaints. */
+  setNodeIconsVisible: (on: boolean) => void;
+  /** 0.6.2: whether node icons are drawn. */
+  nodeIconsVisible: () => boolean;
   /** 0.5.30: close the map's icon picker if open. */
   closeIconPicker: () => void;
   /** 0.5.30: whether the map's icon picker is open (drive the toolbar's aria-pressed). */
@@ -1401,7 +1407,7 @@ export function autoPackPositions(
 
   function layoutSubtree(n: OutlineNode, groupLeft: number, top: number): number {
     const key = nodeMapKey(n, order.get(n) || 0);
-    const label = withNodeIcon(n, captionWithoutLinks(displayCaption(n.title)));
+    const label = nodeIconLabel(n, captionWithoutLinks(displayCaption(n.title)));
     const painted = pillSize(label, nodePillOpts(n, nodeLayout, defaults, key, doc));
     paintedSize.set(key, { w: painted.w, h: painted.h });
     const x = groupLeft + painted.w / 2;
@@ -1767,6 +1773,7 @@ export function createMapView(
     onWidthStep,
     nodeMenu: nodeMenuOn = false,
     nodeIcons: nodeIconsOpt,
+    showNodeIcons: showNodeIconsOpt = true,
     nodeClouds: nodeCloudsOpt,
     nodeImages: nodeImagesOpt,
     onImageAdd,
@@ -3002,6 +3009,9 @@ export function createMapView(
   }
 
   const nodeIconsOn = nodeIconsOpt ?? false;
+  // 0.6.2: icon visibility (view state). The painter reads it through the local withNodeIcon below.
+  let iconsShown = showNodeIconsOpt !== false;
+  const withNodeIcon = (n: { icon?: string }, label: string): string => (iconsShown ? nodeIconLabel(n, label) : label);
   const nodeCloudsOn = nodeCloudsOpt ?? false;
   const nodeColoursOn = nodeColoursOpt ?? false;
   function swatchEntries(prefix: string, row: string, current: string | undefined): NodeMenuEntry[] {
@@ -3028,7 +3038,7 @@ export function createMapView(
     if (nodeColoursOn && nodeByKey(key)) {
       entries.push(...swatchEntries('color', 'Colour', nodeByKey(key)?.color));
       // 0.6.1: Fill is always offered; turning it on without an own colour promotes the branch colour (or white).
-      entries.push({ key: 'colour-fill', label: 'Fill', group: 'Edit', checked: !!nodeByKey(key)?.colorFill });
+      entries.push({ key: 'colour-fill', label: 'Fill', group: 'Edit', checked: fillShownOn(key) });
       if (nodeCloudsOn && nodeByKey(key)?.cloud) entries.push(...swatchEntries('cloud-color', 'Cloud colour', nodeByKey(key)?.cloud));
     }
     if (foldLevelPicker(getDoc(), key)) entries.push({ key: 'levels', label: 'Levels…', group: 'View', popup: true });
@@ -3086,7 +3096,7 @@ export function createMapView(
       return;
     }
     if (entry.key === 'colour-fill') {
-      setNodeColourFill(key, !nodeByKey(key)?.colorFill);
+      setNodeColourFill(key, !fillShownOn(key));
       return;
     }
     if (entry.key === 'cloud') {
@@ -3167,6 +3177,7 @@ export function createMapView(
     const doc = getDoc();
     const wantColour = !!n.color;
     const wantIcon = !!n.icon;
+    const wantNoFill = !wantColour && !!n.noFill;
     const nl: NonNullable<OutlineNode['layout']> = { ...(n.layout || {}) };
     if (wantColour) {
       nl.color = n.color!;
@@ -3178,12 +3189,14 @@ export function createMapView(
     }
     if (wantIcon) nl.icon = n.icon!;
     else delete nl.icon;
+    if (wantNoFill) nl.noFill = true;
+    else { delete nl.noFill; delete n.noFill; }
     delete n.inlineColor;
     delete n.inlineIcon;
     if (n.tagSpellings?.color) delete n.tagSpellings.color;
     if (Object.keys(nl).length) n.layout = nl;
     else delete n.layout;
-    if (!wantColour && !wantIcon) return key;
+    if (!wantColour && !wantIcon && !wantNoFill) return key;
     const id = assignPersistentId(doc, n);
     if (id !== key) {
       const layout = getLayout();
@@ -3224,13 +3237,48 @@ export function createMapView(
       return;
     }
     const n = nodeByKey(key);
-    if (!n || (n.color ?? undefined) === color) return;
-    if (color && resolveColour(color)) n.color = resolveColour(color)!;
-    else { delete n.color; delete n.colorFill; }
+    if (!n) return;
+    // 0.6.2: None on a node that would still inherit a wash writes an explicit `fill: none`.
+    const wantNoFill = !color && inheritedFillOf(key);
+    if ((n.color ?? undefined) === color && !!n.noFill === wantNoFill) return;
+    if (color && resolveColour(color)) { n.color = resolveColour(color)!; delete n.noFill; }
+    else { delete n.color; delete n.colorFill; if (wantNoFill) n.noFill = true; else delete n.noFill; }
     persistStyle(key, n);
     setDoc(getDoc());
     onChange?.();
     announce(color ? `Colour: ${colourLabel(color, paletteName)}` : 'Colour removed');
+  }
+
+  /** 0.6.2: the wash this node actually paints (own :fill, or inherited and not `fill: none`). */
+  function fillShownOn(key: string): boolean {
+    const n = nodeByKey(key);
+    if (!n) return false;
+    if (resolveColour(n.color)) return !!n.colorFill;
+    return !n.noFill && inheritedFillOf(key);
+  }
+
+  /** 0.6.2: does this node's parent branch paint a wash (nearest coloured ancestor has :fill, no `fill: none` between)? */
+  function inheritedFillOf(key: string): boolean {
+    const self = nodeByKey(key);
+    if (!self) return false;
+    // By identity, so a node without an id still finds its ancestors.
+    const chain: OutlineNode[] = [];
+    const find = (list: OutlineNode[]): boolean => {
+      for (const n of list) {
+        if (n === self) return true;
+        chain.push(n);
+        if (n.children?.length && find(n.children)) return true;
+        chain.pop();
+      }
+      return false;
+    };
+    if (!find(getDoc().nodes)) return false;
+    for (let i = chain.length - 1; i >= 0; i--) {
+      const a = chain[i]!;
+      if (resolveColour(a.color)) return !!a.colorFill;
+      if (a.noFill) return false;
+    }
+    return false;
   }
 
   /** Nearest ancestor colour (own colour of this node or a parent), else undefined. */
@@ -3256,10 +3304,21 @@ export function createMapView(
     }
     const n = nodeByKey(key);
     if (!n) return false;
+    if (!on && !n.color) {
+      // 0.6.2: no own colour: Fill off on a node inside a washed branch writes `fill: none`.
+      if (!inheritedFillOf(key) || n.noFill) return false;
+      n.noFill = true;
+      persistStyle(key, n);
+      setDoc(getDoc());
+      onChange?.();
+      announce('Fill off');
+      return true;
+    }
     if (on && !n.color) {
       const promoted = resolveColour(branchColourOf(key)) || 'white';
       n.color = promoted;
     }
+    if (on) delete n.noFill;
     if (!setColourFill(n, on)) return false;
     persistStyle(key, n);
     setDoc(getDoc());
@@ -5022,7 +5081,7 @@ export function createMapView(
     const anchors = unlockedAnchorKeys();
     function walk(n: OutlineNode, inherited: { c: string; fill: boolean } | null = null): void {
       const own = resolveColour(n.color);
-      const bc = own ? { c: own, fill: !!n.colorFill } : inherited;
+      const bc = own ? { c: own, fill: !!n.colorFill } : inherited && n.noFill ? { c: inherited.c, fill: false } : inherited;
       if (bc) branchColour.set(n, bc);
       const key = nodeMapKey(n, order.get(n) || 0);
       const pos = layout.nodes![key] || { x: 100, y: 100 };
@@ -7361,6 +7420,8 @@ export function createMapView(
     setWholeMapLevel,
     setDetails,
     setNodeColourFill,
+    setNodeIconsVisible: (on: boolean) => { if (iconsShown === !!on) return; iconsShown = !!on; paint(); },
+    nodeIconsVisible: () => iconsShown,
     setNodeCloud: (id: string, c: string | undefined) => setNodeCloud(id, c),
     setNodeColour: (id: string, c: string | undefined) => setNodeColour(id, c),
     setNodeIcon: (id: string, t: string | undefined) => setNodeIcon(id, t),
@@ -7509,7 +7570,7 @@ export function mountMapControls(
 }
 
 /** 0.5.18: Map pills are SVG text, so a node icon leads the label as its glyph (clipart → fallback emoji). */
-function withNodeIcon(n: { icon?: string }, label: string): string {
+function nodeIconLabel(n: { icon?: string }, label: string): string {
   return n.icon ? `${iconGlyph(n.icon)} ${label}` : label;
 }
 

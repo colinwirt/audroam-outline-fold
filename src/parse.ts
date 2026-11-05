@@ -851,6 +851,7 @@ function applyLayoutStyle(list: OutlineNode[]): void {
       if (l.colorFill) n.colorFill = true;
       else delete n.colorFill;
     }
+    if (l?.noFill && !l.color) n.noFill = true;
     if (l?.icon) {
       if (n.icon) n.inlineIcon = n.icon;
       n.icon = l.icon;

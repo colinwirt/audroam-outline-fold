@@ -356,6 +356,7 @@ export function parseLayoutBlock(block: string): {
         if (col[3]) style.colorFill = true;
         else delete style.colorFill;
       }
+      if (current && /^\s+fill\s*:\s*none\s*$/i.test(raw)) style.noFill = true;
       const ic = raw.match(/^\s+icon\s*:\s*([^\s<>]+)\s*$/i);
       if (ic && current) style.icon = ic[1]!;
       continue;
@@ -552,6 +553,7 @@ export function collectLayouts(nodes: OutlineNode[]): LayoutMap {
           if (n.layout.colorKey) e.colorKey = n.layout.colorKey;
         }
         if (n.layout.icon) e.icon = n.layout.icon;
+        if (n.layout.noFill && !n.layout.color) e.noFill = true;
         if (Object.keys(e).length) out[n.id] = e;
       }
       if (n.children?.length) walk(n.children);
@@ -609,7 +611,8 @@ export function formatLayoutBlock(
     const hasW = typeof w === 'number' && w > 0;
     const color = e.color && /^[A-Za-z][\w-]*$/.test(e.color) ? e.color : undefined;
     const icon = e.icon && /^[^\s<>]+$/.test(e.icon) ? e.icon : undefined;
-    if (!hasW && !color && !icon) continue;
+    const noFill = !color && !!e.noFill;
+    if (!hasW && !color && !icon && !noFill) continue;
     lines.push(`${id}:`);
     if (hasW) {
       lines.push(`  w: ${Math.round(w!)}`);
@@ -618,6 +621,7 @@ export function formatLayoutBlock(
     }
     if (color) lines.push(`  ${e.colorKey === 'colour' ? 'colour' : 'color'}: ${color}${e.colorFill ? ':fill' : ''}`);
     if (icon) lines.push(`  icon: ${icon}`);
+    if (noFill) lines.push('  fill: none');
   }
   if (lines.length === 1) return '';
   lines.push('---');
