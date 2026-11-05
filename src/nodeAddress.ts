@@ -37,7 +37,8 @@ export function collectNodeIds(nodes: OutlineNode[]): Set<string> {
  * and any nested submap. Never a saved `<id:>`: the parser only accepts an id
  * that starts with a letter or a digit, so this spelling cannot be written and
  * read back as a persistent id. A width, a payload, or a fold that must survive
- * a reload mints a normal id instead (`assignPersistentId`).
+ * a reload mints a normal id instead (`assignPersistentId`). Style
+ * (colour / icon / fill:none) mints the same way width and payload do.
  */
 export const SESSION_ID_PREFIX = '__tmp-';
 
@@ -167,7 +168,10 @@ function moveFoldMarkToDoc(doc: OutlineFoldDoc, node: OutlineNode): void {
 
 function needsPersistentId(node: OutlineNode): boolean {
   if (node.id && !node.autoId) return false;
-  if (typeof node.layout?.w === 'number') return true;
+  // 0.6.2: any layout entry that serialize would write (w / colour / icon / fill:none)
+  // needs a real id — not only width. Otherwise `__tmp-N:` leaks into the layout block.
+  const L = node.layout;
+  if (L && (typeof L.w === 'number' || L.color || L.icon || L.noFill)) return true;
   if (node.sealed && (node.sealed.ciphertext || node.sealed.uri)) return true;
   return false;
 }

@@ -2,6 +2,7 @@ import { parseAssetsBlock, type AssetEntry } from './thumbnails.js';
 import { headerKid, isLineSealAlg, isSealedBranchPayload } from './sealedState.js';
 import { parseEncBody } from './sealed.js';
 import { parseAutoWidth } from './mapFit.js';
+import { isSessionId } from './nodeAddress.js';
 import type {
   NodeLayout,
   OutlineFrontmatter,
@@ -330,7 +331,8 @@ export function parseLayoutBlock(block: string): {
         e.w = width;
         if (wAuto) e.wAuto = wAuto;
       }
-      out[current] = { ...e, ...style };
+      // 0.6.2: duplicate id keys merge; later fields win (last-key-wins per field).
+      out[current] = { ...(out[current] || {}), ...e, ...style };
     }
     current = null;
     width = undefined;
@@ -369,8 +371,13 @@ export function parseLayoutBlock(block: string): {
     const top = line.match(KEY_LINE);
     if (top) {
       flush();
-      current = top[1]!;
+      // 0.6.2: session ids are never layout keys (and cannot round-trip via KEY_LINE).
+      current = isSessionId(top[1]) ? null : top[1]!;
+      continue;
     }
+    // Unknown top-level line (`__tmp-3:` before KEY_LINE rejected it, typos, …):
+    // flush so following indented fields do not stick to the previous id.
+    flush();
   }
   flush();
   return { layouts: out, frontmatter: fm };
@@ -541,7 +548,8 @@ export function collectLayouts(nodes: OutlineNode[]): LayoutMap {
   const out: LayoutMap = {};
   const walk = (list: OutlineNode[]) => {
     for (const n of list) {
-      if (n.id && n.layout) {
+      // 0.6.2: never emit a session id into the saved layout block.
+      if (n.id && n.layout && !isSessionId(n.id)) {
         const e: NodeLayout = {};
         if (typeof n.layout.w === 'number' && n.layout.w > 0) {
           e.w = n.layout.w;
@@ -604,7 +612,8 @@ export function formatLayoutBlock(
       lines.push(bare ? `${key}: ${uri}` : `${key}: "${uri.replace(/"/g, '\\"')}"`);
     }
   }
-  const keys = Object.keys(layouts).sort();
+  // 0.6.2: never write a session id key into the saved block.
+  const keys = Object.keys(layouts).filter((id) => !isSessionId(id)).sort();
   for (const id of keys) {
     const e = layouts[id]!;
     const w = e.w;

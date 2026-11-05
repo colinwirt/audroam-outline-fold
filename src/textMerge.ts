@@ -17,11 +17,15 @@ const sealKey = (line: string): string => {
 /** Caption after one leading bullet. The serialiser always writes `- `. */
 const bulletBody = (line: string): string => key(line).replace(/^[-*+]\s+/, '');
 const ID_TAIL = /(?:\s+<id:[^>\s]+>)+\s*$/;
+/** Mid-caption or glued `<id:N>` (e.g. `MITRE<id:5> https://…`) — serialiser moves it trailing. */
+const ID_ANY = /\s*<id:[A-Za-z0-9][A-Za-z0-9_-]*>\s*/g;
 /**
  * A plain line and the serialiser's bulleted form are one node (`done` and `- done`).
  * An `<id:>` only the source still has (a session id the serialiser omits) does not
  * make them two nodes. A fold marker stays in the body, so `done` does not match
  * `- done (+)`.
+ * 0.6.2: a mid-line `<id:N>` and the serialiser's trailing form are the same node
+ * (`MITRE<id:5> url` ↔ `MITRE url <id:5>`), so a style write does not keep both.
  */
 const sameSourceLine = (x: string, y: string): boolean => {
   if (sealKey(x) === sealKey(y)) return true;
@@ -31,8 +35,11 @@ const sameSourceLine = (x: string, y: string): boolean => {
   if (bx === by) return true;
   const sx = bx.replace(ID_TAIL, '');
   const sy = by.replace(ID_TAIL, '');
-  if (!sx || sx !== sy) return false;
-  return bx === sx || by === sy;
+  if (sx && sx === sy) return bx === sx || by === sy;
+  // Mid-line id ↔ trailing id: strip every <id:…>, collapse spaces, compare captions.
+  const cx = bx.replace(ID_ANY, ' ').replace(/\s+/g, ' ').trim();
+  const cy = by.replace(ID_ANY, ' ').replace(/\s+/g, ' ').trim();
+  return !!cx && cx === cy;
 };
 
 /** LCS pairs (i in a, j in b) on keyed lines; common prefix / suffix trimmed first. */
