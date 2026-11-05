@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.6.1 — 2026-11-05
+
+### Icon picker search + layout; Fill on any node
+
+- **Picker layout:** colour palettes sit with the emoji grid inside a single `.of-ep-body` scrollport (`min-height: 0`, `overflow-x: hidden`). Audroam is reachable; search results are no longer crushed to a hairline under the tab strip. Panel uses `max-height: min(70vh, 480px)` instead of a fixed 380px.
+- **Search:** results show for whichever tab is active; colour groups filter by palette name, role id, or label (e.g. `pastel`, `green`, `audroam-danger`). Query aliases map `hour` → clock / o'clock faces (🕐) as well as hourglasses.
+- **Fill:** the node menu always offers Fill. Turning Fill on without an own colour promotes the nearest branch colour (else `white`) then sets `colorFill`.
+
+Map stroke tokens from 0.6.0 (MSB-1…MSB-8) are unchanged.
+
+
+
 ## 0.6.0 — 2026-11-05
 
 ### Map stroke baseline (MSB-1…MSB-8, Colin)

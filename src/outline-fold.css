@@ -1112,14 +1112,17 @@ div.of-unlock.of-unlock-sheet { border-radius: 12px 12px 8px 8px; border-left-wi
 .of-ep-row { display: flex; gap: 4px; padding: 8px; }
 /* 0.5.30: a compact popover sized to its 7 x 40px tile grid (max 320px) on desktop and tablet;
    only phones get the full-width sheet. */
-.of-ep.of-ep-panel { width: fit-content; max-width: 320px; height: 380px; display: flex; flex-direction: column; overflow: hidden; }
+.of-ep.of-ep-panel { width: fit-content; max-width: 320px; height: auto; max-height: min(70vh, 480px); display: flex; flex-direction: column; overflow: hidden; }
 .of-ep-search { margin: 8px 8px 4px; height: 30px; padding: 0 10px; border: 1px solid var(--ep-line); border-radius: 6px; background: var(--ep-raise); color: inherit; font: inherit; }
 .of-ep-search::placeholder { color: var(--ep-muted); }
-.of-ep-strip { display: flex; gap: 1px; padding: 0 6px 4px; border-bottom: 1px solid var(--ep-line); }
+.of-ep-strip { display: flex; flex-wrap: wrap; gap: 1px; padding: 0 6px 4px; border-bottom: 1px solid var(--ep-line); overflow-x: hidden; flex: 0 0 auto; }
 .of-ep-tab { flex: 1 1 0; height: 28px; min-width: 0; border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--ep-muted); font-size: 15px; cursor: pointer; padding: 0; }
 .of-ep-tab svg { width: 16px; height: 16px; }
 .of-ep-tab[aria-selected="true"] { color: var(--ep-text); border-bottom-color: var(--ep-ring); }
-.of-ep-grid { flex: 1 1 auto; overflow-y: auto; padding: 0 8px 8px; }
+/* 0.6.1: one scroll body for grid + colour palettes so Audroam is reachable and search
+   results are not crushed to a hairline under the tab strip. */
+.of-ep-body { flex: 1 1 auto; min-height: 0; overflow-x: hidden; overflow-y: auto; display: flex; flex-direction: column; }
+.of-ep-grid { flex: 0 0 auto; overflow: visible; padding: 0 8px 8px; }
 .of-ep-section-head { position: sticky; top: 0; z-index: 1; margin: 0; padding: 6px 4px 4px; background: var(--ep-bg); color: var(--ep-muted); font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
 .of-ep-grid-row { display: grid; grid-template-columns: repeat(var(--of-ep-cols, 7), 40px); gap: 4px; justify-content: start; margin-bottom: 4px; }
 .of-ep-cell { width: 40px; height: 40px; border: 0; border-radius: 6px; background: transparent; color: inherit; font-size: 26px; line-height: 40px; padding: 0; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; }
@@ -1317,7 +1320,7 @@ div.of-unlock.of-unlock-sheet { border-radius: 12px 12px 8px 8px; border-left-wi
 .of-dense .of-node.of-colour > .of-row::before { content: ""; display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--nc); margin-right: 4px; flex: 0 0 auto; }
 
 /* Swatches: node menu row and picker Colours row. */
-.map-node-menu-swatches, .of-ep-colours { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; padding: 4px 8px; }
+.map-node-menu-swatches, .of-ep-colours { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; padding: 4px 8px; flex: 0 0 auto; }
 .map-node-menu-swatch-cap, .of-ep-colours-cap { flex: 1 0 100%; font-size: 11px; color: var(--of-muted, #8b9bab); }
 .map-node-menu-swatch, .of-ep-swatch { width: 22px; height: 22px; padding: 0; border-radius: 50%; border: 2px solid transparent; background: var(--sw, transparent); color: var(--of-muted, #8b9bab); font-size: 12px; line-height: 1; cursor: pointer; }
 .map-node-menu[data-pointer="coarse"] .map-node-menu-swatch { width: 36px; height: 36px; }

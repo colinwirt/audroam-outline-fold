@@ -3,7 +3,7 @@
  *
  * Two states at one anchor: the quick row (6 items + `＋`, EP-4) and the compact panel
  * (320 × 360, EP-6): search, a 28px category strip, an 8-column grid with sticky section
- * headers (only the grid scrolls), and a footer with preview, name, Pin, Remove icon and `?`.
+ * headers, a scroll body for the grid + colour palettes (0.6.1), and a footer with preview, name, Pin, Remove icon and `?`.
  * Coarse pointers get a full-width bottom sheet with 7 columns (EP-17).
  */
 import { CLIPART } from './clipart.js';
@@ -175,7 +175,10 @@ export function openIconPicker(opts: IconPickerOptions): IconPickerHandle {
   // ── panel (EP-6…EP-13) ──
   let search!: HTMLInputElement;
   let strip!: HTMLElement;
+  let body!: HTMLElement;
   let grid!: HTMLElement;
+  let colourHost: HTMLElement | null = null;
+  let colourOpts: NonNullable<IconPickerOptions['colour']> | null = null;
   let footer!: HTMLElement;
   let preview!: HTMLElement;
   let nameEl!: HTMLElement;
@@ -242,9 +245,11 @@ export function openIconPicker(opts: IconPickerOptions): IconPickerHandle {
       scrollToSection(tabs[n]!.dataset.cat!, true);
     }, { signal: sig });
 
+    body = h('div', 'of-ep-body', { 'data-testid': 'of-ep-body' });
+    body.addEventListener('scroll', () => syncTab(), { signal: sig, passive: true });
+
     grid = h('div', 'of-ep-grid', { role: 'grid', id: `${id}-grid`, 'aria-label': 'Emoji and clipart', 'data-testid': 'of-ep-grid' });
     grid.addEventListener('keydown', onGridKey, { signal: sig });
-    grid.addEventListener('scroll', () => syncTab(), { signal: sig, passive: true });
 
     footer = h('div', 'of-ep-footer', { 'data-testid': 'of-ep-footer' });
     preview = h('span', 'of-ep-preview', { 'aria-hidden': 'true' });
@@ -266,8 +271,10 @@ export function openIconPicker(opts: IconPickerOptions): IconPickerHandle {
     }, { signal: sig });
     footer.appendChild(q);
 
-    const colourRow = opts.mode === 'node' && opts.colour ? renderColourRow(opts.colour) : null;
-    root.append(search, strip, grid, ...(colourRow ? [colourRow] : []), footer, live);
+    colourOpts = opts.mode === 'node' && opts.colour ? opts.colour : null;
+    colourHost = colourOpts ? h('div', 'of-ep-colours-host', { 'data-testid': 'of-ep-colours-host' }) : null;
+    body.append(grid, ...(colourHost ? [colourHost] : []));
+    root.append(search, strip, body, footer, live);
     renderGrid();
     place();
     // EP-10: node mode opens on the Map tab.
@@ -275,29 +282,54 @@ export function openIconPicker(opts: IconPickerOptions): IconPickerHandle {
     search.focus({ preventScroll: true });
   }
 
-  function renderColourRow(c: NonNullable<IconPickerOptions['colour']>): HTMLElement {
+  /** 0.6.1: rebuild the colour row, optionally filtered by the search query (name, role id, palette). */
+  function syncColours(query = ''): void {
+    if (!colourHost || !colourOpts) return;
+    colourHost.replaceChildren(renderColourRow(colourOpts, query));
+  }
+
+  function colourMatches(query: string, groupName: string, colourName: string, label: string): boolean {
+    const q = query.trim().toLowerCase();
+    if (!q) return true;
+    const hay = `${groupName} ${colourName} ${label}`.toLowerCase();
+    return hay.includes(q) || colourName.toLowerCase().replace(/_/g, '-').includes(q.replace(/\s+/g, '-'));
+  }
+
+  function renderColourRow(c: NonNullable<IconPickerOptions['colour']>, query = ''): HTMLElement {
     const row = h('div', 'of-ep-colours', { role: 'radiogroup', 'aria-label': 'Colours', 'data-testid': 'of-ep-colours' });
     let cur: string = resolveColour(c.value) ?? 'none';
-    const names = ['none', ...colourGroups(c.palette).flatMap((g) => g.colours)];
-    const btns = names.map((name) => {
+    const q = query.trim();
+    const groups = colourGroups(c.palette);
+    const visible: { name: string; colours: string[]; includeNone: boolean }[] = [];
+    for (let gi = 0; gi < groups.length; gi++) {
+      const g = groups[gi]!;
+      const cols = g.colours.filter((name) => colourMatches(q, g.name, name, colourLabel(name, c.palette)));
+      const noneHit = gi === 0 && (!q || 'none'.includes(q.toLowerCase()) || colourMatches(q, g.name, 'none', 'None'));
+      if (cols.length || noneHit) visible.push({ name: g.name, colours: [...cols], includeNone: gi === 0 && (!q || noneHit) });
+    }
+    if (!visible.length) {
+      row.hidden = true;
+      return row;
+    }
+    const flat: { name: string; btn: HTMLButtonElement }[] = [];
+    const mk = (name: string) => {
       const label = name === 'none' ? 'None' : colourLabel(name, c.palette);
-      const b = h('button', `of-ep-swatch swatch-${name}`, { type: 'button', role: 'radio', 'aria-label': label, title: label, 'aria-checked': String(name === cur), tabindex: name === cur ? '0' : '-1', 'data-swatch': name, 'data-testid': `of-ep-swatch-${name}` }, name === 'none' ? '∅' : '');
+      const b = h('button', `of-ep-swatch swatch-${name}`, { type: 'button', role: 'radio', 'aria-label': label, title: label, 'aria-checked': String(name === cur), tabindex: name === cur ? '0' : '-1', 'data-swatch': name, 'data-testid': `of-ep-swatch-${name}` }, name === 'none' ? '∅' : '') as HTMLButtonElement;
       b.addEventListener('click', () => {
         cur = name;
-        for (const x of btns) { x.setAttribute('aria-checked', String(x === b)); x.tabIndex = x === b ? 0 : -1; }
+        for (const x of flat) { x.btn.setAttribute('aria-checked', String(x.btn === b)); x.btn.tabIndex = x.btn === b ? 0 : -1; }
         c.onColour(name === 'none' ? undefined : name);
         live.textContent = name === 'none' ? 'Colour removed' : `Colour: ${label}`;
       }, { signal: sig });
+      flat.push({ name, btn: b });
       return b;
-    });
-    // Forest (None first) then Highlighter, each with a caption; ←/→ run across both.
-    let k = 0;
-    for (const g of colourGroups(c.palette)) {
+    };
+    for (const g of visible) {
       row.appendChild(h('span', 'of-ep-colours-cap', { 'aria-hidden': 'true' }, g.name));
-      const n = g.colours.length + (k === 0 ? 1 : 0);
-      row.append(...btns.slice(k, k + n));
-      k += n;
+      if (g.includeNone) row.appendChild(mk('none'));
+      for (const name of g.colours) row.appendChild(mk(name));
     }
+    const btns = flat.map((x) => x.btn);
     row.addEventListener('keydown', (e) => {
       const i = btns.indexOf(document.activeElement as HTMLButtonElement);
       if (i < 0 || (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft')) return;
@@ -379,6 +411,7 @@ export function openIconPicker(opts: IconPickerOptions): IconPickerHandle {
       strip.classList.remove('of-ep-strip-dim');
       for (const s of sections()) if (s.items.length || s.key === 'map') addSection(s.key, s.label, s.items);
     }
+    syncColours(q);
     focusIndex = Math.min(focusIndex, Math.max(0, cells.length - 1));
     cells.forEach((c, i) => (c.tabIndex = i === focusIndex ? 0 : -1));
     if (cellItems[focusIndex]) showFooter(cellItems[focusIndex]!);
@@ -472,7 +505,10 @@ export function openIconPicker(opts: IconPickerOptions): IconPickerHandle {
   function scrollToSection(key: string, focusTab: boolean): void {
     if (search.value) { search.value = ''; renderGrid(); }
     const sec = sectionEls.find((s) => s.key === key)?.el;
-    if (sec) grid.scrollTop = sec.offsetTop - grid.offsetTop;
+    if (sec && body) {
+      const top = sec.getBoundingClientRect().top - body.getBoundingClientRect().top + body.scrollTop;
+      body.scrollTop = Math.max(0, top - 4);
+    }
     setTab(key);
     if (focusTab) tabs.find((t) => t.dataset.cat === key)?.focus({ preventScroll: true });
   }
@@ -487,10 +523,13 @@ export function openIconPicker(opts: IconPickerOptions): IconPickerHandle {
   }
 
   function syncTab(): void {
-    if (!sectionEls.length || search?.value) return;
-    const top = grid.scrollTop + grid.offsetTop + 4;
+    if (!sectionEls.length || search?.value || !body) return;
+    const top = body.scrollTop + 4;
     let cur = sectionEls[0]!.key;
-    for (const s of sectionEls) if (s.el.offsetTop <= top) cur = s.key;
+    for (const s of sectionEls) {
+      const y = s.el.getBoundingClientRect().top - body.getBoundingClientRect().top + body.scrollTop;
+      if (y <= top) cur = s.key;
+    }
     setTab(cur);
   }
 

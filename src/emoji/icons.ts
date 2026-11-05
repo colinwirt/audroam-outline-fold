@@ -213,9 +213,15 @@ function score(it: IconItem, q: string): number {
   if (it.code === q) return 0;
   if (it.code.startsWith(q)) return 1;
   if (it.code.split('_').some((w) => w.startsWith(q))) return 2;
-  if (it.name.toLowerCase().split(' ').some((w) => w.startsWith(q))) return 2;
-  if (it.keywords.some((k) => k.startsWith(q) || k.split(' ').some((w) => w.startsWith(q)))) return 2;
+  const nameL = it.name.toLowerCase();
+  if (nameL.split(/[\s_-]+/).some((w) => w.startsWith(q))) return 2;
+  if (it.keywords.some((k) => {
+    const kl = k.toLowerCase();
+    return kl.startsWith(q) || kl.split(/[\s'_-]+/).some((w) => w.startsWith(q));
+  })) return 2;
   if (it.code.includes(q)) return 3;
+  if (nameL.includes(q)) return 3;
+  if (it.keywords.some((k) => k.toLowerCase().includes(q))) return 3;
   return -1;
 }
 
@@ -223,16 +229,27 @@ function normQuery(q: string): string {
   return q.trim().toLowerCase().replace(/^:|:$/g, '').replace(/\s+/g, '_');
 }
 
+/** 0.6.1: expand a few everyday queries so e.g. "hour" hits 🕐 (o'clock) as well as ⏳. */
+const QUERY_ALIASES: Readonly<Record<string, readonly string[]>> = {
+  hour: ["hour", "oclock", "o'clock", "clock"],
+  hours: ["hour", "oclock", "o'clock", "clock"],
+};
+
 /** EP-11 / EP-26: one flat result list over names, shortcodes and keywords. */
 export function searchIcons(query: string, opts: { prefs?: IconPrefs; limit?: number } = {}): IconItem[] {
   const q = normQuery(query);
   if (!q) return [];
+  const variants = QUERY_ALIASES[q] ?? QUERY_ALIASES[q.replace(/_/g, '')] ?? [q];
   const recent = new Set(opts.prefs?.recent() ?? []);
   const hits: { it: IconItem; s: number; r: number; i: number }[] = [];
   allIconItems().forEach((it, i) => {
-    const qs = q.replace(/_/g, ' ');
-    let s = score(it, q);
-    if (s < 0 && qs !== q && it.name.toLowerCase().includes(qs)) s = 3;
+    let s = -1;
+    for (const v of variants) {
+      const qs = v.replace(/_/g, ' ');
+      let sv = score(it, v);
+      if (sv < 0 && it.name.toLowerCase().includes(qs)) sv = 3;
+      if (sv >= 0 && (s < 0 || sv < s)) s = sv;
+    }
     if (s >= 0) hits.push({ it, s, r: recent.has(it.insert) ? 0 : 1, i });
   });
   hits.sort((a, b) => a.r - b.r || a.s - b.s || a.i - b.i);

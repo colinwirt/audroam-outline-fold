@@ -682,7 +682,7 @@ export interface MapViewHandle {
   applyFoldLevel: (id: string, level: FoldLevelKey) => void;
   /** Show or hide secondary chrome (counts, key hints); see `details`. */
   setDetails: (on: boolean) => void;
-  /** 0.5.20: Fill (wash) on/off for a coloured node; false when the node has no own colour. */
+  /** 0.5.20 / 0.6.1: Fill (wash) on/off; promotes branch colour (or white) when the node has none. */
   setNodeColourFill: (id: string, on: boolean) => boolean;
   /** 0.5.28: add (`'default'` or a colour) or remove (undefined) a node's cloud; scoped ids style a zone node inline. */
   setNodeCloud: (id: string, color: string | undefined) => void;
@@ -3027,7 +3027,8 @@ export function createMapView(
     }
     if (nodeColoursOn && nodeByKey(key)) {
       entries.push(...swatchEntries('color', 'Colour', nodeByKey(key)?.color));
-      if (nodeByKey(key)?.color) entries.push({ key: 'colour-fill', label: 'Fill', group: 'Edit', checked: !!nodeByKey(key)?.colorFill });
+      // 0.6.1: Fill is always offered; turning it on without an own colour promotes the branch colour (or white).
+      entries.push({ key: 'colour-fill', label: 'Fill', group: 'Edit', checked: !!nodeByKey(key)?.colorFill });
       if (nodeCloudsOn && nodeByKey(key)?.cloud) entries.push(...swatchEntries('cloud-color', 'Cloud colour', nodeByKey(key)?.cloud));
     }
     if (foldLevelPicker(getDoc(), key)) entries.push({ key: 'levels', label: 'Levels…', group: 'View', popup: true });
@@ -3232,11 +3233,34 @@ export function createMapView(
     announce(color ? `Colour: ${colourLabel(color, paletteName)}` : 'Colour removed');
   }
 
-  /** 0.5.20: Fill toggle for a node's own colour. */
+  /** Nearest ancestor colour (own colour of this node or a parent), else undefined. */
+  function branchColourOf(key: string): string | undefined {
+    let cur: OutlineNode | null | undefined = nodeByKey(key);
+    const roots = getDoc().nodes;
+    while (cur) {
+      const own = resolveColour(cur.color);
+      if (own) return own;
+      const p = parentOf(roots, cur.id || '');
+      cur = p === undefined ? null : p;
+    }
+    return undefined;
+  }
+
+  /** 0.5.20 / 0.6.1: Fill toggle. With no own colour, promote the branch colour (else white) then fill. */
   function setNodeColourFill(key: string, on: boolean): boolean {
-    if (zoneNode(key)) return zoneStyle(key, (z) => setColourFill(z, on), on ? 'Fill on' : 'Fill off');
+    if (zoneNode(key)) {
+      return zoneStyle(key, (z) => {
+        if (on && !z.color) z.color = resolveColour(branchColourOf(key)) || 'white';
+        return setColourFill(z, on);
+      }, on ? 'Fill on' : 'Fill off');
+    }
     const n = nodeByKey(key);
-    if (!n || !setColourFill(n, on)) return false;
+    if (!n) return false;
+    if (on && !n.color) {
+      const promoted = resolveColour(branchColourOf(key)) || 'white';
+      n.color = promoted;
+    }
+    if (!setColourFill(n, on)) return false;
     persistStyle(key, n);
     setDoc(getDoc());
     onChange?.();
