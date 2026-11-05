@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.6.2 — 2026-11-05
+
+### Fill:none, icon visibility, picker clamp, layout __tmp / mid-line id
+
+- **Fill override:** `fill:none` (and `colorFill` / no-fill) on a node that inherits fill; inherited wash no longer sticks when Fill is turned off.
+- **Icon visibility API:** host/node menu can show or hide the node icon independently of colour/fill.
+- **Picker:** export `clampPopoverPlace` (measure real size; optional map-host bounds). After search, reset `.of-ep-body` scrollTop so Results are not above the fold. Force `.of-ep-colours[hidden] { display:none }` over inherited flex.
+- **Cloud contract:** `commitView` / `mergeKeeping` do not duplicate MITRE siblings (package-level non-dupe).
+- **Layout ids:** never write `__tmp-` into layout. `needsPersistentId` mints for layout colour/icon/noFill (not only `w`). `collectLayouts` / `formatLayoutBlock` skip session ids; `parseLayoutBlock` merges duplicate keys (last field wins), flushes unknown top-level lines so orphans do not attach, and ignores session id keys. Mid-line `<id:N>` and trailing form are one node (`sameSourceLine`).
+
+0.6.1 picker scrollport / Fill-on-any-node / hour aliases are unchanged.
+
+
 ## 0.6.1 — 2026-11-05
 
 ### Icon picker search + layout; Fill on any node
