@@ -108,7 +108,8 @@ import {
   sameWidth,
   siblingScope,
   levelScope,
-  isOneLineScopeKind,
+  isCopyScopeKind,
+  copyWidthEntry,
   singleLineCap,
   singleLineWidth,
   stepEntry,
@@ -4185,26 +4186,31 @@ export function createMapView(
     let scope: OutlineNode[] = [n];
     if (kind === 'siblings') {
       const parent = findParentOf(roots, n);
-      // TL1: `1 line siblings` skips time leaves.
+      // TL1: Copy to siblings skips time leaves.
       scope = siblingScope(n, parent ? parent.children : roots).filter((s) => !timeLeafKind(s));
     } else if (kind === 'level') {
       scope = levelScope(n, roots).filter((s) => !timeLeafKind(s));
     }
     const cap = currentSingleLineCap();
     let capped = 0;
+    // 6 Nov 2026: Copy to siblings / all at this level clones THIS node's
+    // current width state (w / wAuto, Auto included) onto the scope.
+    const copyFrom = isCopyScopeKind(kind) ? copyWidthEntry(readWidth(key, n)) : null;
     const entries: WidthStepEntry[] = scope.map((node) => {
       const k = hit ? (node.id ? scopeId(hit.region, node.id) : key) : keyOfNode(node);
       const before = readWidth(k, node);
       const m = fitMeasure(node, k);
       let after: WidthEntry;
-      if (kind === 'fit') {
+      if (copyFrom) {
+        after = { ...copyFrom };
+      } else if (kind === 'fit') {
         after = fitTextEntry({ fit: fitTextWidth(m.label, m.opts), auto: autoTextWidth(m.label, m.opts) });
-      } else if (kind === 'line' || isOneLineScopeKind(kind)) {
+      } else if (kind === 'line') {
         const one = oneLineEntry({
           natural: naturalLineWidth(m.label, m.opts),
           auto: autoTextWidth(m.label, m.opts),
           cap,
-        }, { always: isOneLineScopeKind(kind) });
+        });
         if (one.capped) capped++;
         after = { w: one.w, wAuto: one.wAuto };
       } else if (kind === 'wide') {
@@ -5866,6 +5872,24 @@ export function createMapView(
       );
     }
 
+    /**
+     * Unstick (6 Nov 2026): end any width gesture that did not see its own
+     * pointerup (capture lost, release outside the window, a menu pick or a
+     * paint in between). A moved drag commits; a still press just clears.
+     * Without this, `widthDrag` / `resizingWidthKey` / `widthHotKey` stayed
+     * on the old pill: hover never re-armed (it is gated on `!widthDrag`) so
+     * the old corner kept the live grip and a sibling's corner could not start.
+     */
+    function releaseWidthGesture(): void {
+      const drag = widthDrag;
+      if (drag?.moved) commitWidth();
+      widthDrag = null;
+      resizingWidthKey = null;
+      edgeArm = null;
+      clearWidthHold();
+      showWidthHot(null);
+    }
+
     /** 0.2.43: the width each pill's last Wide pick wrote, to mark Wide while it still matches. */
     const wideW = new Map<string, number>();
     let widthPopAbort: AbortController | null = null;
@@ -5956,9 +5980,9 @@ export function createMapView(
     }
 
     /**
-     * The width popover (F3, P1 on tap and `w`): a Fit row (Fit text · 1 line ·
-     * 1 line siblings) above the Width row (Slim · Wider · Auto). One pick =
-     * one batched write and one undo step.
+     * The width popover (F3, P1 on tap and `w`): Fit (Fit text · 1 line), Width
+     * (Wide · Auto), Copy to (siblings · all at this level), Auto width. One
+     * pick = one batched write and one undo step; the panel stays open.
      */
     function showWidthPop(
       clientX: number,
@@ -6003,8 +6027,6 @@ export function createMapView(
           items: [
             { kind: 'fit', label: 'Fit text', choice: 'fit-text', radio: true },
             { kind: 'line', label: '1 line', choice: 'line', radio: true },
-            { kind: 'siblings', label: '1 line siblings', choice: 'siblings', radio: false },
-            { kind: 'level', label: '1 line: all at this level', choice: 'level', radio: false },
           ],
         },
         {
@@ -6012,6 +6034,14 @@ export function createMapView(
           items: [
             { kind: 'wide', label: 'Wide', choice: 'wide', radio: true },
             { kind: 'auto', label: 'Auto', choice: 'auto', radio: true },
+          ],
+        },
+        {
+          // Step 2 (6 Nov 2026): copy this node's width, whatever it is, to others.
+          label: 'Copy to',
+          items: [
+            { kind: 'siblings', label: 'Copy to: siblings', choice: 'siblings', radio: false },
+            { kind: 'level', label: 'Copy to: all at this level', choice: 'level', radio: false },
           ],
         },
         {
@@ -6031,16 +6061,34 @@ export function createMapView(
       const kinds: WidthPickKind[] = [];
       const pick = (item: WidthItem, ev?: Event) => {
         const hadFocus = pop.contains(document.activeElement);
-        dismissWidthPop();
+        // Stay open (6 Nov 2026): a pick applies and refreshes the panel in
+        // place; only click-away or Escape closes it.
+        const left = pop.style.left;
+        const top = pop.style.top;
+        const refresh = () => {
+          if (widthPopAbort !== ac) return;
+          showWidthPop(clientX, clientY, key, textW, how);
+          const next = host.querySelector<HTMLElement>('.map-width-pop');
+          if (!next) return;
+          next.style.left = left;
+          next.style.top = top;
+          if (hadFocus) {
+            try {
+              next.querySelector<HTMLElement>(`[data-choice="${item.choice}"]`)?.focus({ preventScroll: true });
+            } catch {
+              /* focus not available */
+            }
+          }
+        };
         if (ev?.type === 'pointerup') {
-          // The repaint removes this button; its trailing click must not
+          // The rebuilt panel replaces this button; its trailing click must not
           // land on whatever is drawn under the finger next.
           const pe = ev as PointerEvent;
           swallow = armSwallow(performance.now(), pe.clientX, pe.clientY);
         }
         if (item.autoWidth) {
           setAutoWidth(item.autoWidth);
-          if (hadFocus) focusMapForKeys();
+          refresh();
           return;
         }
         applyWidthPick(key, item.kind);
@@ -6050,7 +6098,7 @@ export function createMapView(
           if (w != null) wideW.set(key, w);
           else wideW.delete(key);
         }
-        if (hadFocus) focusMapForKeys();
+        refresh();
       };
       for (const row of rows) {
         const group = document.createElement('div');
@@ -6151,6 +6199,17 @@ export function createMapView(
           const hadFocus = pop.contains(document.activeElement);
           dismissWidthPop();
           if (hadFocus) focusMapForKeys();
+        },
+        { capture: true, signal: ac.signal },
+      );
+      // Click-away anywhere outside the panel closes it (inside the map the
+      // host's own pointerdown already does).
+      document.addEventListener(
+        'pointerdown',
+        (e) => {
+          const t = e.target as Node | null;
+          if (t && (pop.contains(t) || host.contains(t))) return;
+          dismissWidthPop();
         },
         { capture: true, signal: ac.signal },
       );
@@ -6741,6 +6800,7 @@ export function createMapView(
         '.map-fold-hit, .map-fold-indicator, .map-task-hit, .map-task-glyph, .map-body-more-hit, .map-thread-hit, .map-note-link-hit, .map-jump-hit, .map-link-hit',
       );
       const edge = onControl ? null : rightEdgeKey(e.clientX, e.clientY, finger ? 28 : 18);
+      if (edge && (widthDrag || edgeArm) && (widthDrag ?? edgeArm)!.pointerId !== e.pointerId) releaseWidthGesture();
       if (!finger && edge && e.button === 0) {
         if (regionWidthTarget(edge.key)) setRegionFocus(edge.key);
         else setFocusId(edge.key);
@@ -6926,6 +6986,16 @@ export function createMapView(
         }
         if (nodeHold && e.pointerId === nodeHold.pointerId) {
           if (committed(e.pointerId)) clearNodeHold();
+        }
+        if (
+          widthDrag &&
+          e.pointerId === widthDrag.pointerId &&
+          (e.pointerType === 'mouse' || e.pointerType === '') &&
+          e.buttons === 0
+        ) {
+          // The button came up where we never heard it: the gesture is over.
+          releaseWidthGesture();
+          paint();
         }
         if (widthDrag && e.pointerId === widthDrag.pointerId) {
           e.preventDefault();
@@ -7195,8 +7265,13 @@ export function createMapView(
       endPointer(e);
       if (pointers.size === 0) resetPointers();
     }, { signal });
-    host.addEventListener('lostpointercapture', () => {
+    host.addEventListener('lostpointercapture', (e) => {
       if (releasing) return;
+      // Capture gone before our pointerup: end that width gesture here.
+      if (widthDrag && e.pointerId === widthDrag.pointerId) {
+        releaseWidthGesture();
+        paint();
+      }
     }, { signal });
 
     /**

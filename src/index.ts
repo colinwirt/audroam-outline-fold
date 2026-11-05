@@ -218,6 +218,8 @@ export {
   siblingScope,
   levelScope,
   isOneLineScopeKind,
+  isCopyScopeKind,
+  copyWidthEntry,
   widthToastText,
   widthPickAnnouncement,
   widthMenuKeyItem,

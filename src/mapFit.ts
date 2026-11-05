@@ -80,9 +80,19 @@ export function dragEntry(before: WidthEntry, w: number): WidthEntry {
   return { w: clampCol(w), wAuto: isSingleLineMode(before.wAuto) ? W_AUTO_SINGLE_LINE_HELD : null };
 }
 
-/** Picks that put a whole scope on 1 line: every pill in scope gets the state, short or not. */
-export function isOneLineScopeKind(kind: string): boolean {
+/**
+ * 6 Nov 2026: `siblings` / `level` are Copy to picks: they copy the pressed
+ * pill's current width state to the scope (two-step: set, then copy).
+ */
+export function isCopyScopeKind(kind: string): boolean {
   return kind === 'siblings' || kind === 'level';
+}
+/** @deprecated 0.2.42 name; scope picks now copy (see isCopyScopeKind). */
+export const isOneLineScopeKind = isCopyScopeKind;
+
+/** The entry Copy to writes on each pill in scope: the source's w / wAuto as-is (Auto → both null). */
+export function copyWidthEntry(src: WidthEntry): WidthEntry {
+  return { w: src.w ?? null, wAuto: src.wAuto ?? null };
 }
 
 /** A pill's stored width: `w` null is Auto; `wAuto` is the F5a mode. */
@@ -200,12 +210,12 @@ export function widthPickAnnouncement(
     case 'siblings': {
       const others = Math.max(0, (p.count ?? 1) - 1);
       const who = others > 0 ? `${title} and ${plural(others, 'sibling', 'siblings')}` : title;
-      return `${who} on 1 line.${capText}`;
+      return `Width copied to ${who}.`;
     }
     case 'level': {
       const others = Math.max(0, (p.count ?? 1) - 1);
       const who = others > 0 ? `${title} and ${plural(others, 'other pill', 'other pills')} at this level` : title;
-      return `${who} on 1 line.${capText}`;
+      return `Width copied to ${who}.`;
     }
     case 'fit':
       return p.auto ? `${title} at default width.` : `${title} wraps at 60 characters.`;
@@ -230,7 +240,7 @@ export const WIDTH_HELP_LINES: readonly string[] = [
   'w: width menu. Ctrl/⌘+Z: undo widths.',
 ];
 
-/** Popover mnemonics (F11): `t` Fit text, `l` 1 line, `s` 1 line siblings, `v` 1 line: all at this level, `a` Auto. */
+/** Popover mnemonics (F11): `t` Fit text, `l` 1 line, `s` Copy to: siblings, `v` Copy to: all at this level, `a` Auto. */
 export const WIDTH_MENU_KEYS: Readonly<Partial<Record<WidthPickKind, string>>> = {
   fit: 't',
   line: 'l',

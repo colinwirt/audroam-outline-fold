@@ -51,7 +51,7 @@ describe('menu wiring', () => {
   it('label, key and announcement', () => {
     expect(WIDTH_MENU_KEYS.level).toBe('v');
     expect(widthMenuKeyItem('v')).toBe('level');
-    expect(widthPickAnnouncement('level', { title: 'A1', count: 4 })).toBe('A1 and 3 other pills at this level on 1 line.');
+    expect(widthPickAnnouncement('level', { title: 'A1', count: 4 })).toBe('Width copied to A1 and 3 other pills at this level.');
     expect(pkg.levelScope).toBe(levelScope);
   });
 });

@@ -149,9 +149,9 @@ describe('hold-to-fit P1: words (F7, F11, F12, F13)', () => {
     expect(widthToastText(1)).toBe('1 width changed');
     expect(widthToastText(4)).toBe('4 widths changed');
     expect(widthPickAnnouncement('siblings', { title: 'Python next steps', count: 4, capped: 1 })).toBe(
-      'Python next steps and 3 siblings on 1 line. 1 wraps at the cap.',
+      'Width copied to Python next steps and 3 siblings.',
     );
-    expect(widthPickAnnouncement('siblings', { title: 'Solo', count: 1 })).toBe('Solo on 1 line.');
+    expect(widthPickAnnouncement('siblings', { title: 'Solo', count: 1 })).toBe('Width copied to Solo.');
     expect(widthPickAnnouncement('line', { title: 'Seeds', capped: 0 })).toBe('Seeds on 1 line.');
     expect(widthPickAnnouncement('line', { title: 'Long', capped: 1 })).toBe('Long on 1 line. 1 wraps at the cap.');
     expect(widthPickAnnouncement('fit', { title: 'Beans' })).toBe('Beans wraps at 60 characters.');
