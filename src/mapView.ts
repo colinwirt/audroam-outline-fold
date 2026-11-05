@@ -10,7 +10,6 @@
  */
 import { iconGlyph, iconLabel, loadEmojiData } from './emoji/icons.js';
 import { openIconPicker, type IconPickerHandle } from './emoji/picker.js';
-import { borderVars, borderDevicePx, snapEdge, BORDER_W } from './borderSnap.js';
 import { applyNodePalette, setColourFill, colourGroups, colourLabel, isHighlighter, isAudroam, resolveColour, isSolidColour } from './nodeColour.js';
 import { resolveFollowInText, setFollowInText, loadMapResume } from './mapResume.js';
 import { ALT_HOLD_MS, altDragCommits, altPressKind } from './altGesture.js';
@@ -1272,7 +1271,7 @@ function widthGripSvg(boxRight: number, y: number, h: number, textW: number, sho
 function thumbFrameSvg(x: number, y: number, boxW: number, h: number, textW: number): string {
   const r = x + boxW;
   const b = y + h;
-  return `<rect class="map-thumb-frame" x="${x - 4}" y="${y - 4}" width="${boxW + 8}" height="${h + 8}" rx="6" ry="6" fill="none" stroke="#8ec8ff" stroke-width="1.25" stroke-dasharray="5 4" pointer-events="none"/>
+  return `<rect class="map-thumb-frame" x="${x - 4}" y="${y - 4}" width="${boxW + 8}" height="${h + 8}" rx="6" ry="6" fill="none" stroke="#8ec8ff" stroke-width="1.4" stroke-dasharray="5 4" pointer-events="none"/>
       <rect class="map-thumb-handle" x="${r}" y="${b}" width="8" height="8" fill="#0f1720" stroke="#8ec8ff" stroke-width="1.5" pointer-events="none"/>
       <rect class="map-width-hit" data-text-w="${textW}" x="${r - 6}" y="${b - 6}" width="20" height="20" fill="transparent" cursor="nwse-resize" pointer-events="all"/>`;
 }
@@ -4068,20 +4067,6 @@ export function createMapView(
     return openWidthPopHook(key, { keyboard: true });
   }
 
-  /** 0.5.30: node borders paint whole device pixels at the current DPR and screen scale. */
-  let lastBorderKey = '';
-  function applyBorderSnap(g: Element): void {
-    const dpr = typeof window !== 'undefined' && window.devicePixelRatio > 0 ? window.devicePixelRatio : 1;
-    let k = cam.k;
-    try {
-      const m = (g as SVGGraphicsElement).getScreenCTM?.();
-      if (m && m.a > 0) k = m.a;
-    } catch { /* no layout */ }
-    const key = `${dpr}:${k.toFixed(4)}`;
-    if (key === lastBorderKey) return;
-    lastBorderKey = key;
-    for (const [n, v] of Object.entries(borderVars(dpr, k))) host.style.setProperty(n, v);
-  }
 
   function applyCam(): void {
     const g = host.querySelector('#mapViewport');
@@ -4090,7 +4075,6 @@ export function createMapView(
       'transform',
       `translate(${cam.x} ${cam.y}) scale(${cam.k})`,
     );
-    applyBorderSnap(g);
     // L6: the menu follows its handle through pans and zooms.
     if (levelMenu) positionLevelMenu();
     if (linkPop) positionLinkPop();

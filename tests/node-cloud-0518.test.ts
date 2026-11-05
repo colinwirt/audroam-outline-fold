@@ -77,11 +77,11 @@ describe('0.5.18 angled cloud hull (EP-38)', () => {
     expect(cloudHull([parent], 12)!.length).toBeGreaterThanOrEqual(4);
     expect(cloudHull([], 12)).toBeNull();
   });
-  it('cloudSvg: translucent fill, 1px stroke, class map-cloud, no security icon', () => {
+  it('cloudSvg: translucent fill, class map-cloud, stroke width from CSS line token, no security icon', () => {
     const s = cloudSvg({ rootId: 'fn', color: 'default', depth: 0 }, pts);
     expect(s).toContain('class="map-cloud');
     expect(s).toContain('data-cloud="fn"');
-    expect(s).toContain('stroke-width="1"');
+    expect(s).not.toContain('stroke-width="1"');
     expect(s).toContain('<path');
     expect(s).not.toContain('<rect');
     expect(s).not.toMatch(/stroke-dasharray/);

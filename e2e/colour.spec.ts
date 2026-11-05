@@ -14,8 +14,8 @@ const text = (page: Page) => page.evaluate(() => (window as any).__serialize() a
 const pillStroke = (page: Page, id: string) =>
   page.locator(`${node(id)} .map-pill`).evaluate((el) => {
     const cs = getComputedStyle(el);
-    // 0.5.30: border width in device pixels on screen (snapped; zoom-independent).
-    return { stroke: cs.stroke, width: `${Math.round(parseFloat(cs.strokeWidth) * (el as SVGGraphicsElement).getScreenCTM()!.a * devicePixelRatio)}dp`, fill: cs.fill };
+    // 0.6.0: stroke widths are map units (scale with zoom); report the CSS user-unit value.
+    return { stroke: cs.stroke, width: parseFloat(cs.strokeWidth), fill: cs.fill };
   });
 const cssVar = (page: Page, name: string) =>
   page.evaluate((n) => getComputedStyle(document.querySelector('#mapHost')!).getPropertyValue(n).trim(), name);
@@ -26,7 +26,7 @@ test('coloured pills: 2px token border, wash, accessible name; coloured cloud; s
   const red = await cssVar(page, '--node-ember');
   const s = await pillStroke(page, 'fl');
   expect(s.stroke).toBe(rgb(red));
-  expect(s.width).toBe('3dp'); // 0.5.30: strong border, 3 device px at DPR 1
+  expect(s.width).toBe(2); // 0.6.0 MSB-4: emphasis token
   // Uncoloured node keeps the default pill.
   expect((await pillStroke(page, 'loose')).stroke).not.toBe(rgb(red));
   await expect(page.locator(node('fl'))).toHaveAttribute('aria-label', /Flights, ember/);
@@ -184,19 +184,17 @@ test('0.5.23 picker lists every palette row; Audroam roles render and round-trip
   expect(await text(page)).toMatch(/ap:\n\s+colou?r: audroam-sky/);
 });
 
-/** 0.5.25 wireframe default: no node background unless :fill; text and chips follow the theme. */
+/** 0.6.0 MSB-8: wireframe fill is the map background; only :fill paints a wash. */
 for (const theme of ['dark', 'light'] as const) {
-  test(`0.5.25 wireframe (${theme}): border + text by default, background only with :fill`, async ({ page }) => {
+  test(`0.6.0 wireframe (${theme}): map-bg fill by default, wash only with :fill`, async ({ page }) => {
     await open(page, `?focus=fl${theme === 'light' ? '&theme=light' : ''}`);
-    const clear = ['rgba(0, 0, 0, 0)', 'transparent', 'none'];
-    for (const id of ['loose', 'fl', 'trip', 'bd']) expect(clear, id).toContain((await pillStroke(page, id)).fill);
-    for (const id of ['wa', 'dr', 'mu']) expect(clear, id).not.toContain((await pillStroke(page, id)).fill);
+    const mapBg = theme === 'dark' ? 'rgb(10, 31, 40)' : 'rgb(243, 246, 249)';
+    for (const id of ['loose', 'fl', 'trip', 'bd']) expect((await pillStroke(page, id)).fill, id).toBe(mapBg);
+    for (const id of ['wa', 'dr', 'mu']) expect((await pillStroke(page, id)).fill, id).not.toBe(mapBg);
     const ink = theme === 'dark' ? '#e7ecf1' : '#1d2a36';
     const lab = await page.locator(`${node('loose')} .map-label`).evaluate((el) => getComputedStyle(el).fill);
     expect(lab).toBe(rgb(ink));
-    // Neutral thin border on an uncoloured node (time leaves: unit-tested, folded here).
-    expect((await pillStroke(page, 'loose')).width).toBe('2dp'); // 0.5.30: base border, 2 device px at DPR 1
-    // Focus without a fill: thicker accent border and a halo.
+    expect((await pillStroke(page, 'loose')).width).toBe(1.4); // MSB-3 line
     const f = await page.locator(`${node('fl')} .map-pill`).evaluate((el) => [getComputedStyle(el).strokeWidth, getComputedStyle(el).filter]);
     expect(f[1]).toContain('drop-shadow');
     const shot = theme === 'dark' ? process.env.WIRE_SHOT_DARK : process.env.WIRE_SHOT_LIGHT;

@@ -194,6 +194,6 @@ describe('0.5.20 collapsed ring and light clouds (iThoughts look)', () => {
     const s = cloudSvg({ rootId: 'a', color: 'moss', depth: 0 } as any, [{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 10 }]);
     const op = Number(/fill-opacity="([\d.]+)"/.exec(s)![1]);
     expect(op).toBeLessThanOrEqual(0.06);
-    expect(s).toContain('stroke-width="1"');
+    expect(s).not.toContain('stroke-width="1"'); // 0.6.0: width from CSS --map-stroke-line
   });
 });

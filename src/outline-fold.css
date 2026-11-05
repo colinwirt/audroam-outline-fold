@@ -13,8 +13,12 @@
   --cue-text: #e8f5ee;
   --connector: #9bb0d0;
   --pill-fill: #0c222c;
-  /* 0.5.25 wireframe default: nodes are border + text; only :fill paints a background. */
-  --map-node-bg: transparent;
+  /* 0.6.0 MSB-1: three Map stroke tokens (map units; scale with zoom normally). */
+  --map-stroke-line: 1.4;
+  --map-stroke-emphasis: 2;
+  --map-stroke-focus: 2.5;
+  /* 0.6.0 MSB-8: wireframe fill is the map background (never transparent). */
+  --map-node-bg: var(--map-bg);
   --map-node-text: #e7ecf1;
   --map-node-muted: #8b9bab;
   --map-accent: #9ecbff;
@@ -362,7 +366,7 @@
 }
 /* 0.5.23 Map code regions: a token fill behind each code run (and one per fenced block).
    It is its own rect, not the pill, so the branch wash (colour-fill, is-hl) never reaches it. */
-.map-code-bg { fill: var(--map-code-bg); stroke: var(--map-code-stroke); stroke-width: 1; pointer-events: none; }
+.map-code-bg { fill: var(--map-code-bg); stroke: var(--map-code-stroke); stroke-width: var(--map-stroke-line); pointer-events: none; }
 .of-unlock {
   flex: none;
   margin-left: 0.35rem;
@@ -435,27 +439,10 @@
 .map-pill {
   fill: var(--map-node-bg);
   stroke: var(--pill-stroke);
-  stroke-width: var(--map-border-w, 1.5px); /* 0.5.30: snapped to whole device pixels at paint (borderSnap.ts) */
+  stroke-width: var(--map-stroke-line); /* 0.6.0 MSB-3: line covers all node borders */
   shape-rendering: geometricPrecision;
 }
-/* K4 task emphasis (0.2.38): an open [ ] or in-progress [-] task has a 2 px
-   stroke and a semibold label; done [x] drops to 1 px with muted text
-   (#8b9bab on the #0c222c pill is 5.8:1). The focus ring below still wins
-   (0.5.29: no folded gold stroke). A cue keeps its own text colour. */
-.map-node.task-open .map-pill,
-.map-node.task-pending .map-pill {
-  stroke-width: var(--map-border-w-strong, 2px);
-}
-.map-node.task-done .map-pill {
-  stroke-width: var(--map-border-w, 1.5px);
-}
-.map-node.task-open .map-label,
-.map-node.task-pending .map-label {
-  font-weight: 400;
-}
-.map-node.task-done .map-label {
-  fill: var(--map-node-muted);
-}
+/* 0.6.0 MSB-6: check state never changes node styling; only the checkbox shows state. */
 .map-node.cue .map-pill {
   fill: var(--cue);
   stroke: #6fa88a;
@@ -466,7 +453,7 @@
 .map-node.is-focused .map-pill,
 .map-node:focus-visible .map-pill {
   stroke: var(--map-accent);
-  stroke-width: 2.5;
+  stroke-width: var(--map-stroke-focus); /* 0.6.0 MSB-4: focus is the blue selection ring */
   filter: drop-shadow(0 0 3px var(--map-accent));
 }
 .map-width-hit {
@@ -489,7 +476,7 @@
 .map-node.time-leaf.time-leaf .map-pill {
   fill: var(--map-node-bg);
   stroke: var(--time-stroke);
-  stroke-width: var(--map-border-w, 1.5px);
+  stroke-width: var(--map-stroke-line);
 }
 .map-node.time-leaf.time-leaf:hover .map-pill {
   stroke: var(--time-stroke-hover);
@@ -498,7 +485,7 @@
 .map-node.time-leaf.time-leaf:focus-visible .map-pill {
   stroke: var(--map-accent);
   filter: drop-shadow(0 0 3px var(--map-accent));
-  stroke-width: 2;
+  stroke-width: var(--map-stroke-focus);
 }
 .map-node.time-leaf .map-label {
   fill: var(--time-text);
@@ -513,7 +500,7 @@
 }
 .map-edge.edge-time.edge-time {
   stroke: var(--time-edge);
-  stroke-width: 1;
+  stroke-width: var(--map-stroke-line);
   opacity: 1;
 }
 .map-label {
@@ -536,7 +523,7 @@
 .map-thread-pill {
   fill: var(--map-menu-bg);
   stroke: var(--map-menu-stroke);
-  stroke-width: 1;
+  stroke-width: var(--map-stroke-line);
 }
 .map-thread-label {
   fill: var(--muted, var(--of-muted));
@@ -607,7 +594,7 @@
 .map-fold-stem {
   fill: none;
   stroke: var(--connector);
-  stroke-width: 1.4;
+  stroke-width: var(--map-stroke-line);
 }
 .map-fold-stem {
   pointer-events: none;
@@ -699,7 +686,7 @@
   padding: 6px;
   border-radius: 10px;
   background: var(--map-menu-bg);
-  border: 1px solid var(--map-menu-stroke);
+  border: var(--map-stroke-line) solid var(--map-menu-stroke);
   box-shadow: var(--map-menu-shadow);
   color: var(--text, var(--of-text));
   font: 14px/1.2 var(--of-font);
@@ -957,7 +944,7 @@
   padding: 6px 14px;
   border-radius: 10px;
   background: var(--map-menu-bg);
-  border: 1px solid var(--map-menu-stroke);
+  border: var(--map-stroke-line) solid var(--map-menu-stroke);
   box-shadow: var(--map-menu-shadow);
   color: var(--text, var(--of-text));
   font: 14px/1.2 var(--of-font);
@@ -993,7 +980,7 @@
    from the --of-seal-* host vars, so a dark host never gets light text on a white pill. */
 /* 0.4.3 (Colin, tablet): region nodes use the normal map pill (--pill-fill / --text), only the
    stroke is the green zone accent; never a white pill with light text on a dark host. */
-.map-svg .map-region-node > rect.map-region-body { fill: var(--map-node-bg, transparent); stroke: var(--of-unlocked-stroke, var(--of-region-stroke, rgba(46, 160, 67, 0.75))); stroke-width: var(--map-border-w, 1.5px); }
+.map-svg .map-region-node > rect.map-region-body { fill: var(--map-node-bg); stroke: var(--of-unlocked-stroke, var(--of-region-stroke, rgba(46, 160, 67, 0.75))); stroke-width: var(--map-stroke-line); }
 /* 0.4.4: font size comes from the node font (font-size attribute), as normal map pills. */
 .map-svg .map-region-node > text { fill: var(--map-node-text); }
 .map-svg .map-region-pill > rect.map-region-body { fill: var(--of-region-fill, rgba(46, 160, 67, 0.14)); }
@@ -1002,9 +989,9 @@
 .map-region-node .map-width-hit { fill: transparent; stroke: none; }
 /* §R1 region folding: same fold chrome as root nodes; selection ring on the focused node. */
 .map-region-node .map-fold-hit { fill: transparent; stroke: none; }
-.map-region-node.is-focused > rect.map-region-body { stroke: var(--map-focus, #c9a227); stroke-width: 2.4; }
+.map-region-node.is-focused > rect.map-region-body { stroke: var(--map-focus, #c9a227); stroke-width: var(--map-stroke-focus); }
 .map-region-root.is-focused .map-fold-indicator circle { stroke-width: 2.6; }
-.map-region-edge { stroke: var(--of-region-edge, #a8e0b8); stroke-width: 1.6; fill: none; }
+.map-region-edge { stroke: var(--of-region-edge, #a8e0b8); stroke-width: var(--map-stroke-line); fill: none; }
 /* 0.4.5: inner connectors read on the dark green cloud (light mint, not the zone green). */
 .map-svg .map-region-edge { stroke: var(--of-region-edge, #a8e0b8); }
 
@@ -1076,8 +1063,8 @@ div.of-unlock.of-unlock-sheet { border-radius: 12px 12px 8px 8px; border-left-wi
 .map-svg .map-region-locked > text { fill: var(--of-seal-ink, #4a5560); }
 /* 0.4.4: only the pill is tinted (a bare `> rect` also filled the fold hit box white, and the
    light caption vanished on the pale fill). Normal dark pill, green accent stroke. */
-.map-node.is-unlocked-anchor .map-pill { fill: var(--map-node-bg); stroke: var(--of-unlocked-stroke, #3d8a5f); stroke-width: 2; }
-.map-region-kid > rect { fill: var(--of-chip-k-bg, #eef2fa); stroke: var(--of-chip-k-stroke, #b5c6e6); stroke-width: 1; }
+.map-node.is-unlocked-anchor .map-pill { fill: var(--map-node-bg); stroke: var(--of-unlocked-stroke, #3d8a5f); stroke-width: var(--map-stroke-line); }
+.map-region-kid > rect { fill: var(--of-chip-k-bg, #eef2fa); stroke: var(--of-chip-k-stroke, #b5c6e6); stroke-width: var(--map-stroke-line); }
 .map-region-kid > text { font-size: 10px; fill: var(--of-chip-k-ink, #244a8a); }
 .map-region-unlocked .map-region-label { fill: var(--of-unlocked-ink, #245c3c); }
 
@@ -1092,7 +1079,7 @@ div.of-unlock.of-unlock-sheet { border-radius: 12px 12px 8px 8px; border-left-wi
 /* 0.4.3 (QA C): zone header in the Map cloud and the Outline zone: one small 🔒 Lock now
    button and More ▾ (Remove seal…). */
 .map-region-tool { cursor: pointer; }
-.map-region-tool > rect { fill: var(--of-seal-btn-bg, #fff); stroke: var(--of-seal-btn-stroke, #b9c3cc); stroke-width: 1; }
+.map-region-tool > rect { fill: var(--of-seal-btn-bg, #fff); stroke: var(--of-seal-btn-stroke, #b9c3cc); stroke-width: var(--map-stroke-line); }
 .map-region-tool > text { font-size: 11px; fill: var(--of-seal-btn-ink, #1f2328); }
 .map-region-tool:focus-visible > rect, .map-region-tool:hover > rect { stroke: var(--of-seal-stroke, #3d8a5f); }
 .of-zone-tools { display: inline-flex; gap: 0.25rem; margin-left: 0.4rem; vertical-align: middle; }
@@ -1213,7 +1200,7 @@ div.of-unlock.of-unlock-sheet { border-radius: 12px 12px 8px 8px; border-left-wi
 .map-node.colour-audroam-grey { --nc: var(--node-audroam-grey); }
 .map-node.has-colour .map-pill {
   stroke: var(--nc);
-  stroke-width: var(--map-border-w-strong, 2px);
+  stroke-width: var(--map-stroke-emphasis); /* 0.6.0 MSB-4: emphasis only for coloured nodes */
 }
 /* 0.5.20: the wash is opt-in (`<color:x:fill>`), inherited down the branch with the colour. */
 .map-node.colour-fill .map-pill { fill: color-mix(in srgb, var(--nc) 16%, var(--map-bg)); }
@@ -1282,16 +1269,16 @@ div.of-unlock.of-unlock-sheet { border-radius: 12px 12px 8px 8px; border-left-wi
 .map-region-node.colour-audroam-red { --nh: var(--node-audroam-red-hl); }
 .map-region-node.colour-audroam-lavender { --nh: var(--node-audroam-lavender-hl); }
 .map-region-node.colour-audroam-grey { --nh: var(--node-audroam-grey-hl); }
-.map-svg .map-region-node.has-colour > rect.map-region-body { stroke: var(--nc); stroke-width: var(--map-border-w-strong, 2px); }
+.map-svg .map-region-node.has-colour > rect.map-region-body { stroke: var(--nc); stroke-width: var(--map-stroke-emphasis); }
 .map-svg .map-region-node.colour-fill > rect.map-region-body { fill: color-mix(in srgb, var(--nc) 16%, var(--map-bg)); }
 .map-svg .map-region-node.is-hl > rect.map-region-body { fill: color-mix(in srgb, var(--nh) 92%, var(--map-bg)); }
 .map-svg .map-region-node.is-au > rect.map-region-body { fill: var(--nh); }
 .map-svg .map-region-node.is-hl text, .map-svg .map-region-node.is-au text { fill: #0b1a21; }
-.map-region-node.has-colour.is-focused > rect.map-region-body { stroke: var(--map-focus, #c9a227); stroke-width: 2.4; }
+.map-region-node.has-colour.is-focused > rect.map-region-body { stroke: var(--map-focus, #c9a227); stroke-width: var(--map-stroke-focus); }
 .map-node.has-colour.is-focused .map-pill,
-.map-node.has-colour:focus-visible .map-pill { stroke: var(--nc); stroke-width: var(--map-border-w-strong, 2px); }
+.map-node.has-colour:focus-visible .map-pill { stroke: var(--nc); stroke-width: var(--map-stroke-emphasis); }
 .map-node.has-colour.is-focused .map-colour-ring,
-.map-node.has-colour:focus-visible .map-colour-ring { stroke: var(--accent, var(--of-accent)); stroke-width: 2.5; }
+.map-node.has-colour:focus-visible .map-colour-ring { stroke: var(--accent, var(--of-accent)); stroke-width: var(--map-stroke-focus); }
 
 /* Outline (EP-34): a 3px left bar on the row; a 6px dot when the row is dense. The name
    is never colour-only: the title carries a hidden ", red". */
@@ -1366,6 +1353,10 @@ div.of-unlock.of-unlock-sheet { border-radius: 12px 12px 8px 8px; border-left-wi
 .map-node-menu-swatch[aria-checked="true"], .of-ep-swatch[aria-checked="true"] { border-color: var(--of-text, #e7ecf1); }
 .map-node-menu-swatch:focus-visible, .of-ep-swatch:focus-visible { outline: 2px solid var(--accent, var(--of-accent)); outline-offset: 2px; }
 
+/* 0.6.0 MSB-3/7: cloud outline is line; softness from muted colour (stroke-opacity in SVG). */
+.map-cloud path {
+  stroke-width: var(--map-stroke-line);
+}
 @media (forced-colors: active) {
   .map-node.has-colour .map-pill { stroke: CanvasText; fill: Canvas; }
   .of-node.of-colour > .of-row { box-shadow: inset 3px 0 0 CanvasText; }

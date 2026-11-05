@@ -4,12 +4,12 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { parse, createMapView } from '../src/index.js';
 
-// 0.5.25 (Colin, 5 Nov): wireframe by default. Map nodes have no background (border + text);
+// 0.5.25 wireframe; 0.6.0 MSB-8: fill is map background (never transparent).
 // only `:fill` (own or inherited) paints one. Text and code chips follow the theme.
 const css = readFileSync(join(__dirname, '../src/outline-fold.css'), 'utf8');
 const rootBlock = css.match(/:root \{([\s\S]*?)\n\}/)![1]!;
 const lightBlock = css.match(/\n\.of-theme-light \{([\s\S]*?)\n\}/)![1]!;
-const tok = (b: string, n: string) => b.match(new RegExp(`--${n}:\\s*(#[0-9a-fA-F]{6}|transparent)`))?.[1]?.toLowerCase();
+const tok = (b: string, n: string) => b.match(new RegExp(`--${n}:\\s*([^;]+)`))?.[1]?.trim();
 const lum = (h: string) => {
   const c = [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16) / 255).map((x) => (x <= 0.04045 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4));
   return 0.2126 * c[0]! + 0.7152 * c[1]! + 0.0722 * c[2]!;
@@ -37,7 +37,7 @@ async function paint(text: string) {
 describe('0.5.25 wireframe default', () => {
   it('pills have no background by default, in both themes', () => {
     expect(rule('.map-pill')).toMatch(/fill: var\(--map-node-bg\)/);
-    expect(tok(rootBlock, 'map-node-bg')).toBe('transparent');
+    expect(tok(rootBlock, 'map-node-bg')).toBe('var(--map-bg)'); // 0.6.0 MSB-8 supersedes transparent wireframe
     expect(lightBlock).not.toMatch(/--map-node-bg:\s*#/);
     // Time leaves and region/anchor bodies follow the same rule; no dark pill fills left.
     expect(rule('.map-node.time-leaf.time-leaf .map-pill')).toMatch(/fill: var\(--map-node-bg\)/);
@@ -54,7 +54,7 @@ describe('0.5.25 wireframe default', () => {
     expect(g('d').getAttribute('class')).toContain('colour-fill');
   });
   it('uncoloured nodes: neutral thin border >= 3:1 on the canvas in both themes; time leaves stay green', () => {
-    expect(rule('.map-pill')).toMatch(/stroke: var\(--pill-stroke\);\s*stroke-width: var\(--map-border-w, 1\.5px\);/);
+    expect(rule('.map-pill')).toMatch(/stroke: var\(--pill-stroke\);\s*stroke-width: var\(--map-stroke-line\);/);
     expect(ratio(tok(rootBlock, 'pill-stroke')!, tok(rootBlock, 'map-bg')!)).toBeGreaterThanOrEqual(3);
     expect(ratio(tok(lightBlock, 'pill-stroke')!, tok(lightBlock, 'map-bg')!)).toBeGreaterThanOrEqual(3);
     expect(rule('.map-node.time-leaf.time-leaf .map-pill')).toMatch(/stroke: var\(--time-stroke\)/);
@@ -80,7 +80,7 @@ describe('0.5.25 wireframe default', () => {
   });
   it('focus stays clear without a fill: thicker accent border plus a halo', () => {
     const f = css.match(/\.map-node\.is-focused \.map-pill,\s*\.map-node:focus-visible \.map-pill \{([^}]*)\}/)![1]!;
-    expect(f).toMatch(/stroke-width: 2\.5/);
+    expect(f).toMatch(/stroke-width: var\(--map-stroke-focus\)/);
     expect(f).toMatch(/filter: drop-shadow/);
   });
 });

@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.6.0 — 2026-11-05
+
+### Map stroke baseline (MSB-1…MSB-8, Colin)
+
+Locked Map stroke tokens in map units (scale with zoom normally):
+
+- `--map-stroke-line` **1.4** — connectors, all node borders (open / in-progress / done), cloud outlines, code chips, menu borders
+- `--map-stroke-emphasis` **2** — coloured nodes only
+- `--map-stroke-focus` **2.5** — blue selection ring only
+
+Also:
+
+- **Removed** `borderSnap.ts` (no zoom compensation, no device-pixel snapping, no 2-device-px minimum) and its tests/exports
+- Never a hairline: no Map stroke below 1.4 (softness from colour, not width)
+- Check state no longer changes pill width, label weight, or muted fill — checkbox only
+- Cloud outline is line (1.4) in a muted tint (`stroke-opacity`)
+- Wireframe nodes fill with `--map-bg` (never transparent); a node inside a cloud still uses the plain map background unless Fill is on
+
+Fold handles, icons, and the width grip are unchanged.
+
+
 ## 0.5.30
 
 - Map borders: pill, task and region borders snap to whole device pixels at paint (`borderSnap.ts`, `--map-border-w` / `--map-border-w-strong` set on the host from DPR × zoom), with a 2 device-pixel floor and odd widths on the half pixel. Defaults are a touch heavier (1.5 / 2 css px, were 1.25 / 2). Connector lines are unchanged (1.4).

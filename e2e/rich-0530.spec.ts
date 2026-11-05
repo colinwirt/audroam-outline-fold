@@ -35,19 +35,18 @@ for (const dpr of [1, 2]) {
   }
 }
 
-/** 0.5.30: base border is whole device pixels on screen at DPR 2; strong stays heavier. */
+/** 0.6.0: stroke tokens scale with zoom; at DPR 2 the CSS user-unit width is unchanged. */
 test.describe('wireframe borders at dpr 2', () => {
   test.use({ deviceScaleFactor: 2 });
   for (const theme of ['dark', 'light'] as const) {
-    test(`device-pixel borders (${theme})`, async ({ page }) => {
+    test(`map-unit stroke tokens (${theme})`, async ({ page }) => {
       await page.goto(`examples/e2e-touch/colour.html?focus=fl${theme === 'light' ? '&theme=light' : ''}`);
       await page.waitForFunction(() => (window as any).__ready === true);
       await page.waitForTimeout(150);
-      const dp = (id: string) =>
-        page.locator(`#mapHost .map-node[data-id="${id}"] .map-pill`).evaluate((el) => parseFloat(getComputedStyle(el).strokeWidth) * (el as SVGGraphicsElement).getScreenCTM()!.a * devicePixelRatio);
-      const base = await dp('loose');
-      expect(Math.abs(base - Math.round(base))).toBeLessThan(0.01);
-      expect(Math.round(base)).toBe(3);
+      const uw = (id: string) =>
+        page.locator(`#mapHost .map-node[data-id="${id}"] .map-pill`).evaluate((el) => parseFloat(getComputedStyle(el).strokeWidth));
+      expect(await uw('loose')).toBe(1.4);
+      expect(await uw('fl')).toBe(2); // coloured → emphasis
       const env = process.env[`WIRE2_${theme.toUpperCase()}`];
       if (env) await page.locator('#panel').screenshot({ path: env });
     });

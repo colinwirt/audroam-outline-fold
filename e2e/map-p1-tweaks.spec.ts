@@ -34,7 +34,7 @@ const paint = (page: Page, id: string) =>
     const lr = label.getBoundingClientRect();
     return {
       cls: g.getAttribute('class'),
-      stroke: `${Math.round(parseFloat(getComputedStyle(pill).strokeWidth) * (pill as SVGGraphicsElement).getScreenCTM()!.a * devicePixelRatio)}dp`, // 0.5.30: device px
+      stroke: parseFloat(getComputedStyle(pill).strokeWidth), // 0.6.0: map units
       weight: getComputedStyle(label).fontWeight,
       fill: getComputedStyle(label).fill,
       box: !!g.querySelector('.map-task-glyph'),
@@ -45,38 +45,36 @@ const paint = (page: Page, id: string) =>
   }, node(id));
 
 test.describe('K4: the open tasks stand out', () => {
-  test('open and in-progress: 2 px, normal weight (0.2.41); done: 1 px, muted; box chrome intact', async ({ page }) => {
+  test('0.6.0 MSB-6: open / pending / done / plain all share the line stroke; checkbox alone shows state', async ({ page }) => {
     await open(page);
     const compost = await paint(page, 'compost');
-    expect(compost.stroke).toBe('3dp');
+    expect(compost.stroke).toBe(1.4);
     expect(compost.weight).toBe('400');
     expect(compost.box).toBe(true);
     expect(compost.hit).toBe('false');
     const beans = await paint(page, 'beans');
-    expect(beans.stroke).toBe('3dp');
+    expect(beans.stroke).toBe(1.4);
     expect(beans.weight).toBe('400');
     expect(beans.hit).toBe('mixed');
     const butt = await paint(page, 'butt');
-    expect(butt.stroke).toBe('2dp');
+    expect(butt.stroke).toBe(1.4);
     expect(butt.weight).toBe('400');
-    expect(butt.fill).toBe('rgb(139, 155, 171)');
+    // Done label is no longer muted (MSB-6); same ink as other labels.
+    expect(butt.fill).not.toBe('rgb(139, 155, 171)');
     expect(butt.hit).toBe('true');
-    // Plain pills: the 0.5.25 wireframe border, 1.25 px.
-    expect((await paint(page, 'three')).stroke).toBe('2dp');
-    // Semibold text stays inside its pill (measured at 600).
+    expect((await paint(page, 'three')).stroke).toBe(1.4);
     for (const p of [compost, beans]) expect(p.textRight).toBeLessThan(p.pillRight - 4);
   });
 
-  test('the box still cycles open → in progress → done; done drops to 1 px muted', async ({ page }) => {
+  test('the box still cycles open → in progress → done; stroke stays line', async ({ page }) => {
     await open(page);
     await clickSel(page, `${node('compost')} .map-task-hit`);
     await expect.poll(() => page.evaluate(() => (window as any).__tasks.length)).toBe(1);
     expect(await page.evaluate(() => (window as any).__tasks[0])).toEqual({ id: 'compost', from: 'open', to: 'pending' });
-    // The tap selects the pill (focus ring 2.5 px); look at it unselected.
     await page.evaluate(() => (window as any).__setFocus('three'));
     const mid = await paint(page, 'compost');
     expect(mid.cls).toContain('task-pending');
-    expect(mid.stroke).toBe('3dp');
+    expect(mid.stroke).toBe(1.4);
     expect(mid.weight).toBe('400');
     await clickSel(page, `${node('compost')} .map-task-hit`);
     await expect.poll(() => page.evaluate(() => (window as any).__tasks.length)).toBe(2);
@@ -84,15 +82,15 @@ test.describe('K4: the open tasks stand out', () => {
     await page.evaluate(() => (window as any).__setFocus('three'));
     const after = await paint(page, 'compost');
     expect(after.cls).toContain('task-done');
-    expect(after.stroke).toBe('2dp');
+    expect(after.stroke).toBe(1.4);
     expect(after.weight).toBe('400');
   });
 
-  test('a focused open task shows the focus ring, not the 2 px task stroke', async ({ page }) => {
+  test('a focused open task shows the focus ring (2.5)', async ({ page }) => {
     await open(page);
     await page.evaluate(() => (window as any).__setFocus('compost'));
     const p = await paint(page, 'compost');
-    expect(p.stroke).toBe('3dp');
+    expect(p.stroke).toBe(2.5);
     expect(p.weight).toBe('400');
   });
 });

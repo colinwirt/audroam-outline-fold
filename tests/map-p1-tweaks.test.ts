@@ -59,22 +59,15 @@ describe('K4: open tasks stand out', () => {
     expect(isTaskEmphasis(undefined)).toBe(false);
   });
 
-  it('CSS: 2 px stroke and normal-weight label for open / pending (0.2.41: no bold), 1 px and muted text for done', () => {
-    const stroke = cssBlock('.map-node.task-open .map-pill,');
-    expect(stroke).toContain('.map-node.task-pending .map-pill');
-    expect(stroke).toContain('stroke-width: var(--map-border-w-strong, 2px);'); // 0.5.30 device-pixel snapped
-    expect(cssBlock('.map-node.task-done .map-pill {')).toContain('stroke-width: var(--map-border-w, 1.5px);');
-    const label = cssBlock('.map-node.task-open .map-label,');
-    expect(label).toContain('.map-node.task-pending .map-label');
-    expect(label).toContain('font-weight: 400;');
-    expect(cssBlock('.map-node.task-done .map-label {')).toContain('fill: var(--map-node-muted);');
-  });
-
-  it('CSS: focus ring and cue text still win (later, same or higher specificity); 0.5.29 no folded gold stroke', () => {
-    const task = css.indexOf('.map-node.task-open .map-pill,');
+  it('0.6.0 MSB-6: check state never changes pill stroke, label weight or muted fill', () => {
+    expect(css).not.toMatch(/\.map-node\.task-open[^{]*\.map-pill/);
+    expect(css).not.toMatch(/\.map-node\.task-pending[^{]*\.map-pill/);
+    expect(css).not.toMatch(/\.map-node\.task-done[^{]*\.map-pill/);
+    expect(css).not.toMatch(/\.map-node\.task-done \.map-label \{[^}]*map-node-muted/);
+    // Default pills use the line token; focus still wins.
+    expect(cssBlock('.map-pill {')).toContain('stroke-width: var(--map-stroke-line)');
+    expect(css.indexOf('.map-node.is-focused .map-pill,')).toBeGreaterThan(css.indexOf('.map-pill {'));
     expect(css.indexOf('.map-node.collapsed .map-pill {')).toBe(-1);
-    expect(css.indexOf('.map-node.is-focused .map-pill,')).toBeGreaterThan(task);
-    expect(css.indexOf('.map-node.cue .map-label {')).toBeGreaterThan(css.indexOf('.map-node.task-done .map-label {'));
   });
 
   it('class names carry the task state the CSS keys on', () => {

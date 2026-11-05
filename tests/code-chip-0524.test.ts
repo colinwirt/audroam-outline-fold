@@ -58,8 +58,8 @@ describe('0.5.24 Slack-style code chips', () => {
       expect(tok(b, `${pre}-code-stroke`)).toBeTruthy();
     }
   });
-  it('Map rect: 1px border, rx 3, 4px horizontal pad; ink rule outranks fill label inks', async () => {
-    expect(css).toMatch(/\.map-code-bg \{[^}]*fill: var\(--map-code-bg\)[^}]*stroke: var\(--map-code-stroke\)[^}]*stroke-width: 1;/);
+  it('Map rect: line-token border, rx 3, 4px horizontal pad; ink rule outranks fill label inks', async () => {
+    expect(css).toMatch(/\.map-code-bg \{[^}]*fill: var\(--map-code-bg\)[^}]*stroke: var\(--map-code-stroke\)[^}]*stroke-width: var\(--map-stroke-line\);/);
     const g = await paint('- Use `npm t` now <id:a>\n');
     const r = g('a').querySelector('rect.map-code-bg')!;
     expect(r.getAttribute('rx')).toBe('3');

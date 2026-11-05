@@ -31,7 +31,7 @@ const pillStyle = (page: Page, id: string) =>
   page.evaluate((s) => {
     const el = document.querySelector(`${s} .map-pill`)!;
     const cs = getComputedStyle(el);
-    return { fill: cs.fill, stroke: cs.stroke, width: `${Math.round(parseFloat(cs.strokeWidth) * (el as SVGGraphicsElement).getScreenCTM()!.a * devicePixelRatio)}dp` }; // 0.5.30: device px
+    return { fill: cs.fill, stroke: cs.stroke, width: parseFloat(cs.strokeWidth) }; // 0.6.0: map units
   }, node(id));
 
 /** The connector that ends at a pill's left edge (centre line). */
@@ -122,12 +122,12 @@ test.describe('time leaves (desktop)', () => {
     expect(check.y - (s1.y + s1.h)).toBeCloseTo(14, 1);
   });
 
-  test('transparent fill (0.5.25 wireframe), green border, hover brightens, 1 px green connector; focus keeps the ring', async ({ page }) => {
+  test('map-bg fill (0.6.0 MSB-8), green border, hover brightens, line green connector; focus keeps the ring', async ({ page }) => {
     await open(page);
-    expect(await pillStyle(page, 't1')).toEqual({ fill: 'rgba(0, 0, 0, 0)', stroke: 'rgb(46, 160, 67)', width: '2dp' });
+    expect(await pillStyle(page, 't1')).toEqual({ fill: 'rgb(10, 31, 40)', stroke: 'rgb(46, 160, 67)', width: 1.4 });
     const letter = await page.evaluate((s) => getComputedStyle(document.querySelector(`${s} .map-kind-letter`)!).fill, node('t1'));
     expect(letter).toBe('rgb(63, 185, 80)');
-    expect(await edgeInto(page, 't1')).toEqual({ cls: 'map-edge edge-time', stroke: 'rgb(43, 138, 62)', width: '1px', opacity: '1' });
+    expect(await edgeInto(page, 't1')).toEqual({ cls: 'map-edge edge-time', stroke: 'rgb(43, 138, 62)', width: '1.4px', opacity: '1' });
     expect((await edgeInto(page, 'check'))!.cls).toBe('map-edge');
     // Hover.
     const b = (await page.locator(`${node('s2')} .map-pill`).boundingBox())!;
@@ -151,9 +151,9 @@ test.describe('time leaves (desktop)', () => {
     expect((await edgeInto(page, 't1'))!.stroke).toBe('rgb(43, 138, 62)');
   });
 
-  test('light theme: #2b8a3e border, transparent fill', async ({ page }) => {
+  test('light theme: #2b8a3e border, map-bg fill', async ({ page }) => {
     await open(page, '&theme=light');
-    expect(await pillStyle(page, 't1')).toEqual({ fill: 'rgba(0, 0, 0, 0)', stroke: 'rgb(43, 138, 62)', width: '2dp' });
+    expect(await pillStyle(page, 't1')).toEqual({ fill: 'rgb(243, 246, 249)', stroke: 'rgb(43, 138, 62)', width: 1.4 });
   });
 
   test('no fold handle and no width grip on a time leaf', async ({ page }) => {
