@@ -4,7 +4,23 @@
  * view owns opening, placement, keys and dismissal.
  */
 import type { CaptionLink } from './captionRich.js';
-import { linkFallbackLabel } from './captionRich.js';
+import { linkFallbackLabel, shortUrlLabel } from './captionRich.js';
+
+/** 0.6.5: shorten from the middle so both ends stay readable (`ab…yz`). */
+export function shortenMiddle(s: string, max = 40): string {
+  if (s.length <= max) return s;
+  const keep = max - 1;
+  const head = Math.ceil(keep / 2);
+  return s.slice(0, head) + '\u2026' + s.slice(s.length - (keep - head));
+}
+
+/** 0.6.5: popover second line: domain (no www) + path, no query, middle-shortened. */
+export function linkUrlLine(href: string, max = 40): string {
+  const m = /^[a-z][a-z0-9+.-]*:\/\/(?:[^@/?#\s]*@)?([^/?#\s:]+)(?::\d+)?([^?#\s]*)/i.exec(String(href).trim());
+  if (!m) return shortenMiddle(String(href).trim(), max);
+  const path = m[2]!.replace(/\/+$/, '');
+  return shortenMiddle(m[1]!.replace(/^www\./i, '') + path, max);
+}
 
 /** Last non-empty path segment, skipping a trailing `index.html`. */
 function lastSegment(path: string): string {
@@ -152,6 +168,12 @@ export function captionLinkRows(
     .map((link0): LinkPopRow => {
       const link = link0.label.trim() ? link0 : { ...link0, label: linkFallbackLabel(link0.href) };
       if (!link.hopId) {
+        const abs = /^https?:\/\//i.test(link.href.trim());
+        if (abs) {
+          // 0.6.5: label (a bare URL shows its domain), then domain + path.
+          const label = link.label.trim() === link.href.trim() ? shortUrlLabel(link.href) : link.label;
+          return { label, href: link.href, newTab: true, where: linkUrlLine(link.href), kind: 'link' };
+        }
         return { label: link.label, href: link.href, newTab: true, where: linkPopWhere(link, base), kind: 'link' };
       }
       const row: LinkPopRow = { label: link.label, href: link.href, hopId: link.hopId, kind: 'hop' };
@@ -239,16 +261,20 @@ export function renderLinkPopRows(
       a.href = row.href;
       a.title = row.href;
     }
+    // 0.6.5: label and destination stack in one text block; ↗ stays its own column.
+    const text = document.createElement('span');
+    text.className = 'map-link-text';
     const label = document.createElement('span');
     label.className = 'map-link-label';
     label.textContent = row.label;
-    a.appendChild(label);
+    text.appendChild(label);
     if (row.where) {
       const w = document.createElement('span');
       w.className = 'map-link-where';
       w.textContent = row.where;
-      a.appendChild(w);
+      text.appendChild(w);
     }
+    a.appendChild(text);
     if (row.broken) {
       a.dataset.broken = 'true';
       a.setAttribute('aria-disabled', 'true');
@@ -265,7 +291,9 @@ export function renderLinkPopRows(
       ext.setAttribute('aria-hidden', 'true');
       ext.textContent = LINK_EXT_ARROW;
       a.appendChild(ext);
-      a.setAttribute('aria-label', `${row.label}${row.where ? `, ${row.where}` : ''}, ${OPENS_NEW_WINDOW}`);
+      // 0.6.5: a caption link row names its full URL; note rows keep their short destination.
+      const dest = row.kind === 'link' ? row.href : row.where;
+      a.setAttribute('aria-label', `${row.label}${dest ? `, ${dest}` : ''}, ${OPENS_NEW_WINDOW}`);
     }
     el.appendChild(a);
     items.push(a);

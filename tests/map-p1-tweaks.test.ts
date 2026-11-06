@@ -245,7 +245,7 @@ describe('K3: ↗ on rows that open a new window', () => {
 
   it('Open #N without a noteUri fires onNoteLink only: no ↗', () => {
     const [a] = rowsOf(noteLinkRows('2101', null));
-    expect(a!.children.map((c) => c.className)).toEqual(['map-link-label']);
+    expect(a!.children.map((c) => c.className)).toEqual(['map-link-text']);
     expect(a!.attrs['aria-label']).toBeUndefined();
   });
 

@@ -134,7 +134,7 @@ describe('link popover source', () => {
     expect(item).toMatch(/text-decoration: none/);
     expect(item).toMatch(/min-height: 32px/);
     expect(rule('.map-link-item:focus-visible')).toMatch(/outline: 2px solid var\(--gold\)/);
-    expect(rule('.map-link-where')).toMatch(/color: var\(--muted, var\(--of-muted\)\)/);
+    expect(rule('.map-link-where')).toMatch(/color: var\(--map-link-where\)/);
     expect(rule('.map-link-pop.is-closing')).toMatch(/opacity: 0/);
     expect(rule('.map-link-pop')).toMatch(/transition: opacity 180ms ease/);
   });
