@@ -31,8 +31,8 @@ describe('only a lone URL line is hoisted off a Map pill', () => {
   it('hoists a lone URL line and keeps the other lines', () => {
     expect(
       captionWithoutLinks('Week 3 slides\\nhttps://lighthouse.example.test/week3\\nbring a torch'),
-    ).toBe('Week 3 slides\n\nbring a torch');
-    expect(captionWithoutLinks('Week 3 slides\nhttps://lighthouse.example.test/week3')).toBe('Week 3 slides');
+    ).toBe('Week 3 slides\nlighthouse.example.test\nbring a torch'); // 0.6.5: one rule
+    expect(captionWithoutLinks('Week 3 slides\nhttps://lighthouse.example.test/week3')).toBe('Week 3 slides\nlighthouse.example.test');
   });
 
   it('isLoneLinkLine', () => {

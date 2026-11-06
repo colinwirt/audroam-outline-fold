@@ -125,7 +125,7 @@ describe('captionToHtml', () => {
   it('hoists a line that is only a markdown link off the map pill', () => {
     expect(
       captionWithoutLinks('Index · this map\n[Open](?doc=../demos-index/demos-index.md)'),
-    ).toBe('Index · this map');
+    ).toBe('Index · this map\nOpen'); // 0.6.5: one rule, link text stays (was hoisted)
   });
 });
 

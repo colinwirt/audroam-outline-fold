@@ -4,7 +4,7 @@
  * view owns opening, placement, keys and dismissal.
  */
 import type { CaptionLink } from './captionRich.js';
-import { linkFallbackLabel, shortUrlLabel } from './captionRich.js';
+import { linkText } from './captionRich.js';
 
 /** 0.6.5: shorten from the middle so both ends stay readable (`ab…yz`). */
 export function shortenMiddle(s: string, max = 40): string {
@@ -166,13 +166,12 @@ export function captionLinkRows(
   return links
     .filter((link) => !link.pnid)
     .map((link0): LinkPopRow => {
-      const link = link0.label.trim() ? link0 : { ...link0, label: linkFallbackLabel(link0.href) };
+      const link = { ...link0, label: linkText(link0.label, link0.href) };
       if (!link.hopId) {
         const abs = /^https?:\/\//i.test(link.href.trim());
         if (abs) {
           // 0.6.5: label (a bare URL shows its domain), then domain + path.
-          const label = link.label.trim() === link.href.trim() ? shortUrlLabel(link.href) : link.label;
-          return { label, href: link.href, newTab: true, where: linkUrlLine(link.href), kind: 'link' };
+          return { label: link.label, href: link.href, newTab: true, where: linkUrlLine(link.href), kind: 'link' };
         }
         return { label: link.label, href: link.href, newTab: true, where: linkPopWhere(link, base), kind: 'link' };
       }

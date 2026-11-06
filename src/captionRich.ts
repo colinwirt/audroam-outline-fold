@@ -483,41 +483,38 @@ export function linkFallbackLabel(url: string): string {
   return m[1]!.replace(/^www\./i, '') + (seg ? `/${seg}` : '');
 }
 
+/**
+ * 0.6.5 THE link-text rule, shared by Outline rows, Map pills and the globe popover:
+ * the `[label]` when non-empty, otherwise the domain (no `www.`). A bare URL's
+ * token label is the URL itself, so it counts as "no label".
+ */
+export function linkText(label: string, url: string): string {
+  const l = String(label ?? '').trim();
+  if (l && l !== String(url).trim()) return l;
+  return /^[a-z][a-z0-9+.-]*:\/\//i.test(String(url).trim()) ? shortUrlLabel(url) : linkFallbackLabel(url);
+}
+
 /** A bare URL, or a markdown link with an empty `[]` label (treated alike on the pill). */
 function isBareUrlToken(t: { kind: string; label?: string; url?: string; source?: string }): boolean {
   return t.kind === 'link' && ((!t.source && t.label === t.url) || !String(t.label ?? '').trim());
 }
 
 export function captionWithoutLinks(title: string): string {
-  let fallback = '';
-  const text = normalizeCaptionBreaks(displayTags(String(title).replace(new RegExp(REGION_REF_TAG.source, 'gi'), '')))
+  // 0.6.5: one rule (linkText). Plain text stays; each link shows its link text; the URL is behind the globe.
+  return normalizeCaptionBreaks(displayTags(String(title).replace(new RegExp(REGION_REF_TAG.source, 'gi'), '')))
     .split('\n')
     .map((line) => {
-      if (isLoneLinkLine(line)) {
-        if (!fallback) {
-          const t = tokenize(line).find((x) => x.kind === 'link') as { label: string; url: string; source?: string } | undefined;
-          if (t) fallback = isBareUrlToken({ kind: 'link', ...t }) ? shortUrlLabel(t.url) : t.label.trim() || shortUrlLabel(t.url);
-        }
-        return '';
-      }
-      const toks = tokenize(line);
-      // 0.6.5: text before a trailing bare URL is the label; the URL lives behind the globe.
-      let last = toks.length - 1;
-      while (last >= 0 && toks[last]!.kind === 'text' && !(toks[last] as { value: string }).value.trim()) last--;
       const parts: string[] = [];
-      toks.forEach((t, i) => {
+      for (const t of tokenize(line)) {
         if (t.kind === 'text') parts.push(t.value);
         else if (t.kind === 'img') parts.push(t.alt);
-        else if (i === last && isBareUrlToken(t)) parts.push('');
-        else if (isBareUrlToken(t)) parts.push(shortUrlLabel(t.url));
-        else parts.push(t.label);
-      });
+        else parts.push(linkText(t.label, t.url));
+      }
       return parts.join('').replace(/[ \t]{2,}/g, ' ').trim();
     })
     .join('\n')
     .replace(/\n{3,}/g, '\n\n')
     .replace(/^\n+|\n+$/g, '');
-  return text.trim() ? text : fallback || text;
 }
 
 /** Markdown and bare https links that captionToHtml would turn into anchors. */
@@ -525,7 +522,7 @@ export function captionLinks(title: string): CaptionLink[] {
   const out: CaptionLink[] = [];
   for (const t0 of tokenize(normalizeCaptionBreaks(title))) {
     if (t0.kind !== 'link') continue;
-    const t = t0.label.trim() ? t0 : { ...t0, label: linkFallbackLabel(t0.url) };
+    const t = { ...t0, label: linkText(t0.label, t0.url) };
     const hopId = parseHopTarget(t.url);
     if (hopId) {
       out.push({ label: t.label, href: `#id:${hopId}`, hopId });
@@ -553,9 +550,9 @@ export function captionToHtml(title: string, opts: CaptionHtmlOptions = {}): str
       // 0.6.5: a bare URL or an empty [](url) shows as a small domain link; text before it stays plain.
       if (!t.label.trim() || (!t.source && t.label === t.url)) {
         if (/^https?:\/\//i.test(t.url.trim()) && isAllowedCaptionUrl(t.url, { allowHttp: true })) {
-          return `<a href="${esc(t.url)}" title="${esc(t.url)}" class="of-link-domain" target="_blank" rel="noopener noreferrer">${esc(shortUrlLabel(t.url))}</a>`;
+          return `<a href="${esc(t.url)}" title="${esc(t.url)}" class="of-link-domain" target="_blank" rel="noopener noreferrer">${esc(linkText(t.label, t.url))}</a>`;
         }
-        return renderLink(t.label.trim() ? t.label : linkFallbackLabel(t.url), t.url, opts);
+        return renderLink(linkText(t.label, t.url), t.url, opts);
       }
       return renderLink(t.label, t.url, opts);
     })

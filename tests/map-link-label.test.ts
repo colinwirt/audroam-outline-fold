@@ -13,8 +13,8 @@ describe('Map pill label for links', () => {
     expect(captionWithoutLinks(URL)).toBe('b.audroam.example.test');
     expect(captionLinks(URL).map((l) => l.href)).toEqual([URL]);
   });
-  it('text before a URL is the label; the URL is not printed', () => {
-    expect(captionWithoutLinks(`test ${URL}`)).toBe('test');
+  it('text before a URL stays; the URL shows as its domain', () => {
+    expect(captionWithoutLinks(`test ${URL}`)).toBe('test b.audroam.example.test'); // one rule
     expect(captionLinks(`test ${URL}`).map((l) => l.href)).toEqual([URL]);
   });
   it('a URL in backticks is literal code, not a link', () => {
@@ -38,18 +38,18 @@ describe('Map pill label for links', () => {
 
 describe('empty [](url) label (0.6.5)', () => {
   const U = 'https://b.audroam.example.test/outline-view?id=40242&map=1&focus=3';
-  it('pill: text before an empty [](url) is the label; alone it shows the domain', () => {
-    expect(captionWithoutLinks(`test [](${U})`)).toBe('test');
+  it('pill: empty [](url) shows the domain after any text', () => {
+    expect(captionWithoutLinks(`test [](${U})`)).toBe('test b.audroam.example.test');
     expect(captionWithoutLinks(`[](${U})`)).toBe('b.audroam.example.test');
     expect(captionWithoutLinks(`[  ](${U})`)).toBe('b.audroam.example.test');
   });
   it('captionLinks never gives a blank label', () => {
-    expect(captionLinks(`test [](${U})`)[0]!.label).toBe('b.audroam.example.test/outline-view');
+    expect(captionLinks(`test [](${U})`)[0]!.label).toBe('b.audroam.example.test');
     expect(captionLinks(`[ ](#id:abc)`)[0]!.label).toBe('#id:abc');
   });
   it('globe popover rows never have a blank label', async () => {
     const { captionLinkRows } = await import('../src/linkPop.js');
     const rows = captionLinkRows([{ label: '', href: U, hopId: null }]);
-    expect(rows[0]!.label).toBe('b.audroam.example.test/outline-view');
+    expect(rows[0]!.label).toBe('b.audroam.example.test');
   });
 });
