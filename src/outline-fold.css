@@ -868,15 +868,24 @@
   font-size: 14px;
   line-height: 1.3;
 }
-/* 0.6.5: destination 13px, #b4c2cf on --map-menu-bg #13202b = 9.1:1 (AA). */
-.map-link-where {
+/* 0.6.5: destination hint, stacked domain then path: 13px, #b4c2cf on --map-menu-bg
+   #13202b = 9.1:1 (AA; ~7:1 on the hover row). */
+.map-link-where,
+.map-link-preview-domain,
+.map-link-preview-path {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  font-size: 13px;
+  line-height: 1.3;
+  color: var(--map-link-where);
+}
+.map-link-domain,
+.map-link-path {
   min-width: 0;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
-  color: var(--map-link-where);
-  font-size: 13px;
-  line-height: 1.3;
 }
 /* K3 (0.2.38): trailing ↗ on rows that open a new window, as node menu M4. */
 .map-link-ext {
@@ -1617,4 +1626,65 @@ html { --node-white: #ffffff; --node-white-hl: #ffffff; --node-white-ink: #0b1a2
 .of-title a.of-link-domain {
   font-size: 0.85em;
   white-space: nowrap;
+}
+
+/* 0.6.5 link preview: shown before any navigation; only Open navigates. */
+.map-link-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px;
+  max-width: min(22rem, calc(100vw - 32px));
+}
+.map-link-preview-label {
+  font-size: 15px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.map-link-preview-url {
+  font-size: 13px;
+  line-height: 1.35;
+  color: var(--map-link-where);
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+.map-link-preview-note {
+  font-size: 13px;
+  color: var(--map-link-where);
+}
+.map-link-preview-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+.map-link-preview-open,
+.map-link-preview-copy {
+  min-height: 32px;
+  padding: 0 12px;
+  display: inline-flex;
+  align-items: center;
+  border-radius: 8px;
+  border: 1px solid var(--map-link-where);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 14px;
+  text-decoration: none;
+  cursor: pointer;
+}
+.map-link-preview-open:hover,
+.map-link-preview-copy:hover { background: var(--map-menu-hover); }
+.map-link-preview-open:focus-visible,
+.map-link-preview-copy:focus-visible { outline: 2px solid var(--gold); outline-offset: 1px; }
+.map-link-pop[data-pointer="coarse"] .map-link-preview-open,
+.map-link-pop[data-pointer="coarse"] .map-link-preview-copy { min-height: 44px; }
+/* Outline preview floats over the page. */
+.of-link-preview-pop {
+  position: fixed;
+  z-index: 1000;
+  background: var(--map-menu-bg);
+  color: var(--text, var(--of-text, #e6edf3));
+  border: 1px solid var(--gold);
+  border-radius: 10px;
+  font: 14px/1.2 var(--of-font);
 }

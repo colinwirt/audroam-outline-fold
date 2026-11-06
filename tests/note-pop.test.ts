@@ -41,7 +41,7 @@ describe('popover rows', () => {
   it('globe rows keep 0.2.33: link rows open a tab, hop rows select', () => {
     const rows = captionLinkRows(captionLinks('[Open](https://www.example.org/a) · [Plants](#id:plants)'), BASE);
     expect(rows).toEqual([
-      { label: 'Open', href: 'https://www.example.org/a', newTab: true, where: 'example.org/a', kind: 'link' }, // 0.6.5: domain + path
+      { label: 'Open', href: 'https://www.example.org/a', newTab: true, where: 'example.org/a', kind: 'link', domain: 'example.org', path: 'a' }, // 0.6.5: domain + path
       { label: 'Plants', href: '#id:plants', hopId: 'plants', kind: 'hop' },
     ]);
   });

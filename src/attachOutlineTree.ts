@@ -7,6 +7,7 @@ import {
 import { shouldFireAction, toggleTask } from './task.js';
 import { stripLinkTags } from './taskChrome.js';
 import type { OutlineFoldDoc, OutlineNode, TaskToggleEvent } from './types.js';
+import { renderLinkPreview } from './linkPop.js';
 
 /** Live-region copy for expand-level keys (pure; unit-tested). */
 export function expandLevelAnnouncement(
@@ -228,6 +229,33 @@ export function attachOutlineTree(
 
   const getLive = () => ensureLiveRegion(rootEl, opts.liveEl, createdLive);
 
+  let previewPop: { el: HTMLElement; off: AbortController } | null = null;
+  const closePreview = () => {
+    previewPop?.off.abort();
+    previewPop?.el.remove();
+    previewPop = null;
+  };
+  /** 0.6.5: link preview next to an Outline caption link (the Map popover's block). */
+  const showOutlinePreview = (a: HTMLAnchorElement) => {
+    closePreview();
+    const href = a.getAttribute('href') || '';
+    const pv = renderLinkPreview({ label: (a.textContent || '').trim() || href, href });
+    const pop = document.createElement('div');
+    pop.className = 'map-link-pop of-link-preview-pop';
+    pop.dataset.kind = 'preview';
+    pop.appendChild(pv.el);
+    const r = a.getBoundingClientRect();
+    pop.style.left = `${Math.max(8, r.left)}px`;
+    pop.style.top = `${r.bottom + 6}px`;
+    document.body.appendChild(pop);
+    const off = new AbortController();
+    previewPop = { el: pop, off };
+    pv.open.addEventListener('click', () => setTimeout(closePreview, 0), { signal: off.signal });
+    document.addEventListener('pointerdown', (ev) => { if (!pop.contains(ev.target as Node)) closePreview(); }, { signal: off.signal, capture: true });
+    document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape') { closePreview(); a.focus(); } }, { signal: off.signal });
+    pv.open.focus();
+  };
+
   const refresh = (focusId?: string | null) => {
     opts.render();
     const tree = findTree(rootEl, prefix);
@@ -367,6 +395,15 @@ export function attachOutlineTree(
       const id = noteBtn.getAttribute('data-note-node') || '';
       const node = id ? findNodeById(opts.getDoc().nodes, id) : null;
       if (pnid) opts.onNoteLinkClick?.(pnid, node);
+      return;
+    }
+
+    // 0.6.5: a caption link never navigates on click; it opens the preview (only Open navigates).
+    const capLink = target.closest<HTMLAnchorElement>('a[href][target="_blank"]');
+    if (capLink && rootEl.contains(capLink) && capLink.closest(`.${prefix}-title`) && !capLink.closest('.map-link-preview')) {
+      e.preventDefault();
+      e.stopPropagation();
+      showOutlinePreview(capLink);
       return;
     }
 
@@ -590,6 +627,7 @@ export function attachOutlineTree(
     detach: () => {
       rootEl.removeEventListener('focusin', onFocusShare);
       rootEl.removeEventListener('click', onClick);
+      closePreview();
       rootEl.removeEventListener('keydown', onKeyDown);
       rootEl.removeEventListener('focusin', onFocusIn);
       if (createdLive.el?.parentElement === rootEl) {

@@ -57,8 +57,7 @@ describe('link popover readability', () => {
   it('CSS: one-line ellipsis label, >=13px AA second line, tap target kept', () => {
     expect(rule('.map-link-label')).toMatch(/white-space: nowrap/);
     expect(rule('.map-link-label')).toMatch(/text-overflow: ellipsis/);
-    expect(rule('.map-link-where')).toMatch(/font-size: 13px/);
-    expect(rule('.map-link-where')).toMatch(/color: var\(--map-link-where\)/);
+    expect(css).toMatch(/\.map-link-where,[\s\S]*?font-size: 13px;[\s\S]*?color: var\(--map-link-where\)/);
     expect(css).toMatch(/--map-link-where: #b4c2cf/);
     expect(rule('.map-link-item')).toMatch(/min-height: 32px/);
   });

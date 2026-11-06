@@ -16,6 +16,7 @@ import { ALT_HOLD_MS, altDragCommits, altPressKind } from './altGesture.js';
 import { captionLinks, captionWithoutLinks, captionRegionRefs } from './captionRich.js';
 import {
   captionLinkRows,
+  renderLinkPreview,
   noteLinkRows,
   placeLinkPop,
   renderLinkPopRows,
@@ -2368,6 +2369,28 @@ export function createMapView(
   }
 
   /** The one popover for the globe, `#N` and thread chips (0.2.34). */
+  /** 0.6.5: swap the popover rows for the link preview (same surface, same close rules). */
+  function showLinkPreview(row: LinkPopRow, spec: LinkPopSpec): void {
+    const m = linkPop;
+    if (!m || !row.href) return;
+    const pv = renderLinkPreview({ label: row.label, href: row.href, base: pageBase() });
+    pv.open.addEventListener(
+      'click',
+      (e) => {
+        e.stopPropagation();
+        // The browser opens it in a new tab (noopener); the popover closes.
+        dismissLinkPop(false);
+        spec.onOpen?.(row);
+      },
+      { signal: m.abort.signal },
+    );
+    m.el.replaceChildren(pv.el);
+    m.el.dataset.kind = 'preview';
+    m.items = [pv.open];
+    positionLinkPop();
+    pv.open.focus();
+  }
+
   function openLinkPop(spec: LinkPopSpec): void {
     if (linkPop) {
       linkPop.abort.abort();
@@ -2402,9 +2425,9 @@ export function createMapView(
             return;
           }
           if (row.href && row.newTab) {
-            // The browser opens it in a new tab (noopener); the menu closes.
-            dismissLinkPop(false);
-            spec.onOpen?.(row);
+            // 0.6.5: never navigate on the row; preview first, only Open navigates.
+            ev.preventDefault();
+            showLinkPreview(row, spec);
             return;
           }
           ev.preventDefault();
@@ -2436,10 +2459,9 @@ export function createMapView(
           e.preventDefault();
           dismissLinkPop(true);
         } else if (act.type === 'apply') {
-          // Enter follows a link natively; Space, and Enter on a row
-          // without an href, click it here.
           const it = m.items[act.index];
-          if (e.key === 'Enter' && it?.hasAttribute('href')) return;
+          // 0.6.5: Enter on a row opens the preview (click); only the preview's Open follows natively.
+          if (e.key === 'Enter' && it?.classList.contains('map-link-preview-open')) return;
           e.preventDefault();
           it?.click();
         }
