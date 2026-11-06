@@ -501,11 +501,25 @@ function isBareUrlToken(t: { kind: string; label?: string; url?: string; source?
 
 export function captionWithoutLinks(title: string): string {
   // 0.6.5: one rule (linkText). Plain text stays; each link shows its link text; the URL is behind the globe.
-  return normalizeCaptionBreaks(displayTags(String(title).replace(new RegExp(REGION_REF_TAG.source, 'gi'), '')))
+  // A label-less link (bare URL or `[](url)`) at the very end of the node text, after other
+  // text, is yanked: it lives on the globe only (Colin, 6 Nov 2026). Alone it shows its domain.
+  const lines = normalizeCaptionBreaks(displayTags(String(title).replace(new RegExp(REGION_REF_TAG.source, 'gi'), '')))
     .split('\n')
-    .map((line) => {
+    .map((line) => tokenize(line));
+  let li = lines.length - 1;
+  while (li >= 0 && lines[li]!.every((t) => t.kind === 'text' && !t.value.trim())) li--;
+  if (li >= 0) {
+    const toks = lines[li]!;
+    let ti = toks.length - 1;
+    while (ti >= 0 && toks[ti]!.kind === 'text' && !(toks[ti] as { value: string }).value.trim()) ti--;
+    const last = toks[ti];
+    const hasOther = li > 0 || toks.slice(0, ti).some((t) => t.kind !== 'text' || t.value.trim());
+    if (last && last.kind === 'link' && isBareUrlToken(last) && hasOther) toks.splice(ti);
+  }
+  return lines
+    .map((toks) => {
       const parts: string[] = [];
-      for (const t of tokenize(line)) {
+      for (const t of toks) {
         if (t.kind === 'text') parts.push(t.value);
         else if (t.kind === 'img') parts.push(t.alt);
         else parts.push(linkText(t.label, t.url));

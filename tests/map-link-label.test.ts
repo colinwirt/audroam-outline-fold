@@ -14,7 +14,7 @@ describe('Map pill label for links', () => {
     expect(captionLinks(URL).map((l) => l.href)).toEqual([URL]);
   });
   it('text before a URL stays; the URL shows as its domain', () => {
-    expect(captionWithoutLinks(`test ${URL}`)).toBe('test b.audroam.example.test'); // one rule
+    expect(captionWithoutLinks(`test ${URL}`)).toBe('test'); // trailing URL yanked to the globe
     expect(captionLinks(`test ${URL}`).map((l) => l.href)).toEqual([URL]);
   });
   it('a URL in backticks is literal code, not a link', () => {
@@ -39,7 +39,7 @@ describe('Map pill label for links', () => {
 describe('empty [](url) label (0.6.5)', () => {
   const U = 'https://b.audroam.example.test/outline-view?id=40242&map=1&focus=3';
   it('pill: empty [](url) shows the domain after any text', () => {
-    expect(captionWithoutLinks(`test [](${U})`)).toBe('test b.audroam.example.test');
+    expect(captionWithoutLinks(`test [](${U})`)).toBe('test');
     expect(captionWithoutLinks(`[](${U})`)).toBe('b.audroam.example.test');
     expect(captionWithoutLinks(`[  ](${U})`)).toBe('b.audroam.example.test');
   });

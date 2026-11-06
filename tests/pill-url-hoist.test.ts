@@ -32,7 +32,7 @@ describe('only a lone URL line is hoisted off a Map pill', () => {
     expect(
       captionWithoutLinks('Week 3 slides\\nhttps://lighthouse.example.test/week3\\nbring a torch'),
     ).toBe('Week 3 slides\nlighthouse.example.test\nbring a torch'); // 0.6.5: one rule
-    expect(captionWithoutLinks('Week 3 slides\nhttps://lighthouse.example.test/week3')).toBe('Week 3 slides\nlighthouse.example.test');
+    expect(captionWithoutLinks('Week 3 slides\nhttps://lighthouse.example.test/week3')).toBe('Week 3 slides'); // trailing URL yanked
   });
 
   it('isLoneLinkLine', () => {

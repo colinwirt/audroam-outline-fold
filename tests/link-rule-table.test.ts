@@ -1,4 +1,7 @@
-/** 0.6.5 (Colin: "at least be consistent"): one link rule across Outline, Map pill and globe popover. */
+/**
+ * 0.6.5 (Colin: "at least be consistent"): one link rule across Outline, Map pill and globe popover.
+ * A label-less link at the end of the node text is yanked from the pill (globe only); Outline keeps a small domain link.
+ */
 import { describe, expect, it } from 'vitest';
 import { captionLinks, captionToHtml, captionWithoutLinks, linkText } from '../src/captionRich.js';
 import { captionLinkRows } from '../src/linkPop.js';
@@ -9,9 +12,9 @@ const small = (t: string) => `<a href="${E}" title="${E}" class="of-link-domain"
 const plain = (t: string) => `<a href="${E}" title="${E}" target="_blank" rel="noopener noreferrer">${t}</a>`;
 
 const cases: { caption: string; text: string; link: string; pill: string; outline: string }[] = [
-  { caption: `test ${U}`, text: 'test', link: 'b.audroam.example.test', pill: 'test b.audroam.example.test', outline: `test ${small('b.audroam.example.test')}` },
+  { caption: `test ${U}`, text: 'test', link: 'b.audroam.example.test', pill: 'test', outline: `test ${small('b.audroam.example.test')}` },
   { caption: U, text: '', link: 'b.audroam.example.test', pill: 'b.audroam.example.test', outline: small('b.audroam.example.test') },
-  { caption: `test [](${U})`, text: 'test', link: 'b.audroam.example.test', pill: 'test b.audroam.example.test', outline: `test ${small('b.audroam.example.test')}` },
+  { caption: `test [](${U})`, text: 'test', link: 'b.audroam.example.test', pill: 'test', outline: `test ${small('b.audroam.example.test')}` },
   { caption: `test [here](${U})`, text: 'test', link: 'here', pill: 'test here', outline: `test ${plain('here')}` },
 ];
 
