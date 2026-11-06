@@ -97,7 +97,7 @@ describe('tiny HTML allowlist', () => {
   it('keeps markdown links; HTML does not replace link grammar', () => {
     const html = captionToHtml('See [docs](https://example.com/a) and <b>x</b>');
     expect(html).toContain(
-      '<a href="https://example.com/a" target="_blank" rel="noopener noreferrer">docs</a>',
+      '<a href="https://example.com/a" title="https://example.com/a" target="_blank" rel="noopener noreferrer">docs</a>',
     );
     expect(html).toContain('<b>x</b>');
   });

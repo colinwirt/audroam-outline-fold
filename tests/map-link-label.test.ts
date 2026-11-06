@@ -24,6 +24,9 @@ describe('Map pill label for links', () => {
   it('a bare URL mid-sentence shows its domain', () => {
     expect(captionWithoutLinks(`see ${URL} today`)).toBe('see b.audroam.example.test today');
   });
+  it('test [here](url) keeps "test here" on the pill', () => {
+    expect(captionWithoutLinks(`test [here](${URL})`)).toBe('test here');
+  });
   it('a lone [label](url) shows its label', () => {
     expect(captionWithoutLinks('[Teamversa](https://teamversa.example.test/)')).toBe('Teamversa');
   });

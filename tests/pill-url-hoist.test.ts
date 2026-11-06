@@ -46,7 +46,7 @@ describe('only a lone URL line is hoisted off a Map pill', () => {
   it('the Outline view linkifies a URL in a sentence where it stands', () => {
     const html = toHtml(load('- Slides at https://lighthouse.example.test/week3 before Friday\n'));
     expect(html).toContain(
-      'Slides at <a href="https://lighthouse.example.test/week3" target="_blank" rel="noopener noreferrer">https://lighthouse.example.test/week3</a> before Friday',
+      'Slides at <a href="https://lighthouse.example.test/week3" title="https://lighthouse.example.test/week3" class="of-link-domain" target="_blank" rel="noopener noreferrer">lighthouse.example.test</a> before Friday',
     );
   });
 });

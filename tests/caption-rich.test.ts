@@ -69,7 +69,7 @@ describe('captionToHtml', () => {
   it('renders markdown links with noopener blank target', () => {
     const html = captionToHtml('See [docs](https://example.com/a) please');
     expect(html).toContain(
-      '<a href="https://example.com/a" target="_blank" rel="noopener noreferrer">docs</a>',
+      '<a href="https://example.com/a" title="https://example.com/a" target="_blank" rel="noopener noreferrer">docs</a>',
     );
   });
 
@@ -83,7 +83,7 @@ describe('captionToHtml', () => {
   it('renders bare https URLs as links', () => {
     const html = captionToHtml('Go https://example.com/path now');
     expect(html).toContain(
-      '<a href="https://example.com/path" target="_blank" rel="noopener noreferrer">https://example.com/path</a>',
+      '<a href="https://example.com/path" title="https://example.com/path" class="of-link-domain" target="_blank" rel="noopener noreferrer">example.com</a>',
     );
   });
 

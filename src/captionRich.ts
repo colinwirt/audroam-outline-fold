@@ -389,7 +389,7 @@ function renderLink(label: string, url: string, opts: CaptionHtmlOptions = {}): 
   if (!isAllowedCaptionUrl(url, { allowHttp: true })) {
     return esc(`[${label}](${url})`);
   }
-  return `<a href="${esc(url)}" target="_blank" rel="noopener noreferrer">${esc(label)}</a>`;
+  return `<a href="${esc(url)}" title="${esc(url)}" target="_blank" rel="noopener noreferrer">${esc(label)}</a>`;
 }
 
 /**
@@ -550,6 +550,13 @@ export function captionToHtml(title: string, opts: CaptionHtmlOptions = {}): str
     .map((t) => {
       if (t.kind === 'text') return tinyHtmlToSafeHtml(t.value);
       if (t.kind === 'img') return renderImg(t.alt, t.url);
+      // 0.6.5: a bare URL or an empty [](url) shows as a small domain link; text before it stays plain.
+      if (!t.label.trim() || (!t.source && t.label === t.url)) {
+        if (/^https?:\/\//i.test(t.url.trim()) && isAllowedCaptionUrl(t.url, { allowHttp: true })) {
+          return `<a href="${esc(t.url)}" title="${esc(t.url)}" class="of-link-domain" target="_blank" rel="noopener noreferrer">${esc(shortUrlLabel(t.url))}</a>`;
+        }
+        return renderLink(t.label.trim() ? t.label : linkFallbackLabel(t.url), t.url, opts);
+      }
       return renderLink(t.label, t.url, opts);
     })
     .join('');

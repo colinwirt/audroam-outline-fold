@@ -1611,3 +1611,10 @@ html { --node-white: #ffffff; --node-white-hl: #ffffff; --node-white-ink: #0b1a2
 
 /* 0.5.30: phone sheet beats the compact popover sizing (.of-ep-panel max-width 320px). */
 .of-ep.of-ep-panel.of-ep-sheet { width: auto; max-width: none; }
+
+/* 0.6.5: a bare URL or empty [](url) in the Outline shows as a small domain link
+   after the plain text; the full URL is in its title. */
+.of-title a.of-link-domain {
+  font-size: 0.85em;
+  white-space: nowrap;
+}
