@@ -467,22 +467,47 @@ export function captionRegionRefs(title: string): string[] {
   return out;
 }
 
+/** 0.6.5: pill text for a bare URL: its domain (no `www.`). The link stays behind the globe. */
+export function shortUrlLabel(url: string): string {
+  const m = /^[a-z][a-z0-9+.-]*:\/\/(?:[^@/?#\s]*@)?([^/?#\s:]+)/i.exec(String(url).trim());
+  if (!m) return String(url).trim() || 'link';
+  return m[1]!.replace(/^www\./i, '');
+}
+
+function isBareUrlToken(t: { kind: string; label?: string; url?: string; source?: string }): boolean {
+  return t.kind === 'link' && !t.source && t.label === t.url;
+}
+
 export function captionWithoutLinks(title: string): string {
-  return normalizeCaptionBreaks(displayTags(String(title).replace(new RegExp(REGION_REF_TAG.source, 'gi'), '')))
+  let fallback = '';
+  const text = normalizeCaptionBreaks(displayTags(String(title).replace(new RegExp(REGION_REF_TAG.source, 'gi'), '')))
     .split('\n')
     .map((line) => {
-      if (isLoneLinkLine(line)) return '';
+      if (isLoneLinkLine(line)) {
+        if (!fallback) {
+          const t = tokenize(line).find((x) => x.kind === 'link') as { label: string; url: string; source?: string } | undefined;
+          if (t) fallback = isBareUrlToken({ kind: 'link', ...t }) ? shortUrlLabel(t.url) : t.label.trim() || shortUrlLabel(t.url);
+        }
+        return '';
+      }
+      const toks = tokenize(line);
+      // 0.6.5: text before a trailing bare URL is the label; the URL lives behind the globe.
+      let last = toks.length - 1;
+      while (last >= 0 && toks[last]!.kind === 'text' && !(toks[last] as { value: string }).value.trim()) last--;
       const parts: string[] = [];
-      for (const t of tokenize(line)) {
+      toks.forEach((t, i) => {
         if (t.kind === 'text') parts.push(t.value);
         else if (t.kind === 'img') parts.push(t.alt);
+        else if (i === last && isBareUrlToken(t)) parts.push('');
+        else if (isBareUrlToken(t)) parts.push(shortUrlLabel(t.url));
         else parts.push(t.label);
-      }
+      });
       return parts.join('').replace(/[ \t]{2,}/g, ' ').trim();
     })
     .join('\n')
     .replace(/\n{3,}/g, '\n\n')
     .replace(/^\n+|\n+$/g, '');
+  return text.trim() ? text : fallback || text;
 }
 
 /** Markdown and bare https links that captionToHtml would turn into anchors. */

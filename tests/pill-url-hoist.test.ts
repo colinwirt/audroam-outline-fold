@@ -11,7 +11,7 @@ const load = (text: string) => parse(text, { sessionIds: true });
 describe('only a lone URL line is hoisted off a Map pill', () => {
   it('keeps a URL that is part of a sentence in the pill text', () => {
     const t = 'Slides at https://lighthouse.example.test/week3 before Friday';
-    expect(captionWithoutLinks(t)).toBe(t);
+    expect(captionWithoutLinks(t)).toBe('Slides at lighthouse.example.test before Friday'); // 0.6.5: domain only
     // Still reachable from the globe.
     expect(captionLinks(t).map((l) => l.href)).toEqual(['https://lighthouse.example.test/week3']);
   });
@@ -23,8 +23,8 @@ describe('only a lone URL line is hoisted off a Map pill', () => {
   });
 
   it('hoists a caption that is just a URL', () => {
-    expect(captionWithoutLinks('https://lighthouse.example.test/week3')).toBe('');
-    expect(captionWithoutLinks('  https://lighthouse.example.test/week3  ')).toBe('');
+    expect(captionWithoutLinks('https://lighthouse.example.test/week3')).toBe('lighthouse.example.test'); // 0.6.5: never an empty pill
+    expect(captionWithoutLinks('  https://lighthouse.example.test/week3  ')).toBe('lighthouse.example.test');
     expect(captionLinks('https://lighthouse.example.test/week3')).toHaveLength(1);
   });
 
