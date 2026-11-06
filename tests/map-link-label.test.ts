@@ -32,3 +32,21 @@ describe('Map pill label for links', () => {
     expect(shortUrlLabel('http://u@host.example.test:8080/x')).toBe('host.example.test');
   });
 });
+
+describe('empty [](url) label (0.6.5)', () => {
+  const U = 'https://b.audroam.example.test/outline-view?id=40242&map=1&focus=3';
+  it('pill: text before an empty [](url) is the label; alone it shows the domain', () => {
+    expect(captionWithoutLinks(`test [](${U})`)).toBe('test');
+    expect(captionWithoutLinks(`[](${U})`)).toBe('b.audroam.example.test');
+    expect(captionWithoutLinks(`[  ](${U})`)).toBe('b.audroam.example.test');
+  });
+  it('captionLinks never gives a blank label', () => {
+    expect(captionLinks(`test [](${U})`)[0]!.label).toBe('b.audroam.example.test/outline-view');
+    expect(captionLinks(`[ ](#id:abc)`)[0]!.label).toBe('#id:abc');
+  });
+  it('globe popover rows never have a blank label', async () => {
+    const { captionLinkRows } = await import('../src/linkPop.js');
+    const rows = captionLinkRows([{ label: '', href: U, hopId: null }]);
+    expect(rows[0]!.label).toBe('b.audroam.example.test/outline-view');
+  });
+});

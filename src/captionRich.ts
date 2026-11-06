@@ -474,8 +474,18 @@ export function shortUrlLabel(url: string): string {
   return m[1]!.replace(/^www\./i, '');
 }
 
+/** 0.6.5: never-blank link text: domain plus first path segment, else the raw URL. */
+export function linkFallbackLabel(url: string): string {
+  const u = String(url).trim();
+  const m = /^[a-z][a-z0-9+.-]*:\/\/(?:[^@/?#\s]*@)?([^/?#\s:]+)(?::\d+)?([^?#\s]*)/i.exec(u);
+  if (!m) return u || 'link';
+  const seg = m[2]!.split('/').filter(Boolean)[0];
+  return m[1]!.replace(/^www\./i, '') + (seg ? `/${seg}` : '');
+}
+
+/** A bare URL, or a markdown link with an empty `[]` label (treated alike on the pill). */
 function isBareUrlToken(t: { kind: string; label?: string; url?: string; source?: string }): boolean {
-  return t.kind === 'link' && !t.source && t.label === t.url;
+  return t.kind === 'link' && ((!t.source && t.label === t.url) || !String(t.label ?? '').trim());
 }
 
 export function captionWithoutLinks(title: string): string {
@@ -513,8 +523,9 @@ export function captionWithoutLinks(title: string): string {
 /** Markdown and bare https links that captionToHtml would turn into anchors. */
 export function captionLinks(title: string): CaptionLink[] {
   const out: CaptionLink[] = [];
-  for (const t of tokenize(normalizeCaptionBreaks(title))) {
-    if (t.kind !== 'link') continue;
+  for (const t0 of tokenize(normalizeCaptionBreaks(title))) {
+    if (t0.kind !== 'link') continue;
+    const t = t0.label.trim() ? t0 : { ...t0, label: linkFallbackLabel(t0.url) };
     const hopId = parseHopTarget(t.url);
     if (hopId) {
       out.push({ label: t.label, href: `#id:${hopId}`, hopId });

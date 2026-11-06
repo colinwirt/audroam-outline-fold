@@ -4,6 +4,7 @@
  * view owns opening, placement, keys and dismissal.
  */
 import type { CaptionLink } from './captionRich.js';
+import { linkFallbackLabel } from './captionRich.js';
 
 /** Last non-empty path segment, skipping a trailing `index.html`. */
 function lastSegment(path: string): string {
@@ -148,7 +149,8 @@ export function captionLinkRows(
 ): LinkPopRow[] {
   return links
     .filter((link) => !link.pnid)
-    .map((link): LinkPopRow => {
+    .map((link0): LinkPopRow => {
+      const link = link0.label.trim() ? link0 : { ...link0, label: linkFallbackLabel(link0.href) };
       if (!link.hopId) {
         return { label: link.label, href: link.href, newTab: true, where: linkPopWhere(link, base), kind: 'link' };
       }
