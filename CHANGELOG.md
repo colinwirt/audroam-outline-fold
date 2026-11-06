@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.6.5 — 2026-11-06
+
+### Shared link labels, yank trailing URL, preview before navigate
+
+- **One `linkText` rule** shared by Outline rows, Map pills and the globe popover: non-empty `[label](url)` keeps the label; otherwise the host without `www.`. A URL in backticks stays literal.
+- **Map pill yank:** a label-less link at the end of the node text is removed from the pill and kept on the globe, so the pill is never blank or over-verbose.
+- **Outline:** text before a URL stays plain; the link shows the domain or label; the full URL is in the title. Labelled links stay normal size (t2535u).
+- **Globe popover:** stacked domain then path at 13px AA (`--map-link-where` on `#13202b`).
+- **Link preview before navigate:** Outline link, Map popover row, and Enter open a preview (label, stacked domain/path, full URL, Open ↗ / Copy). Only Open navigates. Same-site notes say "Opens in Audroam". Internal `#id:` / note jumps stay direct — no preview (t2535u).
+
+0.6.4 width panel Copy to / stay-open / unstuck handle are unchanged.
+
+
 ## 0.6.4 — 2026-11-06
 
 ### Width panel: two-step Copy to, stay-open panel, unstuck width handle
