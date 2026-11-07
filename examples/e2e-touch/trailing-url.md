@@ -1,0 +1,5 @@
+- HashiCorp
+  - SSO domains
+  - candorcx.ai
+    - setup https://b.audroam.example.com/outline-view?id=40242&map=1&focus=3
+    - First, copy the following TXT and verify it within your DNS.
