@@ -1252,6 +1252,7 @@ div.of-unlock.of-unlock-sheet { border-radius: 12px 12px 8px 8px; border-left-wi
 .map-node.is-au .map-label, .map-node.is-au text { fill: #0b1a21; }
 /* Code text keeps its own ink on its own background, whatever the branch fill. */
 .map-node.map-node .map-label tspan.map-code { fill: var(--map-code-ink); }
+.map-svg .map-region-node .map-label tspan.map-code { fill: var(--map-code-ink); }
 .map-colour-ring { fill: none; stroke: none; pointer-events: none; }
 /* 0.5.28: a zone node's own colour (inline in the sealed body) paints its body like a main pill. */
 .map-region-node.has-colour { --nc: var(--node-grey); }

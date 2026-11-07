@@ -2204,7 +2204,7 @@ export function createMapView(
   /** Chip rect (globe, `#N`, thread) in host-local px. */
   function linkHitRect(id: string, anchorSel: string): { x: number; y: number; w: number; h: number } | null {
     const hit = host
-      .querySelector(`.map-node[data-id="${CSS.escape(id)}"]`)
+      .querySelector(`.map-node[data-id="${CSS.escape(id)}"], .map-region-node[data-scoped-id="${CSS.escape(id)}"]`)
       ?.querySelector(anchorSel);
     if (!hit) return null;
     const r = hit.getBoundingClientRect();
@@ -4476,6 +4476,15 @@ export function createMapView(
     const key = g.getAttribute('data-scoped-id') || '';
     e.preventDefault();
     e.stopPropagation();
+    if (t?.closest?.('.map-link-hit')) {
+      // 0.6.6: globe on a zone node opens the same Links popover, from the zone's own doc.
+      focusMapForKeys();
+      setRegionFocus(key);
+      const hit = regionBox(key);
+      const zn = hit?.r.host.doc && hit.b.localId ? findNode(hit.r.host.doc.nodes, hit.b.localId) : null;
+      if (zn) showLinkPop(key, zn.title || '');
+      return;
+    }
     if (t?.closest?.('.map-task-hit, .map-task-glyph')) {
       // Same toggle as a main Map row: applyTaskToggle → onRegionTaskToggle (re-seal path).
       focusMapForKeys();
@@ -4905,16 +4914,25 @@ export function createMapView(
             const tx = b.x + (task ? TASK_LEAD : PILL_PAD_X);
             const taskSvg = task ? taskLeadSvg(task, { x: b.x, y: b.y, h: b.h, cy, lead: TASK_LEAD }) : '';
             const textY = lines.length <= 1 ? cy + lh * 0.25 : cy + lh * 0.25 - ((lines.length - 1) * lh) / 2;
-            const textSvg = tip + taskSvg + (lines.length <= 1
-              ? `<text x="${tx}" y="${textY}" ${fa}>${esc(lines[0] ?? t)}</text>`
-              : `<text x="${tx}" y="${textY}" ${fa}>${lines.map((l, i) => `<tspan x="${tx}"${i ? ` dy="${lh}"` : ''}>${esc(l)}</tspan>`).join('')}</text>`);
             // Caption column, as a main pill's data-text-w: the measured width minus the fold slot and the task lead.
             const textW = Math.max(1, Math.round(b.w - slot - (task ? TASK_LEAD : 0)));
+            // 0.6.6 (Colin t2560u): a zone node paints its caption through the same rich path as a
+            // main pill (multiLineText + richLines), so `code`, bold and italic render inside a
+            // secure zone too. Folded / locked pills keep the plain glyph text.
+            const rich = measured?.richLines?.length ? measured.richLines : null;
+            const textSvg = tip + taskSvg + (rich
+              ? multiLineText(lines, tx, cy, textW, rich, fpx, 400)
+              : lines.length <= 1
+                ? `<text x="${tx}" y="${textY}" ${fa}>${esc(lines[0] ?? t)}</text>`
+                : `<text x="${tx}" y="${textY}" ${fa}>${lines.map((l, i) => `<tspan x="${tx}"${i ? ` dy="${lh}"` : ''}>${esc(l)}</tspan>`).join('')}</text>`);
+            // 0.6.6 (Colin t2552u): a zone node with a caption link gets the globe, as a main pill does.
+            const zoneLinks = node ? captionLinks(node.title || '').filter((l) => !l.pnid) : [];
+            const zoneGlobe = zoneLinks.length ? globeGlyphSvg(boxRight - 2, b.y + 8) : '';
             const grip = folded ? '' : widthGripSvg(boxRight, b.y, b.h, textW, regionFocus === b.key || widthHotKey === b.key);
             // 0.5.28: a zone node's own colour paints its body like a main pill (seal chrome keeps its look).
             const zc = node && !folded ? resolveColour(node.color) : null;
             const zcls = zc ? ` has-colour colour-${zc}${node!.colorFill ? ` colour-fill${isSolidColour(zc) ? ' is-solid' : isHighlighter(zc) ? ' is-hl' : isAudroam(zc) ? ' is-au' : ''}` : ''}` : '';
-            return `<g class="map-region-node${zcls}${folded ? ' map-region-pill' : ''}${locked && r.host.kind === 'sealed' ? ' map-region-locked' : ''}${b.collapsed ? ' collapsed' : ''}" id="${esc(regionDomId(b.key))}" role="treeitem" aria-selected="false"${b.foldable ? ` aria-expanded="${b.collapsed ? 'false' : 'true'}"` : ''} aria-label="${esc(aria)}" data-scoped-id="${esc(b.key)}" data-region-id="${esc(r.host.id)}" data-text-w="${textW}"><rect class="map-region-body" x="${b.x}" y="${b.y}" width="${Math.max(1, b.w - slot)}" height="${b.h}" rx="${Math.min(14, b.h / 2)}"/>${textSvg}${chrome}${kidChip}${grip}</g>`;
+            return `<g class="map-region-node${zcls}${folded ? ' map-region-pill' : ''}${locked && r.host.kind === 'sealed' ? ' map-region-locked' : ''}${b.collapsed ? ' collapsed' : ''}" id="${esc(regionDomId(b.key))}" role="treeitem" aria-selected="false"${b.foldable ? ` aria-expanded="${b.collapsed ? 'false' : 'true'}"` : ''} aria-label="${esc(aria)}" data-scoped-id="${esc(b.key)}" data-region-id="${esc(r.host.id)}" data-text-w="${textW}"><rect class="map-region-body" x="${b.x}" y="${b.y}" width="${Math.max(1, b.w - slot)}" height="${b.h}" rx="${Math.min(14, b.h / 2)}"/>${textSvg}${zoneGlobe}${chrome}${kidChip}${grip}</g>`;
           })
           .join('');
         return cloud + zoneCloudSvg + edges + inner + pills + cloudFold + tools;
