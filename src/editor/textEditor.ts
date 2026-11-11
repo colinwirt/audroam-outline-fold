@@ -365,6 +365,7 @@ function buildEditor(host: HTMLElement, initial: string, opts: TextEditorOptions
       textWidthCh: widthCh,
       focus: opts.focus,
       followInText: opts.followInText,
+      lineOf: opts.lineOf,
       onUnlockZone: opts.onUnlockZone,
     }));
   }

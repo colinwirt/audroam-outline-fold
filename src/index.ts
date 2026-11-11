@@ -79,9 +79,18 @@ export {
   nextSessionId,
   isSessionId,
   SESSION_ID_PREFIX,
-  nodeMapKey,
   type AutoIdOptions,
 } from './nodeAddress.js';
+
+export {
+  createSessionIndex,
+  isViewKey,
+  isBlankNode,
+  parsedLineOf,
+  parsedLinesOf,
+  VIEW_KEY_PREFIX,
+  type SessionIndex,
+} from './sessionIndex.js';
 
 export type {
   ValidationSeverity,

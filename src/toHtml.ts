@@ -2,6 +2,7 @@ import { isSealedBranchPayload } from './sealedState.js';
 import { nodeIconHtml } from './emoji/icons.js';
 import { resolveColour, colourVar } from './nodeColour.js';
 import { timeLeafKind } from './timeLeaf.js';
+import { isBlankNode } from './sessionIndex.js';
 import { isCollapsed } from './fold.js';
 import { captionToHtml } from './captionRich.js';
 import { iconForNode, iconForTask } from './icons.js';
@@ -25,6 +26,11 @@ function renderNode(
   inherited: { c: string; fill: boolean } | null = null,
 ): string {
   const p = opts.classPrefix;
+  // 0.6.6: a blank `- ` line is vertical space in the Outline (not a row: no
+  // treeitem, skipped by the keyboard and screen readers). The Map hides it.
+  if (isBlankNode(node)) {
+    return `<li class="${p}-spacer" role="none" aria-hidden="true" data-blank="true" data-testid="of-spacer"></li>`;
+  }
   const collapsed = node.id ? isCollapsed(doc, node.id) : false;
   const flags = node.flags ?? [];
   const open = node.regionState === 'open';

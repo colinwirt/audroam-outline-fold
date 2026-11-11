@@ -186,6 +186,14 @@
 .of-node[data-collapsed="true"] > .of-children {
   display: none;
 }
+.of-spacer {
+  /* 0.6.6: a blank line in the text is empty vertical space in the Outline. */
+  list-style: none;
+  display: block;
+  height: var(--of-spacer-h, 0.9em);
+  pointer-events: none;
+}
+
 .of-row {
   display: flex;
   align-items: center;

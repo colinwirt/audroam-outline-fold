@@ -98,8 +98,9 @@ describe('0.5.22 colour + icon in the layout block', () => {
 
   it('UI set on a node without an id mints one; fill and icon go to layout', async () => {
     const { mv, doc } = await paint('- A <id:a>\n- B\n');
-    const bKey = doc().nodes[1]!.id ?? doc().nodes[1]!.autoId ?? '2';
-    const keyB = (mv.nodeMenuEntries && bKey) as string;
+    // 0.6.6: an id-less line is addressed by its view key, never by its place.
+    const keyB = mv.viewKey(doc().nodes[1]!) as string;
+    expect(keyB).toMatch(/^__sid-/);
     mv.setNodeColour(keyB, 'creek');
     const b = doc().nodes[1]!;
     expect(b.id && !b.id.startsWith('__tmp')).toBeTruthy();

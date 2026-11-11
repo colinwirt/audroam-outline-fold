@@ -29,7 +29,6 @@ import {
   toggleFold,
   validateDocument,
 } from '../src/index.js';
-import { nodeMapKey, indexOutline } from '../src/nodeAddress.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const css = readFileSync(join(here, '../src/outline-fold.css'), 'utf8');
@@ -206,9 +205,9 @@ describe('Map classes, size and layout (TL1, TL4, TL5)', () => {
     ].join('\n');
     const doc = parse(md);
     const { nodes } = autoPackPositions(doc, { fontSize: 16 });
-    const order = indexOutline(doc.nodes);
     const kids = doc.nodes[0]!.children!;
-    const pos = kids.map((k) => nodes[nodeMapKey(k, order.get(k) || 0)]!);
+    // 0.6.6: standalone pack keys are the line's id (never a place number).
+    const pos = kids.map((k) => nodes[k.id!]!);
     const tlH = pillSize('Thu 8 Oct · 1:25', { timeLeaf: 'time', fontSize: 13.5 }).h;
     const gap = (i: number, hA: number, hB: number) => pos[i + 1]!.y - hB / 2 - (pos[i]!.y + hA / 2);
     expect(gap(0, tlH, tlH)).toBeCloseTo(TIME_LEAF_GAP_Y, 5);

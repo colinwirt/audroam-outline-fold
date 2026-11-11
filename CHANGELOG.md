@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased (0.6.6 candidate)
+
+### Session view keys for every node; no place-number keys (t2577u)
+
+- **Session index (`createSessionIndex`, `src/sessionIndex.ts`):** every node in a visualisation session gets a fresh view key `__sid-N`, authored `<id:N>` lines included. Fixed references (`<id:N>`, `__tmp-N`, `<r:N>` targets, host focus ids, deep links) resolve to the view key with `resolve()`; `refOf()` / `publicId()` go back. A duplicate authored id never shares a key: the first line owns the ref, the rest are listed in `duplicates()`.
+- **Map keys only by view key:** paint, hit-test (`data-sid`), layout, focus, selection, clouds, region anchors, style/width/fold writes. The place-number fallback (`nodeMapKey`, and the unreleased `outlineMapKeys` / `__pos-N` workaround) is **removed**. 40242: an id-less line at place 11 and `<id:11>` no longer share a pill.
+- **Host boundary unchanged for lines with ids:** `data-id`, `getFocusId`/`setFocusId`, `onFocusChange`, task/action/hop/note/thread events and the host layout use the line's id. A line with no id is a `__sid-N` there (it used to be its place number). Host layouts are read and written through a view (`viewLayout`) that keeps ids on the host object; entries for id-less lines stay session-only.
+- **Never serialized:** view keys live only in the index (not on nodes), the parser rejects ids starting with `_`, and a fold on an id-less line uses a `__tmp-` session id that serialize writes back as the line's `(+)`.
+- **Lines are derived, never keys:** `parse()` records each node's 0-based text line; the index keeps key ↔ line (`lineOf`, `keyAtLine`) and carries keys across re-parses by id, then the edit's line map, then caption. `createOutlineDoc` keeps one index re-synced on every parse (`sessionIndex()`, `lineOf()`, `keyAtLine()`) and shares it with the Map through `mapOptions().sessionIndex`. The text editor's Follow uses `lineOf` when given.
+- **Blank `- ` lines:** not drawn on the Map (nor in keyboard navigation) until they have content; typing on the line shows the same node (same view key). In the Outline (`toHtml`) a blank line is an `of-spacer` (vertical space, `role="none"`).
+- **API:** new `MapViewOptions.sessionIndex`, handle `viewKey()`, `nodeForKey()`, `hostId()`, `sessionIndex()`; `AutoPackOptions.keyOf`; `ResolveMapFocusOptions.keyOf`; exports `createSessionIndex`, `isViewKey`, `isBlankNode`, `parsedLineOf`, `parsedLinesOf`, `VIEW_KEY_PREFIX`. Standalone `autoPackPositions` keys by a unique line id, else a view key. Removed export: `nodeMapKey`.
+
 ## 0.6.5 — 2026-11-06
 
 ### Shared link labels, yank trailing URL, preview before navigate

@@ -38,6 +38,12 @@ export interface OutlineEditorOptions {
   /** "Follow in text": default on (`resolveFollowInText`). Pauses while the user types. */
   followInText?: () => boolean;
   /**
+   * 0.6.6: 0-based text line for a focus id (view key or fixed ref), from the doc's
+   * session index (`outlineDoc.lineOf`). Follow uses it first, so a line with no
+   * `<id:>` follows too; the line is derived from the key, never used as one.
+   */
+  lineOf?: (id: string) => number | null;
+  /**
    * 0.4.3 (QA D): click on a locked `<enc>` line (shown as a green secure zone) asks the host
    * to unlock that region with the same prompt as the Map and Outline.
    */
@@ -1039,6 +1045,12 @@ export function outlineEditor(opts: OutlineEditorOptions): Extension[] {
       }
       const local = id.includes(':') ? id.slice(id.lastIndexOf(':') + 1) : id;
       const doc = view.state.doc;
+      const ln = opts.lineOf?.(id);
+      if (typeof ln === 'number' && ln >= 0 && ln < doc.lines) {
+        const line = doc.line(ln + 1);
+        view.dispatch({ selection: { anchor: line.from }, effects: EditorView.scrollIntoView(line.from, { y: 'center' }) });
+        return;
+      }
       for (let i = 1; i <= doc.lines; i++) {
         const line = doc.line(i);
         if (line.text.includes(`<id:${local}>`)) {

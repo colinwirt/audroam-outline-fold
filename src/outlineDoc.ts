@@ -18,6 +18,7 @@ import { createIdAllocator, type IdDiagnostic, type IdScope } from './idAllocato
 import { serialize } from './serialize.js';
 import { mergeKeeping, syncPubLines } from './textMerge.js';
 import type { OutlineFoldDoc, OutlineNode } from './types.js';
+import { createSessionIndex, type SessionIndex } from './sessionIndex.js';
 import {
   createSealSessions,
   regionHostsFromSessions,
@@ -121,6 +122,16 @@ export interface OutlineDocHandle {
   /** Editor hook: unlocked regions the Text pane cannot show. serialise() refuses while non-empty. */
   setZoneProbe(fn: (() => RegionId[]) | null): void;
   root(): OutlineFoldDoc;
+  /**
+   * 0.6.6: the session index for this text (view key per line, fixed ref ↔ view key),
+   * re-synced on every re-parse so keys follow their lines through edits. Shared
+   * with a Map mounted with `mapOptions()`.
+   */
+  sessionIndex(): SessionIndex;
+  /** 0-based text line of a view key or fixed reference, from the current parse; null if unknown. */
+  lineOf(keyOrRef: string): number | null;
+  /** View key of the node on a 0-based text line of the current parse, or null. */
+  keyAtLine(line: number): string | null;
   readonly sessions: SealSessions;
   readonly store: RegionFoldStore;
   readonly focusLink: FocusLink;
@@ -138,6 +149,7 @@ export interface OutlineDocHandle {
   /** 0.4.15: cycle a main-doc task marker as a one-line text edit (never re-serialises). */
   toggleTask(id: string, ref?: MapNodeRef | number): { from: TaskState; to: TaskState } | null;
   mapOptions(onUnlock?: (region: RegionId) => void, onMore?: (branchId: string, rect: DOMRect) => void): {
+    sessionIndex: SessionIndex;
     getRegionHosts: () => RegionHostSpec[];
     regionFold: RegionFoldStore;
     onRegionUnlock: (region: RegionId) => void;
@@ -240,11 +252,14 @@ export function createOutlineDoc(o: OutlineDocOptions): OutlineDocHandle {
     }
   };
 
+  const index = createSessionIndex();
   const pinned = new Map<RegionId, OutlineNode>();
   const rootNow = (): OutlineFoldDoc => {
     if (parsedText !== text || !parsed) {
       try { parsed = parseText(text); } catch { parsed = { nodes: [], fold: { mode: '-', ids: [] } } as unknown as OutlineFoldDoc; }
       parsedText = text;
+      // Every re-parse: carry view keys onto the new nodes (id, then line map), refresh lines.
+      index.sync(parsed);
       rebind();
     }
     return parsed!;
@@ -573,8 +588,12 @@ export function createOutlineDoc(o: OutlineDocOptions): OutlineDocHandle {
       handle.setText(r.text, { source: 'host' });
       return { from: r.from, to: r.to };
     },
+    sessionIndex: () => { rootNow(); return index; },
+    lineOf: (k) => { rootNow(); const key = index.resolve(k); return key ? index.lineOf(key) : null; },
+    keyAtLine: (line) => { rootNow(); return index.keyAtLine(line); },
     mapOptions(onUnlock, onMore) {
       return {
+        sessionIndex: index,
         getRegionHosts: () => handle.regionHosts(),
         regionFold: store,
         onRegionUnlock: (region) => onUnlock?.(region),

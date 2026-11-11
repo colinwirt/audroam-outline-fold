@@ -15,11 +15,6 @@ export function indexOutline(nodes: OutlineNode[]): Map<OutlineNode, number> {
   return map;
 }
 
-/** Authored id, otherwise the 1-based position. Position is not written to the line. */
-export function nodeMapKey(node: OutlineNode, position: number): string {
-  return node.id || String(position);
-}
-
 export function collectNodeIds(nodes: OutlineNode[]): Set<string> {
   const ids = new Set<string>();
   const walk = (list: OutlineNode[]) => {

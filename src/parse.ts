@@ -1,5 +1,6 @@
 import { findSealedOrphans, syncSealedLabels, isEncRef, KID_RE } from './sealedState.js';
 import { SESSION_ID_PREFIX } from './nodeAddress.js';
+import { recordParsedLine, recordParsedLines } from './sessionIndex.js';
 
 /** `<enc:KEYID>` (of-seal-v2): the line names a key id only. */
 function encRef(body: string): SealedPayload | null {
@@ -700,6 +701,9 @@ export function parse(text: string, opts?: ParseOptions): OutlineFoldDoc {
   const expandedMarker = fm.expandedMarker;
 
   const lines = body.split(/\r?\n/);
+  // Lines before the outline body (frontmatter): parsed lines are text lines.
+  const lineBase = text.endsWith(head.body) ? (text.slice(0, text.length - head.body.length).match(/\n/g)?.length ?? 0) : 0;
+  let lineNo = lineBase - 1;
   const roots: OutlineNode[] = [];
   const stack: OutlineNode[] = [];
   const indentToDepth: number[] = [];
@@ -707,6 +711,7 @@ export function parse(text: string, opts?: ParseOptions): OutlineFoldDoc {
   const inlineCollapsedBare: OutlineNode[] = [];
 
   for (const raw of lines) {
+    lineNo += 1;
     if (!raw.trim()) continue;
     const w = indentWidth(raw);
     const trimmedStart = raw.trimStart();
@@ -738,6 +743,7 @@ export function parse(text: string, opts?: ParseOptions): OutlineFoldDoc {
       title: meta.title,
       depth,
     };
+    recordParsedLine(node, lineNo);
     if (meta.id) node.id = meta.id;
     if (meta.kind) node.kind = meta.kind;
     if (meta.flags) node.flags = meta.flags;
@@ -778,6 +784,7 @@ export function parse(text: string, opts?: ParseOptions): OutlineFoldDoc {
     stack.push(node);
   }
 
+  recordParsedLines(roots, text.split(/\r?\n/));
   // Trailer payloads attach by id (overwrite any inline <enc:>).
   attachPayloads(roots, peeled.payloads);
   // Layout keys are ids, or a 1-based position when the line has no id.
