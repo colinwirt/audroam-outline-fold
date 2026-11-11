@@ -674,6 +674,9 @@ export {
   type SecureZoneChromeOptions,
   mountRenameForm,
   type RenameFormOptions,
+  mountCreateKeyPrompt,
+  type CreateKeyPromptOptions,
+  type CreateKeyPromptHandle,
   type RestoreEarlierHook,
 } from './sealUi.js';
 export {

@@ -1055,6 +1055,12 @@ div.of-unlock.of-unlock-sheet { border-radius: 12px 12px 8px 8px; border-left-wi
 .of-unlock.is-error .of-unlock-msg { color: #a33; }
 @keyframes of-derive { from { width: 15%; } to { width: 85%; } }
 @media (pointer: coarse) { .of-unlock button:not(.of-q), .of-unlock-pass { min-height: 44px; } }
+/* 0.7.0 new-key card (reuses the unlock card look). */
+.of-newkey-strength { min-height: 1.3em; margin-top: 6px; font-size: 12px; }
+.of-newkey-strength[data-strength="short"] { color: var(--of-danger, #b42318); }
+.of-newkey-strength[data-strength="ok"] { color: var(--of-seal-stroke, #3d8a5f); }
+.of-newkey-hint { font-size: 12px; margin-top: 2px; }
+.of-newkey-user { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); border: 0; }
 
 /* 05 secure zone */
 .of-secure-zone { background: #eef8f2; border-left: 3px solid #3d8a5f; margin: 2px 0; }

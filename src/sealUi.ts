@@ -7,12 +7,13 @@
  *  - `secureZoneChrome`   header "Secure zone · k1 · memory only", idle countdown, buttons, dashed end.
  *  - `mountMemoryViewer`  read-only memory-only viewer of an unlocked region with the same chrome.
  *  - `mountSealStatusChip` global chip "Unlocked · k1 · re-seals on save" (+ unsaved / saved).
+ *  - `mountCreateKeyPrompt` new-key card: password field with autocomplete=new-password, strength line.
  */
 import type { RegionId } from './hostApi.js';
 import type { SealSessions, SealSessionSnapshot } from './sealSession.js';
 import { serialize } from './serialize.js';
 import { SealError, type SealedViewer } from './sealedBranch.js';
-import { looksLikeSecret } from './passphrase.js';
+import { looksLikeSecret, passphraseStrength, generatePassphrase, MIN_NEW_PASSPHRASE, MIN_NEW_PASSPHRASE_TEXT } from './passphrase.js';
 
 /** Host-supplied 'Restore earlier version' for a damaged seal (shown only when history exists). */
 export interface RestoreEarlierHook {
@@ -448,8 +449,6 @@ export interface PassphrasePromptOptions {
   anchorEl?: Element | null;
   container?: HTMLElement;
   inline?: boolean;
-  /** Prefill (demo password only). */
-  initial?: string;
   /** Try the passphrase; resolve true when it opened. "Deriving…" shows while pending. */
   attempt: (pass: string) => Promise<boolean>;
   onPasteFromManager?: () => string | null | Promise<string | null>;
@@ -488,7 +487,6 @@ export function promptPassphrase(o: PassphrasePromptOptions): Promise<boolean> {
       },
     } as unknown as SealSessions;
     const h = mountUnlockPrompt({ sessions: fake, region: 'prompt' as RegionId, anchorEl: o.anchorEl, label: o.label, container: o.container, inline: o.inline, onPasteFromManager: o.onPasteFromManager });
-    if (o.initial) (h.el.querySelector('.of-unlock-pass') as HTMLInputElement).value = o.initial;
     void h.done.then(resolve);
   });
 }
@@ -826,4 +824,182 @@ export function mountRenameForm(o: RenameFormOptions): { el: HTMLElement; close:
   });
   label.focus({ preventScroll: true });
   return { el: box, close };
+}
+
+export interface CreateKeyPromptOptions {
+  /**
+   * Create the key with the passphrase (normally `createKey(doc, pass)`). Resolve when done;
+   * throw (or resolve false) to keep the card open with an error. The card keeps nothing.
+   */
+  create: (pass: string) => Promise<boolean | void>;
+  /** Element to sit by. Omit for a centred sheet. */
+  anchorEl?: Element | null;
+  /** Mount point (default document.body). */
+  container?: HTMLElement;
+  /** Render in flow inside `container` instead of a floating card. */
+  inline?: boolean;
+  /** Accessible description, e.g. the note's public name. */
+  label?: string;
+  /**
+   * Account name a password manager files the new passphrase under (a hidden
+   * `autocomplete="username"` field). Use something public, such as the note title.
+   */
+  account?: string;
+  /** Show a "Generate" button (EFF word list, 5 words). Default true. */
+  allowGenerate?: boolean;
+  /** Called after create or cancel. Focus returns to `anchorEl`. */
+  onClose?: (created: boolean) => void;
+}
+
+export interface CreateKeyPromptHandle {
+  el: HTMLElement;
+  close(created?: boolean): void;
+  /** Resolves true when the key was created, false on cancel. */
+  done: Promise<boolean>;
+}
+
+/**
+ * 0.7.0 new-key card (same look as the unlock card). One empty `type="password"` field with
+ * `autocomplete="new-password"`, so the browser or password manager offers and saves a
+ * strong passphrase. The strength line follows `passphraseStrength`; Create stays disabled
+ * under ${MIN_NEW_PASSPHRASE} characters. Nothing is prefilled and nothing is stored: the field is
+ * cleared on submit and on close.
+ */
+export function mountCreateKeyPrompt(o: CreateKeyPromptOptions): CreateKeyPromptHandle {
+  const card = el('div', 'of-unlock of-newkey');
+  card.setAttribute('role', 'dialog');
+  card.setAttribute('aria-modal', 'false');
+  const title = el('div', 'of-unlock-title');
+  const tt = el('b', undefined, 'New key');
+  tt.id = `of-newkey-t-${Math.random().toString(36).slice(2, 8)}`;
+  title.append('🔑 ', tt);
+  card.setAttribute('aria-labelledby', tt.id);
+  if (o.label) card.setAttribute('aria-description', o.label);
+  const form = el('form', 'of-unlock-form');
+  form.autocomplete = 'on';
+  let user: HTMLInputElement | null = null;
+  if (o.account) {
+    user = el('input', 'of-newkey-user');
+    user.type = 'text';
+    user.autocomplete = 'username';
+    user.value = o.account;
+    user.readOnly = true;
+    user.tabIndex = -1;
+    user.setAttribute('aria-hidden', 'true');
+    form.append(user);
+  }
+  const input = el('input', 'of-unlock-pass of-newkey-pass');
+  input.type = 'password';
+  input.autocomplete = 'new-password';
+  input.minLength = MIN_NEW_PASSPHRASE;
+  input.required = true;
+  input.spellcheck = false;
+  input.setAttribute('autocapitalize', 'off');
+  input.setAttribute('aria-label', 'New passphrase');
+  input.placeholder = 'New passphrase';
+  const field = el('div', 'of-unlock-field');
+  field.append(input);
+  const gen = o.allowGenerate === false ? null : el('button', 'of-newkey-gen', 'Generate');
+  if (gen) { gen.type = 'button'; field.append(gen); }
+  const strength = el('div', 'of-newkey-strength');
+  strength.id = `${tt.id}-s`;
+  strength.setAttribute('aria-live', 'polite');
+  input.setAttribute('aria-describedby', strength.id);
+  const hint = el('div', 'of-newkey-hint of-mut', `${MIN_NEW_PASSPHRASE_TEXT} Let your password manager save it. It cannot be recovered.`);
+  const row = el('div', 'of-unlock-row');
+  const msg = el('div', 'of-unlock-msg');
+  msg.setAttribute('role', 'status');
+  msg.setAttribute('aria-live', 'polite');
+  const bar = el('div', 'of-unlock-bar');
+  bar.append(el('i'));
+  const cancel = el('button', 'of-unlock-cancel', 'Cancel');
+  cancel.type = 'button';
+  const ok = el('button', 'of-unlock-ok', 'Create key');
+  ok.type = 'submit';
+  row.append(msg, bar, cancel, ok);
+  form.append(field, strength, hint, row);
+  card.append(title, form);
+  if (o.inline) card.classList.add('of-unlock-inline');
+  (o.container ?? document.body).appendChild(card);
+
+  let resolve!: (v: boolean) => void;
+  const done = new Promise<boolean>((r) => (resolve = r));
+  let closed = false;
+  let busy = false;
+
+  const place = () => {
+    if (o.inline) return;
+    const r = o.anchorEl?.getBoundingClientRect?.() ?? null;
+    const vp = { w: window.visualViewport?.width ?? window.innerWidth, h: window.visualViewport?.height ?? window.innerHeight };
+    const box = clampPromptBox(r, { w: 340, h: card.offsetHeight || 200 }, vp);
+    Object.assign(card.style, { position: 'fixed', left: `${box.left}px`, top: `${box.top}px`, width: `${box.width}px`, maxWidth: 'calc(100vw - 16px)' });
+    card.classList.toggle('of-unlock-sheet', box.sheet);
+  };
+  const update = () => {
+    const s = passphraseStrength(input.value);
+    strength.textContent = s ? `Strength: ${s}` : '';
+    strength.dataset.strength = s === 'OK' ? 'ok' : s ? 'short' : '';
+    ok.disabled = busy || s !== 'OK';
+    input.disabled = busy;
+    if (gen) gen.disabled = busy;
+    card.classList.toggle('is-deriving', busy);
+    if (busy) msg.textContent = 'Deriving…';
+  };
+  const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && !busy) { e.preventDefault(); close(false); } };
+  const onResize = () => place();
+  card.addEventListener('keydown', onKey);
+  window.addEventListener('resize', onResize);
+  window.visualViewport?.addEventListener('resize', onResize);
+
+  function close(created = false): void {
+    if (closed) return;
+    closed = true;
+    input.value = '';
+    window.removeEventListener('resize', onResize);
+    window.visualViewport?.removeEventListener('resize', onResize);
+    card.remove();
+    (o.anchorEl as HTMLElement | null | undefined)?.focus?.({ preventScroll: true });
+    o.onClose?.(created);
+    resolve(created);
+  }
+
+  input.addEventListener('input', () => {
+    card.classList.remove('is-error');
+    if (!busy) msg.textContent = '';
+    update();
+  });
+  gen?.addEventListener('click', () => {
+    // Shown as text so the user can see and save it; it goes back to dots on the next edit.
+    input.type = 'text';
+    input.value = generatePassphrase();
+    const back = () => { input.type = 'password'; input.removeEventListener('input', back); };
+    input.addEventListener('input', back);
+    update();
+    input.focus();
+  });
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (ok.disabled || busy) return;
+    const pass = input.value;
+    if (passphraseStrength(pass) !== 'OK') return void input.focus();
+    busy = true;
+    update();
+    let created = false;
+    try { created = (await o.create(pass)) !== false; } catch { created = false; }
+    busy = false;
+    if (created) {
+      input.value = '';
+      return close(true);
+    }
+    card.classList.add('is-error');
+    msg.textContent = "Couldn't create the key";
+    update();
+    if (!closed) input.focus();
+  });
+  cancel.addEventListener('click', () => { if (!busy) close(false); });
+
+  update();
+  place();
+  input.focus({ preventScroll: true });
+  return { el: card, close, done };
 }
