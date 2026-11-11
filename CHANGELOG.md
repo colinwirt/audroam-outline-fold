@@ -28,6 +28,11 @@ Folds in the 0.6.6 candidate below. **BREAKING** where marked.
 - **Width popover:** while it is open, `t` remains the Fit text mnemonic; the task shortcut applies when that menu is closed.
 - New exports: `nextTaskCycle`, `setTask`, `setTaskMark`, `setTaskLine`, `setTaskAtLine`.
 
+### Fix: glued `<r:>` / `<t:>` tag no longer inserts a duplicate line
+
+- A tag with no space before it (`3.92<r:5>`) is still a jump / note tag, but it stays mid-caption so serialize writes the original spacing. `(+)` remains the collapsed-fold marker.
+- `mergeKeeping` pairs body lines by node identity (authored id, then session-tree order), not by caption text or jump target. Folding or otherwise writing that line through the Map updates it in place; it never inserts `3.92 <r:5> (+)` beside the original.
+
 ## 0.6.6 candidate (folded into 0.7.0)
 
 ### Session view keys for every node; no place-number keys (t2577u)

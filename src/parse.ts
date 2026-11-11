@@ -92,10 +92,17 @@ const ACTION_TRAILING = ACTION_RE.trailing;
 const THREAD_RE = tagRe('thread', FREE_VALUE);
 const THREAD_SPAN = THREAD_RE.span;
 const THREAD_TRAILING = THREAD_RE.trailing;
+/**
+ * Trailing `<t:N>` / `<r:x>` (the tag group): a leading space, or the whole
+ * remaining line. A glued tag (`3.92<r:5>`) is still a tag, but stays mid-caption
+ * so serialize keeps the original spacing.
+ */
+const trailingLinkRe = (name: string, value: string) =>
+  new RegExp(`(?:^|\\s)<\\s*${name}\\s*:\\s*(${value})\\s*>\\s*$`, 'i');
 /** Audroam result-row note link: `<t:101>`, also `<t: 101>`, `< t : 101 >`. Digits only. */
 const NOTE_LINK_RE = tagRe('t', '\\d+');
 const NOTE_LINK_SPAN = NOTE_LINK_RE.span;
-const NOTE_LINK_TRAILING = NOTE_LINK_RE.trailing;
+const NOTE_LINK_TRAILING = trailingLinkRe('t', '\\d+');
 /** How serialize writes a note link when the text gave no spelling. */
 const NOTE_LINK_DEFAULT = (id: string) => `<t:${id}>`;
 /**
@@ -104,7 +111,7 @@ const NOTE_LINK_DEFAULT = (id: string) => `<t:${id}>`;
  */
 const JUMP_RE = tagRe('r', ID_VALUE);
 const JUMP_SPAN = JUMP_RE.span;
-const JUMP_TRAILING = JUMP_RE.trailing;
+const JUMP_TRAILING = trailingLinkRe('r', ID_VALUE);
 /** Mid-caption `<t:N>` or `<r:x>`, in source order. */
 const LINK_ANY = new RegExp(`<\\s*(?:t\\s*:\\s*(\\d+)|r\\s*:\\s*(${ID_VALUE}))\\s*>`, 'gi');
 /** A `<t:N>` or `<r:x>` (spaced too) at the end, with the space before it. */

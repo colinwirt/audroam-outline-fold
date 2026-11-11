@@ -6,7 +6,16 @@
  * mergeKeeping(prev, normPrev, next): `normPrev` is the serialiser's output for `prev` with no
  * change, `next` is its output after the change. Only the lines that differ between normPrev and
  * next are replaced in prev; every other line of prev stays byte for byte. Pure.
+ *
+ * Body lines are paired by node identity (authored `<id:>`, then session-tree order
+ * of the parsed nodes), never by caption text or jump target. A glued tag that
+ * serialize would space out (`3.92<r:5>` vs `3.92 <r:5>`) is the same node, so a
+ * Map fold updates that line in place instead of inserting a copy.
  */
+import { parse } from './parse.js';
+import { parsedLineOf } from './sessionIndex.js';
+import type { OutlineNode } from './types.js';
+
 const key = (line: string): string => line.replace(/\s+/g, ' ').trim();
 /** 0.4.17: a sealed line is its tag; its caption is not content (dropped by the serialiser). */
 const SEAL_TAG = /<enc:[^>]*>\s*<id:[^>]+>/;
@@ -42,23 +51,91 @@ const sameSourceLine = (x: string, y: string): boolean => {
   return !!cx && cx === cy;
 };
 
+const LINK_IN_TITLE = /\s*<\s*(?:t\s*:\s*\d+|r\s*:\s*[A-Za-z0-9][A-Za-z0-9_-]*)\s*>\s*/gi;
+const captionKey = (title: string): string =>
+  title.replace(LINK_IN_TITLE, ' ').replace(/\s+/g, ' ').trim();
+
+type NodeRow = { line: number; sig: string; authored?: string };
+
+/** One row per parsed node, with its 0-based source line. */
+function nodeRows(text: string): NodeRow[] | null {
+  try {
+    const doc = parse(text, { sessionIds: true });
+    const out: NodeRow[] = [];
+    const walk = (list: OutlineNode[] | undefined) => {
+      for (const n of list || []) {
+        const line = parsedLineOf(n);
+        if (line != null) {
+          const links = (n.links ?? [])
+            .filter((l) => l.form === 'tag')
+            .map((l) => `${l.kind}:${l.target}`)
+            .join(',');
+          out.push({
+            line,
+            sig: `${n.depth}\0${captionKey(n.title)}\0${n.task ?? ''}\0${links}`,
+            authored: n.id && !n.autoId ? n.id : undefined,
+          });
+        }
+        walk(n.children);
+      }
+    };
+    walk(doc.nodes);
+    return out;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * normPrev line index → prev line index. Authored ids first, then remaining
+ * nodes in document order by a spacing-insensitive signature (depth, caption
+ * without inline t/r tags, task, tag links). Independent parses mint their own
+ * `__tmp-N` ids, so those are not compared.
+ */
+function nodeLineMap(prev: string, norm: string): Map<number, number> | null {
+  const P = nodeRows(prev);
+  const N = nodeRows(norm);
+  if (!P || !N) return null;
+  const out = new Map<number, number>();
+  const usedP = new Set<number>();
+  const pByAuth = new Map<string, NodeRow>();
+  for (const r of P) if (r.authored && !pByAuth.has(r.authored)) pByAuth.set(r.authored, r);
+  for (const r of N) {
+    if (!r.authored) continue;
+    const p = pByAuth.get(r.authored);
+    if (!p || usedP.has(p.line)) continue;
+    out.set(r.line, p.line);
+    usedP.add(p.line);
+  }
+  const a = P.filter((r) => !usedP.has(r.line));
+  const b = N.filter((r) => !out.has(r.line));
+  for (const [i, j] of match(a.map((r) => r.sig), b.map((r) => r.sig), (x, y) => x === y)) {
+    out.set(b[j]!.line, a[i]!.line);
+  }
+  return out;
+}
+
 /** LCS pairs (i in a, j in b) on keyed lines; common prefix / suffix trimmed first. */
-function match(a: string[], b: string[], eq: (x: string, y: string) => boolean): Array<[number, number]> {
+function match(
+  a: string[],
+  b: string[],
+  eq: (x: string, y: string, i: number, j: number) => boolean,
+): Array<[number, number]> {
   const out: Array<[number, number]> = [];
   let s = 0;
-  while (s < a.length && s < b.length && eq(a[s]!, b[s]!)) { out.push([s, s]); s++; }
+  while (s < a.length && s < b.length && eq(a[s]!, b[s]!, s, s)) { out.push([s, s]); s++; }
   let ea = a.length, eb = b.length;
   const tail: Array<[number, number]> = [];
-  while (ea > s && eb > s && eq(a[ea - 1]!, b[eb - 1]!)) { ea--; eb--; tail.push([ea, eb]); }
+  while (ea > s && eb > s && eq(a[ea - 1]!, b[eb - 1]!, ea - 1, eb - 1)) { ea--; eb--; tail.push([ea, eb]); }
   const n = ea - s, m = eb - s;
   if (n && m) {
     const dp: Uint32Array[] = Array.from({ length: n + 1 }, () => new Uint32Array(m + 1));
     for (let i = n - 1; i >= 0; i--) for (let j = m - 1; j >= 0; j--) {
-      dp[i]![j] = eq(a[s + i]!, b[s + j]!) ? dp[i + 1]![j + 1]! + 1 : Math.max(dp[i + 1]![j]!, dp[i]![j + 1]!);
+      dp[i]![j] = eq(a[s + i]!, b[s + j]!, s + i, s + j) ? dp[i + 1]![j + 1]! + 1 : Math.max(dp[i + 1]![j]!, dp[i]![j + 1]!);
     }
     let i = 0, j = 0;
     while (i < n && j < m) {
-      if (eq(a[s + i]!, b[s + j]!)) { out.push([s + i, s + j]); i++; j++; }
+      if (eq(a[s + i]!, b[s + j]!, s + i, s + j)) { out.push([s + i, s + j]); i++; j++; }
       else if (dp[i + 1]![j]! >= dp[i]![j + 1]!) i++; else j++;
     }
   }
@@ -69,11 +146,17 @@ export function mergeKeeping(prev: string, normPrev: string, next: string): stri
   if (next === normPrev) return prev;
   if (prev === normPrev) return next;
   const P = prev.split('\n'), N = normPrev.split('\n'), X = next.split('\n');
-  // prev line for each normPrev line (loose: whitespace-insensitive).
+  // prev line for each normPrev line: node identity first, then loose text for
+  // layout / trailer lines that are not nodes.
   const pOf = new Map<number, number>();
+  const n2p = nodeLineMap(prev, normPrev);
+  const sameLine = (x: string, y: string, i: number, j: number): boolean => {
+    if (n2p?.has(j)) return n2p.get(j) === i;
+    return sameSourceLine(x, y);
+  };
   // A sealed line matches by its tag; the normalised line (fixed label) replaces the stray caption.
   const relabel = new Set<number>();
-  for (const [i, j] of match(P, N, sameSourceLine)) {
+  for (const [i, j] of match(P, N, sameLine)) {
     pOf.set(j, i);
     // Sealed captions are relabelled. A plain line that only gained a bullet is not:
     // an edit elsewhere must leave `done` as the user typed it.
