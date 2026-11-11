@@ -1,4 +1,5 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, beforeAll, afterAll } from 'vitest';
+import { createHash } from 'node:crypto';
 import {
   parse,
   serialize,
@@ -20,6 +21,11 @@ import {
   type OutlineFoldDoc,
   type OutlineNode,
 } from '../src/index.js';
+import { setArgon2Provider, installDefaultArgon2Provider } from '../src/sealedBranch.js';
+
+// Heavy KDF: fast stub (the real Argon2id is covered in kdf-argon2id.test.ts).
+beforeAll(() => setArgon2Provider(async (pw, salt) => new Uint8Array(createHash('sha256').update(pw).update(salt).digest()) as Uint8Array<ArrayBuffer>));
+afterAll(() => installDefaultArgon2Provider());
 
 const PASS = 'pw for edge cases';
 const CTX = { noteId: 'note-1', ownerId: 'owner-1' };
@@ -248,7 +254,7 @@ describe('viewer lifecycle and fixed mode', () => {
     const { doc } = await sealed();
     const view = await openSealedBranch(doc, 'v', CTX);
     view.doc.nodes[0]!.title = 'x';
-    doc.keyring = doc.keyring!.map((k) => ({ ...k, kdf: k.kdf.replace('600000', '700000') }));
+    doc.keyring = doc.keyring!.map((k) => ({ ...k, kdf: k.kdf.replace(',t=3,', ',t=4,') }));
     await expect(view.save()).rejects.toThrow(/key entry changed/);
   });
 

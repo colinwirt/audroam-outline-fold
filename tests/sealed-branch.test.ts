@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeEach } from 'vitest';
-import { hkdfSync, createDecipheriv } from 'node:crypto';
+import { describe, it, expect, beforeEach, beforeAll, afterAll } from 'vitest';
+import { hkdfSync, createDecipheriv, createHash } from 'node:crypto';
 import {
   parse,
   serialize,
@@ -21,6 +21,7 @@ import {
   type OutlineFoldDoc,
   type OutlineNode,
 } from '../src/index.js';
+import { setArgon2Provider, installDefaultArgon2Provider } from '../src/sealedBranch.js';
 import { __installSecretForKat, __branchKeyBitsForKat, __encryptForKat, aadV2, unlockKeyring, b64u, unb64u, inspectSealV3 } from '../src/sealedBranch.js';
 
 const PASS = 'correct horse battery staple';
@@ -45,6 +46,9 @@ async function sealedDoc(pub?: string) {
   return { doc, kid: key.kid, text: serialize(doc) };
 }
 
+// Heavy KDF: fast stub (the real Argon2id is covered in kdf-argon2id.test.ts).
+beforeAll(() => setArgon2Provider(async (pw, salt) => new Uint8Array(createHash('sha256').update(pw).update(salt).digest()) as Uint8Array<ArrayBuffer>));
+afterAll(() => installDefaultArgon2Provider());
 beforeEach(() => { clearKeys(); setSealCipher('a256gcm'); });
 
 describe('sealed branches: format', () => {
@@ -167,8 +171,8 @@ describe('sealed branches: unlock, re-lock, fail closed', () => {
 describe('sealed branches: tamper and binding', () => {
   const cases: [string, (t: string) => string][] = [
     ['enc tag kid', (t: string) => t.replace('<enc:k1>', '<enc:k2>')],
-    ['keyring kdf params', (t: string) => t.replace(/i=600000/, 'i=600001')],
-    ['keyring kdf salt', (t: string) => t.replace(/(kdf: \S+salt=)(.)/, (_m, a, c) => a + (c === 'A' ? 'B' : 'A'))],
+    ['keyring kdf params', (t: string) => t.replace(/,t=3,/, ',t=4,')],
+    ['keyring kdf salt', (t: string) => t.replace(/(kdf: \$argon2id\$v=19\$m=\d+,t=\d,p=\d\$)(.)/, (_m, a, c) => a + (c === 'A' ? 'B' : 'A'))],
     ['keyring wrap', (t: string) => t.replace(/(wrap: a256gcm\.\S+\.)(.)/, (_m, a, c) => a + (c === 'A' ? 'B' : 'A'))],
   ];
   for (const [name, mut] of cases) {

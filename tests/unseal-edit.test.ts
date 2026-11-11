@@ -24,7 +24,7 @@ import {
   type OutlineNode,
   type SealState,
 } from '../src/index.js';
-import { inspectSealV3, setArgon2Provider } from '../src/sealedBranch.js';
+import { inspectSealV3, setArgon2Provider, installDefaultArgon2Provider } from '../src/sealedBranch.js';
 
 const PASS = 'correct horse battery staple';
 const CTX = { noteId: 'note-1', ownerId: 'owner-1' };
@@ -42,7 +42,7 @@ autoWidth: 20ch
 
 // Fake KDF: the test hook takes Argon2 off the clock (params in the header are ignored).
 beforeAll(() => setArgon2Provider(async (pw, salt) => new Uint8Array(createHash('sha256').update(pw).update(salt).digest()) as Uint8Array<ArrayBuffer>));
-afterAll(() => setArgon2Provider(null));
+afterAll(() => installDefaultArgon2Provider());
 beforeEach(() => { clearKeys(); setSealCipher('a256gcm'); });
 
 function find(nodes: OutlineNode[] | undefined, id: string): OutlineNode | undefined {

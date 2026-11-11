@@ -12,6 +12,15 @@
  * Spec: docs/seal-v3.md and docs/sealed-branches-approval.md §9.12 (OF-41..46).
  */
 import { xchacha20poly1305 } from '@noble/ciphers/chacha.js';
+import {
+  ARGON2_CAPS,
+  ARGON2_DEFAULT_PROFILE,
+  ARGON2_MOBILE_PROFILE,
+  ARGON2_SALT_BYTES,
+  argon2Profile,
+  createArgon2Provider,
+  type KdfProfile,
+} from './kdf.js';
 import { parse } from './parse.js';
 import { serialize } from './serialize.js';
 import { normalizeTaskMarkers } from './taskChrome.js';
@@ -80,27 +89,57 @@ export interface SealContext {
   depth?: number;
 }
 
+/**
+ * Progress and cancel for one passphrase derivation (Argon2id takes about a second on a
+ * desktop, longer on a phone). `onProgress` gets 0..1. Aborting `signal` rejects the call
+ * with the signal's reason (an `AbortError` by default), not with SealError.
+ */
+export interface KdfRunOptions {
+  onProgress?: (progress: number) => void;
+  signal?: AbortSignal;
+}
+
+/** Options for a new keyring wrap (createKey, changeKeyringPassphrase). */
+export interface KdfWriteOptions extends KdfRunOptions {
+  /** Argon2id cost profile for the new wrap. Default 'default' (64 MiB, t=3). The host decides. */
+  kdfProfile?: KdfProfile;
+}
+
 export type Argon2Provider = (
   passphrase: Uint8Array<ArrayBuffer>,
   salt: Uint8Array<ArrayBuffer>,
   params: { m: number; t: number; p: number; len: number },
+  run?: KdfRunOptions,
 ) => Promise<Uint8Array<ArrayBuffer>>;
 
 export const MAX_SEAL_DEPTH = 4;
 export const MAX_CT_CHARS = 1_400_000; // ~1 MiB plaintext
-const SALT_LEN = 16;
+const SALT_LEN = ARGON2_SALT_BYTES;
 const NONCE_LEN = 12; // v1 + keyring wrap (AES-GCM)
 const SECRET_LEN = 32;
 const TAG_LEN = 16;
-const ARGON2_DEFAULT = { m: 65536, t: 3, p: 1 };
-/** Mobile fallback (SR-007). 19MiB/t=2 is no longer accepted. The 64MiB/t=3 default stays valid. */
-const ARGON2_FLOOR = { m: 32768, t: 4 };
+/** Read floor for PBKDF2 keyrings written before 0.7.0 (decrypt-only). */
 const PBKDF2_ITERS = 600_000;
 
-let argon2: Argon2Provider | null = null;
-/** Register a pinned, self-hosted Argon2id implementation (WASM). */
+/**
+ * 0.7.0: the bundled Argon2id (@noble/hashes 2.4.0) is installed when this module loads,
+ * so every entry point (index, editor bundle) writes Argon2id with no setup call.
+ */
+let argon2: Argon2Provider | null = createArgon2Provider();
+/**
+ * Replace the Argon2id implementation (for example a WASM build, or a fast stub in tests).
+ * `null` removes it: new keyring wraps then fail and Argon2id keyrings cannot be opened.
+ */
 export function setArgon2Provider(fn: Argon2Provider | null): void {
   argon2 = fn;
+}
+/** Put the bundled Argon2id provider back (it is installed by default). */
+export function installDefaultArgon2Provider(): void {
+  argon2 = createArgon2Provider();
+}
+
+function isAbort(err: unknown, run?: KdfRunOptions): boolean {
+  return !!run?.signal?.aborted || (err instanceof Error && err.name === 'AbortError');
 }
 
 // ---------- utils ----------
@@ -148,13 +187,14 @@ export function formatKdfHeader(k: KdfParams): string {
 }
 
 function acceptArgon2(m: number, t: number, p: number, salt: Uint8Array<ArrayBuffer>): KdfParams {
-  // Default profile (m>=64MiB, t>=3) or the mobile fallback (m>=32MiB, t>=4). A header
-  // that is weaker than both, including the old 19MiB/t=2 floor, is rejected.
-  const defaultProfile = m >= ARGON2_DEFAULT.m && t >= ARGON2_DEFAULT.t;
-  const fallbackProfile = m >= ARGON2_FLOOR.m && t >= ARGON2_FLOOR.t;
-  if (salt.length < SALT_LEN) throw new SealError();
-  if ((!defaultProfile && !fallbackProfile) || p < 1 || m > 1_048_576 || t > 10 || salt.length !== SALT_LEN)
-    throw new SealError();
+  // At least the default profile (m>=64MiB, t>=3) or the mobile profile (m>=32MiB, t>=4).
+  // Weaker headers, including OWASP 19MiB/t=2, are rejected. Caps (m<=256MiB, t<=8, p<=4)
+  // stop a hostile header from freezing the tab. Every miss is the same SealError.
+  const defaultProfile = m >= ARGON2_DEFAULT_PROFILE.m && t >= ARGON2_DEFAULT_PROFILE.t;
+  const mobileProfile = m >= ARGON2_MOBILE_PROFILE.m && t >= ARGON2_MOBILE_PROFILE.t;
+  if (salt.length !== SALT_LEN) throw new SealError();
+  if (!defaultProfile && !mobileProfile) throw new SealError();
+  if (p < 1 || m > ARGON2_CAPS.m || t > ARGON2_CAPS.t || p > ARGON2_CAPS.p) throw new SealError();
   return { kdf: 'argon2id', m, t, p, salt };
 }
 
@@ -304,12 +344,18 @@ export function isKeyUnlocked(kid: string): boolean {
   return secrets.has(kid) || masterKeys.has(kid);
 }
 
-async function kdfBits(passphrase: string, k: KdfParams): Promise<Uint8Array<ArrayBuffer>> {
+async function kdfBits(passphrase: string, k: KdfParams, run?: KdfRunOptions): Promise<Uint8Array<ArrayBuffer>> {
   const pw = enc.encode(passphrase.normalize('NFC'));
   try {
+    if (run?.signal?.aborted) throw run.signal.reason ?? Object.assign(new Error('Aborted'), { name: 'AbortError' });
     if (k.kdf === 'argon2id') {
       if (!argon2) throw new SealError();
-      return await argon2(pw, k.salt, { m: k.m, t: k.t, p: k.p, len: 32 });
+      try {
+        return await argon2(pw, k.salt, { m: k.m, t: k.t, p: k.p, len: 32 }, run);
+      } catch (err) {
+        if (isAbort(err, run)) throw err;
+        throw new SealError();
+      }
     }
     const base = await wc().subtle.importKey('raw', pw, 'PBKDF2', false, ['deriveBits']);
     return new Uint8Array(
@@ -333,9 +379,11 @@ function remember(map: Map<string, CryptoKey>, kid: string, key: CryptoKey): voi
   sessionUnlocked.unshift(kid);
 }
 
-function newKdfParams(): KdfParams {
-  const salt = rand(SALT_LEN);
-  return argon2 ? { kdf: 'argon2id', ...ARGON2_DEFAULT, salt } : { kdf: 'pbkdf2-sha256', i: PBKDF2_ITERS, salt };
+/** New wraps are Argon2id only (0.7.0). PBKDF2 stays decrypt-only for older keyrings. */
+function newKdfParams(profile: KdfProfile = 'default'): KdfParams {
+  if (!argon2) throw new Error('No Argon2id provider: new keys need one (call installDefaultArgon2Provider)');
+  const { m, t, p } = argon2Profile(profile);
+  return { kdf: 'argon2id', m, t, p, salt: rand(SALT_LEN) };
 }
 
 // ---------- keyring (wrapped entries, OF-46) ----------
@@ -345,8 +393,8 @@ function wrapAad(kid: string, kdf: string): Uint8Array<ArrayBuffer> {
   return enc.encode(JSON.stringify(['of-keyring-v2', 'a256gcm', kid, kdf]));
 }
 
-async function kekFrom(passphrase: string, kdf: string): Promise<CryptoKey> {
-  const bits = await kdfBits(passphrase, parseKdfHeader(kdf));
+async function kekFrom(passphrase: string, kdf: string, run?: KdfRunOptions): Promise<CryptoKey> {
+  const bits = await kdfBits(passphrase, parseKdfHeader(kdf), run);
   try {
     return await wc().subtle.importKey('raw', bits, 'AES-GCM', false, ['encrypt', 'decrypt']);
   } finally {
@@ -354,10 +402,10 @@ async function kekFrom(passphrase: string, kdf: string): Promise<CryptoKey> {
   }
 }
 
-async function wrapSecret(kid: string, passphrase: string, secret: Uint8Array<ArrayBuffer>): Promise<{ kdf: string; wrap: string }> {
-  const params = newKdfParams();
+async function wrapSecret(kid: string, passphrase: string, secret: Uint8Array<ArrayBuffer>, w: KdfWriteOptions = {}): Promise<{ kdf: string; wrap: string }> {
+  const params = newKdfParams(w.kdfProfile);
   const kdf = formatKdfHeader(params);
-  const kek = await kekFrom(passphrase, kdf);
+  const kek = await kekFrom(passphrase, kdf, w);
   const nonce = rand(NONCE_LEN);
   const ct = new Uint8Array(
     await wc().subtle.encrypt(
@@ -370,7 +418,7 @@ async function wrapSecret(kid: string, passphrase: string, secret: Uint8Array<Ar
 }
 
 /** Unwrap a keyring entry. Wrong passphrase, tamper, swapped kid: SealError. Caller zeroes. */
-async function unwrapSecret(entry: SealKeyringEntry, passphrase: string): Promise<Uint8Array<ArrayBuffer>> {
+async function unwrapSecret(entry: SealKeyringEntry, passphrase: string, run?: KdfRunOptions): Promise<Uint8Array<ArrayBuffer>> {
   try {
     if (!KID_RE.test(entry.kid)) throw 0;
     const m = entry.wrap.match(WRAP_RE);
@@ -379,7 +427,7 @@ async function unwrapSecret(entry: SealKeyringEntry, passphrase: string): Promis
     const ct = unb64u(m[2]!);
     if (nonce.length !== NONCE_LEN || ct.length !== SECRET_LEN + TAG_LEN) throw 0;
     const params = parseKdfHeader(entry.kdf);
-    const kek = await kekFrom(passphrase, entry.kdf);
+    const kek = await kekFrom(passphrase, entry.kdf, run);
     const ads = [keyringV3Aad(entry.kdf, params.salt, entry.kid), wrapAad(entry.kid, entry.kdf)];
     let last: unknown;
     for (const ad of ads) {
@@ -392,7 +440,8 @@ async function unwrapSecret(entry: SealKeyringEntry, passphrase: string): Promis
       }
     }
     throw last ?? 0;
-  } catch {
+  } catch (err) {
+    if (isAbort(err, run)) throw err;
     throw new SealError();
   }
 }
@@ -404,19 +453,20 @@ function nextKid(doc: OutlineFoldDoc): string {
 
 /**
  * Create a keyring entry: a random 256-bit branch secret, wrapped under a KEK from the
- * passphrase (Argon2id when a provider is registered, else PBKDF2-SHA256 600k; own salt).
+ * passphrase (Argon2id, own 16-byte salt; `opts.kdfProfile: 'mobile'` writes 32 MiB/t=4).
  * The secret is unlocked in memory. `kid` defaults to the next free `k1`, `k2`, …
+ * The passphrase is never stored; only the wrapped entry goes into `--- keyring ---`.
  */
 export async function createKey(
   doc: OutlineFoldDoc,
   passphrase: string,
-  opts: { pub?: string; kid?: string } = {},
+  opts: { pub?: string; kid?: string } & KdfWriteOptions = {},
 ): Promise<SealKeyringEntry> {
   const kid = opts.kid ?? nextKid(doc);
   if (!KID_RE.test(kid) || doc.keyring?.some((k) => k.kid === kid) || doc.keys?.some((k) => k.kid === kid))
     throw new Error('createKey: key id is invalid or already in use');
   const secret = rand(SECRET_LEN);
-  const w = await wrapSecret(kid, passphrase, secret);
+  const w = await wrapSecret(kid, passphrase, secret, opts);
   const entry: SealKeyringEntry = { kid, kdf: w.kdf, wrap: w.wrap };
   if (opts.pub) entry.pub = opts.pub;
   remember(secrets, kid, await importHkdf(secret));
@@ -440,25 +490,26 @@ function findKey(doc: OutlineFoldDoc, kid: string): SealKeyEntry {
  * verifier; a wrong passphrase only shows when a branch fails to open.
  * Returns the number of visible branches that reference the kid.
  */
-export async function unlockKey(doc: OutlineFoldDoc, kid: string, passphrase: string): Promise<number> {
+export async function unlockKey(doc: OutlineFoldDoc, kid: string, passphrase: string, run?: KdfRunOptions): Promise<number> {
   const ring = findRing(doc, kid);
   if (ring) {
-    remember(secrets, kid, await importHkdf(await unwrapSecret(ring, passphrase)));
+    remember(secrets, kid, await importHkdf(await unwrapSecret(ring, passphrase, run)));
   } else {
     const entry = findKey(doc, kid);
-    remember(masterKeys, kid, await importHkdf(await kdfBits(passphrase, parseKdfHeader(entry.kdf))));
+    remember(masterKeys, kid, await importHkdf(await kdfBits(passphrase, parseKdfHeader(entry.kdf), run)));
   }
   return countKidRefs(doc, kid);
 }
 
 /** One passphrase per keyring: unlock every entry it opens. None opens: SealError. */
-export async function unlockKeyring(doc: OutlineFoldDoc, passphrase: string): Promise<string[]> {
+export async function unlockKeyring(doc: OutlineFoldDoc, passphrase: string, run?: KdfRunOptions): Promise<string[]> {
   const out: string[] = [];
   for (const e of doc.keyring ?? []) {
     try {
-      remember(secrets, e.kid, await importHkdf(await unwrapSecret(e, passphrase)));
+      remember(secrets, e.kid, await importHkdf(await unwrapSecret(e, passphrase, run)));
       out.push(e.kid);
-    } catch {
+    } catch (err) {
+      if (isAbort(err, run)) throw err;
       /* uniform: reported below only as "nothing opened" */
     }
   }
@@ -476,15 +527,16 @@ export async function changeKeyringPassphrase(
   oldPassphrase: string,
   newPassphrase: string,
   kids?: string[],
+  opts: KdfWriteOptions = {},
 ): Promise<string[]> {
   const ring = doc.keyring ?? [];
   const pick = kids ? ring.filter((e) => kids.includes(e.kid)) : ring;
   if (!pick.length || (kids && pick.length !== kids.length)) throw new SealError();
   const next = new Map<string, SealKeyringEntry>();
   for (const e of pick) {
-    const secret = await unwrapSecret(e, oldPassphrase);
+    const secret = await unwrapSecret(e, oldPassphrase, opts);
     try {
-      const w = await wrapSecret(e.kid, newPassphrase, secret);
+      const w = await wrapSecret(e.kid, newPassphrase, secret, opts);
       next.set(e.kid, { ...e, kdf: w.kdf, wrap: w.wrap });
     } finally {
       secret.fill(0);

@@ -546,12 +546,21 @@ export {
   type SealResult,
   type Argon2Provider,
   type KdfParams,
+  type KdfRunOptions,
+  type KdfWriteOptions,
+  installDefaultArgon2Provider,
 } from './sealedBranch.js';
 export {
   argon2idDerive,
+  argon2Profile,
   createArgon2Provider,
-  installDefaultArgon2Provider,
+  ARGON2_DEFAULT_PROFILE,
+  ARGON2_MOBILE_PROFILE,
+  ARGON2_CAPS,
+  ARGON2_SALT_BYTES,
   type Argon2idOptions,
+  type Argon2Profile,
+  type KdfProfile,
 } from './kdf.js';
 export type { SealKeyEntry, SealKeyringEntry, SealedDraftSlot, SealedDiscardedSlot } from './types.js';
 export {
