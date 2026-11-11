@@ -215,4 +215,21 @@ The provider matches the existing `Argon2Provider` hook. Optional `key` / `assoc
 9. **Mobile profile picker.** Add an opt-in to write 32 MiB / t=4, and if so, who decides (library heuristic vs host flag)?
 10. **PBKDF2 after G2.** Keep writing it when no provider is installed; always decrypt it. Refuse new PBKDF2 writes once the provider is bundled?
 
+## 6. DevSecOps positions (11 Nov 2026), proposed defaults awaiting Colin's confirmation
+
+| # | Decision | Proposed |
+|---|---|---|
+| 1 | Library | Land `@noble/hashes` 2.4.0 (MIT, pure JS, about 14 KiB, passes the RFC 9106 §5.3 vector). Look at hash-wasm only if real mobile timing is bad, since it needs a WASM CSP allowance. |
+| 2 | Write default | m=65536 (64 MiB), t=3, p=1. |
+| 3 | Read floor | Keep the tighter floor: accept only the default profile or the 32 MiB/t=4 mobile profile. Reject OWASP 19 MiB/t=2. |
+| 4 | Auto-install | Yes, from `src/index.ts` in the landing PR. Heavy tests keep the stub. |
+| 5 | Version | Minor bump, **0.7.0**. Order: the pending 0.6.6 (session ids, branch `fix/map-trailing-url-query`) releases first, then 0.7.0 rebases on it. |
+| 6 | Audroam vendored copy | No re-pin in the spike. Re-pin only after a release, with the RFC and seal vectors re-run on the host CI (covers gate 7b). |
+| 7 | Salt | Exactly 16 bytes on read and write (strict parser). |
+| 8 | DoS caps | Tighten on read and in the KDF to m ≤ 262144 (256 MiB), t ≤ 8, p ≤ 4. Out-of-range values raise the same `"Can't unlock"` SealError (no oracle). Expose progress or cancel through `onProgress`. Note: §3.3 suggested 128 MiB/t≤6; the DevSecOps caps take precedence if Colin agrees. |
+| 9 | Mobile profile | An explicit host option at wrap time (for example `kdfProfile: 'default' \| 'mobile'`), no library heuristic. The default stays 64 MiB. |
+| 10 | PBKDF2 | Once the provider is auto-installed, stop writing PBKDF2. Keep PBKDF2 decrypt forever for old keyrings. |
+
+Process: DevSecOps reviews the landing PR diff before any push. Push, tag and publish happen only on Colin's "push".
+
 Nothing here is approval to push, tag, publish, or change production.
