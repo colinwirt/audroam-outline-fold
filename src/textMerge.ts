@@ -199,7 +199,37 @@ export function mergeKeeping(prev: string, normPrev: string, next: string): stri
     nPos = ni + 1; xPos = xi + 1;
   }
   pushGap(P.length);
-  return out.join('\n');
+  return reattachTrailers(out.join('\n'), next);
+}
+
+const LAYOUT_KEY = /^(?:fold[-+]\s*:|collapsedMarker\s*:|expandedMarker\s*:)/;
+const TRAILER_FENCE = /^---\s*(?:payloads|sealed|enc|keyring|keys|layout|assets)\s*---$/i;
+
+/**
+ * When prev has no layout trailer and next adds or updates one, the line-by-line
+ * hunk can emit `fold-:` into the outline body and drop the `--- layout ---`
+ * fences. Put leaked layout keys back into next's trailing block.
+ */
+function reattachTrailers(merged: string, next: string): string {
+  const lines = merged.split('\n');
+  const fenceAt = lines.findIndex((l) => TRAILER_FENCE.test(l));
+  const bodyEnd = fenceAt >= 0 ? fenceAt : lines.length;
+  const body = lines.slice(0, bodyEnd);
+  const cleaned = body.filter((l) => !LAYOUT_KEY.test(l));
+  if (cleaned.length === body.length) return merged;
+  while (cleaned.length && !cleaned[cleaned.length - 1]!.trim()) cleaned.pop();
+  const nextLines = next.split('\n');
+  const nextFence = nextLines.findIndex((l) => TRAILER_FENCE.test(l));
+  if (nextFence < 0) {
+    if (fenceAt >= 0) {
+      cleaned.push('');
+      cleaned.push(...lines.slice(fenceAt));
+    }
+    return cleaned.join('\n');
+  }
+  cleaned.push('');
+  cleaned.push(...nextLines.slice(nextFence));
+  return cleaned.join('\n');
 }
 
 /** Pub line per payload id in a `--- payloads ---` section ('' = no pub line). */

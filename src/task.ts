@@ -162,6 +162,8 @@ export function editTaskMarker(line: string): { line: string; from: TaskState; t
 function isNodeLine(line: string): boolean {
   if (!line.trim()) return false;
   const trimmedStart = line.trimStart();
+  // A lone bullet is a blank list item (same rule as parse).
+  if (/^[-*+]\s*$/.test(trimmedStart)) return true;
   const content = trimmedStart.replace(/^[-*+]\s+/, '');
   if (!content.trim() && !/^[-*+]\s+$/.test(trimmedStart)) return false;
   return true;

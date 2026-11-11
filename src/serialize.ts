@@ -186,17 +186,27 @@ function serializeNode(
  */
 function layoutFoldIds(doc: OutlineFoldDoc): string[] {
   const auto = new Map<string, OutlineNode>();
+  const present = new Set<string>();
   const walk = (list: OutlineNode[]) => {
     for (const n of list) {
-      if (n.id && n.autoId) auto.set(n.id, n);
+      if (n.id) {
+        present.add(n.id);
+        if (n.autoId) auto.set(n.id, n);
+      }
       if (n.children?.length) walk(n.children);
     }
   };
   walk(doc.nodes);
-  if (!auto.size) return doc.fold.ids;
+  // Drop ids whose node is gone (a Map delete left them in fold.ids). A stale
+  // `__tmp-` written into the layout block was then merged back as a body line.
+  const live = doc.fold.ids.filter((id) => present.has(id));
+  if (live.length !== doc.fold.ids.length) {
+    doc.fold.ids = live;
+    if (doc.frontmatter) doc.frontmatter.foldIds = [...live];
+  }
   if (doc.fold.mode === '+') {
     // fold+ stores the expanded ids in the note, so a session id has to become a real one.
-    const ids = doc.fold.ids.map((id) => {
+    const ids = live.map((id) => {
       const n = auto.get(id);
       if (!n || !isSessionId(id)) {
         if (n) delete n.autoId;
@@ -208,7 +218,7 @@ function layoutFoldIds(doc: OutlineFoldDoc): string[] {
     if (doc.frontmatter) doc.frontmatter.foldIds = [...ids];
     return ids;
   }
-  return doc.fold.ids.filter((id) => !auto.has(id));
+  return live.filter((id) => !auto.has(id));
 }
 
 /**
@@ -277,6 +287,12 @@ export function cleanCopy(doc: OutlineFoldDoc): string {
   return serialize(clone);
 }
 
+/**
+ * Body lines are a pre-order walk of `doc.nodes` (document order): each node
+ * is written, then its `children` in array order, including blank `- ` nodes
+ * at their tree position. Trailing payloads / keyring / assets / layout blocks
+ * follow. portableCopy and cleanCopy use this same walk.
+ */
 export function serialize(doc: OutlineFoldDoc): string {
   // Fail closed before anything is written (see sealedState.assertSealedSafe).
   syncSealedLabels(doc.nodes); // caption -> public label (0.4.17)

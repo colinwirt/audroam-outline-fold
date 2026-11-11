@@ -722,11 +722,16 @@ export function parse(text: string, opts?: ParseOptions): OutlineFoldDoc {
     if (!raw.trim()) continue;
     const w = indentWidth(raw);
     const trimmedStart = raw.trimStart();
-    const content = stripListMarker(trimmedStart);
-    // 0.4.20: a blank list item (`- `, `* `, `+ `) is a node with an empty caption.
-    // Skipping it made serialize(parse(text)) drop the line, so a Map commitView
-    // (tick, fold) inserted a fresh copy beside the original on every write.
-    if (!content.trim() && !/^[-*+]\s+$/.test(trimmedStart)) continue;
+    // A lone bullet (`-` / `*` / `+`) is a blank list item. peelTrailingSections
+    // used to trim the trailing space off a last-line `- `, and serialize then
+    // wrote `- -` (caption "-").
+    const loneBullet = /^[-*+]$/.test(trimmedStart);
+    const content = loneBullet ? '' : stripListMarker(trimmedStart);
+    // 0.4.20: a blank list item (`- `, `* `, `+ `, or a lone bullet) is a node
+    // with an empty caption. Skipping it made serialize(parse(text)) drop the
+    // line, so a Map commitView (tick, fold) inserted a fresh copy beside the
+    // original on every write.
+    if (!content.trim() && !/^[-*+]\s*$/.test(trimmedStart)) continue;
 
     let depth = 0;
     if (indentToDepth.length === 0) {

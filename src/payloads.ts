@@ -22,6 +22,16 @@ export type LayoutMap = Record<string, NodeLayout>;
 
 const KEY_LINE = /^([A-Za-z0-9][A-Za-z0-9_-]*):\s*$/;
 
+/** Trim trailing whitespace, but keep the space on a last-line blank list item (`- `). */
+function trimTrailingOutline(body: string): string {
+  const trimmed = body.replace(/\s+$/, '');
+  if (!/(^|\n)[ \t]*[-*+]$/.test(trimmed)) return trimmed;
+  const core = body.replace(/[\n\r]+$/, '');
+  // A last line that already had no space stays as-is; a last `- ` keeps one space.
+  if (/(^|\n)[ \t]*[-*+][ \t]+$/.test(core)) return trimmed + ' ';
+  return trimmed;
+}
+
 /**
  * Peel trailing `--- payloads ---` / `--- sealed ---` / `--- enc ---` … `---`,
  * trailing `--- layout ---` … `---`, and trailing YAML `---` … `---` from the
@@ -38,7 +48,7 @@ export function peelTrailingSections(body: string): {
   keyring: SealKeyringEntry[];
   assets: AssetEntry[];
 } {
-  let rest = body.replace(/\s+$/, '');
+  let rest = trimTrailingOutline(body);
   const trailingFm: OutlineFrontmatter = {};
   let payloads: PayloadMap = {};
   let layouts: LayoutMap = {};
@@ -61,7 +71,7 @@ export function peelTrailingSections(body: string): {
     const lay = rest.match(/\n---\s*layout\s*---\r?\n([\s\S]*?)\r?\n---\s*$/i);
     if (lay) {
       takeLayout(lay[1]!);
-      rest = rest.slice(0, lay.index).replace(/\s+$/, '');
+      rest = trimTrailingOutline(rest.slice(0, lay.index));
       peeled = true;
       continue;
     }
@@ -77,7 +87,7 @@ export function peelTrailingSections(body: string): {
     const assetBlk = rest.match(/(?:^|\n)---\s*assets\s*---\r?\n([\s\S]*?)\r?\n---\s*$/i);
     if (assetBlk) {
       assets = [...parseAssetsBlock(assetBlk[1]!), ...assets];
-      rest = rest.slice(0, assetBlk.index).replace(/\s+$/, '');
+      rest = trimTrailingOutline(rest.slice(0, assetBlk.index));
       peeled = true;
       continue;
     }
@@ -85,7 +95,7 @@ export function peelTrailingSections(body: string): {
     const ringBlk = rest.match(/(?:^|\n)---\s*keyring\s*---\r?\n([\s\S]*?)\r?\n---\s*$/i);
     if (ringBlk) {
       keyring = [...parseKeyringBlock(ringBlk[1]!), ...keyring];
-      rest = rest.slice(0, ringBlk.index).replace(/\s+$/, '');
+      rest = trimTrailingOutline(rest.slice(0, ringBlk.index));
       peeled = true;
       continue;
     }
@@ -93,7 +103,7 @@ export function peelTrailingSections(body: string): {
     const keyBlk = rest.match(/(?:^|\n)---\s*keys\s*---\r?\n([\s\S]*?)\r?\n---\s*$/i);
     if (keyBlk) {
       keys = [...parseKeysBlock(keyBlk[1]!), ...keys];
-      rest = rest.slice(0, keyBlk.index).replace(/\s+$/, '');
+      rest = trimTrailingOutline(rest.slice(0, keyBlk.index));
       peeled = true;
       continue;
     }
@@ -105,7 +115,7 @@ export function peelTrailingSections(body: string): {
       const label = pay[1]!.toLowerCase();
       if (PAYLOAD_FENCES.has(label)) {
         payloads = { ...payloads, ...parsePayloadMap(pay[2]!) };
-        rest = rest.slice(0, pay.index).replace(/\s+$/, '');
+        rest = trimTrailingOutline(rest.slice(0, pay.index));
         peeled = true;
         continue;
       }
@@ -124,7 +134,7 @@ export function peelTrailingSections(body: string): {
     const fm = rest.match(/\n---\r?\n([\s\S]*?)\r?\n---\s*$/);
     if (fm) {
       Object.assign(trailingFm, parseFmBlock(fm[1]!));
-      rest = rest.slice(0, fm.index).replace(/\s+$/, '');
+      rest = trimTrailingOutline(rest.slice(0, fm.index));
       peeled = true;
       continue;
     }
