@@ -18,6 +18,8 @@ import {
   parseKdfHeader,
   SealError,
   SEALED_PLACEHOLDER,
+  DEFAULT_SEAL_CIPHER,
+  branchCipher,
   type OutlineFoldDoc,
   type OutlineNode,
 } from '../src/index.js';
@@ -191,13 +193,31 @@ describe('sealed branches: tamper and binding', () => {
     }, 20_000);
   }
 
-  it('no cipher is chosen silently', async () => {
+  it('0.7.0: the cipher defaults to a256gcm; setSealCipher(null) goes back to it; unknown ciphers fail', async () => {
     const { text } = await sealedDoc();
+    setSealCipher('xc20p');
+    let d = parse(text);
+    await sealBranch(d, find(d, 's'), 'k1', CTX);
+    expect(branchCipher(find(d, 's').sealed)).toBe('xc20p');
     setSealCipher(null);
-    await expect(sealBranch(parse(text), find(parse(text), 's'), 'k1', CTX)).rejects.toThrow(/no cipher chosen/);
-    setSealCipher('a256gcm');
+    d = parse(text);
+    await sealBranch(d, find(d, 's'), 'k1', CTX);
+    expect(branchCipher(find(d, 's').sealed)).toBe(DEFAULT_SEAL_CIPHER);
+    expect(DEFAULT_SEAL_CIPHER).toBe('a256gcm');
     const doc = parse(text);
     await expect(sealBranch(doc, find(doc, 's'), 'k1', CTX, { pub: "", cipher: 'nope' as never })).rejects.toBeInstanceOf(SealError);
+  });
+
+  it('0.7.0: v3 needs no note or owner id (ctx optional on seal and open)', async () => {
+    const doc = parse(SRC);
+    const key = await createKey(doc, PASS);
+    await sealBranch(doc, find(doc, 'v'), key.kid);
+    const text = serialize(doc);
+    clearKeys();
+    const back = parse(text);
+    await unlockKeyring(back, PASS);
+    const v = await openSealedBranch(back, 'v');
+    expect(v.doc.nodes[0]!.title).toBe('Vault');
   });
 
   for (const [name, ctx] of [

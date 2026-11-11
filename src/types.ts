@@ -222,7 +222,7 @@ export interface OutlineFrontmatter {
   autoWidth?: string;
   /**
    * `<t:N>` open pattern from the layout block.
-   * `{id}` is the note id. `https://b.audroam.com/view/pnid/{id}` or `/view/pnid/{id}`.
+   * `{id}` is the note id, for example `https://example.invalid/view/{id}` or `/view/{id}`.
    */
   noteUri?: string;
   /**

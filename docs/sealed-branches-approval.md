@@ -11,6 +11,27 @@ header, the salt, the nonce and the KDF parameters. The host supplies the passph
 generated and kept in a password manager; typing it is the exception) and the binding
 context (note id, owner id).
 
+> **0.7.0 note: names in this draft vs the exported API.** This document predates the
+> protected viewer, of-seal-v3 and the session API. Where it names a function that was
+> never exported, read it as the exported one below. Requirement ids (M*, G*, OF-*) are
+> unchanged.
+>
+> | Name in this draft | Exported API (0.7.0) |
+> |---|---|
+> | `unsealBranch(id)`, `unlockBranch(id)` | `unlockKey` / `unlockKeyring`, then `openSealedBranch(doc, id)` (returns a `SealedViewer`); or `createSealSessions().open(region, passphrase)` |
+> | `lockBranch(id)` | `viewer.close()`; or `sessions.lock(region)` |
+> | `resealBranch(id)` | `viewer.save()`; or `sessions.save(region)` |
+> | `isBranchDirty(id)` | `viewer.isDirty()`; or `sessions.get(region).dirty` |
+> | `lockAll()`, `zeroise()` | `sessions.lock('all')`, `closeAllViewers()`, `clearKeys()` |
+> | `getLockState()` | `sessions.get(region).state` (`SealState`), `sessions.list()` |
+> | `onRelock(id)` | Lock button in the secure-zone chrome (`secureZoneChrome`) → `sessions.lock(region)` |
+> | `UnlockFailed` | `SealError` ("Can't unlock"); `DamagedSealError` ("damaged in transit") for a checksum miss |
+> | `beforeAttempt` / `onFailure` / `onSuccess` | `createSealSessions({ backoffMs })`; `promptPassphrase({ attempt, backoffMs })` |
+> | `rotateKey(kid)` | not built; `changeKeyringPassphrase` re-wraps without re-sealing |
+> | Argon2id WASM hook | bundled pure-JS Argon2id (`@noble/hashes` 2.4.0), installed by default; `setArgon2Provider` replaces it |
+> | `demoCrypto` | internal test fixture only; not exported from 0.7.0 |
+> | note id / owner id binding | v1/v2 only. of-seal-v3 binds no host ids; `SealContext.noteId` / `ownerId` are optional |
+
 ---
 
 ## 1. MVP (ship first): for owner approval
@@ -19,7 +40,7 @@ context (note id, owner id).
 |---|---|---|
 | M1 | Sealed-branch grammar: the line holds the public label or `Sealed branch` plus `<id:…>`. The material lives in `--- payloads ---` (`alg: of-seal-v1`, `kid`, `ct`, optional `pub`). Keys live in `--- keys ---`. | done |
 | M2 | `createKey`, `unlockKey`, `sealBranch`, `unsealBranch`, `lockBranch`, `resealBranch`, `isBranchDirty`, `clearKeys` | done |
-| M3 | KDF: **interim PBKDF2-SHA256 600k**, plus a hook for a pinned, self-hosted Argon2id WASM (`setArgon2Provider`). Argon2id m=64MiB t=3 p=1 is used automatically once a provider is registered. **⚠ Choice to flag:** the MVP ships PBKDF2 so it isn't held up waiting for the WASM. Bundling and pinning the Argon2 WASM is release gate G2. | hook done, WASM not bundled |
+| M3 | KDF: Argon2id m=64MiB t=3 p=1 (bundled, pure JS, `@noble/hashes` 2.4.0, installed by default; `setArgon2Provider` replaces it). PBKDF2-SHA256 600k is decrypt-only for older keyrings. *(Originally: interim PBKDF2 plus a WASM hook; release gate G2.)* | done in 0.7.0 |
 | M4 | AES-256-GCM via WebCrypto. Core generates a random salt and a fresh nonce on every seal. The AAD covers the header, kid, key header, note id, owner id, node id and parent sealed id. There is one uniform `SealError("Can't unlock")`. | done |
 | M5 | Fail-closed serialize: an unlocked branch always writes its stored ciphertext and public label. Its caption, children and edits are never written until `resealBranch`. | done |
 | M6 | Rendering: a locked placeholder (`data-sealed-branch="locked"` plus a Decrypt button), unlock in place, re-lock (`data-relock` → `onRelock`). This applies to both Outline (`toHtml`) and Map (which renders from the model). | done (Outline markup + hook; Map uses the model) |

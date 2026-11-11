@@ -67,22 +67,29 @@ export function supportedVersions(): { read: string[]; write: string } {
   return { read: [SEAL_ALG_V3, SEAL_ALG, SEAL_ALG_V1], write: SEAL_ALG_V3 };
 }
 
-let configuredCipher: SealCipher | null = null;
+/** Cipher for new seals when the host does not choose one (0.7.0): AES-256-GCM. */
+export const DEFAULT_SEAL_CIPHER: SealCipher = 'a256gcm';
+let configuredCipher: SealCipher = DEFAULT_SEAL_CIPHER;
 /**
- * Host/config choice of cipher for new seals (OF-42). The library never picks one:
- * sealBranch fails unless this is set or `opts.cipher` is passed. Re-seals of an
- * existing branch keep that branch's cipher.
+ * Host/config choice of cipher for new seals (OF-42). Default `'a256gcm'`; pass `'xc20p'`
+ * for XChaCha20-Poly1305, or `null` to go back to the default. `opts.cipher` on
+ * sealBranch wins over this. Re-seals of an existing branch keep that branch's cipher.
  */
 export function setSealCipher(c: SealCipher | null): void {
   if (c !== null && !SEAL_CIPHERS.includes(c)) throw new SealError();
-  configuredCipher = c;
+  configuredCipher = c ?? DEFAULT_SEAL_CIPHER;
 }
 
+/**
+ * Where a branch lives. of-seal-v3 (every new seal) binds none of this: its AAD is only
+ * the cipher header (magic, version, alg, HKDF id, salt, kid, seal id, role).
+ * `noteId` and `ownerId` matter only to open v1/v2 branches, which bound them.
+ */
 export interface SealContext {
-  /** Host note id (map id). Bound in AAD and HKDF info. */
-  noteId: string;
-  /** Host owner id. Bound in AAD. */
-  ownerId: string;
+  /** Host note id. Needed only to open v1/v2 branches (bound in their AAD and HKDF info). */
+  noteId?: string;
+  /** Host owner id. Needed only to open v1/v2 branches (bound in their AAD). */
+  ownerId?: string;
   /** Id of the enclosing sealed branch, or undefined at top level. */
   parentId?: string;
   /** Sealed nesting depth of the document this branch lives in (set by viewers). */
@@ -254,9 +261,16 @@ export function parseBranchCtV1(s: string): BranchBlob {
   return { hdr, salt, nonce, ct };
 }
 
+/** v1/v2 bound the host note and owner; without them those branches cannot open. */
+function legacyBinding(ctx: SealContext): { noteId: string; ownerId: string } {
+  if (typeof ctx.noteId !== 'string' || typeof ctx.ownerId !== 'string') throw new SealError();
+  return { noteId: ctx.noteId, ownerId: ctx.ownerId };
+}
+
 function aadV1(hdr: string, kid: string, key: SealKeyEntry, nodeId: string, ctx: SealContext): Uint8Array<ArrayBuffer> {
+  const b = legacyBinding(ctx);
   return enc.encode(
-    JSON.stringify(['of-seal-aad-1', hdr, kid, key.kdf, ctx.noteId, ctx.ownerId, nodeId, ctx.parentId ?? ''])
+    JSON.stringify(['of-seal-aad-1', hdr, kid, key.kdf, b.noteId, b.ownerId, nodeId, ctx.parentId ?? ''])
   );
 }
 
@@ -311,8 +325,9 @@ export function parseBranchCt(s: string, alg: string = SEAL_ALG_V1): BranchBlob 
 
 /** AAD (v2): whole header (cipher id + label inside), label again, kid and the binding context. */
 export function aadV2(hdr: string, label: string, kid: string, nodeId: string, ctx: SealContext): Uint8Array<ArrayBuffer> {
+  const b = legacyBinding(ctx);
   return enc.encode(
-    JSON.stringify(['of-seal-aad-2', hdr, label, kid, ctx.noteId, ctx.ownerId, nodeId, ctx.parentId ?? '']),
+    JSON.stringify(['of-seal-aad-2', hdr, label, kid, b.noteId, b.ownerId, nodeId, ctx.parentId ?? '']),
   );
 }
 
@@ -624,7 +639,7 @@ async function subkeyV1(kid: string, salt: Uint8Array<ArrayBuffer>, nodeId: stri
   const master = masterKeys.get(kid);
   if (!master) throw new SealError();
   return wc().subtle.deriveKey(
-    { name: 'HKDF', hash: 'SHA-256', salt, info: enc.encode(JSON.stringify(['of-seal-v1', ctx.noteId, nodeId])) },
+    { name: 'HKDF', hash: 'SHA-256', salt, info: enc.encode(JSON.stringify(['of-seal-v1', legacyBinding(ctx).noteId, nodeId])) },
     master,
     { name: 'AES-GCM', length: 256 },
     false,
@@ -704,7 +719,7 @@ async function encryptV2(
   if (salt.length !== SALT_LEN || nonce.length !== NONCE_BYTES[cipher]) throw new SealError();
   const hdr = formatBranchHdrV2(cipher, kid, salt);
   const ad = aadV2(hdr, SEAL_LABELS[cipher], kid, nodeId, ctx);
-  const ct = await aeadV2('enc', secret, cipher, salt, nonce, ad, enc.encode(plaintext), ctx.noteId, nodeId);
+  const ct = await aeadV2('enc', secret, cipher, salt, nonce, ad, enc.encode(plaintext), legacyBinding(ctx).noteId, nodeId);
   return `${b64u(enc.encode(hdr))}.${b64u(nonce)}.${b64u(ct)}`;
 }
 
@@ -715,7 +730,7 @@ async function decryptV2(p: SealedPayload, nodeId: string, ctx: SealContext): Pr
   const secret = secrets.get(kid);
   if (!secret) throw new SealError();
   const ad = aadV2(blob.hdr, blob.label, kid, nodeId, ctx);
-  return aeadV2('dec', secret, blob.cipher, blob.salt, blob.nonce, ad, blob.ct, ctx.noteId, nodeId);
+  return aeadV2('dec', secret, blob.cipher, blob.salt, blob.nonce, ad, blob.ct, legacyBinding(ctx).noteId, nodeId);
 }
 
 // ---------- v3 seal / open (no host binding) ----------
@@ -902,22 +917,22 @@ export interface SealResult {
 }
 
 /**
- * Seal a node and its subtree (of-seal-v2) under an unlocked keyring kid. The caption is
+ * Seal a node and its subtree (of-seal-v3) under an unlocked keyring kid. The caption is
  * encrypted; the line shows the public label (opts.pub, else the node's title) or "Sealed branch" plus
- * `<enc:KEYID>`. The cipher comes from opts.cipher or setSealCipher(); never chosen
- * silently. Requires node.id. Inner sealed branches stay sealed inside.
+ * `<enc:KEYID>`. The cipher comes from opts.cipher, else setSealCipher(), else 'a256gcm'.
+ * Requires node.id. Inner sealed branches stay sealed inside. `ctx` only carries nesting
+ * (parentId, depth); v3 binds no host ids.
  */
 export async function sealBranch(
   doc: OutlineFoldDoc,
   node: OutlineNode,
   kid: string,
-  ctx: SealContext,
+  ctx: SealContext = {},
   opts: { pub?: string; cipher?: SealCipher } = {},
   __fixed?: SealV3Fixed,
 ): Promise<SealResult> {
   if (!node.id || node.autoId) throw new Error('sealBranch: node needs a persistent id');
   const cipher = opts.cipher ?? configuredCipher;
-  if (cipher === null || cipher === undefined) throw new Error('sealBranch: no cipher chosen (pass opts.cipher or call setSealCipher)');
   if (!SEAL_CIPHERS.includes(cipher)) throw new SealError();
   if (!findRing(doc, kid)) throw new SealError();
   const warnings: string[] = [];
@@ -1104,7 +1119,7 @@ interface ViewerImpl extends SealedViewer {
 export async function openSealedBranch(
   host: OutlineFoldDoc,
   branchId: string,
-  ctx: SealContext,
+  ctx: SealContext = {},
   hooks: SealedViewerHooks = {},
 ): Promise<SealedViewer> {
   const node = findById(host.nodes, branchId);

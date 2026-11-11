@@ -510,6 +510,7 @@ export {
   SEAL_LABELS,
   supportedVersions,
   setSealCipher,
+  DEFAULT_SEAL_CIPHER,
   type SealCipher,
   unlockKeyring,
   changeKeyringPassphrase,

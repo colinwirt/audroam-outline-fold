@@ -81,7 +81,10 @@ export interface Timers {
 
 export interface OutlineDocOptions {
   text: string;
-  /** `{ noteId, ownerId }` bound into the ciphertext AAD. */
+  /**
+   * `{ noteId, ownerId }` for opening legacy v1/v2 branches, which bound them in their AAD.
+   * New seals (of-seal-v3) bind no host ids, so this is optional.
+   */
   ctx?: () => { noteId?: string | number; ownerId?: string | number };
   /** Root doc → text. Default `serialize`. Hosts keep their own tags / width here. */
   serializeRoot?: (root: OutlineFoldDoc, prevText: string) => string;

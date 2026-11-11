@@ -358,6 +358,14 @@ describe('SD-12 backward compatibility', () => {
     await expect(v.autosave()).rejects.toThrow(/migrate/);
     await expect(v.restoreDiscarded()).rejects.toThrow(/migrate/);
   });
+  it('0.7.0: of-seal-v1 still needs its note and owner id to open (ctx optional only for v3)', async () => {
+    const doc = parse(V1.text);
+    await unlockKey(doc, doc.keys![0]!.kid, V1.passphrase);
+    await expect(openSealedBranch(doc, 'v')).rejects.toBeInstanceOf(SealError);
+    await expect(openSealedBranch(doc, 'v', { noteId: V1.ctx.noteId })).rejects.toBeInstanceOf(SealError);
+    const v = await openSealedBranch(doc, 'v', V1.ctx);
+    expect(v.doc.nodes[0]!.title).toBeTruthy();
+  });
   it('uri notes are unaffected', () => {
     const text = '- Remote <id:u>\n\n--- payloads ---\nu:\n  kid: k9\n  uri: https://x.test/blob\n---\n';
     const d = parse(text);

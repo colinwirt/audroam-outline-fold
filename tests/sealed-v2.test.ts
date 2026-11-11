@@ -1,4 +1,6 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, beforeAll, afterAll } from 'vitest';
+import { createHash } from 'node:crypto';
+import { setArgon2Provider, installDefaultArgon2Provider } from '../src/sealedBranch.js';
 import { hkdfSync, createDecipheriv } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { xchacha20poly1305 } from '@noble/ciphers/chacha.js';
@@ -29,6 +31,9 @@ const find = (doc: OutlineFoldDoc, id: string): OutlineNode | undefined => {
 };
 const hexb = (h: string) => Uint8Array.from(h.match(/../g)!.map((x) => parseInt(x, 16)));
 
+// Heavy KDF: fast stub (the real Argon2id is covered in kdf-argon2id.test.ts).
+beforeAll(() => setArgon2Provider(async (pw, salt) => new Uint8Array(createHash('sha256').update(pw).update(salt).digest()) as Uint8Array<ArrayBuffer>));
+afterAll(() => installDefaultArgon2Provider());
 beforeEach(() => { clearKeys(); setSealCipher('a256gcm'); });
 
 describe('of-seal-v2 KAT (committed vectors)', () => {

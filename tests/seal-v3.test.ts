@@ -1,4 +1,6 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, beforeAll, afterAll } from 'vitest';
+import { createHash } from 'node:crypto';
+import { setArgon2Provider, installDefaultArgon2Provider } from '../src/sealedBranch.js';
 import { createDecipheriv, hkdfSync } from 'node:crypto';
 import {
   parse,
@@ -46,6 +48,9 @@ async function sealed() {
   return { doc, kid: key.kid, text: serialize(doc) };
 }
 
+// Heavy KDF: fast stub (the real Argon2id is covered in kdf-argon2id.test.ts).
+beforeAll(() => setArgon2Provider(async (pw, salt) => new Uint8Array(createHash('sha256').update(pw).update(salt).digest()) as Uint8Array<ArrayBuffer>));
+afterAll(() => installDefaultArgon2Provider());
 beforeEach(() => { clearKeys(); setSealCipher('a256gcm'); });
 
 describe('of-seal-v3 envelope', () => {
