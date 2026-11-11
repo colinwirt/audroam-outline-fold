@@ -353,7 +353,7 @@ const packed = autoPackPositions(doc, {
 | `autoPackPositions(doc, opts?)` | Deterministic L→R positions for the fold-visible tree |
 | `resolveMapFocus(doc, focusId, dir, opts?)` | Map L→R focus resolver (↑↓ siblings · → child · ← parent; no fold-on-arrow) |
 
-**Map keyboard (when a node is selected):** `.` / Space / Enter toggle fold on the focus node; digits `0`–`9` / `*` call `setExpandLevel(doc, n, { under: focusId })` — depth **under the selection** (`1` = show that node’s children). Digits are no-ops with no selection. `ContextMenu` / `Shift+F10` are left to the host (its node menu), unless `nodeMenu: true` (0.2.39), when they open the package node menu; a host reaches the fold-to-level picker with `map.openLevelMenu(id)`. `w` opens the width popover for the selected node (mnemonics `t` Fit text, `l` 1 line, `s` 1 line siblings, `a` Auto); in view mode `Ctrl/⌘+Z` / `Shift+Ctrl/⌘+Z` undo / redo width steps. Outline `attachOutlineTree` digits stay tree-absolute.
+**Map keyboard (when a node is selected):** `.` / Space / Enter toggle fold on the focus node; digits `0`–`9` / `*` call `setExpandLevel(doc, n, { under: focusId })` — depth **under the selection** (`1` = show that node’s children). Digits are no-ops with no selection. `t` cycles the focused node’s task check (`[ ]` open → `[-]` pending → `[x]` done, then back to open). If the node had no checkbox when it gained focus, the cycle starts by adding `[ ]` and later returns to none; if it already had one, the box is not removed. Time leaves and a read-only map (`allowTaskToggle: false`) are no-ops. `ContextMenu` / `Shift+F10` are left to the host (its node menu), unless `nodeMenu: true` (0.2.39), when they open the package node menu; a host reaches the fold-to-level picker with `map.openLevelMenu(id)`. `w` opens the width popover for the selected node (mnemonics `t` Fit text, `l` 1 line, `s` 1 line siblings, `a` Auto — these apply only while that popover is open); in view mode `Ctrl/⌘+Z` / `Shift+Ctrl/⌘+Z` undo / redo width steps. Outline `attachOutlineTree` digits stay tree-absolute.
 | `pillSize(label, opts?)` / `FOLD_SLOT` / `TASK_LEAD` | Pill measure (multi-line wrap; foldable end-cap always reserved; `FOLD_SLOT=34`; task lead when task set) |
 
 
@@ -367,7 +367,7 @@ One rule on every map handle and pill:
 |---|---|---|
 | Primary action | left click / left drag | tap / deliberate drag |
 | Alternate menu | right-click (`contextmenu`) | long-press 500 ms (ring from 150 ms), staying within 10 px (touch) / 8 px (pen) |
-| Keyboard | `w` (width), `ContextMenu` / `Shift+F10` (node menu), `map.openLevelMenu(id)` | same |
+| Keyboard | `t` (task cycle), `w` (width), `ContextMenu` / `Shift+F10` (node menu), `map.openLevelMenu(id)` | same |
 
 - **Width corner:** left-drag (or a sideways swipe on a selected pill) resizes; a click / tap opens nothing; right-click or long-press opens the width menu.
 - **Fold handle (±):** click / tap folds; right-click or long-press opens the fold-to-level picker.

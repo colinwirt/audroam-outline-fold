@@ -43,6 +43,26 @@ export function nextTaskState(from: TaskState): TaskState {
 }
 
 /**
+ * Next Map `t` cycle step.
+ * `includeNone` is true only when the node had no checkbox at focus-in:
+ * none → open → pending → done → none. Otherwise the loop stays on
+ * checkbox states (and a missing box becomes open).
+ */
+export function nextTaskCycle(
+  from: TaskState | null,
+  includeNone: boolean,
+): TaskState | null {
+  if (includeNone) {
+    if (from === null) return 'open';
+    if (from === 'open') return 'pending';
+    if (from === 'pending') return 'done';
+    return null;
+  }
+  if (from === null) return 'open';
+  return nextTaskState(from);
+}
+
+/**
  * Pure toggle of `node.task`. No-op if node missing or has no task.
  * Returns `{ doc, from, to, node }` or null.
  */
@@ -61,6 +81,30 @@ export function toggleTask(
   const from = node.task;
   const to = nextTaskState(from);
   node.task = to;
+  return { doc: next, from, to, node };
+}
+
+/**
+ * Set `node.task` to `to`, or remove the checkbox when `to` is null.
+ * No-op (null) if the node is missing or already in that state.
+ */
+export function setTask(
+  doc: OutlineFoldDoc,
+  id: string,
+  to: TaskState | null,
+): {
+  doc: OutlineFoldDoc;
+  from: TaskState | null;
+  to: TaskState | null;
+  node: OutlineNode;
+} | null {
+  const next = cloneDoc(doc);
+  const node = findMutable(next.nodes, id);
+  if (!node) return null;
+  const from = node.task ?? null;
+  if (from === to) return null;
+  if (to === null) delete node.task;
+  else node.task = to;
   return { doc: next, from, to, node };
 }
 
@@ -182,3 +226,92 @@ export function toggleTaskAtLine(text: string, ordinal: number): { text: string;
   }
   return null;
 }
+
+/** Insert, replace, or remove the leading task mark on a line. Null when unchanged or impossible. */
+export function setTaskMark(
+  line: string,
+  to: TaskState | null,
+): { line: string; from: TaskState | null; to: TaskState | null } | null {
+  const hit = taskMarkAt(line);
+  const from = hit?.state ?? null;
+  if (from === to) return null;
+  if (to === null) {
+    if (!hit) return null;
+    let end = hit.to;
+    if (line[end] === ' ' || line[end] === '\t') end += 1;
+    return { line: line.slice(0, hit.from) + line.slice(end), from, to };
+  }
+  if (!hit) {
+    const m = /^(\s*(?:[-*+]\s+)?)/.exec(line);
+    const prefix = m?.[1] ?? '';
+    const mark = `[${STATE_MARK[to]}] `;
+    return { line: prefix + mark + line.slice(prefix.length), from: null, to };
+  }
+  const mark = STATE_MARK[to];
+  const innerFrom = hit.from + 1;
+  const innerTo = hit.to - 1;
+  return { line: line.slice(0, innerFrom) + mark + line.slice(innerTo), from, to };
+}
+
+function applyMarkOnNodeLine(
+  text: string,
+  at: number,
+  end: number,
+  line: string,
+  to: TaskState | null,
+  cr = false,
+): { text: string; from: TaskState | null; to: TaskState | null } | null {
+  const edited = setTaskMark(line, to);
+  if (!edited) return null;
+  const next = edited.line + (cr ? '\r' : '');
+  return { text: text.slice(0, at) + next + text.slice(end), from: edited.from, to: edited.to };
+}
+
+/** Set or remove the `[ ]` marker on the outline line tagged `<id:id>`. */
+export function setTaskLine(
+  text: string,
+  id: string,
+  to: TaskState | null,
+): { text: string; from: TaskState | null; to: TaskState | null } | null {
+  const tag = `<id:${id}>`;
+  let at = 0;
+  while (at <= text.length) {
+    const nl = text.indexOf('\n', at);
+    const end = nl < 0 ? text.length : nl;
+    const line = text.slice(at, end);
+    if (/^--- /.test(line)) return null;
+    if (new RegExp(`(^|\\s)${tag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(\\s|$)`).test(line)) {
+      return applyMarkOnNodeLine(text, at, end, line, to);
+    }
+    if (nl < 0) break;
+    at = nl + 1;
+  }
+  return null;
+}
+
+/** Same one-line set/remove at the ordinal-th outline node. */
+export function setTaskAtLine(
+  text: string,
+  ordinal: number,
+  to: TaskState | null,
+): { text: string; from: TaskState | null; to: TaskState | null } | null {
+  if (ordinal < 0) return null;
+  let at = skipFrontmatter(text);
+  let seen = 0;
+  while (at <= text.length) {
+    const nl = text.indexOf('\n', at);
+    const end = nl < 0 ? text.length : nl;
+    let line = text.slice(at, end);
+    const cr = line.endsWith('\r');
+    if (cr) line = line.slice(0, -1);
+    if (/^---(\s|$)/.test(line)) return null;
+    if (isNodeLine(line)) {
+      if (seen === ordinal) return applyMarkOnNodeLine(text, at, end, line, to, cr);
+      seen += 1;
+    }
+    if (nl < 0) break;
+    at = nl + 1;
+  }
+  return null;
+}
+

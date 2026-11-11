@@ -20,6 +20,14 @@ Folds in the 0.6.6 candidate below. **BREAKING** where marked.
 - **README** leads with the production model and a secure quick start; `types.ts` examples use `example.invalid`; `docs/sealed-branches-approval.md` maps its draft names to the exported API.
 - **Build:** `npm run build` removes `dist/` first, so stale files (e.g. an old `demoCrypto.js`) never ship.
 
+### Map: `t` cycles task checks on the focused node
+
+- **`t` / `T`** on a focused Map node cycles its task checkbox, using the same write path as a click (`onMainTaskToggle` / `onRegionTaskToggle` / `setDoc`, so undo, serialize and sealed guards still apply). Space stays fold.
+- **Cycle:** open `[ ]` → pending `[-]` → done `[x]` → open. The key is recorded at focus-in, per node, and reset when focus moves to a different node: if the node had no checkbox then, the cycle is none → `[ ]` → `[-]` → `[x]` → none; if it already had one, the box is not removed. A time leaf is a no-op (TL6).
+- **Read-only:** `allowTaskToggle: false` (same option as Outline) and a locked sealed node are no-ops; the live region announces "Task toggle is read-only" or "Sealed branch is locked". Map keys still only run when the Map owns focus, not while typing in an input, and not with Ctrl/Meta/Alt.
+- **Width popover:** while it is open, `t` remains the Fit text mnemonic; the task shortcut applies when that menu is closed.
+- New exports: `nextTaskCycle`, `setTask`, `setTaskMark`, `setTaskLine`, `setTaskAtLine`.
+
 ## 0.6.6 candidate (folded into 0.7.0)
 
 ### Session view keys for every node; no place-number keys (t2577u)

@@ -11,7 +11,7 @@
  * the doc dirty, keeps the auto-ct slot in the text, and schedules a retry `save-needed`.
  */
 import { parse } from './parse.js';
-import { toggleTaskAtLine } from './task.js';
+import { nextTaskState, setTaskAtLine, toggleTaskAtLine } from './task.js';
 import { resolveMapRef, type MapNodeRef } from './mapRef.js';
 import type { TaskState } from './types.js';
 import { createIdAllocator, type IdDiagnostic, type IdScope } from './idAllocator.js';
@@ -148,9 +148,9 @@ export interface OutlineDocHandle {
   regionNode(id: string): OutlineNode | null;
   hasRegionChildren(id: string): boolean;
   toggleRegionFold(id: string): boolean;
-  toggleRegionTask(id: string): boolean;
-  /** 0.4.15: cycle a main-doc task marker as a one-line text edit (never re-serialises). */
-  toggleTask(id: string, ref?: MapNodeRef | number): { from: TaskState; to: TaskState } | null;
+  toggleRegionTask(id: string, to?: TaskState | null): boolean;
+  /** 0.4.15: cycle a main-doc task marker as a one-line text edit (never re-serialises). Pass `to` to set or remove (`null`) the marker. */
+  toggleTask(id: string, ref?: MapNodeRef | number, to?: TaskState | null): { from: TaskState | null; to: TaskState | null } | null;
   mapOptions(onUnlock?: (region: RegionId) => void, onMore?: (branchId: string, rect: DOMRect) => void): {
     sessionIndex: SessionIndex;
     getRegionHosts: () => RegionHostSpec[];
@@ -158,11 +158,11 @@ export interface OutlineDocHandle {
     onRegionUnlock: (region: RegionId) => void;
     onRegionLock: (region: RegionId) => void;
     onRegionMore: (region: RegionId, rect: DOMRect) => void;
-    onRegionTaskToggle: (id: string) => boolean;
+    onRegionTaskToggle: (id: string, to?: TaskState | null) => boolean;
     onRegionWidth: (id: string, w: number | null, wAuto?: string | null) => void;
     onRegionStyle: (id: string) => void;
     onRegionFoldSync: (region: string) => void;
-    onMainTaskToggle: (id: string, ref?: MapNodeRef | number) => { from: TaskState; to: TaskState } | null;
+    onMainTaskToggle: (id: string, ref?: MapNodeRef | number, to?: TaskState | null) => { from: TaskState | null; to: TaskState | null } | null;
   };
   unlock(branchId: string, anchorEl?: HTMLElement | null, o?: { label?: string; container?: HTMLElement; inline?: boolean }): Promise<boolean>;
   lock(branchId: string | 'all', reason?: LockReason): Promise<void>;
@@ -567,14 +567,19 @@ export function createOutlineDoc(o: OutlineDocOptions): OutlineDocHandle {
       sessions.touch();
       return true;
     },
-    toggleRegionTask(id) {
+    toggleRegionTask(id, to) {
       const n = handle.regionNode(id);
-      if (!n || !n.task) return false;
-      n.task = n.task === 'open' ? 'pending' : n.task === 'pending' ? 'done' : 'open';
+      if (!n) return false;
+      const from = n.task ?? null;
+      const next = to === undefined ? (from ? nextTaskState(from) : null) : to;
+      if (next === null && !from) return false;
+      if (from === next) return false;
+      if (next === null) delete n.task;
+      else n.task = next;
       sessions.markChanged(handle.scoped(id).region);
       return true;
     },
-    toggleTask(id, ref) {
+    toggleTask(id, ref, to) {
       const raw = handle.getText();
       const key = String(id);
       // 0.5.15: resolve the row for certain against the whole text: written <id:N> or __tmp-N
@@ -586,7 +591,7 @@ export function createOutlineDoc(o: OutlineDocOptions): OutlineDocHandle {
         emit('refused', { action: 'tick', id: key, reason: hit.reason, ...(r0.title !== undefined ? { title: r0.title } : {}) });
         return null;
       }
-      const r = toggleTaskAtLine(raw, hit.ordinal);
+      const r = to === undefined ? toggleTaskAtLine(raw, hit.ordinal) : setTaskAtLine(raw, hit.ordinal, to);
       if (!r) return null;
       handle.setText(r.text, { source: 'host' });
       return { from: r.from, to: r.to };
@@ -602,7 +607,7 @@ export function createOutlineDoc(o: OutlineDocOptions): OutlineDocHandle {
         onRegionUnlock: (region) => onUnlock?.(region),
         onRegionLock: (region) => { rootNow(); void sessions.lock(region, 'user'); },
         onRegionMore: (region, rect) => onMore?.(branchOf(region), rect),
-        onRegionTaskToggle: (id) => handle.toggleRegionTask(id),
+        onRegionTaskToggle: (id, to) => handle.toggleRegionTask(id, to),
         onRegionWidth: (id, w, wAuto) => {
           const n = handle.regionNode(id);
           if (!n) return;
@@ -623,7 +628,7 @@ export function createOutlineDoc(o: OutlineDocOptions): OutlineDocHandle {
         // 0.5.28: zone style is inline in the child doc already; mark the region for re-seal.
         onRegionStyle: (id) => { if (handle.regionNode(id)) sessions.markChanged(handle.scoped(id).region); },
         onRegionFoldSync: (region) => writeInnerFold(region),
-        onMainTaskToggle: (id, ref) => handle.toggleTask(id, ref),
+        onMainTaskToggle: (id, ref, to) => handle.toggleTask(id, ref, to),
       };
     },
     unlock(branchId, anchorEl, opt = {}) {

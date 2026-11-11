@@ -132,6 +132,7 @@ import {
 } from './mapTap.js';
 import {
   displayCaption,
+  parseLeadingTask,
   resolveTask,
   resolveAction,
   resolveThread,
@@ -183,7 +184,7 @@ import {
   type NodeMenuEntry,
   type NodeUriOption,
 } from './nodeMenu.js';
-import { toggleTask, nextTaskState, shouldFireAction } from './task.js';
+import { toggleTask, setTask, nextTaskState, nextTaskCycle, shouldFireAction } from './task.js';
 import { mapRefOf, type MapNodeRef } from './mapRef.js';
 import {
   TIME_LEAF_GAP_Y,
@@ -407,7 +408,7 @@ export interface MapViewOptions {
    * task in that region's child doc (the zone plaintext) and marks it dirty; Save re-seals.
    * Return true when it changed.
    */
-  onRegionTaskToggle?: (scopedId: string) => boolean;
+  onRegionTaskToggle?: (scopedId: string, to?: TaskState | null) => boolean;
   /**
    * A width change on a pill inside an unlocked region (corner drag or the width menu).
    * The map has already written it onto that child. `w` null is Auto (clear `w` and `wAuto`).
@@ -434,7 +435,12 @@ export interface MapViewOptions {
    */
   /** 0.5.15: `ref` names the row for certain (id, path from the shown top row, title), so the
    *  text side resolves it against the whole note. A number is the 0.5.14 ordinal. */
-  onMainTaskToggle?: (id: string, ref?: MapNodeRef | number) => { from: TaskState; to: TaskState } | null;
+  onMainTaskToggle?: (id: string, ref?: MapNodeRef | number, to?: TaskState | null) => { from: TaskState | null; to: TaskState | null } | null;
+  /**
+   * When false, Map task clicks and the `t` shortcut are ignored (announce
+   * "Task toggle is read-only"). Default true. Same idea as Outline `allowTaskToggle`.
+   */
+  allowTaskToggle?: boolean;
   /** Map focus moved (click, keys, `setFocus`): scoped id (`region:node` inside a region). */
   onFocusChange?: (scopedId: string) => void;
   /**
@@ -1835,6 +1841,7 @@ export function createMapView(
   };
   const setFocusId = (id: string) => {
     setFocusIdRaw(toRef(id));
+    rememberTaskCycleOrigin(id);
     emitFocus();
   };
   const getFocusId = (): string => toKey(getFocusIdRaw());
@@ -1898,6 +1905,7 @@ export function createMapView(
     ariaLabel = 'Outline mind map, left to right. Pan and zoom enabled.',
     isActive = () => true,
     onTaskToggle,
+    allowTaskToggle: allowTaskToggleOpt,
     onAction,
     onThread,
     onNoteLink,
@@ -1975,6 +1983,7 @@ export function createMapView(
     | null;
   let pendingFollow: PendingFollow = null;
   let keyboardBound = false;
+  let taskCycleOrigin: { id: string; includeNone: boolean } | null = null;
 
   function hostViewport(): { w: number; h: number } {
     const rect = host.getBoundingClientRect();
@@ -4648,7 +4657,10 @@ export function createMapView(
   function setRegionFocus(key: string | null): void {
     regionFocus = key;
     syncRegionFocus();
-    if (key) emitFocus();
+    if (key) {
+      rememberTaskCycleOrigin(key);
+      emitFocus();
+    }
   }
   function syncRegionFocus(): void {
     for (const el of host.querySelectorAll('.map-region-node.is-focused, .map-region.is-focused')) el.classList.remove('is-focused');
@@ -4685,6 +4697,16 @@ export function createMapView(
   /** Child node of an open region, or null for a root-doc id / the cloud root. */
   function regionWidthTarget(key: string): OutlineNode | null {
     return regionWidthDoc(key)?.node ?? null;
+  }
+  function resolveFocusedTaskNode(id: string): OutlineNode | null {
+    return findNode(getDoc().nodes, id) ?? regionWidthTarget(id);
+  }
+  function rememberTaskCycleOrigin(id: string | null): void {
+    if (!id) return;
+    const key = parseScopedId(id).region ? id : toRef(id);
+    if (taskCycleOrigin?.id === key || taskCycleOrigin?.id === id) return;
+    const n = resolveFocusedTaskNode(id) ?? resolveFocusedTaskNode(key);
+    taskCycleOrigin = { id: key, includeNone: !!n && !timeLeafKind(n) && !resolveTask(n) };
   }
   /** Write a finished region-pill drag onto the child. Returns true when `key` is in a region. */
   function commitRegionWidth(key: string): boolean {
@@ -5206,7 +5228,15 @@ export function createMapView(
     });
   }
 
+  function tasksEditable(): boolean {
+    return allowTaskToggleOpt !== false;
+  }
+
   function applyTaskToggle(id: string): void {
+    if (!tasksEditable()) {
+      announce('Task toggle is read-only');
+      return;
+    }
     const doc = getDoc();
     const n = findNode(doc.nodes, id);
     if (!n) {
@@ -5221,7 +5251,7 @@ export function createMapView(
       // 0.5.15: a certain reference (id, path from the shown top row, title), resolved by the
       // text side against the whole note, never by position within the shown subset.
       const viaText = opts.onMainTaskToggle(toRef(id), mapRefOf(doc, n) ?? undefined);
-      if (!viaText) return;
+      if (!viaText || !viaText.from || !viaText.to) return;
       const node = { ...n, task: viaText.to };
       onTaskToggle?.({ id: toRef(id), from: viaText.from, to: viaText.to, node });
       if (shouldFireAction(viaText.from, viaText.to)) {
@@ -5281,6 +5311,113 @@ export function createMapView(
       if (action) onAction?.({ id: toRef(id), action, node: nextNode });
     }
     onChange?.();
+  }
+
+  /**
+   * Set, add, or remove a task marker through the same paths as a checkbox click
+   * (`onMainTaskToggle` / `onRegionTaskToggle` / `setDoc`).
+   */
+  function applyTaskWrite(id: string, to: TaskState | null): boolean {
+    if (!tasksEditable()) return false;
+    const doc = getDoc();
+    const n = findNode(doc.nodes, id);
+    if (!n) {
+      if (parseScopedId(id).region && opts.onRegionTaskToggle?.(id, to)) {
+        onChange?.();
+        paint();
+        return true;
+      }
+      return false;
+    }
+    const from = n.task ?? resolveTask(n) ?? null;
+    if (from === to) return false;
+    if (opts.onMainTaskToggle) {
+      const viaText = opts.onMainTaskToggle(toRef(id), mapRefOf(doc, n) ?? undefined, to);
+      if (!viaText) return false;
+      const node = { ...n } as OutlineNode;
+      if (viaText.to) node.task = viaText.to;
+      else delete node.task;
+      if (viaText.from && viaText.to) {
+        onTaskToggle?.({ id: toRef(id), from: viaText.from, to: viaText.to, node });
+        if (shouldFireAction(viaText.from, viaText.to)) {
+          const action = resolveAction(node);
+          if (action) onAction?.({ id: toRef(id), action, node });
+        }
+      }
+      onChange?.();
+      paint();
+      return true;
+    }
+    if (n.task || from == null) {
+      const result = setTask(doc, toRef(id), to);
+      if (!result) return false;
+      setDoc(result.doc);
+      if (result.from && result.to) {
+        onTaskToggle?.({
+          id: toRef(id),
+          from: result.from,
+          to: result.to,
+          node: result.node,
+        });
+        if (shouldFireAction(result.from, result.to)) {
+          const action = resolveAction(result.node);
+          if (action) onAction?.({ id: toRef(id), action, node: result.node });
+        }
+      }
+      onChange?.();
+      paint();
+      return true;
+    }
+    const nextTitle = to == null
+      ? (parseLeadingTask(n.title)?.label ?? n.title)
+      : toggleTaskMarker(n.title, to);
+    const nextDoc: OutlineFoldDoc = {
+      frontmatter: doc.frontmatter
+        ? {
+            ...doc.frontmatter,
+            foldIds: doc.frontmatter.foldIds
+              ? [...doc.frontmatter.foldIds]
+              : undefined,
+          }
+        : undefined,
+      nodes: structuredClone(doc.nodes),
+      fold: { mode: doc.fold.mode, ids: [...doc.fold.ids] },
+    ...(doc.keys ? { keys: doc.keys } : {}),
+    ...(doc.keyring ? { keyring: doc.keyring } : {}),
+    ...(doc.sealedOrphans ? { sealedOrphans: { ...doc.sealedOrphans } } : {}),
+    };
+    patchNodeTitle(nextDoc.nodes, id, nextTitle);
+    const nextNode = findNode(nextDoc.nodes, id)!;
+    if (to == null) delete nextNode.task;
+    else nextNode.task = to;
+    setDoc(nextDoc);
+    onChange?.();
+    paint();
+    return true;
+  }
+
+  function applyTaskKey(): boolean {
+    const id = regionFocus || getFocusId();
+    if (!id) return false;
+    const n = resolveFocusedTaskNode(id);
+    if (n && timeLeafKind(n)) return true;
+    if (!tasksEditable()) {
+      announce('Task toggle is read-only');
+      return true;
+    }
+    if (!n) {
+      if (parseScopedId(id).region) announce('Sealed branch is locked');
+      return !!parseScopedId(id).region;
+    }
+    rememberTaskCycleOrigin(id);
+    const from = resolveTask(n) ?? null;
+    const to = nextTaskCycle(from, !!taskCycleOrigin?.includeNone);
+    if (from === to) return true;
+    if (!applyTaskWrite(id, to)) return true;
+    announce(
+      to === null ? 'Task removed' : to === 'done' ? 'Task done' : to === 'pending' ? 'Task pending' : 'Task open',
+    );
+    return true;
   }
 
   /**
@@ -7607,7 +7744,7 @@ export function createMapView(
    * Map-mode keyboard — orientation table (L→R). Outline keeps attachOutlineTree ARIA map.
    * Fold never on ←/→; fold via . / Space / Enter / digits when a node is selected.
    * Digits / * are relative to the selected node (1 = show that node's children).
-   * Space stays fold (not task toggle).
+   * Space stays fold (not task toggle). `t` cycles the focused node's task check.
    */
   function bindKeyboard(wire: MapKeyboardWire = {}): void {
     if (keyboardBound) return;
@@ -7688,6 +7825,13 @@ export function createMapView(
           e.stopPropagation();
           return;
         }
+      }
+      if (e.key === 't' || e.key === 'T') {
+        if (applyTaskKey()) {
+          e.preventDefault();
+          e.stopPropagation();
+        }
+        return;
       }
       const n = focusId ? findNode(doc.nodes, focusId) : null;
       const selected = !!(n && n.id);

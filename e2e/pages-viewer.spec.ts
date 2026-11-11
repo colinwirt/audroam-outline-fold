@@ -380,3 +380,36 @@ test.describe('Pages viewer: Shift+F10 opens the package node menu (0.2.39, node
     await expectSelected(page, HOST, 'menu', { hostFocused: false });
   });
 });
+
+test.describe('Map t cycles task checks (0.7.0)', () => {
+  test('t on a node that started with a checkbox loops states and does not remove it', async ({ page }) => {
+    const host = await openMap(page);
+    await clickNode(page, host, 'menu-coldbrew');
+    await expectSelected(page, HOST, 'menu-coldbrew');
+    const box = host.locator('.map-node[data-id="menu-coldbrew"] .map-task-hit');
+    await expect(box).toHaveAttribute('aria-checked', 'false');
+    await press(page, 't');
+    await expect(box).toHaveAttribute('aria-checked', 'mixed');
+    await press(page, 't');
+    await expect(box).toHaveAttribute('aria-checked', 'true');
+    await press(page, 't');
+    await expect(box).toHaveAttribute('aria-checked', 'false');
+    await expect(box).toHaveCount(1);
+  });
+
+  test('t on a node that started with no checkbox adds one and can return to none', async ({ page }) => {
+    const host = await openMap(page);
+    await clickNode(page, host, 'root');
+    await expectSelected(page, HOST, 'root');
+    const node = host.locator('.map-node[data-id="root"]');
+    await expect(node.locator('.map-task-hit')).toHaveCount(0);
+    await press(page, 't');
+    await expect(node.locator('.map-task-hit')).toHaveAttribute('aria-checked', 'false');
+    await press(page, 't');
+    await expect(node.locator('.map-task-hit')).toHaveAttribute('aria-checked', 'mixed');
+    await press(page, 't');
+    await expect(node.locator('.map-task-hit')).toHaveAttribute('aria-checked', 'true');
+    await press(page, 't');
+    await expect(node.locator('.map-task-hit')).toHaveCount(0);
+  });
+});

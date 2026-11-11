@@ -409,9 +409,14 @@ export {
 
 export {
   toggleTask,
+  setTask,
   nextTaskState,
+  nextTaskCycle,
   toggleTaskLine,
   toggleTaskAtLine,
+  setTaskMark,
+  setTaskLine,
+  setTaskAtLine,
   shouldFireAction,
 } from './task.js';
 
