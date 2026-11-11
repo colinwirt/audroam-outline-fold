@@ -4,6 +4,8 @@
 **Against:** `@audroam/outline-fold` 0.6.5 (`8149a08`)
 **Status:** design + working prototype. Not a release.
 
+> **Landed in 0.7.0** (`release/0.7.0-secure-default`). Argon2id is the only KDF for new keys; PBKDF2 is decrypt-only. Defaults, as named constants in `src/kdf.ts` (proposed by DevSecOps, still open to change): write `ARGON2_DEFAULT_PROFILE` m=65536 KiB (64 MiB), t=3, p=1; opt-in `ARGON2_MOBILE_PROFILE` m=32768 KiB (32 MiB), t=4, p=1 (`createKey(…, { kdfProfile: 'mobile' })`); readers accept headers at least as strong as either profile, within `ARGON2_CAPS` m ≤ 262144 KiB (256 MiB), t ≤ 8, p ≤ 4, with exactly `ARGON2_SALT_BYTES` = 16. Anything else is the generic `SealError`. `onProgress` and `signal` (AbortError) are on createKey / unlockKey / unlockKeyring / changeKeyringPassphrase. The sections below are the spike as written.
+
 This spike covers release gate G2 from [sealed-branches-approval.md](../sealed-branches-approval.md): bundle a pinned, self-hosted Argon2id implementation for passphrase-based key derivation, keep old seals readable, and keep the envelope portable.
 
 ## 1. How seals derive keys today

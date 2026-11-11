@@ -55,7 +55,8 @@ export interface SealSession extends SealSessionSnapshot {
 export interface SealSessionsOptions {
   /** Root host document (the one that holds the `<enc:KEYID>` lines). */
   getDoc: () => OutlineFoldDoc;
-  ctx: SealContext;
+  /** Note / owner ids, needed only to open legacy v1/v2 branches. of-seal-v3 needs none. */
+  ctx?: SealContext;
   api?: HostApi;
   /** Idle ms before auto-lock; default from the layout block `autoLock:` or 5 min. 0 = off. */
   autoLockMs?: number;
@@ -336,7 +337,7 @@ export function createSealSessions(opts: SealSessionsOptions): SealSessions {
           await unlockKey(pdoc, kid, passphrase);
         }
         const parent = s.parent ? map.get(s.parent)!.viewer! : null;
-        s.viewer = parent ? await parent.open(s.branchId) : await openSealedBranch(pdoc, s.branchId, opts.ctx);
+        s.viewer = parent ? await parent.open(s.branchId) : await openSealedBranch(pdoc, s.branchId, opts.ctx ?? {});
       } catch (e) {
         s.viewer = null;
         if (e instanceof DamagedSealError) return fail(s, 'damaged'); // no back-off, not counted

@@ -4,13 +4,61 @@ Pure TypeScript **outline language** for structured operational handoffs: parse 
 
 Sealed branches write **of-seal-v3**. The envelope is part of this format: it opens from the text and the key, with no note, account, or server. See [docs/seal-v3.md](docs/seal-v3.md).
 
-**MIT.** Host apps own production authentication, encryption, and database drivers.
+**MIT.** Host apps own sign-in, key release, storage and database drivers.
+
+## Production model
+
+There is one model, and every example uses it. There is no demo mode.
+
+| Piece | What it is |
+|---|---|
+| **Secure envelope** | Each sealed branch is an of-seal-v3 payload: a fresh random key (DEK) and IV per seal, AES-256-GCM (default) or XChaCha20-Poly1305, with the header (magic, version, cipher, HKDF id, salt, kid, seal id, role) as AAD. A CRC-32 tells "damaged in transit" apart from "can't unlock". No note, owner or server id is bound in, so a block opens anywhere with the text and the key. |
+| **Keyring wrapping** | `--- keyring ---` holds one entry per key id: a random 256-bit secret wrapped with AES-GCM under a key derived from the passphrase with **Argon2id** (64 MiB, t=3, p=1, 16-byte salt; bundled, pure JS). The passphrase is never stored. Changing it re-wraps the keyring; payloads stay as they are. |
+| **Host-managed unlock** | The host app owns the passphrase prompt (or MFA / key release), back-off, idle lock and where the text is stored. The package gives it `mountUnlockPrompt` / `promptPassphrase` (always empty, `autocomplete="current-password"`), `mountCreateKeyPrompt` (`autocomplete="new-password"`) and `createSealSessions`. |
+| **Runtime-only plaintext** | Unlocking opens a branch in a memory-only viewer. Keys are non-extractable `CryptoKey`s in memory; `clearKeys()` drops them. Plaintext is never written back into the host document. |
+
+What gets saved, and where:
+
+- `serialize(doc)` / `portableCopy(doc)` write the public labels, the ciphertext and the wrapped keyring. That is all a store ever holds, and it still opens later with outline-fold and the passphrase.
+- `cleanCopy(doc)` is the public view: no ciphertext, no keyring. Use it for sharing or search.
+- Never commit, log or ship a passphrase, and never prefill one. Committing an outline's ciphertext is not a key-management plan: whoever has the text can try passphrases offline, so the keyring is only as strong as the passphrase.
+
+## Secure quick start
+
+The simplest supported path: a real keyring derived from a passphrase the browser or password manager fills, in the same envelope production uses. Try it on the [Secure quick start page](./examples/secure-quickstart/).
+
+```ts
+import {
+  parse, serialize, cleanCopy,
+  mountCreateKeyPrompt, promptPassphrase,
+  createKey, sealBranch, unlockKey, openSealedBranch, clearKeys,
+} from '@audroam/outline-fold';
+
+const doc = parse(text);                                  // text from your store
+let kid = '';
+// 1. New key: empty field, autocomplete="new-password", min 16 chars.
+await mountCreateKeyPrompt({ create: async (pass) => { ({ kid } = await createKey(doc, pass)); } }).done;
+// 2. Seal a branch (of-seal-v3, AES-256-GCM by default).
+await sealBranch(doc, nodeToSeal, kid);
+await store.save(serialize(doc));                        // labels + ciphertext + wrapped keyring
+// 3. Later: lock, then unlock with an empty, autofill-friendly card.
+clearKeys();
+const saved = parse(await store.load());
+await promptPassphrase({ kid, attempt: async (pass) => { await unlockKey(saved, kid, pass); return true; } });
+const viewer = await openSealedBranch(saved, nodeToSeal.id!); // plaintext in memory only
+```
+
+`promptPassphrase` treats a thrown `SealError` as a wrong passphrase. Options worth knowing:
+
+- `setSealCipher('xc20p')` picks XChaCha20-Poly1305 for new seals; the default is `'a256gcm'` (`DEFAULT_SEAL_CIPHER`), and `setSealCipher(null)` goes back to it.
+- `createKey(doc, pass, { kdfProfile: 'mobile' })` writes the 32 MiB / t=4 Argon2id profile; the host decides, there is no heuristic. `onProgress` and an `AbortSignal` (`signal`) work on `createKey`, `unlockKey`, `unlockKeyring` and `changeKeyringPassphrase`.
+- `setArgon2Provider(fn)` swaps the bundled Argon2id (for example a WASM build); `installDefaultArgon2Provider()` puts it back. Readers accept the default or the mobile profile, cap m ≤ 256 MiB, t ≤ 8, p ≤ 4, and reject anything else with the same `SealError`. PBKDF2 keyrings from before 0.7.0 still open; new keys are never PBKDF2.
+- `SealContext` (`noteId`, `ownerId`) is optional. Only branches sealed by v1/v2 (before of-seal-v3) need those ids to open.
 
 ```bash
 npm i   # from this repo
 npm test
 npm run build
-npm run demo:seal   # re-seal the example payloads with the demo password
 npx serve -l 4173 .   # then open the live demos below
 ```
 
@@ -23,6 +71,7 @@ npx serve -l 4173 .   # then open the live demos below
 | Demo | Pages URL |
 |------|-----------|
 | Landing | [https://colinwirt.github.io/audroam-outline-fold/](https://colinwirt.github.io/audroam-outline-fold/) |
+| Secure quick start (create key → seal → unlock) | […/examples/secure-quickstart/](https://colinwirt.github.io/audroam-outline-fold/examples/secure-quickstart/) |
 | Demos index (Map) | […/examples/viewer/?doc=../demos-index/demos-index.md](https://colinwirt.github.io/audroam-outline-fold/examples/viewer/?doc=../demos-index/demos-index.md) |
 | Shared Outline \| Map viewer | […/examples/viewer/](https://colinwirt.github.io/audroam-outline-fold/examples/viewer/) |
 | Cafe ops | […/viewer/?doc=../outline-demo.md](https://colinwirt.github.io/audroam-outline-fold/examples/viewer/?doc=../outline-demo.md) |
@@ -47,7 +96,7 @@ Shared Pages helpers: [`examples/_shared/`](./examples/_shared/) — `parseDoc` 
 
 The viewer chrome shows **Package** / **Viewer** / **Git** build stamps (injected at site build). Hard-refresh (`Ctrl+Shift+R` / `Cmd+Shift+R`) or use a private window to bypass cache and confirm you have the latest Pages build.
 
-Locked rows in the examples hold real demo ciphertext. When an outline has them, the viewer shows **Unlock** and `Demo password: 123`. The password comes from [`examples/demo-values.json`](./examples/demo-values.json), never from the outline text. See [Demo crypto](#demo-crypto-not-production-mfa). All example names, places and numbers are made up.
+The example outlines ship no ciphertext, no keyring and no password. Rows that would hold secrets are plain titles; sealing is shown only on the [Secure quick start](./examples/secure-quickstart/) page, with a key you create there and which stays in memory. If you load an outline with real sealed rows into the viewer, a row's lock asks for that key's passphrase on an empty card. All example names, places and numbers are made up.
 
 Source outlines: [examples/outline-demo.md](./examples/outline-demo.md) · [examples/solar-system/solar-system.md](./examples/solar-system/solar-system.md) (+ [layout sidecar](./examples/solar-system/solar-system.layout.json)) · [examples/fixtures/](./examples/fixtures/).
 
@@ -58,28 +107,31 @@ Source outlines: [examples/outline-demo.md](./examples/outline-demo.md) · [exam
 **Secret material:** a **sealed payload** attached to the node — **not** plaintext children. Prefer a trailing payload map so titles stay readable:
 
 ```text
----
-fold-: alarm, staff-private, ins-remote
-collapsedMarker: "(+)"
----
 - ☕ Northside Corner Cafe — ops handoff <id:root>
-  - Alarm code / arming notes <encrypted> <id:alarm> (+)
-  - Full staff list + emergency contacts <private> <id:staff-private> (+)
+  - Alarm notes <enc:k1> <id:alarm>
   - Vendor insurance certificate <encrypted> <id:ins-remote> (+)
 
 --- payloads ---
 alarm:
-  kid: cafe-alarm-1
-  alg: demo-aes-gcm
-  ct: BASE64URL…
-staff-private:
-  kid: cafe-staff-1
-  ct: …
+  alg: of-seal-v3
+  pub: "Alarm notes"
+  ct: -----BEGIN OUTLINE-FOLD SEAL-----
+    <base64url, one line>
+    <crc32>
+    -----END OUTLINE-FOLD SEAL-----
 ins-remote:
-  kid: cafe-ins-1
-  uri: https://example.invalid/sealed/cafe-ins-1.bin
+  kid: k1
+  uri: https://example.invalid/sealed/ins-remote.bin
+---
+
+--- keyring ---
+k1:
+  kdf: $argon2id$v=19$m=65536,t=3,p=1$<16-byte salt, base64url>
+  wrap: a256gcm.<nonce>.<wrapped key>
 ---
 ```
+
+Write these blocks with `createKey` + `sealBranch` + `serialize`; never by hand.
 
 ### Rules
 
@@ -151,7 +203,7 @@ noteDetailsUri: none
 
 **Key identity:** Every sealed node is expected to carry its own `kid`. The default is one key per node; sharing a `kid` across nodes is supported when the user deliberately judges their sensitivity the same. The trailer stays keyed by node id, with each entry carrying its own `kid`.
 
-**Single-key fallback (host unlock):** If sealed nodes omit `kid` and the unlock context has exactly one key, the host may use that key for all sealed nodes and assume one shared algorithm. With zero or multiple keys, do not guess: require explicit `kid`, plus `alg` when it is not the demo default. This is only a whole-document convenience; per-node `kid`s remain the expected path.
+**Single-key fallback (host unlock):** If sealed nodes omit `kid` and the unlock context has exactly one key, the host may use that key for all sealed nodes and assume one shared algorithm. With zero or multiple keys, do not guess: require an explicit `kid` and `alg`. This is only a whole-document convenience; per-node `kid`s remain the expected path.
 
 `serialize` always emits lean lines + a `--- payloads ---` trailer when any node has `sealed`.
 
@@ -168,54 +220,25 @@ noteDetailsUri: none
 
 `<kind:time>` and `<kind:session>` (0.2.40) mark time records; on the Map a leaf with one is a [time leaf](#time-leaves-0240). They are colon-form only: a bare `<time>` or `<session>` stays caption text.
 
-## Demo crypto (not production MFA)
+## Keys and unlock (host's choice)
 
-```ts
-import {
-  demoSeal,
-  demoOpen,
-  DEMO_PASSPHRASE,
-  DEMO_ALG,
-} from '@audroam/outline-fold';
+The **key is never in the outline string**, and neither is the passphrase. The host gets the passphrase from the user at unlock time:
 
-const sealed = await demoSeal('Arm code 4821', DEMO_PASSPHRASE, 'cafe-alarm-1');
-const plain = await demoOpen(sealed, DEMO_PASSPHRASE);
-```
+1. **Password manager / browser autofill**: the unlock card's field is empty `type="password"` with `autocomplete="current-password"`; the new-key card uses `autocomplete="new-password"`. `onPasteFromManager` adds a paste button.
+2. **Typed passphrase**: same card; back-off after wrong attempts (`backoffMs`).
+3. **Server after MFA**: the host releases the passphrase (or a derived secret through `setArgon2Provider`) only after its own checks, then calls `unlockKey`.
 
-| | |
-|--|--|
-| **Example password** | `123`, from `examples/demo-values.json` (the demo values provider the viewer reads) |
-| **`DEMO_PASSPHRASE`** | `northside-demo`, a sample constant for your own tests |
-| **Key per payload** | PBKDF2-SHA-256 (100k) from the password + a random 16-byte salt stored in the ciphertext (`salt ‖ iv ‖ ct+tag`) |
-| **Alg label** | `demo-aes-gcm` (AES-GCM + PBKDF2 via Web Crypto) |
-| **Regenerate fixtures** | `npm run demo:seal` ← plaintexts in `scripts/demo-plaintexts.json`, password in `examples/demo-values.json` |
-
-Remote `uri` entries **cannot** be opened by `demoOpen` — the host must fetch after key release.
-
-### Key sources (host's choice)
-
-The **key is never in the outline string**. Session / user supplies it:
-
-1. **Browser session** — passphrase or DEK in memory after unlock (`sessionStorage` OK for demo; avoid `localStorage` for demo DEKs)
-2. **Password manager** — paste field labeled “from password manager” (future: Web Credentials / 1Password)
-3. **Pageant / OS agent** — not wired in the browser examples
-4. **Server after MFA** — `onDecrypt(id, kid)` → host returns the DEK
-
-The Pages examples use a password prompt prefilled with the demo password.
-
-Unlock reveals **session-only** plaintext under the node (default: do **not** write plaintext back into the editor).
+Unlock reveals **memory-only** plaintext in a viewer; it is never written back into the host document. Remote `uri` payloads are fetched by the host after key release.
 
 ## Security boundary
 
 | In this package | In the host app |
 |-----------------|-----------------|
 | Grammar, fold state, icons, HTML chrome, Map SVG | Authentication / MFA challenge |
-| Trailer / inline sealed fields | Key management, remote blob fetch |
-| `demoSeal` / `demoOpen` (**demo only**) | Production crypto / ACL key release |
+| of-seal-v3 envelope, keyring wrap (Argon2id), memory-only viewers | Who may unlock, key release, remote blob fetch, storage |
+| Unlock and new-key cards, seal sessions, idle lock | Back-off policy, audit, account recovery |
 | `onUnlock` / `onDecrypt` **types** | Real key release callbacks |
 | `db` flag + `dbRef` string | Connection pools, credentials |
-
-**Demo ≠ production MFA.** The Pages examples unlock with the demo password so they work offline.
 
 Link `dist/outline-fold.css` before any host stylesheet. The export is `@audroam/outline-fold/outline-fold.css`. It paints `toHtml` rows and the map. A collapsed fold circle is solid gold; an expanded one is a gold ring you can see through. Override only chrome that belongs to the host.
 
@@ -237,9 +260,6 @@ import {
   autoPackPositions,
   pillSize,
   FOLD_SLOT,
-  demoSeal,
-  demoOpen,
-  DEMO_PASSPHRASE,
 } from '@audroam/outline-fold';
 
 const doc = parse(text);
@@ -514,11 +534,12 @@ import { createMapView, autoPackPositions } from '@audroam/outline-fold';
 import { createMapView, autoPackPositions } from './vendor/outline-fold/index.js';
 ```
 
-## Sealed regions, sessions, editor (unreleased)
+## Sealed regions, sessions, editor
 
 ```ts
 import { createSealSessions, regionHostsFromSessions, createMapView, loadOutlineEditor } from '@audroam/outline-fold';
-const sessions = createSealSessions({ getDoc, ctx: { noteId, ownerId }, confirmUnlockToo: (r) => confirm('Unlock this branch too?') });
+// ctx ({ noteId, ownerId }) is only needed to open v1/v2 branches.
+const sessions = createSealSessions({ getDoc, confirmUnlockToo: (r) => confirm('Unlock this branch too?') });
 sessions.api.on('unlock', (e) => map.paint());
 await sessions.api.dispatch({ cmd: 'open', region: sessions.regionFor('b7'), passphrase });
 const map = createMapView(el, { ...opts, getRegionHosts: () => regionHostsFromSessions(sessions, getDoc()) });
