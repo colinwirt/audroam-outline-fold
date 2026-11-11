@@ -547,6 +547,12 @@ export {
   type Argon2Provider,
   type KdfParams,
 } from './sealedBranch.js';
+export {
+  argon2idDerive,
+  createArgon2Provider,
+  installDefaultArgon2Provider,
+  type Argon2idOptions,
+} from './kdf.js';
 export type { SealKeyEntry, SealKeyringEntry, SealedDraftSlot, SealedDiscardedSlot } from './types.js';
 export {
   ctHash,

@@ -26,15 +26,24 @@ mkdirSync(join(site, 'examples'), { recursive: true });
 
 cpSync(join(root, 'dist'), join(site, 'dist'), { recursive: true });
 
-// 0.3.1: dist/ imports the bare specifier '@noble/ciphers/*.js' (ESM, 2.x subpaths). Static
-// pages have no bundler/import map, so vendor the package's .js files into site/vendor and
-// rewrite the specifier in the copied dist modules to a relative path.
+// 0.3.1 / spike/argon2id-kdf: dist/ imports bare specifiers '@noble/ciphers/*.js'
+// and '@noble/hashes/*.js' (ESM subpaths). Static pages have no bundler/import
+// map, so vendor those .js files into site/vendor and rewrite the specifiers
+// in the copied dist modules to a relative path. No CDN.
 {
-  const nobleSrc = join(root, 'node_modules', '@noble', 'ciphers');
-  const nobleDst = join(site, 'vendor', 'noble-ciphers');
-  mkdirSync(nobleDst, { recursive: true });
-  for (const f of readdirSync(nobleSrc)) {
-    if (f.endsWith('.js') || f === 'LICENSE') cpSync(join(nobleSrc, f), join(nobleDst, f));
+  const noblePkgs = [
+    ['ciphers', 'noble-ciphers'],
+    ['hashes', 'noble-hashes'],
+  ];
+  const dstOf = {};
+  for (const [npmName, vendorName] of noblePkgs) {
+    const nobleSrc = join(root, 'node_modules', '@noble', npmName);
+    const nobleDst = join(site, 'vendor', vendorName);
+    dstOf[npmName] = nobleDst;
+    mkdirSync(nobleDst, { recursive: true });
+    for (const f of readdirSync(nobleSrc)) {
+      if (f.endsWith('.js') || f === 'LICENSE') cpSync(join(nobleSrc, f), join(nobleDst, f));
+    }
   }
   const walk = (dir) => {
     for (const f of readdirSync(dir)) {
@@ -42,9 +51,12 @@ cpSync(join(root, 'dist'), join(site, 'dist'), { recursive: true });
       if (statSync(full).isDirectory()) { walk(full); continue; }
       if (!f.endsWith('.js')) continue;
       const src = readFileSync(full, 'utf8');
-      const rel = relative(dirname(full), nobleDst).split('\\').join('/');
-      const out = src.replace(/(\bfrom\s*|\bimport\s*\(?\s*)(['"])@noble\/ciphers\/([\w.-]+\.js)\2/g,
-        (_m, pre, q, file) => `${pre}${q}${rel}/${file}${q}`);
+      let out = src;
+      for (const [npmName] of noblePkgs) {
+        const rel = relative(dirname(full), dstOf[npmName]).split('\\').join('/');
+        const re = new RegExp('(\\bfrom\\s*|\\bimport\\s*\\(?\\s*)([\'"])@noble/' + npmName + '/([\\w.-]+\\.js)\\2', 'g');
+        out = out.replace(re, (_m, pre, q, file) => pre + q + rel + '/' + file + q);
+      }
       if (out !== src) writeFileSync(full, out);
     }
   };

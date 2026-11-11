@@ -69,7 +69,8 @@
     "access": "public"
   },
   "dependencies": {
-    "@noble/ciphers": "2.4.0"
+    "@noble/ciphers": "2.4.0",
+    "@noble/hashes": "2.4.0"
   },
   "peerDependencies": {
     "@codemirror/state": "^6.4.0",

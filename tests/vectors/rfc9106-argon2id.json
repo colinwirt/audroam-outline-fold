@@ -1,0 +1,16 @@
+{
+  "comment": "RFC 9106 section 5.3 Argon2id test vector. Public. Not a passphrase.",
+  "rfc": "9106",
+  "section": "5.3",
+  "variant": "argon2id",
+  "version": 19,
+  "m": 32,
+  "t": 3,
+  "p": 4,
+  "len": 32,
+  "password_hex": "0101010101010101010101010101010101010101010101010101010101010101",
+  "salt_hex": "02020202020202020202020202020202",
+  "secret_hex": "0303030303030303",
+  "associated_data_hex": "040404040404040404040404",
+  "tag_hex": "0d640df58d78766c08c037a34a8b53c9d01ef0452d75b65eb52520e96b01e659"
+}
