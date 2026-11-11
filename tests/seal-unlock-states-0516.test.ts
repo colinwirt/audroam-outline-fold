@@ -81,6 +81,19 @@ describe('1. wrong key vs damaged', () => {
     expect((h.el.querySelector('.of-unlock-pass') as HTMLElement).hidden).toBe(false);
     h.close(); s.destroy();
   });
+  it('card: wrong key never shows or opens the damaged-seal note', async () => {
+    const doc = await sealed();
+    const s = createSealSessions({ getDoc: () => doc, ctx: CTX, backoffMs: () => 0, wipeOnPagehide: false });
+    const r = s.regionFor('v');
+    const h = mountUnlockPrompt({ sessions: s, region: r });
+    await s.open(r, 'nope');
+    const dq = h.el.querySelector('.of-unlock-damaged-q') as HTMLButtonElement;
+    const dnote = h.el.querySelector('.of-unlock-damaged-note') as HTMLElement;
+    expect(dq.hidden).toBe(true);
+    dq.click();
+    expect(dnote.hidden).toBe(true);
+    h.close(); s.destroy();
+  });
   it('card: damaged has no retry, no backoff, Restore only with history, details behind ?', async () => {
     const doc = await sealed();
     damage(doc);

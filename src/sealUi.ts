@@ -146,7 +146,7 @@ export function mountUnlockPrompt(o: UnlockPromptOptions): UnlockPromptHandle {
   dq.hidden = true;
   const dnote = el('div', 'of-unlock-damaged-note', 'The sealed text failed its checksum, so it was changed or cut after it was sealed. A passphrase cannot fix it. Nothing was changed. An earlier version of the note may still hold an intact copy.');
   dnote.hidden = true;
-  dq.addEventListener('click', () => (dnote.hidden = !dnote.hidden));
+  dq.addEventListener('click', () => { if (card.classList.contains('is-damaged')) dnote.hidden = !dnote.hidden; });
   const restore = o.restoreEarlier ? el('button', 'of-unlock-restore', 'Restore earlier version') : null;
   if (restore) {
     restore.type = 'button';

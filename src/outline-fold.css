@@ -1033,6 +1033,8 @@
 .of-sp { flex: 1; }
 .of-dot { width: 8px; height: 8px; border-radius: 50%; background: #e8a33d; display: inline-block; margin-right: 4px; }
 .of-q { display: inline-flex; width: 16px; height: 16px; padding: 0; border-radius: 50%; border: 1px solid #aab3bd; background: none; font-size: 10px; align-items: center; justify-content: center; color: #6b7580; cursor: pointer; }
+/* 0.6.6: .of-q's display:inline-flex overrode [hidden], so the damaged-seal '?' showed after a wrong passphrase and opened the checksum note. */
+.of-q[hidden], .of-unlock-damaged-note[hidden] { display: none; }
 .of-btn-p, .of-unlock-ok { background: #2b5cab; color: #fff; border: 1px solid #2b5cab; }
 
 /* 04 unlock card */
