@@ -1,6 +1,26 @@
 # Changelog
 
-## Unreleased (0.6.6 candidate)
+## 0.7.0 — Unreleased
+
+Folds in the 0.6.6 candidate below. **BREAKING** where marked.
+
+### Secure by default: Argon2id keyring, no demo crypto
+
+- **BREAKING: demo crypto removed from the public API.** `demoSeal`, `demoOpen`, `DEMO_PASSPHRASE` and `DEMO_ALG` are no longer exported, `npm run demo:seal` is gone, and `src/demoCrypto.ts` is an internal test fixture excluded from `dist`. Use `createKey` + `sealBranch` + `unlockKey` + `openSealedBranch` (see README "Secure quick start"). A guard test (`tests/no-demo-crypto-public.test.ts`) keeps demo names out of `src/index.ts`, `examples/`, the Pages build and the README.
+- **BREAKING: `promptPassphrase` has no `initial` option.** The unlock card is always empty (`autocomplete="current-password"`).
+- **BREAKING: Argon2id is the keyring KDF; PBKDF2 writes stopped.** New keys and passphrase changes write `$argon2id$v=19$m=65536,t=3,p=1$<salt>` (64 MiB, t=3, p=1, 16-byte salt) using the bundled `@noble/hashes` 2.4.0, installed automatically. There is no PBKDF2 fallback: with the provider removed, `createKey` throws. PBKDF2 (`kdf=pbkdf2-sha256&i=600000`) keyrings still unlock, forever.
+  - Opt-in mobile profile: `createKey(doc, pass, { kdfProfile: 'mobile' })` writes m=32768 (32 MiB), t=4, p=1. The host chooses; there is no heuristic.
+  - Readers accept headers at least as strong as either profile, within caps m ≤ 262144 KiB (256 MiB), t ≤ 8, p ≤ 4, salt exactly 16 bytes; anything else is the generic "Can't unlock" `SealError`.
+  - `onProgress` and `signal` (rejects with `AbortError`) on `createKey`, `unlockKey`, `unlockKeyring`, `changeKeyringPassphrase`.
+  - Named constants: `ARGON2_DEFAULT_PROFILE`, `ARGON2_MOBILE_PROFILE`, `ARGON2_CAPS`, `ARGON2_SALT_BYTES`; `argon2Profile()`, `installDefaultArgon2Provider()`, types `KdfProfile`, `KdfRunOptions`, `KdfWriteOptions`.
+- **Default cipher is `a256gcm`** (`DEFAULT_SEAL_CIPHER`); `setSealCipher('xc20p')` opts in to XChaCha20-Poly1305 and `setSealCipher(null)` resets.
+- **`SealContext.noteId` / `ownerId` are optional.** of-seal-v3 binds no host ids (AAD is the cipher header); only legacy v1/v2 branches need them and throw `SealError` without. `sealBranch`, `openSealedBranch` and `createSealSessions` default `ctx` to `{}`.
+- **New: `mountCreateKeyPrompt`**: new-key card with one empty `type="password"` field, `autocomplete="new-password"`, a hidden username field for password managers (`account`), a strength line, optional Generate, 16-character minimum; nothing is prefilled or kept.
+- **Examples and Pages:** `examples/demo-values.json` and every "Demo password" are gone; no example ships ciphertext, a keyring or a password. Formerly locked rows are plain titles. Decryptable copies moved to `tests/fixtures/demo-sealed/` (DEV-ONLY header). New page `examples/secure-quickstart/` walks create key → seal → lock → unlock with your own passphrase, in memory only.
+- **README** leads with the production model and a secure quick start; `types.ts` examples use `example.invalid`; `docs/sealed-branches-approval.md` maps its draft names to the exported API.
+- **Build:** `npm run build` removes `dist/` first, so stale files (e.g. an old `demoCrypto.js`) never ship.
+
+## 0.6.6 candidate (folded into 0.7.0)
 
 ### Session view keys for every node; no place-number keys (t2577u)
 
