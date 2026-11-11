@@ -98,24 +98,57 @@ test.describe('Pages viewer Map keyboard focus (0.2.16 gate)', () => {
   });
 });
 
-test.describe('Pages viewer demo unlock', () => {
-  test('shows the demo password and Unlock opens every locked row', async ({ page }) => {
+test.describe('0.7.0: no demo password, real seals only', () => {
+  test('example outlines show no password, no Unlock-all, and no locked rows', async ({ page }) => {
     await page.goto('examples/viewer/?doc=../student-study/student-study.md');
-    const bar = page.locator('#demoUnlock');
-    await expect(bar).toBeVisible();
-    await expect(bar).toContainText('Demo password: 123');
-    await page.locator('#btnUnlockAll').click();
-    const reveals = page.locator('#outlineHost .of-reveal');
-    await expect(reveals).toHaveCount(3);
-    await expect(page.locator('#outlineHost .of-node[data-id="assessment-pack"] .of-reveal')).toHaveText(
-      'Bio quiz access code BQ-7731 · opens Mon 8:55',
-    );
+    await expect(page.locator('#outlineHost .of-node[data-id="portal-pack"]')).toHaveCount(1);
+    await expect(page.locator('#outlineHost .of-locked-chrome')).toHaveCount(0);
+    await expect(page.locator('#sealBar')).toBeHidden();
+    await expect(page.locator('body')).not.toContainText(/demo password/i);
+    await expect(page.locator('#btnUnlockAll')).toHaveCount(0);
   });
 
-  test('no Unlock control on an outline without locked rows', async ({ page }) => {
+  test('secure quick start: create key -> seal -> lock -> unlock with an empty autofill card', async ({ page }) => {
+    test.setTimeout(60_000);
+    const pass = 'quiet harbour lantern orbit maple';
+    await page.goto('examples/secure-quickstart/');
+    await page.locator('#btnCreate').click();
+    const pw = page.locator('#createSlot input.of-newkey-pass');
+    await expect(pw).toHaveAttribute('autocomplete', 'new-password');
+    await expect(pw).toHaveValue('');
+    await expect(page.locator('#createSlot .of-unlock-ok')).toBeDisabled();
+    await pw.fill(pass);
+    await expect(page.locator('#createSlot .of-newkey-strength')).toHaveText('Strength: OK');
+    await page.locator('#createSlot .of-unlock-ok').click();
+    await expect(page.locator('#status')).toContainText('$argon2id$v=19$m=65536,t=3,p=1', { timeout: 20_000 });
+
+    await page.locator('#btnSeal').click();
+    const portable = page.locator('#portable');
+    await expect(portable).toContainText('-----BEGIN OUTLINE-FOLD SEAL-----');
+    await expect(portable).toContainText('--- keyring ---');
+    await expect(portable).not.toContainText('Write the private part');
+    await expect(portable).not.toContainText(pass);
+    await expect(page.locator('#clean')).not.toContainText('keyring');
+
+    await page.locator('#btnLock').click();
+    await page.locator('#btnUnlock').click();
+    const unlock = page.locator('#unlockSlot input.of-unlock-pass');
+    await expect(unlock).toHaveValue('');
+    await expect(unlock).toHaveAttribute('autocomplete', 'current-password');
+    await unlock.fill('not the right passphrase');
+    await page.locator('#unlockSlot .of-unlock-ok').click();
+    await expect(page.locator('#unlockSlot .of-unlock-msg')).toContainText('Wrong passphrase', { timeout: 20_000 });
+    await expect(page.locator('#unlockSlot .of-unlock-damaged-q')).toBeHidden();
+    await page.waitForTimeout(1_100); // back-off after one failure
+    await unlock.fill(pass);
+    await page.locator('#unlockSlot .of-unlock-ok').click();
+    await expect(page.locator('#opened')).toContainText('Write the private part of your own note here', { timeout: 20_000 });
+  });
+
+  test('no Lock-all bar on an outline without locked rows', async ({ page }) => {
     await page.goto('examples/viewer/?doc=../aust-gov-cyber/aust-gov-cyber.md');
     await expect(page.locator('#outlineHost .of-node[data-id="root"]')).toHaveCount(1);
-    await expect(page.locator('#demoUnlock')).toBeHidden();
+    await expect(page.locator('#sealBar')).toBeHidden();
   });
 });
 

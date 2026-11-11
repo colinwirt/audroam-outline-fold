@@ -8,7 +8,7 @@
 | `outlineView.js` | `createOutlineView` → `toHtml` + `attachOutlineTree` |
 | `mapView.js` | **Re-exports** package `createMapView` / `autoPackPositions` / `pillSize` / `FOLD_SLOT` / scrapbook seed+resume helpers |
 | `layoutSidecar.js` | frontmatter pointer / sibling `*.layout.json` / **auto-pack** flag (Pages-only) |
-| `unlock.js` | demo unlock: password prompt prefilled from `../demo-values.json`, Unlock all |
+| `unlock.js` | real unlock: empty passphrase card (autofill-friendly) → `unlockKey` → `openSealedBranch`. No demo crypto, no shared password |
 
 **Viewer:** [`../viewer/`](../viewer/) — `?doc=<md>` + optional `&layout=`. All Pages outline demos open here (old paths redirect).
 

@@ -1,5 +1,4 @@
 ---
-fold-: contractor-pack, integration-pack
 collapsedMarker: "(+)"
 ---
 - 🛣️ Northside Borough · public works board · 28 Sep AM <id:root>
@@ -21,16 +20,5 @@ collapsedMarker: "(+)"
       - Citizen · https://example.invalid/311/NS-43990 · closed · reporter emailed <id:us-d1-url>
       - [x] Cold patch temp · 14-day monitor <id:us-d1-done>
   - Access <id:secrets>
-    - Contractor portal login <private> <id:contractor-pack> (+)
-    - CMMS API key <encrypted> <id:integration-pack> (+)
-
---- payloads ---
-contractor-pack:
-  kid: us-contractor-1
-  alg: demo-aes-gcm
-  ct: 8aSkah5dXCqsfwcBiOJglVVMEmu2C3MlFzvBoV55frHmo5mXwxcC2ouxYU5BC6pN_e55IJi1Mjihmb0gtDjXRsstAKc6lgryOKxA_HXaWNs1CKeTefM
-integration-pack:
-  kid: us-api-1
-  alg: demo-aes-gcm
-  ct: _nzyrrKkaHv_UPOGSROf3CjOC-OmwIPNUwMg5CdawXoh-8WlFzig9avY5iMcK7xS-DClhPlJIeovSCv-8e9Ou2RQQM0csW0
----
+    - Contractor portal login <id:contractor-pack>
+    - CMMS API key <id:integration-pack>

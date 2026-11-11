@@ -1,5 +1,4 @@
 ---
-fold-: portal-pack, recovery-pack, assessment-pack
 collapsedMarker: "(+)"
 ---
 - 📚 Mira Vale · study board · week of 22–28 Sep · Willow Creek High + Bayshore Uni <id:root>
@@ -40,21 +39,6 @@ collapsedMarker: "(+)"
     - 25-min recall blocks · phone on DND · 5-min break <id:guard-dnd>
     - Bio quiz Mon 9:00 · room S4 · bring calculator <id:guard-seal>
   - Logins <id:secrets>
-    - School portal <private> <id:portal-pack> (+)
-    - Account recovery codes <encrypted> <id:recovery-pack> (+)
-    - Exam portal access <encrypted> <id:assessment-pack> (+)
-
---- payloads ---
-portal-pack:
-  kid: study-portal-1
-  alg: demo-aes-gcm
-  ct: LCCmgzLPkV5og2gl1dTR0_jSLqPxUWd7NEWugRJQ9eS9f3S6GR3FFx68whdjd-H6dj624dWuJyMHx1QZPXGXLYfCU22VkrWDkhl-SFEUIYq7_t8AcXk_ornDMhfn
-recovery-pack:
-  kid: study-recovery-1
-  alg: demo-aes-gcm
-  ct: lHcx8GoM3xaFmeHFJ7ZuDpS3Z8TafbdX0th-TkWBwjJU05Rb8j9TidZt1shgg7Nhu2Wv5uj_gtn6XT6mhuFINNX1MLAO0JHIIi0CNKvZYwwnL2plpHRkdANJoimac6KGrlja10Rlj_Wohw7C-R0
-assessment-pack:
-  kid: study-assess-1
-  alg: demo-aes-gcm
-  ct: HK6YQ7O1mToFfGKfy94IHSmyXZ_j2k1fM0QDpfhfqRqcKbOVbHKN5kvSElA08ZuYQMVVVJUgI7BE4WVaxLMprVre_hkGs6eaSSPZW8ahXSLX0uXpltDCtVl9
----
+    - School portal <id:portal-pack>
+    - Account recovery codes <id:recovery-pack>
+    - Exam portal access <id:assessment-pack>

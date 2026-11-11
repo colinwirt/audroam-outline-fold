@@ -1,5 +1,4 @@
 ---
-fold-: ops-pack
 collapsedMarker: "(+)"
 ---
 - 🚀 Northside Stack Works · vehicle lineage <id:root>
@@ -27,11 +26,4 @@ collapsedMarker: "(+)"
       - [ ] Range weather / airspace window <id:flt-3-a>
       - [ ] Go/no-go · launch board <kind:pending-approve> <id:flt-3-b>
   - Ops <id:secrets>
-    - Range safety contacts <encrypted> <id:ops-pack> (+)
-
---- payloads ---
-ops-pack:
-  kid: st-ops-1
-  alg: demo-aes-gcm
-  ct: 7lGNC8yDXYoT1VKo7A9PEH7MeHnlOIfa4poddok4zxFSsRYc3zXMKQlsMNXeDoMQMUkB0kwZz-M4w2Bma5ZzkhJ3jo8BNx6_RBZM2nNKGp6QJe0mX0r70w6uy1H2OYxsHxieo0xA_X375xCdlQ
----
+    - Range safety contacts <id:ops-pack>

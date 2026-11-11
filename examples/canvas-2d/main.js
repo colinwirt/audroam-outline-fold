@@ -2,7 +2,7 @@
  * Minimal 2D cafe ops map. Uses the built package for parsing and fold state.
  */
 import { loadDoc } from '../_shared/parseDoc.js';
-import { listSealed, loadDemoPassword, openAll, tryUnlock } from '../_shared/unlock.js';
+import { tryUnlock } from '../_shared/unlock.js';
 import {
   serialize,
   toggleFold,
@@ -11,8 +11,6 @@ import {
 
 let { doc } = await loadDoc(new URL('../cafe-map.md', import.meta.url));
 const revealed = {};
-const sealedIds = listSealed(doc.nodes).map((n) => n.id);
-const demoPassword = sealedIds.length ? await loadDemoPassword() : null;
 const canvas = document.getElementById('c');
 const ctx = canvas.getContext('2d');
 const out = document.getElementById('out');
@@ -74,7 +72,7 @@ canvas.addEventListener('click', (ev) => {
   for (const { node, x, y } of layout) {
     if (Math.hypot(mx - x, my - y) < 12 && node.id) {
       if (node.sealed && revealed[node.id] == null) {
-        void tryUnlock({ getDoc: () => doc, setDoc: (d) => (doc = d), id: node.id, revealed, refresh: draw, demoPassword });
+        void tryUnlock({ getDoc: () => doc, setDoc: (d) => (doc = d), id: node.id, revealed, refresh: draw });
       } else {
         doc = toggleFold(doc, node.id);
         draw();
@@ -84,12 +82,5 @@ canvas.addEventListener('click', (ev) => {
   }
 });
 
-if (demoPassword) {
-  document.getElementById('demoPw').textContent = demoPassword;
-  document.getElementById('demoUnlock').hidden = false;
-  document.getElementById('btnUnlockAll').addEventListener('click', () => {
-    void openAll({ getDoc: () => doc, setDoc: (d) => (doc = d), ids: sealedIds, revealed, refresh: draw, password: demoPassword });
-  });
-}
 
 draw();

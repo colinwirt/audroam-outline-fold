@@ -105,8 +105,8 @@ describe('cleanMarkdown', () => {
     expect(cleanMarkdown('- Car <id:4> burant\n')).toBe('- Car burant\n');
   });
 
-  it('leaves no sealed payload material from cafe-map.md', () => {
-    const text = readFileSync(join(__dirname, '..', 'examples', 'cafe-map.md'), 'utf8');
+  it('leaves no sealed payload material from the cafe-map fixture', () => {
+    const text = readFileSync(join(__dirname, 'fixtures', 'demo-sealed', 'cafe-map.md'), 'utf8'); // DEV-ONLY fixture with payloads
     const cts = [...text.matchAll(/^\s*ct:\s*(\S+)/gm)].map((m) => m[1]!);
     expect(cts.length).toBeGreaterThan(0);
     const clean = cleanMarkdown(text);

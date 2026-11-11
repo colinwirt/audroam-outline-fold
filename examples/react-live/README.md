@@ -29,7 +29,7 @@ npm --prefix examples/react-live run dev
 
 Production build of the demo: `npm run demo:react:build` (output under `examples/react-live/dist/`).
 
-Seed content: `../outline-demo.md`. Unlock asks for the password, prefilled with the demo password from `../demo-values.json`.
+Seed content: `../outline-demo.md` (no locked rows). For an outline with real sealed rows, Unlock asks for that key's passphrase on an empty card, so autofill works; nothing is prefilled.
 
 ## Map FLIP (host wiring)
 

@@ -1,7 +1,11 @@
 /**
- * DEMO-ONLY sealed payload helpers (AES-GCM + PBKDF2).
- * Not production MFA / key release. The example outlines are sealed with the
- * demo password in examples/demo-values.json (random salt per payload).
+ * INTERNAL TEST FIXTURE. DEV-ONLY. Not exported from the package and not built into dist/.
+ *
+ * Legacy `demo-aes-gcm` payload helpers (PBKDF2-SHA256 100k + AES-GCM, no keyring, no AAD).
+ * Kept only so tests can read the old fixtures in tests/fixtures/demo-sealed/. This is not
+ * a security model: real seals are of-seal-v3 with an Argon2id-wrapped keyring
+ * (createKey / sealBranch / unlockKey / openSealedBranch). A test fails if src/index.ts,
+ * examples/, scripts/build-site.mjs, or the README reference this module.
  */
 import type { SealedPayload } from './types.js';
 

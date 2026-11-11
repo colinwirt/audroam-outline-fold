@@ -1,5 +1,4 @@
 ---
-fold-: deploy-pack, secrets-store
 collapsedMarker: "(+)"
 ---
 - 💼 Lumen Analytics · squad handoff · Alex → Priya · 28 Sep 22:40 <id:root>
@@ -31,16 +30,5 @@ collapsedMarker: "(+)"
     - Incident · Redis flap log · https://example.invalid/inc/redis-2809 <id:link-inc>
     - PR #418 · https://example.invalid/pr/418 <id:link-pr>
   - Access <id:secrets>
-    - Deploy key <encrypted> <id:deploy-pack> (+)
-    - Staging admin login <private> <id:secrets-store> (+)
-
---- payloads ---
-deploy-pack:
-  kid: work-deploy-1
-  alg: demo-aes-gcm
-  ct: O4hGfWJcgELIo4UHVzlZ4cnXSeKel2Eavg6QaePX50XPWx6tHH4O8RtqLOXtU4sB3fj9jr6DW8WxDUn--uY3zo2zAe9h3SJYB4UmIlB1MEOaVcBHgs3vg0eczIN0urv667iQ5sJtyK7GZpzPfuFnvhjP5WRP
-secrets-store:
-  kid: work-store-1
-  alg: demo-aes-gcm
-  ct: Zsn5lrIvOcoOkxKIJpIP9JcilXDzL-E2FTiF8dExSUDH2liCNtPS7ysSwUrK9rQpz0PreS0uoFNitCtJH09mpKRW57P3T3T2-N-1xm2YFq47WyirtsRhQPML2F9UzPw0uyBvVaU
----
+    - Deploy key <id:deploy-pack>
+    - Staging admin login <id:secrets-store>

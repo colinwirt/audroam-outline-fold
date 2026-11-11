@@ -66,7 +66,6 @@ cpSync(join(root, 'examples', 'outline-demo.html'), join(site, 'examples', 'outl
 cpSync(join(root, 'examples', 'outline-demo.md'), join(site, 'examples', 'outline-demo.md'));
 cpSync(join(root, 'examples', 'cafe-map.md'), join(site, 'examples', 'cafe-map.md'));
 cpSync(join(root, 'examples', 'outline-viewer.js'), join(site, 'examples', 'outline-viewer.js'));
-cpSync(join(root, 'examples', 'demo-values.json'), join(site, 'examples', 'demo-values.json'));
 // examples/_shared + demo folders copied in the directory loop below
 
 // Copy every examples/* directory except react-live (built separately) and node_modules
@@ -107,7 +106,8 @@ code{font-size:.9em;background:#1a2330;padding:.1em .35em;border-radius:4px}
 <h2>Start here</h2>
 <ul>
   <li><a href="examples/viewer/?doc=../demos-index/demos-index.md"><strong>Demos index</strong></a> — every example as one map</li>
-  <li><a href="examples/viewer/?doc=../outline-demo.md">Northside Corner Cafe</a> — ops handoff with locked rows</li>
+  <li><a href="examples/secure-quickstart/"><strong>Secure quick start</strong></a> — create a key, seal a branch, unlock it (real keyring, your own passphrase)</li>
+  <li><a href="examples/viewer/?doc=../outline-demo.md">Northside Corner Cafe</a> — ops handoff</li>
   <li><a href="examples/viewer/?doc=../solar-system/solar-system.md&amp;layout=../solar-system/solar-system.layout.json">Solar System</a> — with a saved layout</li>
   <li><a href="examples/viewer/?doc=../lighthouse/lighthouse.md">Lighthouse keeper's week</a> — task boxes, written without ids</li>
   <li><a href="examples/viewer/">Viewer</a> — open any outline with <code>?doc=</code> (+ optional <code>&amp;layout=</code>)</li>
@@ -142,7 +142,7 @@ code{font-size:.9em;background:#1a2330;padding:.1em .35em;border-radius:4px}
   <li><a href="examples/canvas-2d/">Cafe 2D map</a></li>
   <li><a href="examples/3d/">Cafe 3D map</a> (loads three.js from a CDN)</li>
 </ul>
-<p class="note">Locked rows open with the demo password shown in the viewer.</p>
+<p class="note">No example ships a password or demo crypto. Sealing is shown in the Secure quick start with a key you create in the page; it stays in memory.</p>
 </body>
 </html>
 `;

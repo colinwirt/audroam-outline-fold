@@ -48,12 +48,6 @@ export {
 export { ICONS, iconForNode, iconForTask, type IconName } from './icons.js';
 export { hasSealed, isRemoteSealed, parseEncBody, formatEncTag } from './sealed.js';
 export {
-  demoSeal,
-  demoOpen,
-  DEMO_PASSPHRASE,
-  DEMO_ALG,
-} from './demoCrypto.js';
-export {
   peelTrailingSections,
   parsePayloadMap,
   formatPayloadsBlock,

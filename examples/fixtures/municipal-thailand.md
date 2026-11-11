@@ -1,5 +1,4 @@
 ---
-fold-: contractor-pack, integration-pack, depot-pack
 collapsedMarker: "(+)"
 ---
 - 🛣️ Amphoe Bang Saen Nuea · roads + lamps · 29 Sep AM <id:root>
@@ -19,21 +18,6 @@ collapsedMarker: "(+)"
     - Pole AF-SL-218 · 13.7578, 100.5042 · cycling flicker <id:th-l2>
       - [ ] Connector check · open <id:th-l2-open>
   - Access <id:secrets>
-    - Contractor portal login <private> <id:contractor-pack> (+)
-    - CMMS API key <encrypted> <id:integration-pack> (+)
-    - Depot after-hours code <encrypted> <id:depot-pack> (+)
-
---- payloads ---
-contractor-pack:
-  kid: th-contractor-1
-  alg: demo-aes-gcm
-  ct: in568ZVYigO_aUBxmyiyIWr8cNtNr4jIEn2NXFLTuV7cERFX-m0daWb1zKtLPNiuRPBY0zQX9GhYAofv2VAp4AaPDa18kx4WraLtwfpcXMBNuBLT_NyhxNk
-integration-pack:
-  kid: th-api-1
-  alg: demo-aes-gcm
-  ct: xbdJ92PKBEA_PhK2hEd_DAcAQmB5Lnyhk2FD9gF_5yPDmkvZMWWZiGvll7b0Xo-7uJOmAO0xdxKAIm46pXoJF2zwyX6Wjjs
-depot-pack:
-  kid: th-depot-1
-  alg: demo-aes-gcm
-  ct: FCpuw4Dzk6BgPVsxviV4aFYlxqYmuAo6qo6mu3_zoDffy87eJ7QmzgYQM0ag__S51c8wxn8iZG0bEEhB-z_1LoU
----
+    - Contractor portal login <id:contractor-pack>
+    - CMMS API key <id:integration-pack>
+    - Depot after-hours code <id:depot-pack>

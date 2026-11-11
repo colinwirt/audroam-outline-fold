@@ -22,10 +22,9 @@ import {
 import { resolveLayout } from '../_shared/layoutSidecar.js';
 import {
   tryUnlock,
-  openAll,
+  lockAll,
   findNode,
   listSealed,
-  loadDemoPassword,
 } from '../_shared/unlock.js';
 import { packageVersion, viewerBuild, gitShort } from './build-info.js';
 
@@ -48,9 +47,8 @@ const btnZoomIn = document.getElementById('btnZoomIn');
 const btnZoomOut = document.getElementById('btnZoomOut');
 const btnResetView = document.getElementById('btnResetView');
 const buildMeta = document.getElementById('buildMeta');
-const demoUnlock = document.getElementById('demoUnlock');
-const btnUnlockAll = document.getElementById('btnUnlockAll');
-const demoPwEl = document.getElementById('demoPw');
+const sealBar = document.getElementById('sealBar');
+const btnLockAll = document.getElementById('btnLockAll');
 const unlockHelp = document.getElementById('unlockHelp');
 
 function renderBuildMeta(version) {
@@ -305,16 +303,12 @@ async function boot() {
     focusId = root.id;
   }
 
-  // Demo values provider: password comes from examples/demo-values.json,
-  // never from the outline text.
+  // Real seals only: each locked row opens with the reader's own passphrase
+  // (empty card, autofill-friendly). Nothing is prefilled or shown.
   const sealedIds = listSealed(doc.nodes).map((n) => n.id).filter(Boolean);
-  const demoPassword = sealedIds.length ? await loadDemoPassword() : null;
   if (sealedIds.length) {
     unlockHelp.hidden = false;
-    if (demoPassword) {
-      demoPwEl.textContent = demoPassword;
-      demoUnlock.hidden = false;
-    }
+    sealBar.hidden = false;
   }
 
   const layoutSrc = layout._source || 'auto-pack';
@@ -359,7 +353,6 @@ async function boot() {
           outline?.refresh(id);
           if (mode === 'map') map?.paint();
         },
-        demoPassword,
       });
     },
     onDecrypt: (id) => {
@@ -374,7 +367,6 @@ async function boot() {
           outline?.refresh(id);
           if (mode === 'map') map?.paint();
         },
-        demoPassword,
       });
     },
   });
@@ -458,21 +450,10 @@ async function boot() {
   mapHost.addEventListener('pointerup', () => persistMapResume());
   mapHost.addEventListener('wheel', () => persistMapResume(), { passive: true });
 
-  btnUnlockAll.addEventListener('click', () => {
-    void openAll({
-      getDoc: () => doc,
-      setDoc: (d) => {
-        doc = d;
-      },
-      ids: sealedIds,
-      revealed,
-      refresh: () => {
-        outline?.refresh(focusId);
-        if (mode === 'map') map?.paint();
-        persistMapResume();
-      },
-      password: demoPassword,
-    });
+  btnLockAll.addEventListener('click', () => {
+    lockAll(revealed);
+    outline?.refresh();
+    if (mode === 'map') map?.paint();
   });
 
   outlineHost.addEventListener('click', (e) => {

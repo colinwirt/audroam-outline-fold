@@ -1,5 +1,4 @@
 ---
-fold-: depot-pack, cmms-pack, cabinet-pack
 collapsedMarker: "(+)"
 ---
 - 💡 Shire of Cedarvale · streetlamp night run · crew B → C · 28 Sep 22:15–01:30 <id:root>
@@ -31,21 +30,6 @@ collapsedMarker: "(+)"
       - CMMS · https://example.invalid/cmms/WO-CV-2018 · P3 · linked Parks PK-441 <id:iw-3310-url>
     - Summary: 2 closed · 4 open · priority fuse on Curlew · PE cell + cycling on Banksia <id:run-sum>
   - Access <id:secrets>
-    - Depot gate code <encrypted> <id:depot-pack> (+)
-    - CMMS night login <private> <id:cmms-pack> (+)
-    - Cabinet key numbers <encrypted> <id:cabinet-pack> (+)
-
---- payloads ---
-depot-pack:
-  kid: lamp-depot-1
-  alg: demo-aes-gcm
-  ct: f9cNBMThdVmi7lEEe6cXtEmZ2PIDiw4TWK7LQvU-fyjUwQJXa6WY5ATzkJfI24QfZa-f5k7jnAhyulqVBl3DoGZRMUCEIzPOGVz36mY6PD0wOpwKY6E6_mvrxHxM9O6C_UTh
-cmms-pack:
-  kid: lamp-cmms-1
-  alg: demo-aes-gcm
-  ct: wmxGcHnlF0aPe3cDcjNpDwVXC_HmqNLZAAWtwhby4Pkx4q8Q6Ce5bgIGYySCnjzCKrSYoSVypEZ_8-uhBO8Fg0F3boeZ1dKbYrjde8FkMjNntsGb
-cabinet-pack:
-  kid: lamp-cab-1
-  alg: demo-aes-gcm
-  ct: qW1mo-rAVYtulzMeOT6JBPV319tvIamsPYt2WoJAOT5GtNjv5AUUftWkMmUNsgfMb12h30KUBG5bJUlNF1gRLcEnriNphZdioA8Eb-PL_n7o0AGnOJ6WaqEBS4yXafsMXYPVVXgO
----
+    - Depot gate code <id:depot-pack>
+    - CMMS night login <id:cmms-pack>
+    - Cabinet key numbers <id:cabinet-pack>

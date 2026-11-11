@@ -3,9 +3,6 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import {
-  DEMO_PASSPHRASE,
-  demoOpen,
-  demoSeal,
   hasSealed,
   isRemoteSealed,
   parse,
@@ -13,20 +10,22 @@ import {
   toHtml,
   type OutlineNode,
 } from '../src/index.js';
+// DEV-ONLY: internal demo-crypto fixture (not exported). See tests/fixtures/demo-sealed/README.md.
+import { DEMO_PASSPHRASE, demoOpen, demoSeal } from '../src/demoCrypto.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const cafeMd = readFileSync(
-  join(__dirname, '../examples/outline-demo.md'),
+  join(__dirname, 'fixtures/demo-sealed/outline-demo.md'),
   'utf8',
 );
 const fixtures = JSON.parse(
-  readFileSync(join(__dirname, '../scripts/demo-plaintexts.json'), 'utf8'),
+  readFileSync(join(__dirname, 'fixtures/demo-sealed/plaintexts.json'), 'utf8'),
 ) as {
   payloads: { id: string; plaintext: string }[];
 };
 const demoPassword = (
   JSON.parse(
-    readFileSync(join(__dirname, '../examples/demo-values.json'), 'utf8'),
+    readFileSync(join(__dirname, 'fixtures/demo-sealed/dev-values.json'), 'utf8'),
   ) as { password: string }
 ).password;
 

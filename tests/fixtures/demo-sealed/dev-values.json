@@ -1,0 +1,4 @@
+{
+  "_comment": "DEV-ONLY test fixture. Fake shared password for the demo-crypto fixtures in this folder. Never use a shared or committed password in examples or apps.",
+  "password": "123"
+}

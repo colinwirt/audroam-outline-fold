@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Secure quick start · @audroam/outline-fold</title>
+<link rel="stylesheet" href="../../dist/outline-fold.css"/>
+<style>
+:root{color-scheme:dark}
+body{font:16px/1.5 system-ui,sans-serif;max-width:46rem;margin:2rem auto;padding:0 1.25rem;background:#0f1419;color:#e7ecf1}
+h1{font-size:1.35rem;margin:0 0 .35rem}
+h2{font-size:1.02rem;margin:1.5rem 0 .4rem;color:#cfe0ef}
+p{margin:.35rem 0}
+a{color:#6cb6ff}
+code{font-size:.9em;background:#1a2330;padding:.1em .35em;border-radius:4px}
+.meta{color:#8b9bab;font-size:.9rem}
+textarea,pre{box-sizing:border-box;width:100%;background:#13202b;color:#e7ecf1;border:1px solid #2a3a48;border-radius:8px;padding:.6rem;font:13px/1.45 ui-monospace,monospace}
+pre{white-space:pre-wrap;word-break:break-all;margin:.4rem 0}
+pre[hidden],.slot:empty{display:none}
+button.step{min-height:44px;border:1px solid #2a3a48;border-radius:10px;background:#1a2a38;color:#e7ecf1;font:inherit;font-weight:600;padding:.4rem 1rem;cursor:pointer}
+button.step:disabled{opacity:.45;cursor:default}
+.row{display:flex;gap:.6rem;flex-wrap:wrap;align-items:center;margin:.5rem 0}
+#status{color:#9fd3b0;min-height:1.5em}
+.slot{margin:.5rem 0}
+</style>
+</head>
+<body>
+<h1>Secure quick start</h1>
+<p class="meta">Create a key from your own passphrase, seal one branch, lock, unlock. This page uses the same envelope and keyring as production: of-seal-v3 with an Argon2id-wrapped key. Nothing is saved; reload and it is gone. <a href="../../">All demos</a></p>
+
+<h2>0 · The outline</h2>
+<p>Edit it if you like. The branch with <code>&lt;id:vault&gt;</code> is the one that gets sealed.</p>
+<textarea id="src" rows="5" spellcheck="false">- Close-down handoff <id:root>
+  - Lights off · chairs up <id:close>
+  - Supplier accounts <id:vault>
+    - Write the private part of your own note here <id:vault-1>
+    - It is encrypted with the branch and never leaves this tab as text <id:vault-2></textarea>
+
+<h2>1 · Create a key</h2>
+<p>Pick a passphrase of 16 or more characters, or let your password manager suggest one. The key is random; your passphrase only wraps it (Argon2id, 64 MiB, about a second).</p>
+<div class="row"><button type="button" class="step" id="btnCreate">Create key</button></div>
+<div class="slot" id="createSlot"></div>
+
+<h2>2 · Seal the branch</h2>
+<div class="row"><button type="button" class="step" id="btnSeal" disabled>Seal “Supplier accounts”</button></div>
+<p>What a host saves (<code>serialize</code> / <code>portableCopy</code>): the public label, the ciphertext and the wrapped keyring. No passphrase, no plaintext.</p>
+<pre id="portable" hidden></pre>
+<p>The public view (<code>cleanCopy</code>): no ciphertext, no keyring.</p>
+<pre id="clean" hidden></pre>
+
+<h2>3 · Lock</h2>
+<p>Drops every key from memory and reloads the outline from the saved text, as a host would after a reload.</p>
+<div class="row"><button type="button" class="step" id="btnLock" disabled>Lock</button></div>
+
+<h2>4 · Unlock</h2>
+<p>The unlock card is always empty, so your browser or password manager can fill it.</p>
+<div class="row"><button type="button" class="step" id="btnUnlock" disabled>Unlock</button><button type="button" class="step" id="btnReset">Start over</button></div>
+<div class="slot" id="unlockSlot"></div>
+<pre id="opened" hidden></pre>
+
+<p id="status" role="status" aria-live="polite"></p>
+<script type="module" src="./main.js"></script>
+</body>
+</html>

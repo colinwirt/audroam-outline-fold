@@ -1,20 +1,23 @@
 /**
- * Example content checks (CI): no placeholders, every sealed payload is real
- * and opens with the demo password, and example wording stays plain.
+ * Example content checks (CI): no placeholders, no committed ciphertext,
+ * keyrings or shared passwords in examples (0.7.0), and plain wording.
+ * The old demo-crypto outlines live in tests/fixtures/demo-sealed/ (DEV-ONLY).
  */
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
+import { existsSync } from 'node:fs';
 import {
   cleanIds,
-  demoOpen,
   hasSealed,
   parse,
   serialize,
   validateDocument,
   type OutlineNode,
 } from '../src/index.js';
+// DEV-ONLY: internal demo-crypto fixture (not exported), for the legacy fixtures only.
+import { demoOpen } from '../src/demoCrypto.js';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const examplesDir = join(root, 'examples');
@@ -35,14 +38,14 @@ function walk(dir: string): string[] {
 const files = walk(examplesDir);
 const rel = (p: string) => relative(root, p).replaceAll('\\', '/');
 const mdFiles = files.filter((f) => f.endsWith('.md') && !f.endsWith('README.md'));
-const demoPassword = (
-  JSON.parse(readFileSync(join(examplesDir, 'demo-values.json'), 'utf8')) as {
+const devDir = join(root, 'tests/fixtures/demo-sealed');
+const devPassword = (
+  JSON.parse(readFileSync(join(devDir, 'dev-values.json'), 'utf8')) as {
     password: string;
   }
 ).password;
-const plaintexts = JSON.parse(
-  readFileSync(join(root, 'scripts/demo-plaintexts.json'), 'utf8'),
-) as {
+const plaintextsPath = join(devDir, 'plaintexts.json');
+const plaintexts = JSON.parse(readFileSync(plaintextsPath, 'utf8')) as {
   payloads: { id: string; plaintext: string }[];
   examples: Record<string, { id: string; plaintext: string }[]>;
 };
@@ -110,42 +113,27 @@ describe('example payloads', () => {
     expect(hits.map(rel)).toEqual([]);
   });
 
-  it('demo values provider supplies a password', () => {
-    expect(typeof demoPassword).toBe('string');
-    expect(demoPassword.length).toBeGreaterThan(0);
+  it('0.7.0: no demo values provider, no shared password file', () => {
+    expect(existsSync(join(examplesDir, 'demo-values.json'))).toBe(false);
+    const hits = files.filter((f) => /demo-values|Demo password/i.test(readFileSync(f, 'utf8')));
+    expect(hits.map(rel)).toEqual([]);
   });
 
-  for (const file of mdFiles) {
-    const text = readFileSync(file, 'utf8');
-    if (!/^--- payloads ---$/m.test(text)) continue;
-    it(`${rel(file)}: every payload is inline and opens with the demo password`, async () => {
-      expect(validateDocument(text).ok).toBe(true);
-      const doc = parse(text);
-      const sealed = allNodes(doc.nodes).filter((n) => hasSealed(n));
-      const trailerIds = [...text.split(/^--- payloads ---$/m)[1]!.matchAll(/^([\w-]+):$/gm)].map(
-        (m) => m[1],
-      );
-      expect(sealed.map((n) => n.id).sort()).toEqual([...trailerIds].sort());
-      expect(sealed.length).toBeGreaterThan(0);
-      for (const n of sealed) {
-        expect(n.sealed?.uri, `${n.id} uri`).toBeUndefined();
-        expect(n.sealed?.ciphertext, `${n.id} ct`).toBeTruthy();
-        await expect(demoOpen(n.sealed!, demoPassword), n.id!).resolves.toBeTypeOf('string');
-      }
-    });
-  }
+  it('0.7.0: no example outline ships ciphertext, a keyring, or a key list', () => {
+    const bad: string[] = [];
+    for (const file of mdFiles) {
+      const text = readFileSync(file, 'utf8');
+      if (/^--- (keyring|keys) ---$/m.test(text)) bad.push(`${rel(file)}: keyring`);
+      if (/^\s*ct:\s*\S/m.test(text) || /BEGIN OUTLINE-FOLD SEAL/.test(text)) bad.push(`${rel(file)}: ciphertext`);
+      for (const n of allNodes(parse(text).nodes)) if (n.sealed?.ciphertext) bad.push(`${rel(file)}: ${n.id}`);
+    }
+    expect(bad).toEqual([]);
+  });
 
-  for (const [path, rows] of Object.entries(plaintexts.examples)) {
-    it(`${path}: opens to the plaintexts in scripts/demo-plaintexts.json`, async () => {
-      const doc = parse(readFileSync(join(root, path), 'utf8'));
-      const byId = new Map(allNodes(doc.nodes).map((n) => [n.id, n]));
-      for (const row of rows) {
-        const node = byId.get(row.id);
-        expect(node?.sealed, row.id).toBeTruthy();
-        expect(await demoOpen(node!.sealed!, demoPassword)).toBe(row.plaintext);
-      }
-    });
-  }
+  it('0.7.0: no example prefills the unlock card', () => {
+    const hits = files.filter((f) => /\binitial\s*:/.test(readFileSync(f, 'utf8')) && /promptPassphrase/.test(readFileSync(f, 'utf8')));
+    expect(hits.map(rel)).toEqual([]);
+  });
 
   it('every private / encrypted row has a sealed payload', () => {
     const bare: string[] = [];
@@ -234,7 +222,7 @@ describe('example wording', () => {
   it('links point at example hosts or stay relative', () => {
     const allowed = /^https?:\/\/(([\w-]+\.)*example\.(invalid|com|org)|[\w-]+\.example)(\/|$)/;
     const bad: string[] = [];
-    for (const file of [...mdFiles, join(root, 'scripts/demo-plaintexts.json')]) {
+    for (const file of [...mdFiles, plaintextsPath]) {
       for (const m of readFileSync(file, 'utf8').matchAll(/https?:\/\/[^\s)<>"']+/g)) {
         if (!allowed.test(m[0])) bad.push(`${rel(file)}: ${m[0]}`);
       }
@@ -244,7 +232,7 @@ describe('example wording', () => {
 
   it('Australian mobile numbers use the ACMA fiction range (0491 570 xxx–0491 579 xxx)', () => {
     const bad: string[] = [];
-    for (const file of [...mdFiles, join(root, 'scripts/demo-plaintexts.json')]) {
+    for (const file of [...mdFiles, plaintextsPath]) {
       const text = readFileSync(file, 'utf8');
       for (const m of text.matchAll(/(?:\+61\s?|0)4\d{2}[\s-]?\d{3}[\s-]?\d{3}/g)) {
         const digits = m[0].replace(/\D/g, '').replace(/^61/, '0');
@@ -252,5 +240,34 @@ describe('example wording', () => {
       }
     }
     expect(bad).toEqual([]);
+  });
+});
+
+describe('DEV-ONLY demo-sealed fixtures (tests/fixtures/demo-sealed)', () => {
+  const devMd = walk(devDir).filter((f) => f.endsWith('.md') && !f.endsWith('README.md'));
+
+  it('every fixture says DEV-ONLY in its header', () => {
+    for (const f of devMd) expect(readFileSync(f, 'utf8').split('\n').slice(0, 3).join('\n'), rel(f)).toMatch(/DEV-ONLY/);
+  });
+
+  for (const [path, rows] of Object.entries(plaintexts.examples)) {
+    it(`${path}: opens to its plaintexts with the internal demo fixture`, async () => {
+      const doc = parse(readFileSync(join(devDir, path), 'utf8'));
+      const byId = new Map(allNodes(doc.nodes).map((n) => [n.id, n]));
+      for (const row of rows) {
+        const node = byId.get(row.id);
+        expect(node?.sealed, row.id).toBeTruthy();
+        expect(await demoOpen(node!.sealed!, devPassword)).toBe(row.plaintext);
+      }
+    });
+  }
+
+  it('the stripped examples keep the same outline rows (titles) as their fixtures', () => {
+    for (const path of Object.keys(plaintexts.examples)) {
+      const ex = join(examplesDir, path);
+      if (!existsSync(ex)) continue;
+      const titles = (t: string) => allNodes(parse(t).nodes).map((n) => n.id);
+      expect(titles(readFileSync(ex, 'utf8')), path).toEqual(titles(readFileSync(join(devDir, path), 'utf8')));
+    }
   });
 });

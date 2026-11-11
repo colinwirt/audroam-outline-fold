@@ -1,5 +1,4 @@
 ---
-fold-: contacts-pack, excursion-pack, conference-pack, care-pack
 collapsedMarker: "(+)"
 ---
 - 🏫 Jordan Hale · Yr 7 · Ms Rivera ↔ family · week of 22 Sep <id:root>
@@ -27,26 +26,7 @@ collapsedMarker: "(+)"
     - [ ] Confirm attendance · by Wed 15:00 · portal RSVP <kind:pending-approve> <id:up-rsvp>
     - Literacy warm-ups · next fortnight · practice at home most nights <id:up-lit>
   - Family and staff <id:sensitive>
-    - Family contacts <private> <id:contacts-pack> (+)
-    - Excursion medical form <private> <id:excursion-pack> (+)
-    - Parent–teacher interview notes <encrypted> <id:conference-pack> (+)
-    - Wellbeing notes <encrypted> <id:care-pack> (+)
-
---- payloads ---
-contacts-pack:
-  kid: tp-contacts-1
-  alg: demo-aes-gcm
-  ct: 5l7BPkXSgIPrsoZnWTRJK-u1Arz9h7rw8Qj2uol5zD6UTAwdr3WMp1Zu_rbx59n4v1RQQfYGBYUviJmg3WOcjHzDfqJe8Ualxqf8MbClqhAFLeeg_LPEe_tquePm9UzgfSN4XLphd0x4C9S-DqQ1hcNoQr--TvdFHwWk_YMJ6Zbs9eIu-YM
-excursion-pack:
-  kid: tp-excursion-1
-  alg: demo-aes-gcm
-  ct: EhNa13fh7dLzX7w6Wry9Q7gIOhQBCvDBdCya5sU-SAspUQpVFyymGnLSx0kLMwGkRLVWOS4J5f88UeUCArUcLrFqtm_r_NjZDNCvBiYAoBMg-_doCKBBKGvjQOVoNo_-u9pV2zql9W-dow
-conference-pack:
-  kid: tp-conf-1
-  alg: demo-aes-gcm
-  ct: jgq4RXJ1bk_yWMI5IPnvwxOJrGTN1pN6rSkshz_AIIUe131ccVRmcsY1sfruTRmbxrYnFVmyiohIpWtCoQTjI56mpDF_DxWx_sDoihMnw7DHiMeHtUEFd43RY16iKBgUCC0ys94NWZvNCs6IYCf_V2LGNY5yG6x3VFHNJfxPgyPc03X0
-care-pack:
-  kid: tp-care-1
-  alg: demo-aes-gcm
-  ct: vhHj5_XlmzyW4xez9SKgj4K7RdFXdmJdfCBCTwD_1TMj2TzmVezbbgp_-liyHUJboSIRbAcTl_jBR22ON3tl_Xm3PmuNb1mXkso1J6kXOK6h3IDEKF98nswO4FvwGG1AWFARVHKG
----
+    - Family contacts <id:contacts-pack>
+    - Excursion medical form <id:excursion-pack>
+    - Parent–teacher interview notes <id:conference-pack>
+    - Wellbeing notes <id:care-pack>

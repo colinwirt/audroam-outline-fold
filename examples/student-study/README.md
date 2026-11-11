@@ -6,7 +6,7 @@ Pages demo for `@audroam/outline-fold`.
 - Viewer: shared [`../viewer/`](../viewer/)?doc=../student-study/student-study.md
 - Old `index.html` redirects here (stable Pages URL).
 
-Locked rows are real demo ciphertext. They open with the demo password from [`../demo-values.json`](../demo-values.json) (shown next to **Unlock** in the viewer). Plaintexts live in `scripts/demo-plaintexts.json`; `npm run demo:seal` re-seals them.
+This outline ships no ciphertext and no password. To see sealing, open the [Secure quick start](../secure-quickstart/): it creates a key from your own passphrase, seals a branch and unlocks it, all in memory.
 
 Study time is logged as time leaves (0.2.40): `<kind:time>` / `<kind:session>` lines such as `Thu 24 Sep · 1:25 <kind:time>` draw as compact green `T` / `S` pills on the Map.
 

@@ -25,10 +25,10 @@ export {
 } from './layoutSidecar.js';
 export {
   tryUnlock,
+  openWithPassphrase,
+  lockAll,
   findNode,
-  loadDemoPassword,
   listSealed,
-  openAll,
   injectReveals,
   escHtml,
 } from './unlock.js';

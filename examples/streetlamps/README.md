@@ -6,6 +6,6 @@ Pages demo for `@audroam/outline-fold`.
 - Viewer: shared [`../viewer/`](../viewer/)?doc=../streetlamps/streetlamps.md
 - Old `index.html` redirects here (stable Pages URL).
 
-Locked rows are real demo ciphertext. They open with the demo password from [`../demo-values.json`](../demo-values.json) (shown next to **Unlock** in the viewer). Plaintexts live in `scripts/demo-plaintexts.json`; `npm run demo:seal` re-seals them.
+This outline ships no ciphertext and no password. To see sealing, open the [Secure quick start](../secure-quickstart/): it creates a key from your own passphrase, seals a branch and unlocks it, all in memory.
 
 All names, places and numbers are made up.

@@ -1,5 +1,4 @@
 ---
-fold-: contractor-pack, integration-pack, depot-pack
 collapsedMarker: "(+)"
 ---
 - 🕳️ Shire of Cedarvale · road faults board · 29 Sep AM <id:root>
@@ -33,21 +32,6 @@ collapsedMarker: "(+)"
       - CMMS close · https://example.invalid/cmms/WO-CV-1871 · Closed · monitor child open <id:ph-d1-cmms>
   - Board summary · 2 reported · 1 inspected · 1 scheduled · 1 closed · P1 oval + Ridgeway <id:board-sum>
   - Access <id:secrets>
-    - Contractor portal login <private> <id:contractor-pack> (+)
-    - CMMS API key <encrypted> <id:integration-pack> (+)
-    - Depot after-hours code <encrypted> <id:depot-pack> (+)
-
---- payloads ---
-contractor-pack:
-  kid: pot-contractor-1
-  alg: demo-aes-gcm
-  ct: ORJwJ22c-cyqOqU6_-RKXbag4RScV40QJXgiWyhgr5EarxHIjvnQtP8bPeMXcwRq3tDhzX27NXG3rEQU5P3p-JhNKciXFY1CObbySoX9VV-fF3FEnAe3KYuN
-integration-pack:
-  kid: pot-api-1
-  alg: demo-aes-gcm
-  ct: bfJ-skpYyOYhE5ldhraJibStA4IZbxiDPwxB5KPhaha-TuUHN4WFRL-gAoTtBs25BI8ALfd3GoKXy7s6t9mW31EZv9Sf3aMzEO8xWlcWEKJhobLOGnTyAuT7DATCNaOw_w
-depot-pack:
-  kid: pot-depot-1
-  alg: demo-aes-gcm
-  ct: 7Yij5sABxkNoVskB1Q2jL-GnejPpMzgrsBg9GAdfbtEyR6ZxQOOHJZ-yOja9vm4xaNh1Ao88KCxiPcN8cdiRv9x9WIsitsBia2v-HJ-05O5AgjmTMUIG9AYRVn8zcKeqZPyJHTuXp58
----
+    - Contractor portal login <id:contractor-pack>
+    - CMMS API key <id:integration-pack>
+    - Depot after-hours code <id:depot-pack>

@@ -4,10 +4,9 @@
  */
 import { loadDoc } from './_shared/parseDoc.js';
 import { createOutlineView } from './_shared/outlineView.js';
-import { tryUnlock, loadDemoPassword } from './_shared/unlock.js';
+import { tryUnlock } from './_shared/unlock.js';
 
 const cfg = window.OUTLINE_DEMO || {};
-const demoPasswordReady = loadDemoPassword();
 const ariaLabel = cfg.ariaLabel || 'Outline demo';
 const mdUrl = new URL(cfg.md || './demo.md', window.location.href);
 
@@ -82,7 +81,7 @@ async function main() {
     lockedChrome: true,
     revealed,
     serializeTarget: foldOut,
-    onUnlock: async (id) => {
+    onUnlock: (id) => {
       void tryUnlock({
         getDoc: () => doc,
         setDoc: (d) => {
@@ -91,10 +90,9 @@ async function main() {
         id,
         revealed,
         refresh: () => view.refresh(id),
-        demoPassword: await demoPasswordReady,
       });
     },
-    onDecrypt: async (id) => {
+    onDecrypt: (id) => {
       void tryUnlock({
         getDoc: () => doc,
         setDoc: (d) => {
@@ -103,7 +101,6 @@ async function main() {
         id,
         revealed,
         refresh: () => view.refresh(id),
-        demoPassword: await demoPasswordReady,
       });
     },
   });

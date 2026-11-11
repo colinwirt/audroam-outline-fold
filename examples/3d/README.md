@@ -15,4 +15,4 @@ npx serve .
 Uses an import map CDN for `three` (and its `CSS2DRenderer` addon) so the package does not depend on Three.js at publish time.
 
 The outline is `../cafe-map.md`, shared with the 2D map. Nodes are spheres on a tree layout; gold = collapsed `(+)`. Each sphere has an HTML caption label (`CSS2DRenderer`). Click a sphere to toggle fold.
-Locked rows are dark grey with a `🔒 locked` label. Click one, or **Unlock** for all, to open it with the demo password from `../demo-values.json`.
+`cafe-map.md` ships no locked rows. A real sealed row (of-seal-v3 with a keyring) would show dark grey with a `🔒 locked` label; clicking it asks for that key's passphrase on an empty card.

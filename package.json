@@ -1,7 +1,7 @@
 {
   "name": "@audroam/outline-fold",
   "version": "0.6.5",
-  "description": "Pure TS outline language: parse/serialize, fold-/fold+, sealed payloads, demo crypto, toHtml, createMapView/autoPack. Host owns MFA/key release.",
+  "description": "Pure TS outline language: parse/serialize, fold-/fold+, sealed branches (of-seal-v3 envelope, Argon2id-wrapped keyring), toHtml, createMapView/autoPack. Host owns unlock and key release.",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -27,7 +27,7 @@
     "LICENSE"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.json && node scripts/copy-style.mjs && node scripts/build-editor-bundle.mjs",
+    "build": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\" && tsc -p tsconfig.json && node scripts/copy-style.mjs && node scripts/build-editor-bundle.mjs",
     "test": "vitest run",
     "smoke:autopack": "node scripts/smoke-autopack.mjs",
     "test:watch": "vitest",
@@ -36,8 +36,7 @@
     "demo:react:build": "npm run build && npm --prefix examples/react-live install && npm --prefix examples/react-live run build",
     "build:site": "npm run demo:react:build && node scripts/build-site.mjs",
     "build:site:e2e": "VITE_BASE=/audroam-outline-fold/react-live/ npm run build:site",
-    "test:e2e": "playwright test",
-    "demo:seal": "npm run build && node scripts/generate-demo-sealed.mjs"
+    "test:e2e": "playwright test"
   },
   "keywords": [
     "outline",

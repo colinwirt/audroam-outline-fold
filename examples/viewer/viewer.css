@@ -69,14 +69,14 @@ h1 { font-size: 18px; font-weight: 650; margin: 0; }
   cursor: pointer; min-height: 44px; display: inline-flex; align-items: center;
 }
 .keys p { margin: 0 0 8px; max-width: 78ch; }
-.demo-unlock { display: inline-flex; align-items: center; gap: 10px; font-size: 13px; color: var(--muted); }
-.demo-unlock[hidden] { display: none; }
-.demo-unlock button {
+.seal-bar { display: inline-flex; align-items: center; gap: 10px; font-size: 13px; color: var(--muted); }
+.seal-bar[hidden] { display: none; }
+.seal-bar button {
   border: 1px solid var(--stroke); border-radius: 12px; background: var(--elevated);
   color: var(--text); font: inherit; font-weight: 600; padding: 8px 14px;
   min-height: 44px; cursor: pointer;
 }
-.demo-pw code { color: #cfe0ef; background: #13232c; padding: .05em .35em; border-radius: 4px; }
+.seal-bar a { color: #6cb6ff; }
 kbd {
   background: #13232c; border: 1px solid var(--stroke); padding: .1em .35em;
   border-radius: 4px; font-size: .85em; color: #cfe0ef;

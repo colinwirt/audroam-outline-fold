@@ -24,10 +24,13 @@ An outline doesn't need `<id:…>` tags. Lines without one get session ids on lo
 
 ## Locked rows
 
-When the outline has sealed rows, the bar shows **Unlock** and `Demo password: …`. The password comes from
-[`../demo-values.json`](../demo-values.json) (the demo values provider), never from the outline text.
-**Unlock** opens every row with it; a row's own lock asks for the password, prefilled. Delete the file and
-the viewer just prompts.
+The example outlines ship no ciphertext. If you load an outline that has real sealed rows
+(of-seal-v3 with a `--- keyring ---`), a row's lock opens the empty unlock card: type the
+passphrase for that key, or let the browser or password manager fill it. Nothing is prefilled
+or shown. The branch opens in memory only; **Lock all** drops every key. Rows that use the old
+demo crypto cannot be opened here.
+
+See the [Secure quick start](../secure-quickstart/) for create key → seal → unlock.
 
 ## Versions on the page
 

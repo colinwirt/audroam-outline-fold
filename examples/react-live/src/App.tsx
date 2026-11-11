@@ -15,8 +15,11 @@ import {
   isCollapsed,
   hasSealed,
   isRemoteSealed,
-  demoOpen,
   promptPassphrase,
+  unlockKey,
+  unlockKeyring,
+  openSealedBranch,
+  cleanCopy,
   validateDocument,
   createMapView,
   seedColdStartFold,
@@ -36,8 +39,6 @@ import {
   type MapResumeState,
 } from '@audroam/outline-fold';
 import seedMd from '../../outline-demo.md?raw';
-// Demo values provider: the demo password lives beside the examples, not in the outline text.
-import demoValues from '../../demo-values.json';
 import {
   type DocLibrary,
   downloadActiveDoc,
@@ -497,15 +498,25 @@ export default function App() {
         window.alert(`Stored remotely: ${node.sealed?.uri}`);
         return;
       }
-      // Inline unlock card (seal-edit 04) instead of window.prompt.
+      // Inline unlock card (seal-edit 04), always empty so autofill can fill it.
+      const kid = (node.sealed as { kid?: string } | undefined)?.kid ?? null;
       await promptPassphrase({
-        kid: (node.sealed as { kid?: string } | undefined)?.kid ?? null,
+        kid,
         anchorEl: document.querySelector(`[data-id="${CSS.escape(id)}"]`),
-        initial: demoValues.password ?? '',
         backoffMs: (n) => Math.min(30_000, 1000 * 2 ** (n - 1)),
         attempt: async (pass) => {
           try {
-            const plaintext = await demoOpen(node.sealed!, pass);
+            // Real seals only: unwrap the keyring with the reader's passphrase,
+            // then read the branch in a memory-only viewer.
+            if (kid) await unlockKey(current, kid, pass);
+            else await unlockKeyring(current, pass);
+            const viewer = await openSealedBranch(current, id);
+            let plaintext: string;
+            try {
+              plaintext = cleanCopy(viewer.doc).trimEnd();
+            } finally {
+              viewer.close();
+            }
             setRevealed((r) => ({ ...r, [id]: plaintext }));
             if (isCollapsed(current, id)) onToggleFold(id);
             return true;

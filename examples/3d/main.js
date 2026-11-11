@@ -1,13 +1,11 @@
 import * as THREE from 'three';
 import { CSS2DObject, CSS2DRenderer } from 'three/addons/renderers/CSS2DRenderer.js';
 import { loadDoc } from '../_shared/parseDoc.js';
-import { findNode, listSealed, loadDemoPassword, openAll, tryUnlock } from '../_shared/unlock.js';
+import { findNode, tryUnlock } from '../_shared/unlock.js';
 import { toggleFold, isCollapsed, iconGlyph } from '../../dist/index.js';
 
 let { doc } = await loadDoc(new URL('../cafe-map.md', import.meta.url));
 const revealed = {};
-const sealedIds = listSealed(doc.nodes).map((n) => n.id);
-const demoPassword = sealedIds.length ? await loadDemoPassword() : null;
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x0b0b0f);
@@ -134,20 +132,13 @@ renderer.domElement.addEventListener('pointerdown', (ev) => {
   if (!id) return;
   const node = findNode(doc.nodes, id);
   if (node?.sealed && revealed[id] == null) {
-    void tryUnlock({ getDoc: () => doc, setDoc: (d) => (doc = d), id, revealed, refresh: rebuild, demoPassword });
+    void tryUnlock({ getDoc: () => doc, setDoc: (d) => (doc = d), id, revealed, refresh: rebuild });
     return;
   }
   doc = toggleFold(doc, id);
   rebuild();
 });
 
-if (demoPassword) {
-  document.getElementById('demoPw').textContent = demoPassword;
-  document.getElementById('demoUnlock').hidden = false;
-  document.getElementById('btnUnlockAll').addEventListener('click', () => {
-    void openAll({ getDoc: () => doc, setDoc: (d) => (doc = d), ids: sealedIds, revealed, refresh: rebuild, password: demoPassword });
-  });
-}
 
 window.addEventListener('resize', () => {
   camera.aspect = innerWidth / innerHeight;

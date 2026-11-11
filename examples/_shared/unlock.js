@@ -1,11 +1,21 @@
 /**
- * Shared unlock helper for the Pages demos (demo crypto only).
+ * Shared unlock helper for the Pages demos. Real outline-fold seals only:
+ * the keyring in the outline is unwrapped with the reader's own passphrase
+ * (typed or filled by the browser / password manager), then the branch opens
+ * in a memory-only viewer. There is no demo crypto and no shared password.
  */
 import {
-  demoOpen,
+  cleanCopy,
+  clearKeys,
+  openSealedBranch,
   promptPassphrase,
+  unlockKey,
+  unlockKeyring,
   isCollapsed,
   toggleFold,
+  SEAL_ALG,
+  SEAL_ALG_V1,
+  SEAL_ALG_V3,
 } from '../../dist/index.js';
 
 /** @param {import('../../dist/index.js').OutlineNode[]} nodes @param {string} id */
@@ -20,25 +30,6 @@ export function findNode(nodes, id) {
   return null;
 }
 
-/**
- * Demo values provider: the one demo password for the example outlines.
- * Lives in examples/demo-values.json, never in the outline text.
- * Resolves to null when the file is missing.
- * @returns {Promise<string | null>}
- */
-export async function loadDemoPassword() {
-  try {
-    const res = await fetch(new URL('../demo-values.json', import.meta.url));
-    if (!res.ok) return null;
-    const values = await res.json();
-    return typeof values?.password === 'string' && values.password
-      ? values.password
-      : null;
-  } catch {
-    return null;
-  }
-}
-
 /** @param {import('../../dist/index.js').OutlineNode[]} nodes */
 export function listSealed(nodes, out = []) {
   for (const n of nodes) {
@@ -48,40 +39,57 @@ export function listSealed(nodes, out = []) {
   return out;
 }
 
+const REAL_ALGS = new Set([SEAL_ALG_V3, SEAL_ALG, SEAL_ALG_V1]);
+
 /**
- * Ask for the password (prefilled with the demo password when there is one)
- * and open one sealed node.
+ * Unlock the key with the passphrase and read one sealed branch as text.
+ * Throws SealError on a wrong passphrase. Plaintext stays in memory.
+ * @param {import('../../dist/index.js').OutlineFoldDoc} doc
+ * @param {string} id
+ * @param {string} pass
+ * @returns {Promise<string>}
+ */
+export async function openWithPassphrase(doc, id, pass) {
+  const node = findNode(doc.nodes, id);
+  const kid = node?.sealed?.kid;
+  if (kid) await unlockKey(doc, kid, pass);
+  else await unlockKeyring(doc, pass);
+  const viewer = await openSealedBranch(doc, id);
+  try {
+    return cleanCopy(viewer.doc).trimEnd();
+  } finally {
+    viewer.close();
+  }
+}
+
+/**
+ * Ask for the passphrase on the inline unlock card (always empty, so the
+ * browser or password manager can fill it) and open one sealed node.
  * @param {object} args
  * @param {() => import('../../dist/index.js').OutlineFoldDoc} args.getDoc
  * @param {(d: import('../../dist/index.js').OutlineFoldDoc) => void} args.setDoc
  * @param {string} args.id
  * @param {Record<string, string>} args.revealed
  * @param {() => void} args.refresh
- * @param {string | null} [args.demoPassword]
  */
-export async function tryUnlock({
-  getDoc,
-  setDoc,
-  id,
-  revealed,
-  refresh,
-  demoPassword = null,
-}) {
+export async function tryUnlock({ getDoc, setDoc, id, revealed, refresh }) {
   const node = findNode(getDoc().nodes, id);
   if (!node?.sealed) return;
   if (node.sealed.uri && !node.sealed.ciphertext) {
     window.alert('Stored remotely: ' + node.sealed.uri);
     return;
   }
-  // Inline unlock card (seal-edit 04) instead of window.prompt.
+  if (!REAL_ALGS.has(node.sealed.alg ?? SEAL_ALG_V3)) {
+    window.alert('This row is not an outline-fold seal, so this viewer cannot open it.');
+    return;
+  }
   const anchorEl = document.querySelector(`[data-id="${CSS.escape(id)}"]`);
   await promptPassphrase({
     kid: node.sealed.kid ?? null,
     anchorEl,
-    initial: demoPassword ?? '',
     backoffMs: (n) => Math.min(30_000, 1000 * 2 ** (n - 1)),
     attempt: async (pass) => {
-      try { revealed[id] = await demoOpen(node.sealed, pass); } catch { return false; }
+      try { revealed[id] = await openWithPassphrase(getDoc(), id, pass); } catch { return false; }
       let doc = getDoc();
       if (isCollapsed(doc, id)) doc = toggleFold(doc, id);
       setDoc(doc);
@@ -92,31 +100,13 @@ export async function tryUnlock({
 }
 
 /**
- * Open the given sealed nodes with one password. Unfolds each opened node.
- * @param {object} args
- * @param {() => import('../../dist/index.js').OutlineFoldDoc} args.getDoc
- * @param {(d: import('../../dist/index.js').OutlineFoldDoc) => void} args.setDoc
- * @param {string[]} args.ids
- * @param {Record<string, string>} args.revealed
- * @param {() => void} args.refresh
- * @param {string} args.password
+ * Lock everything again: close viewers, drop every key from memory, and forget
+ * revealed text. Call on idle, sign-out, or page hide.
+ * @param {Record<string, string>} revealed
  */
-export async function openAll({ getDoc, setDoc, ids, revealed, refresh, password }) {
-  let doc = getDoc();
-  let failed = 0;
-  for (const id of ids) {
-    const node = findNode(doc.nodes, id);
-    if (!node?.sealed?.ciphertext) continue;
-    try {
-      revealed[id] = await demoOpen(node.sealed, password);
-      if (isCollapsed(doc, id)) doc = toggleFold(doc, id);
-    } catch {
-      failed++;
-    }
-  }
-  setDoc(doc);
-  refresh();
-  if (failed) window.alert('Wrong password');
+export function lockAll(revealed) {
+  clearKeys();
+  for (const k of Object.keys(revealed)) delete revealed[k];
 }
 
 export function escHtml(s) {

@@ -1,5 +1,4 @@
 ---
-fold-: contractor-pack, integration-pack
 collapsedMarker: "(+)"
 ---
 - 🛣️ Mairie de Valmont · Voirie nord · signalements · 29 sep matin <id:root>
@@ -21,16 +20,5 @@ collapsedMarker: "(+)"
       - Citoyen · https://example.invalid/signal/VN-2102 · clos · notifié <id:fr-d1-url>
       - [x] Froid temporaire · suivi 14 j <id:fr-d1-done>
   - Accès <id:secrets>
-    - Identifiants portail prestataire <private> <id:contractor-pack> (+)
-    - Clé API GMAO <encrypted> <id:integration-pack> (+)
-
---- payloads ---
-contractor-pack:
-  kid: fr-contractor-1
-  alg: demo-aes-gcm
-  ct: SnKZSMYEChVPENWoMJfzFgdStSgq_hurK-CE1g1Op7aBBZHQ1o1se385s8x0qCrc9EeyUvEQuLmhe370yuOx0cX3DvYlnzQ2RDnXOfvLhRd4p_lz6kKQ9vo
-integration-pack:
-  kid: fr-api-1
-  alg: demo-aes-gcm
-  ct: Q9GWQyFN_vz6PjoCikw2jsEc-ufUwhJmIKtznurqpxg-ay7sskYwAHzLFdYIXqSUD0GIV3M8IHGi31ih98CWw2ET2_hDljyo
----
+    - Identifiants portail prestataire <id:contractor-pack>
+    - Clé API GMAO <id:integration-pack>

@@ -1,15 +1,7 @@
-import { readFileSync } from 'node:fs';
 import { test, expect, type Page } from '@playwright/test';
 
-/** Cafe 2D and 3D maps: node labels, locked rows, demo Unlock. */
-const plaintexts = JSON.parse(readFileSync('scripts/demo-plaintexts.json', 'utf8')) as {
-  examples: Record<string, { id: string; plaintext: string }[]>;
-};
-const sealed = Object.fromEntries(
-  plaintexts.examples['examples/cafe-map.md']!.map((r) => [r.id, r.plaintext]),
-);
-
-const LOCKED = [
+/** Cafe 2D and 3D maps: node labels. 0.7.0: no locked rows, no demo password. */
+const FORMERLY_LOCKED = [
   ['supplier-accounts', 'Supplier accounts'],
   ['alarm', 'Alarm monitoring contact'],
 ] as const;
@@ -47,27 +39,20 @@ test.describe('cafe 3D map', () => {
     await expectNoOverlap(page);
   });
 
-  test('locked rows show caption and lock state; Unlock opens them with the demo password', async ({ page }) => {
-    for (const [id, caption] of LOCKED) {
+  test('former locked rows are plain labels; no password or Unlock control', async ({ page }) => {
+    for (const [id, caption] of FORMERLY_LOCKED) {
       const label = page.locator(`.label[data-id="${id}"]`);
       await expect(label).toBeVisible();
-      await expect(label).toHaveAttribute('data-state', 'locked');
-      await expect(label).toHaveText(`${caption}🔒 locked`);
+      await expect(label).not.toHaveAttribute('data-state', 'locked');
+      await expect(label).toHaveText(caption);
     }
-    await expect(page.locator('#demoUnlock')).toContainText('Demo password: 123');
-    await page.locator('#btnUnlockAll').click();
-    for (const [id, caption] of LOCKED) {
-      const label = page.locator(`.label[data-id="${id}"]`);
-      await expect(label).toHaveAttribute('data-state', 'unlocked');
-      await expect(label).toHaveText(caption + sealed[id]);
-    }
+    await expect(page.locator('body')).not.toContainText(/password/i);
+    await expect(page.locator('#btnUnlockAll')).toHaveCount(0);
     await expectNoOverlap(page);
   });
 
   test('clicking a folded sphere adds its children; labels still fit at 1024 × 700', async ({ page }) => {
     await page.setViewportSize({ width: 1024, height: 700 });
-    await page.locator('#btnUnlockAll').click();
-    await expect(page.locator('.label[data-id="alarm"]')).toHaveAttribute('data-state', 'unlocked');
     const box = (await page.locator('.label[data-id="courtyard-quotes"]').boundingBox())!;
     await page.mouse.click(box.x + box.width / 2, box.y - 12); // sphere sits just above its label
     await expect(page.locator('.label[data-id="bid-a"]')).toHaveText('Bid A · local mason · ballpark only');
@@ -77,21 +62,16 @@ test.describe('cafe 3D map', () => {
 });
 
 test.describe('cafe 2D map', () => {
-  test('locked rows show caption and lock state; Unlock opens them with the demo password', async ({ page }) => {
+  test('former locked rows are plain labels; no password or Unlock control', async ({ page }) => {
     await page.goto('examples/canvas-2d/');
     const labels = page.locator('#c li');
     await expect(labels.filter({ hasText: 'Remodel the courtyard' })).toHaveCount(1);
-    for (const [id, caption] of LOCKED) {
+    for (const [id, caption] of FORMERLY_LOCKED) {
       const li = page.locator(`#c li[data-id="${id}"]`);
-      await expect(li).toHaveAttribute('data-state', 'locked');
-      await expect(li).toHaveText(`${caption} · 🔒 locked`);
+      await expect(li).not.toHaveAttribute('data-state', 'locked');
+      await expect(li).toHaveText(caption);
     }
-    await expect(page.locator('#demoUnlock')).toContainText('Demo password: 123');
-    await page.locator('#btnUnlockAll').click();
-    for (const [id, caption] of LOCKED) {
-      const li = page.locator(`#c li[data-id="${id}"]`);
-      await expect(li).toHaveAttribute('data-state', 'unlocked');
-      await expect(li).toHaveText(`${caption} · ${sealed[id]}`);
-    }
+    await expect(page.locator('body')).not.toContainText(/password/i);
+    await expect(page.locator('#btnUnlockAll')).toHaveCount(0);
   });
 });
