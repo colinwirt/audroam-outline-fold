@@ -21,7 +21,7 @@
 <div id="panel"><div id="mapHost" class="map-wrap" aria-label="Map"></div></div>
 <div id="side"><div id="outline" data-testid="outline"></div><textarea id="ta" data-testid="ta" aria-label="Note"></textarea></div>
 <script type="module">
-import { parse, serialize, createMapView, toHtml, attachIconTypeahead, createIconToolbarButton, loadEmojiData } from '../../dist/index.js';
+import { parse, serialize, createMapView, toHtml, attachIconTypeahead, createIconToolbarButton, createColourToolbarButton, loadEmojiData } from '../../dist/index.js';
 await loadEmojiData();
 if (new URLSearchParams(location.search).get('theme') === 'light') { document.documentElement.classList.add('of-theme-light'); document.body.style.background = '#f3f6f9'; document.body.style.color = '#1d2a36'; }
 const mdName = new URLSearchParams(location.search).get('md') || 'colour.md';
@@ -47,6 +47,10 @@ const map = createMapView(document.getElementById('mapHost'), {
 });
 const ta = document.getElementById('ta');
 attachIconTypeahead(ta);
+document.getElementById('tb').appendChild(createColourToolbarButton({
+  map,
+  label: 'Colour',
+}));
 document.getElementById('tb').appendChild(createIconToolbarButton({
   mode: 'text',
   onPick: (tok) => { ta.setRangeText(tok, ta.selectionStart, ta.selectionEnd, 'end'); },

@@ -69,9 +69,9 @@ describe('0.6.2 Clo search with Map tab selected (Colin phone repro)', () => {
     body.scrollTop = 900;
     expect(body.scrollTop).toBe(900);
 
-    // Before search: all palettes visible (the broken screenshot state for colours).
+    // Before search (browse): colour sections are hidden; the toolbar Colour button is the main pick path.
     const capsBefore = [...document.querySelectorAll('.of-ep-colours-cap')].map((c) => c.textContent);
-    for (const name of ALL_PALETTES) expect(capsBefore).toContain(name);
+    expect(capsBefore).toEqual([]);
 
     const search = document.querySelector('[data-testid="of-ep-search"]') as HTMLInputElement;
     search.value = 'Clo';

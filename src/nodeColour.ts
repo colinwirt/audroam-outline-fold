@@ -354,3 +354,38 @@ export function setColourFill(node: { color?: string; colorFill?: boolean }, on:
   else delete node.colorFill;
   return true;
 }
+
+/**
+ * Whether a colour swatch should appear in a search: group name (Forest, Pastel,
+ * Highlighter, …), role id, display label, or a COLOUR_ALIASES name (`red` → ember).
+ * An empty query matches everything (the caller decides whether browse shows colours).
+ */
+export function colourMatchesQuery(query: string, groupName: string, colourName: string, label?: string): boolean {
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+  const role = colourName.toLowerCase();
+  const hay = `${groupName} ${role} ${label ?? colourLabel(colourName)}`.toLowerCase();
+  if (hay.includes(q) || role.replace(/_/g, '-').includes(q.replace(/\s+/g, '-'))) return true;
+  for (const [alias, target] of Object.entries(COLOUR_ALIASES)) {
+    if (target === colourName && (alias === q || alias.includes(q))) return true;
+  }
+  return false;
+}
+
+/** Groups and swatches that match a non-empty search query. Empty query → no groups (browse hides colours). */
+export function matchingColourGroups(
+  query: string,
+  palette?: string | null,
+): { name: string; colours: NodeColour[] }[] {
+  const q = query.trim();
+  if (!q) return [];
+  const out: { name: string; colours: NodeColour[] }[] = [];
+  for (const g of colourGroups(palette)) {
+    const colours = g.colours.filter((name) =>
+      colourMatchesQuery(q, g.name, name, colourLabel(name, palette)),
+    );
+    if (colours.length) out.push({ name: g.name, colours: [...colours] });
+  }
+  return out;
+}
+

@@ -94,17 +94,49 @@ test('node menu Colour row writes the layout entry (0.5.22); None clears; cloud 
   expect(await text(page)).not.toMatch(/\nloose:\n  colou?r:/);
 });
 
-test('icon picker Colours row sets the colour (EP-31)', async ({ page }) => {
+test('icon picker hides colours in browse; search reveals matching swatches (EP-31)', async ({ page }) => {
   await open(page);
   await page.evaluate(() => (window as any).__map.openIconPicker('mu'));
+  // Default / browse: colour sections are not shown.
+  await expect(page.getByTestId('of-ep-colours')).toHaveCount(0);
+  const search = page.getByTestId('of-ep-search');
+  await search.fill('forest');
   const row = page.getByTestId('of-ep-colours');
-  await expect(row.locator('[role="radio"]')).toHaveCount(56); // 0.5.23: + Audroam row
-  expect(await row.locator('.of-ep-colours-cap').allTextContents()).toEqual(['Forest', 'Neutral', 'Bold', 'Pastel', 'Deep', 'Highlighter', 'Audroam']);
+  await expect(row).toBeVisible();
+  expect(await row.locator('.of-ep-colours-cap').allTextContents()).toEqual(['Forest']);
   await row.getByTestId('of-ep-swatch-fern').click();
   // 0.5.22: migrated from the inline tag to the layout entry; fill kept on recolour (0.5.20).
   expect(await text(page)).toContain('- Museums <id:mu>');
   expect(await text(page)).toMatch(/\nmu:\n  color: fern:fill\n/);
   await expect(row.getByTestId('of-ep-swatch-fern')).toHaveAttribute('aria-checked', 'true');
+});
+
+test('icon picker search for a colour alias or group shows matching swatches', async ({ page }) => {
+  await open(page);
+  await page.evaluate(() => (window as any).__map.openIconPicker('loose'));
+  const search = page.getByTestId('of-ep-search');
+  await search.fill('red');
+  const row = page.getByTestId('of-ep-colours');
+  await expect(row.getByTestId('of-ep-swatch-ember')).toBeVisible(); // alias red → ember
+  await expect(row.getByTestId('of-ep-swatch-bold-red')).toBeVisible();
+  await search.fill('highlighter');
+  await expect(page.getByTestId('of-ep-colours').locator('.of-ep-colours-cap')).toHaveText('Highlighter');
+  await search.fill('pastel');
+  await expect(page.getByTestId('of-ep-colours').locator('.of-ep-colours-cap')).toHaveText('Pastel');
+});
+
+test('toolbar Colour button opens the palette and colours the focused node', async ({ page }) => {
+  await open(page);
+  await page.evaluate(() => (window as any).__setFocus('loose'));
+  await page.getByTestId('of-colour-toolbar').click();
+  const pal = page.getByTestId('of-colour-palette');
+  await expect(pal).toBeVisible();
+  // Desktop: full Forest row; pick fern.
+  const fern = pal.locator('[data-swatch="fern"]');
+  await expect(fern).toBeVisible();
+  await fern.click();
+  expect(await text(page)).toMatch(/\nloose:\n  colou?r: fern\n/);
+  await expect(page.locator('#mapHost .map-node[data-id="loose"]')).toHaveClass(/colour-fern/);
 });
 
 test('light theme: tokens retune, pills keep coloured borders', async ({ page }) => {

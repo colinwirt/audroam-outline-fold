@@ -19,7 +19,7 @@ import {
   type IconPrefs,
 } from './icons.js';
 
-import { colourGroups, colourLabel, resolveColour } from '../nodeColour.js';
+import { colourGroups, colourLabel, colourMatchesQuery, matchingColourGroups, resolveColour } from '../nodeColour.js';
 
 export type PickerMode = 'node' | 'text';
 
@@ -317,17 +317,26 @@ export function openIconPicker(opts: IconPickerOptions): IconPickerHandle {
     search.focus({ preventScroll: true });
   }
 
-  /** 0.6.1: rebuild the colour row, optionally filtered by the search query (name, role id, palette). */
+  /**
+   * Rebuild the colour row. Default / browse (empty query) hides colour sections;
+   * a search that matches a colour name, alias (`red`), or group (`pastel`,
+   * `forest`, `highlighter`) shows the matching swatches.
+   */
   function syncColours(query = ''): void {
     if (!colourHost || !colourOpts) return;
-    colourHost.replaceChildren(renderColourRow(colourOpts, query));
+    const q = query.trim();
+    if (!q) {
+      colourHost.replaceChildren();
+      colourHost.hidden = true;
+      return;
+    }
+    const row = renderColourRow(colourOpts, q);
+    colourHost.hidden = !!row.hidden;
+    colourHost.replaceChildren(row);
   }
 
   function colourMatches(query: string, groupName: string, colourName: string, label: string): boolean {
-    const q = query.trim().toLowerCase();
-    if (!q) return true;
-    const hay = `${groupName} ${colourName} ${label}`.toLowerCase();
-    return hay.includes(q) || colourName.toLowerCase().replace(/_/g, '-').includes(q.replace(/\s+/g, '-'));
+    return colourMatchesQuery(query, groupName, colourName, label);
   }
 
   function renderColourRow(c: NonNullable<IconPickerOptions['colour']>, query = ''): HTMLElement {
@@ -438,9 +447,14 @@ export function openIconPicker(opts: IconPickerOptions): IconPickerHandle {
     };
     if (q) {
       const hits = searchIcons(q, { prefs });
+      const hasColours = !!colourOpts && matchingColourGroups(q, colourOpts.palette).length > 0;
       if (hits.length) addSection('results', 'Results', hits);
-      else grid.appendChild(h('div', 'of-ep-empty', { 'data-testid': 'of-ep-empty' }, 'No matches'));
-      live.textContent = hits.length ? `${hits.length} result${hits.length === 1 ? '' : 's'}` : 'No matches';
+      else if (!hasColours) grid.appendChild(h('div', 'of-ep-empty', { 'data-testid': 'of-ep-empty' }, 'No matches'));
+      live.textContent = hits.length
+        ? `${hits.length} result${hits.length === 1 ? '' : 's'}`
+        : hasColours
+          ? 'Colour matches'
+          : 'No matches';
       strip.classList.add('of-ep-strip-dim');
       // 0.6.2: node mode opens scrolled to Map; keep Results at the top of the scrollport
       // (Colin phone: typed Clo while colours were in view — Results were above the fold).

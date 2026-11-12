@@ -229,6 +229,52 @@ export interface NodeMenuEntry {
 export interface NodeMenuView {
   el: HTMLElement;
   items: HTMLElement[];
+  closeBtn: HTMLButtonElement | null;
+  backdrop: HTMLElement | null;
+}
+
+/** Compact mobile strip: two rows of ~6 finger-size swatches. */
+export const COMPACT_SWATCH_COLS = 6;
+export const COMPACT_SWATCH_ROWS = 2;
+export const COMPACT_SWATCH_SLOTS = COMPACT_SWATCH_COLS * COMPACT_SWATCH_ROWS;
+
+/** `Colour · Forest` → `Colour`; the family shared by every group of one target. */
+export function swatchFamily(row?: string): string {
+  if (!row) return 'Colour';
+  const i = row.indexOf(' · ');
+  return i >= 0 ? row.slice(0, i) : row;
+}
+
+/**
+ * Compact 2-row strip: explicit `compact`, or coarse pointer, or a viewport ≤600px.
+ * A zero/unknown width (jsdom) does not force compact on a fine pointer.
+ */
+export function isCompactSwatchMenu(opts: { fine: boolean; compact?: boolean; width?: number }): boolean {
+  if (opts.compact === false) return false;
+  if (opts.compact === true) return true;
+  const w = opts.width ?? (typeof window !== 'undefined' ? window.innerWidth : 1024);
+  const narrow = w > 0 && w <= 600;
+  return !opts.fine || narrow;
+}
+
+/** Recent-first, then the rest of `batch` in original order (no duplicates). */
+export function orderSwatchesByRecent(batch: NodeMenuEntry[], recent: readonly string[] = []): NodeMenuEntry[] {
+  const seen = new Set<string>();
+  const out: NodeMenuEntry[] = [];
+  for (const r of recent) {
+    const hit = batch.find((e) => e.swatch === r);
+    if (hit && !seen.has(r)) {
+      out.push(hit);
+      seen.add(r);
+    }
+  }
+  for (const e of batch) {
+    if (e.swatch && !seen.has(e.swatch)) {
+      out.push(e);
+      seen.add(e.swatch);
+    }
+  }
+  return out;
 }
 
 let menuSeq = 0;
@@ -243,19 +289,139 @@ function mk<K extends keyof HTMLElementTagNameMap>(tag: K, cls: string, text?: s
 /**
  * The node menu: `role=menu` named by the caption, one `role=group` per
  * non-empty group labelled by its muted label, `role=separator` between groups,
- * `role=menuitem` buttons (labels only).
+ * `role=menuitem` buttons (labels only). On compact (narrow / coarse) viewports
+ * colour rows collapse to a 2×6 recent-first strip with a `…` that expands the
+ * full palette; a close × and optional backdrop sit at the top.
  */
-export function renderNodeMenu(opts: { title: string; entries: NodeMenuEntry[]; fine: boolean; nodeId?: string }): NodeMenuView {
+export function renderNodeMenu(opts: {
+  title: string;
+  entries: NodeMenuEntry[];
+  fine: boolean;
+  nodeId?: string;
+  compact?: boolean;
+  recent?: string[];
+  closable?: boolean;
+  backdrop?: boolean;
+  /** Called after a compact `…` expands, with `items` rebuilt from the DOM. */
+  onItemsChange?: (items: HTMLElement[]) => void;
+}): NodeMenuView {
   const seq = ++menuSeq;
   const title = opts.title.replace(/\s+/g, ' ').trim() || 'Node';
+  const compact = isCompactSwatchMenu({ fine: opts.fine, compact: opts.compact });
+  const recent = opts.recent ?? [];
+  const closable = opts.closable ?? compact;
+  const wantBackdrop = opts.backdrop ?? compact;
   const el = mk('div', 'map-node-menu');
   el.setAttribute('role', 'menu');
   el.setAttribute('aria-label', title);
   el.dataset.pointer = opts.fine ? 'fine' : 'coarse';
+  if (compact) el.dataset.compact = 'true';
   if (opts.nodeId) el.dataset.nodeId = opts.nodeId;
   el.style.position = 'absolute';
   el.style.zIndex = '7';
   const items: HTMLElement[] = [];
+
+  let closeBtn: HTMLButtonElement | null = null;
+  if (closable) {
+    const head = mk('div', 'map-node-menu-head');
+    const ttl = mk('div', 'map-node-menu-title', title);
+    closeBtn = mk('button', 'map-node-menu-close', '×') as HTMLButtonElement;
+    closeBtn.type = 'button';
+    closeBtn.setAttribute('aria-label', 'Close');
+    closeBtn.setAttribute('data-testid', 'map-node-menu-close');
+    head.append(ttl, closeBtn);
+    el.appendChild(head);
+  }
+
+  let backdrop: HTMLElement | null = null;
+  if (wantBackdrop && typeof document !== 'undefined') {
+    backdrop = mk('div', 'map-node-menu-backdrop');
+    backdrop.setAttribute('data-testid', 'map-node-menu-backdrop');
+    backdrop.setAttribute('aria-hidden', 'true');
+  }
+
+  const paintSwatch = (e: NodeMenuEntry, rowEl: HTMLElement): HTMLButtonElement => {
+    const name = e.row ?? 'Colour';
+    const b = mk('button', `map-node-menu-swatch swatch-${e.swatch}`);
+    b.type = 'button';
+    b.tabIndex = -1;
+    b.setAttribute('role', 'menuitemradio');
+    b.setAttribute('aria-checked', e.checked ? 'true' : 'false');
+    b.setAttribute('aria-label', `${name}: ${e.label}`);
+    b.title = e.label;
+    b.dataset.item = e.key;
+    b.dataset.swatch = e.swatch ?? '';
+    if (e.swatch === 'none') b.textContent = '∅';
+    rowEl.appendChild(b);
+    items.push(b);
+    return b;
+  };
+
+  const appendFullSwatchRows = (parent: HTMLElement, batch: NodeMenuEntry[]): HTMLElement[] => {
+    const created: HTMLElement[] = [];
+    let swatchRow: HTMLElement | null = null;
+    for (const e of batch) {
+      const name = e.row ?? 'Colour';
+      if (!swatchRow || swatchRow.getAttribute('aria-label') !== name) {
+        swatchRow = mk('div', 'map-node-menu-swatches');
+        swatchRow.setAttribute('role', 'group');
+        swatchRow.setAttribute('aria-label', name);
+        const cap = mk('span', 'map-node-menu-swatch-cap', name);
+        cap.setAttribute('aria-hidden', 'true');
+        swatchRow.appendChild(cap);
+        parent.appendChild(swatchRow);
+        created.push(swatchRow);
+      }
+      paintSwatch(e, swatchRow);
+    }
+    return created;
+  };
+
+  const appendCompactStrip = (parent: HTMLElement, family: string, batch: NodeMenuEntry[]): void => {
+    const ordered = orderSwatchesByRecent(batch, recent);
+    const overflow = ordered.length > COMPACT_SWATCH_SLOTS;
+    const shown = overflow ? ordered.slice(0, COMPACT_SWATCH_SLOTS - 1) : ordered;
+    const row = mk('div', 'map-node-menu-swatches is-compact');
+    row.setAttribute('role', 'group');
+    row.setAttribute('aria-label', family);
+    row.dataset.compact = 'true';
+    row.dataset.family = family;
+    row.setAttribute('data-testid', 'map-node-menu-swatches-compact');
+    const cap = mk('span', 'map-node-menu-swatch-cap', family);
+    cap.setAttribute('aria-hidden', 'true');
+    row.appendChild(cap);
+    for (const e of shown) paintSwatch(e, row);
+    if (overflow) {
+      const more = mk('button', 'map-node-menu-swatch map-node-menu-swatch-more') as HTMLButtonElement;
+      more.type = 'button';
+      more.tabIndex = -1;
+      more.setAttribute('role', 'menuitem');
+      more.setAttribute('aria-label', `More ${family.toLowerCase()}s`);
+      more.title = 'More colours';
+      more.dataset.more = family;
+      more.setAttribute('data-testid', 'map-node-menu-swatch-more');
+      more.textContent = '…';
+      more.addEventListener('click', (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        const next = row.nextSibling;
+        row.remove();
+        const created = appendFullSwatchRows(parent, batch);
+        // Full rows landed at the end of `parent`; move them back to where the
+        // compact strip was if anything followed it (e.g. Fill).
+        if (next) {
+          for (const r of created) parent.insertBefore(r, next);
+        }
+        const fresh = [...el.querySelectorAll<HTMLElement>('[data-item]')];
+        items.length = 0;
+        items.push(...fresh);
+        opts.onItemsChange?.(items);
+      });
+      row.appendChild(more);
+    }
+    parent.appendChild(row);
+  };
+
   const groups: NodeMenuGroup[] = ['Create', 'Edit', 'View', 'Open'];
   let first = true;
   for (const g of groups) {
@@ -275,9 +441,22 @@ export function renderNodeMenu(opts: { title: string; entries: NodeMenuEntry[]; 
     const label = mk('div', 'map-node-menu-label', g);
     label.id = labelId;
     group.appendChild(label);
+    let i = 0;
     let swatchRow: HTMLElement | null = null;
-    for (const e of list) {
+    while (i < list.length) {
+      const e = list[i]!;
       if (e.swatch) {
+        if (compact) {
+          const fam = swatchFamily(e.row);
+          const batch: NodeMenuEntry[] = [];
+          while (i < list.length && list[i]!.swatch && swatchFamily(list[i]!.row) === fam) {
+            batch.push(list[i]!);
+            i++;
+          }
+          appendCompactStrip(group, fam, batch);
+          swatchRow = null;
+          continue;
+        }
         const name = e.row ?? 'Colour';
         if (!swatchRow || swatchRow.getAttribute('aria-label') !== name) {
           swatchRow = mk('div', 'map-node-menu-swatches');
@@ -288,18 +467,8 @@ export function renderNodeMenu(opts: { title: string; entries: NodeMenuEntry[]; 
           swatchRow.appendChild(cap);
           group.appendChild(swatchRow);
         }
-        const b = mk('button', `map-node-menu-swatch swatch-${e.swatch}`);
-        b.type = 'button';
-        b.tabIndex = -1;
-        b.setAttribute('role', 'menuitemradio');
-        b.setAttribute('aria-checked', e.checked ? 'true' : 'false');
-        b.setAttribute('aria-label', `${name}: ${e.label}`);
-        b.title = e.label;
-        b.dataset.item = e.key;
-        b.dataset.swatch = e.swatch;
-        if (e.swatch === 'none') b.textContent = '∅';
-        swatchRow.appendChild(b);
-        items.push(b);
+        paintSwatch(e, swatchRow);
+        i++;
         continue;
       }
       swatchRow = null;
@@ -313,10 +482,11 @@ export function renderNodeMenu(opts: { title: string; entries: NodeMenuEntry[]; 
       if (e.popup) b.setAttribute('aria-haspopup', 'menu');
       group.appendChild(b);
       items.push(b);
+      i++;
     }
     el.appendChild(group);
   }
-  return { el, items };
+  return { el, items, closeBtn, backdrop };
 }
 
 export type NodeMenuKeyAction =

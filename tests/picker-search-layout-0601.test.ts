@@ -33,16 +33,25 @@ describe('0.6.1 icon picker layout (scroll + Audroam reachable)', () => {
     expect(css).toMatch(/\.of-ep\.of-ep-panel\s*\{[^}]*overflow:\s*hidden/);
   });
 
-  it('DOM: colours sit inside of-ep-body with the grid (not a clipped sibling of the panel)', () => {
+  it('DOM: colour host sits inside of-ep-body; browse hides palettes; search reveals them there', () => {
     const p = openNodePicker();
     const body = document.querySelector('[data-testid="of-ep-body"]') as HTMLElement;
     const grid = document.querySelector('[data-testid="of-ep-grid"]') as HTMLElement;
-    const colours = document.querySelector('[data-testid="of-ep-colours"]') as HTMLElement;
+    const host = document.querySelector('[data-testid="of-ep-colours-host"]') as HTMLElement;
     expect(body).toBeTruthy();
     expect(body.contains(grid)).toBe(true);
+    expect(host).toBeTruthy();
+    expect(body.contains(host)).toBe(true);
+    // Default / browse: colour sections are hidden.
+    expect(host.hidden || !host.querySelector('[data-testid="of-ep-colours"]')).toBe(true);
+    expect(document.querySelectorAll('.of-ep-colours-cap').length).toBe(0);
+    // Search that matches a group name shows those swatches inside the same scroll body.
+    const search = document.querySelector('[data-testid="of-ep-search"]') as HTMLInputElement;
+    search.value = 'audroam';
+    search.dispatchEvent(new Event('input', { bubbles: true }));
+    const colours = document.querySelector('[data-testid="of-ep-colours"]') as HTMLElement;
+    expect(colours).toBeTruthy();
     expect(body.contains(colours)).toBe(true);
-    expect(colours.closest('[data-testid="of-ep-body"]')).toBe(body);
-    // Audroam caption is present and not outside the scrollport parent.
     const caps = [...colours.querySelectorAll('.of-ep-colours-cap')].map((c) => c.textContent);
     expect(caps).toContain('Audroam');
     p.close(false);

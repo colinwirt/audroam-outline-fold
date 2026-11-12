@@ -115,13 +115,16 @@ describe('0.5.23 palettes', () => {
     mv.destroy?.();
   });
 
-  it('icon picker colour rows: one caption per palette, 24 radios', () => {
+  it('icon picker hides colour rows in browse; search audroam shows the Audroam swatches', () => {
     const anchor = document.createElement('button');
     document.body.appendChild(anchor);
     const p = openIconPicker({ mode: 'node', anchor, onPick: () => {}, expanded: true, colour: { onColour: () => {} } } as any);
+    expect(document.querySelector('[data-testid="of-ep-colours"]')).toBeNull();
+    const search = document.querySelector('[data-testid="of-ep-search"]') as HTMLInputElement;
+    search.value = 'audroam';
+    search.dispatchEvent(new Event('input', { bubbles: true }));
     const row = document.querySelector('[data-testid="of-ep-colours"]')!;
-    expect([...row.querySelectorAll('.of-ep-colours-cap')].map((c) => c.textContent)).toEqual(['Forest', 'Neutral', 'Bold', 'Pastel', 'Deep', 'Highlighter', 'Audroam']);
-    expect(row.querySelectorAll('[role="radio"]').length).toBe(56); // 0.5.30: 55 roles + none
+    expect([...row.querySelectorAll('.of-ep-colours-cap')].map((c) => c.textContent)).toEqual(['Audroam']);
     expect(row.querySelector('[data-testid="of-ep-swatch-audroam-lavender"]')!.getAttribute('aria-label')).toBe('Lavender');
     p.close(false);
   });

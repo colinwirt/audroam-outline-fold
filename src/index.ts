@@ -470,6 +470,12 @@ export {
   nodeMenuKeyAction,
   placeNodeMenu,
   renderNodeMenu,
+  COMPACT_SWATCH_COLS,
+  COMPACT_SWATCH_ROWS,
+  COMPACT_SWATCH_SLOTS,
+  isCompactSwatchMenu,
+  orderSwatchesByRecent,
+  swatchFamily,
   type NodeCopyItem,
   type NodeCopyKind,
   type NodeMenuEntry,
@@ -478,6 +484,16 @@ export {
   type NodeMenuView,
   type NodeUriOption,
 } from './nodeMenu.js';
+
+export {
+  openColourPalette,
+  createColourToolbarButton,
+  colourMenuEntries,
+  currentColourPalette,
+  type ColourPaletteOptions,
+  type ColourPaletteHandle,
+} from './colourPalette.js';
+export { recentColours, rememberColour, clearRecentColours, RECENT_COLOUR_MAX } from './colourRecent.js';
 
 export {
   ALT_HOLD_MS,
