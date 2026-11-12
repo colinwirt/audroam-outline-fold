@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { Touch, box, centre } from './touch';
+import { expectSessionFocus } from './harness';
 
 /** Link popover on touch (0.2.33): 44 px rows, a tap on a row follows it. */
 test('touch: rows are 44 px and a tap on the hop row selects its node', async ({ page }) => {
@@ -52,5 +53,5 @@ test('touch: rows are 44 px and a tap on the hop row selects its node', async ({
   const row = centre(await box(page, '.map-link-item[data-hop-id="plants"]'));
   await t.tap(row.x, row.y);
   await expect(page.locator('.map-link-pop')).toHaveCount(0);
-  await expect.poll(() => page.evaluate(() => (window as any).__focus())).toBe('plants');
+  await expectSessionFocus(page, 'plants');
 });

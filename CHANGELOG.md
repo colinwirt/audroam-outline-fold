@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+### Follow-in-text always keys on session view ids
+
+- **Map ↔ text focus / follow-in-text / camera-follow / scroll-into-view** always key on the session view key (`__sid-N`). An authored `<id:>` is resolved once through the session index's fixed-ref map and is never itself the focus key. This was the prod 0.7.0 off-by-one: focusing `1.1 Written Discussion <id:27>` highlighted the id-less sibling above it; removing the id made follow correct; adding an icon (which mints a persistent `<id:>`) broke it again (same class as QA 42314).
+- `setFocusId` and `onFocusChange` now store and emit the view key (`toKey` / `sessionFocus`), not `publicId`. `map.setFocus` returns the view key. `mountTextEditor` defaults `lineOf` to `doc.lineOf` so a line with no `<id:>` still follows, and a just-minted id does not change the key.
+- After a host rewrite (adding an icon mints a persistent `<id:>` and a layout trailer) the editor re-applies follow from the current session key. FocusLink is a no-op when the id is unchanged, and CodeMirror would otherwise map the caret through a large replace onto the wrong line.
+- Focus transitions (no-id → id, id → no-id, no-id → no-id) key both the previous and the next selection on session view ids. An id-less node's previous state is never a place-number or a stale authored id, which was how a move from an id-less sibling onto `1.1 Written Discussion <id:27>` landed one line above.
+- Camera expand-follow looks up pills by session view key (`vkey`). Keyboard expand (`Enter` / `*` / digits) keys `pendingFollow` on `getFocusId()`, never on `n.id`.
+- `wireFocus` keeps the FocusLink on the session key: an Outline click's authored `data-id` is resolved once; Map → Outline converts the session key to `hostId` only for the DOM lookup.
+- `toRef` / `publicId` remain the host-facing fixed reference for hops, copy-link, tasks and the Map `data-id` attribute. Outline `data-id` is still the authored id.
+
+
 ## 0.7.0 — 2026-11-12
 
 Folds in the 0.6.6 candidate below. **BREAKING** where marked.

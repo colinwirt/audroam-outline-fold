@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { expectSessionFocus } from './harness';
 
 /**
  * Map link popover (globe badge), 0.2.33: class-based styling in the
@@ -157,7 +158,7 @@ test.describe('link popover', () => {
     await page.keyboard.press('End');
     await page.keyboard.press('Enter');
     await expect(page.locator(POP)).toHaveCount(0);
-    await expect.poll(() => page.evaluate(() => (window as any).__focus())).toBe('plants');
+    await expectSessionFocus(page, 'plants');
     await expect(page.locator('#mapHost')).toBeFocused();
   });
 

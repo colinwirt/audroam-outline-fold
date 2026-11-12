@@ -1031,9 +1031,8 @@ export function outlineEditor(opts: OutlineEditorOptions): Extension[] {
     let typedAt = 0;
     const onKey = () => (typedAt = Date.now());
     view.dom.addEventListener('keydown', onKey);
-    const off = opts.focus?.subscribe((id, source) => {
-      if (source === 'editor' || !(opts.followInText?.() ?? true)) return;
-      if (Date.now() - typedAt < 1500) return; // paused while typing
+    const placeFollow = (id: string): void => {
+      if (!(opts.followInText?.() ?? true)) return;
       const sealed = sealedTarget(id);
       if (sealed) {
         const place = (): boolean => {
@@ -1043,6 +1042,8 @@ export function outlineEditor(opts: OutlineEditorOptions): Extension[] {
         if (!place()) requestAnimationFrame(() => { try { place(); } catch { /* zone gone */ } });
         return;
       }
+      // Follow is keyed on the session view key. lineOf resolves an authored
+      // id once through the fixed-ref index; the raw id is never a line or position.
       const local = id.includes(':') ? id.slice(id.lastIndexOf(':') + 1) : id;
       const doc = view.state.doc;
       const ln = opts.lineOf?.(id);
@@ -1058,8 +1059,30 @@ export function outlineEditor(opts: OutlineEditorOptions): Extension[] {
           return;
         }
       }
+    };
+    const off = opts.focus?.subscribe((id, source) => {
+      if (source === 'editor') return;
+      if (Date.now() - typedAt < 1500) return; // paused while typing
+      placeFollow(id);
     });
-    return { destroy: () => { off?.(); view.dom.removeEventListener('keydown', onKey); } };
+    return {
+      // A host rewrite (icon mint writes a new `<id:>` + layout trailer) maps the
+      // caret through a large replace and can leave it on the wrong line. The
+      // session focus key did not change, so FocusLink will not re-notify: re-apply
+      // follow from the current session key after a remote doc change.
+      // Do not dispatch inside `update` — CodeMirror forbids it. Schedule a frame.
+      update(u) {
+        if (!u.docChanged) return;
+        if (!u.transactions.some((tr) => tr.annotation(Transaction.remote))) return;
+        if (Date.now() - typedAt < 1500) return;
+        const id = opts.focus?.get();
+        if (!id) return;
+        requestAnimationFrame(() => {
+          try { placeFollow(id); } catch { /* view gone */ }
+        });
+      },
+      destroy: () => { off?.(); view.dom.removeEventListener('keydown', onKey); },
+    };
   });
   const unlockClick = EditorView.domEventHandlers({
     mousedown(e) {

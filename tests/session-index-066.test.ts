@@ -73,14 +73,19 @@ describe('session index', () => {
     expect(idx.nodeOf(idx.resolve(target)!)!.title).toBe('Plants');
   });
 
-  it('Map jump chip focuses the target pill by its view key; the host sees the fixed id', async () => {
+  it('Map jump chip focuses the target pill by its view key; the host stores that session key, not the authored id', async () => {
     const d = parse('- Plants <id:plants>\n  - fern\n- Rota <r:plants> <id:rota>\n');
     const { host, mv, state } = mount(() => d);
     await tick();
     const chip = host.querySelector('.map-jump-hit[data-jump="plants"]')!;
     chip.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-    expect(state.focus).toBe('plants');
-    expect(mv.viewKey('plants')).toBe(mv.viewKey(byTitle(d, 'Plants')));
+    const key = mv.viewKey('plants');
+    expect(isViewKey(state.focus)).toBe(true);
+    expect(state.focus).toBe(key);
+    expect(state.focus).not.toBe('plants');
+    expect(key).toBe(mv.viewKey(byTitle(d, 'Plants')));
+    // The fixed ref still crosses the host boundary for hops / data-id, not for focus.
+    expect(mv.hostId(key)).toBe('plants');
     mv.destroy?.();
   });
 

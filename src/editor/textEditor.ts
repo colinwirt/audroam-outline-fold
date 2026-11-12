@@ -448,6 +448,8 @@ export function mountTextEditor(
     ...o,
     sessions: doc.sessions,
     focus: o.focus ?? doc.focusLink,
+    // Session-index line map: follow keys on view keys; authored ids resolve once.
+    lineOf: o.lineOf ?? ((id: string) => doc.lineOf(id)),
   }, {
     onLocal: (next) => doc.setText(next, { source: 'text', reason: 'text' }),
     onSelection: (head) => doc.setCaret(head),

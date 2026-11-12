@@ -1806,14 +1806,12 @@ export function createMapView(
   const paletteName = applyNodePalette(host, opts.colourPalette);
   let lastFocusEmit: string | null = null;
   let regionFocusRef: () => string | null = () => null;
-  const emitFocus = () => {
-    const id = regionFocusRef() ?? opts.getFocusId();
-    if (!id || id === lastFocusEmit) return;
-    lastFocusEmit = id;
-    opts.onFocusChange?.(id);
-  };
+  // emitFocus / sessionFocus are declared after toKey (they close over it).
+  let emitFocus: () => void = () => {};
   // 0.6.6: one session index per view. Every node is keyed by a view key
-  // (`__sid-N`); fixed references (`<id:N>`, `__tmp-N`) cross the host boundary.
+  // (`__sid-N`). Authored ids (`<id:N>`) resolve once through the fixed-ref
+  // index and are never themselves a focus / follow / Map↔text sync key;
+  // hops, copy-link and `data-id` still publish the fixed reference (`toRef`).
   const viewIndex: SessionIndex = opts.sessionIndex ?? createSessionIndex();
   /**
    * Every tree the host hands over is synced as it is read, in order, so a host that
@@ -1839,8 +1837,22 @@ export function createMapView(
     syncIndex();
     return viewIndex.resolve(id) ? viewIndex.publicId(id) : id;
   };
+  const sessionFocus = (raw: string | null | undefined): string => {
+    if (!raw) return '';
+    return toKey(raw);
+  };
+  emitFocus = () => {
+    const id = sessionFocus(regionFocusRef() ?? opts.getFocusId());
+    if (!id || id === lastFocusEmit) return;
+    lastFocusEmit = id;
+    opts.onFocusChange?.(id);
+  };
+  /**
+   * Host + FocusLink key is the session view key. An authored `<id:>` or `__tmp-`
+   * is resolved once via the fixed-ref index and never stored or emitted as the key.
+   */
   const setFocusId = (id: string) => {
-    setFocusIdRaw(toRef(id));
+    setFocusIdRaw(sessionFocus(id) || id);
     rememberTaskCycleOrigin(id);
     emitFocus();
   };
@@ -2222,8 +2234,9 @@ export function createMapView(
     const focusNode = findNode(doc.nodes, focusId);
     if (focusNode?.children && !isCollapsed(doc, focusId)) {
       for (const c of focusNode.children) {
-        if (c.id && byId.has(c.id)) {
-          const r = byId.get(c.id)!;
+        const ck = vkey(c);
+        if (byId.has(ck)) {
+          const r = byId.get(ck)!;
           group.push(r);
           kids.push(r);
         }
@@ -7932,7 +7945,7 @@ export function createMapView(
           // Keep the selection (and newly shown kids) in view, like circle-+.
           userCamGesture = false;
           pendingFollow = wasCollapsed
-            ? { kind: 'expand', focusId: n!.id }
+            ? { kind: 'expand', focusId }
             : { kind: 'focus' };
           onChange?.();
         }
@@ -7942,7 +7955,7 @@ export function createMapView(
         // Expand-all relative to selection (subtree), not whole forest.
         setDoc(setExpandLevel(doc, '*', { under: n!.id! }));
         userCamGesture = false;
-        pendingFollow = { kind: 'expand', focusId: n!.id! };
+        pendingFollow = { kind: 'expand', focusId };
         onChange?.();
       } else if (e.key >= '0' && e.key <= '9') {
         if (!selected) return;
@@ -7951,7 +7964,7 @@ export function createMapView(
         setDoc(setExpandLevel(doc, Number(e.key), { under: n!.id! }));
         userCamGesture = false;
         pendingFollow =
-          e.key === '0' ? { kind: 'focus' } : { kind: 'expand', focusId: n!.id! };
+          e.key === '0' ? { kind: 'focus' } : { kind: 'expand', focusId };
         onChange?.();
       }
     };
@@ -8006,13 +8019,14 @@ export function createMapView(
     sessionIndex: () => { syncIndex(); return viewIndex; },
     setFocus: (id: string) => {
       const t = handle.revealScoped(id);
+      const key = sessionFocus(t) || t;
       // Camera: root targets follow via pendingFollow; region targets centre their box.
-      const b = placed.flatMap((r) => r.boxes).find((x) => x.key === t);
+      const b = placed.flatMap((r) => r.boxes).find((x) => x.key === key || x.key === t);
       if (b) {
         const rect = host.getBoundingClientRect();
         panBy(rect.width / 2 - (b.x + b.w / 2) * cam.k - cam.x, rect.height / 2 - (b.y + b.h / 2) * cam.k - cam.y);
       }
-      return t;
+      return key;
     },
     revealScoped: (id: string) => {
       const res = revealScopedId(id, {

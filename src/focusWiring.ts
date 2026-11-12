@@ -14,6 +14,12 @@ import type { FocusSource } from './hostApi.js';
 
 export interface FocusWiringMap {
   setFocus(id: string): string;
+  /**
+   * Host-facing fixed reference for a view key (Outline `data-id` lookup).
+   * The FocusLink itself is always the session view key.
+   */
+  hostId?: (k: string) => string;
+  sessionIndex?: () => { resolve(id: string): string | null };
 }
 export interface FocusWiringOutline {
   focus(id: string): void;
@@ -36,16 +42,26 @@ export function wireFocus(link: FocusLink): FocusWiring {
   let outline: FocusWiringOutline | null = null;
   let revealOutline: ((id: string) => string) | undefined;
   let pending: FocusSource | null = null;
+  /** Authored / `__tmp-` / view key → session view key. Missing index: identity. */
+  const toSession = (id: string): string => map?.sessionIndex?.().resolve(id) || id;
+  /**
+   * Outline HTML is still tagged with the authored `data-id`. Convert a session
+   * key to that fixed reference for the DOM lookup only — never store it on the link.
+   */
+  const toOutlineLook = (id: string): string => map?.hostId?.(id) ?? id;
   const off = link.subscribe((id, source) => {
     if (source !== 'map' && source !== 'command') map?.setFocus(id);
-    if (source !== 'outline' && outline) outline.focus(revealOutline ? revealOutline(id) : id);
+    if (source !== 'outline' && outline) {
+      const look = toOutlineLook(id);
+      outline.focus(revealOutline ? revealOutline(look) : look);
+    }
   });
   const w: FocusWiring = {
     onMapFocus(id) {
-      link.set(id, pending ?? 'map');
+      link.set(toSession(id), pending ?? 'map');
     },
     onOutlineFocus(id) {
-      link.set(id, 'outline');
+      link.set(toSession(id), 'outline');
     },
     setFocus(id) {
       if (map) {

@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { expectSessionFocus } from './harness';
 
 /**
  * Jumps (0.2.34): `<r:x>` chips and `[label](#id:x)` hops select and pan to the
@@ -45,7 +46,7 @@ test.describe('Map', () => {
     const chip = '.map-node[data-id="jump"] .map-jump-hit[data-jump="tom"]';
     await expect(page.locator(`${chip} .map-jump-link`)).toHaveText('→ Tomatoes');
     await clickSel(page, chip);
-    await expect.poll(() => page.evaluate(() => (window as any).__focus())).toBe('tom');
+    await expectSessionFocus(page, 'tom');
     await expect(page.locator('.map-node[data-id="tom"]')).toHaveAttribute('aria-selected', 'true');
     await expect(page.locator('#mapHost')).toBeFocused();
     expect(await page.evaluate(() => (window as any).__hops)).toEqual([{ id: 'tom', from: 'jump' }]);
@@ -66,7 +67,7 @@ test.describe('Map', () => {
     await open(page, MAP);
     await page.locator('.map-node[data-id="jump"] a[href="#id:tom"]').focus();
     await page.keyboard.press('Enter');
-    await expect.poll(() => page.evaluate(() => (window as any).__focus())).toBe('tom');
+    await expectSessionFocus(page, 'tom');
     expect(await page.evaluate(() => location.hash)).toBe('');
   });
 
@@ -96,7 +97,7 @@ test.describe('Map', () => {
     await expect(page.locator('.map-link-pop:not(.is-closing)')).toHaveCount(1);
     await rows.nth(0).click();
     await expect(page.locator('.map-link-pop')).toHaveCount(0);
-    await expect.poll(() => page.evaluate(() => (window as any).__focus())).toBe('plants');
+    await expectSessionFocus(page, 'plants');
     expect(await page.evaluate(() => (window as any).__hops)).toEqual([{ id: 'plants', from: 'hops' }]);
   });
 

@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { Touch, box, centre } from './touch';
+import { expectSessionFocus } from './harness';
 
 /** Jumps and the thread pill on touch (0.2.34). Fixture: examples/e2e-touch/jumps.md. */
 const MAP = 'examples/e2e-touch/index.html?doc=jumps.md';
@@ -12,7 +13,7 @@ test.describe('jumps on touch', () => {
     const t = await Touch.attach(page);
     const c = centre(await box(page, '.map-node[data-id="jump"] .map-jump-hit[data-jump="tom"]'));
     await t.tap(c.x, c.y);
-    await expect.poll(() => page.evaluate(() => (window as any).__focus())).toBe('tom');
+    await expectSessionFocus(page, 'tom');
     await page.waitForTimeout(650);
     expect(await page.evaluate(() => (window as any).__hops)).toEqual([{ id: 'tom', from: 'jump' }]);
     expect(await page.evaluate(() => location.hash)).toBe('');

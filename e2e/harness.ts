@@ -141,3 +141,28 @@ export async function selectViaKeys(
   for (const k of keys) await press(page, k);
   await expectSelected(page, hostSel, id);
 }
+
+/**
+ * After a Map focus move, the host's `__focus()` is the session view key
+ * (`__sid-N`). `map.hostId` is the authored / fixed reference (hops, `?focus=`).
+ */
+export async function sessionFocusOf(
+  page: Page,
+): Promise<{ raw: string; host: string; session: boolean }> {
+  return page.evaluate(() => {
+    const raw = String((window as any).__focus() ?? '');
+    const map = (window as any).__map;
+    const host = String(map?.hostId?.(raw) ?? raw);
+    return { raw, host, session: raw.startsWith('__sid-') };
+  });
+}
+
+export async function expectSessionFocus(page: Page, authored: string): Promise<void> {
+  await expect
+    .poll(async () => {
+      const s = await sessionFocusOf(page);
+      return s.session && s.host === authored ? authored : `${s.raw} (host=${s.host})`;
+    })
+    .toBe(authored);
+}
+
