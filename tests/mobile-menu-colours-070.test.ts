@@ -75,6 +75,19 @@ describe('renderNodeMenu compact strip', () => {
     expect(css).toMatch(/\.map-node-menu-backdrop\s*\{[^}]*position:\s*fixed/);
   });
 
+  it('CSS: Colour … more button is a swatch-sized circle (fine 22px, compact/coarse 36px)', () => {
+    // Same box as a swatch: width = height, border-radius 50%, not a wide pill.
+    expect(css).toMatch(/\.map-node-menu-swatch-more[^{]*\{[^}]*border-radius:\s*50%/);
+    expect(css).toMatch(/\.map-node-menu-swatch-more[^{]*\{[^}]*width:\s*22px/);
+    expect(css).toMatch(/\.map-node-menu-swatch-more[^{]*\{[^}]*height:\s*22px/);
+    expect(css).toMatch(/\.map-node-menu-swatch-more[^{]*\{[^}]*min-width:\s*22px/);
+    expect(css).toMatch(/\.map-node-menu-swatch-more[^{]*\{[^}]*max-width:\s*22px/);
+    expect(css).toMatch(/\.map-node-menu-swatches\.is-compact\s*\.map-node-menu-swatch-more[^{]*\{[^}]*width:\s*36px/);
+    expect(css).toMatch(/\.map-node-menu-swatches\.is-compact\s*\.map-node-menu-swatch-more[^{]*\{[^}]*height:\s*36px/);
+    expect(css).toMatch(/\.map-node-menu\[data-pointer="coarse"\]\s*\.map-node-menu-swatch-more[^{]*\{[^}]*width:\s*36px/);
+    expect(css).toMatch(/\.of-colour-palette\s*\.map-node-menu-swatch-more/);
+  });
+
   it('fine desktop keeps every palette row and has no close/backdrop', () => {
     const v = renderNodeMenu({ title: 'n', entries: swatchEntries(), fine: true, compact: false });
     const rows = [...v.el.querySelectorAll('.map-node-menu-swatches')].map((r) => r.getAttribute('aria-label'));
@@ -210,6 +223,34 @@ describe('icon picker: hide colours in browse, show on search', () => {
     p.close(false);
   });
 });
+
+
+  it('… more button keeps its accessible name on compact menu and toolbar palette', () => {
+    const v = renderNodeMenu({
+      title: 'n',
+      entries: swatchEntries(),
+      fine: false,
+      compact: true,
+      recent: ['ember'],
+    });
+    const more = v.el.querySelector('[data-testid="map-node-menu-swatch-more"]') as HTMLButtonElement;
+    expect(more).toBeTruthy();
+    expect(more.getAttribute('aria-label')).toMatch(/More colours/i);
+    expect(more.title).toBe('More colours');
+    expect(more.classList.contains('map-node-menu-swatch')).toBe(true);
+    expect(more.classList.contains('map-node-menu-swatch-more')).toBe(true);
+    document.body.appendChild(v.el);
+    const pal = openColourPalette({
+      onColour: () => {},
+      compact: true,
+      anchor: { x: 20, y: 20 },
+    });
+    const palMore = pal.el.querySelector('[data-testid="map-node-menu-swatch-more"]') as HTMLButtonElement;
+    expect(palMore).toBeTruthy();
+    expect(palMore.getAttribute('aria-label')).toMatch(/More colours/i);
+    pal.close(false);
+    v.el.remove();
+  });
 
 describe('openColourPalette + toolbar button', () => {
   afterEach(() => {

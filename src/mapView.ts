@@ -806,6 +806,13 @@ export interface MapViewHandle {
   viewKey: (nodeOrRef: OutlineNode | string) => string | null;
   /** The node a view key or fixed reference names in the current doc. */
   nodeForKey: (keyOrRef: string) => OutlineNode | null;
+  /**
+   * The focused node, from the session view key (`getFocusId()`), the same
+   * lookup the node menu uses (`nodeForKey`). Works for id-less nodes and
+   * after a remote rewrite or expand/collapse. Null when nothing is focused.
+   * A host style toolbar should enable from this, not from `node.id === focusId`.
+   */
+  focusedNode: () => OutlineNode | null;
   /** The id a host sees for a view key: the line's id when it has one, else the view key. */
   hostId: (keyOrRef: string) => string;
   /** The session index behind this view (line ↔ key, fixed ref ↔ key, duplicates). */
@@ -8128,6 +8135,10 @@ export function createMapView(
       return typeof x === 'string' ? viewIndex.resolve(x) : vkey(x);
     },
     nodeForKey: (k: string) => nodeByKey(k),
+    focusedNode: () => {
+      const k = getFocusId();
+      return k ? nodeByKey(k) : null;
+    },
     hostId: (k: string) => toRef(k),
     sessionIndex: () => { syncIndex(); return viewIndex; },
     setFocus: (id: string) => {

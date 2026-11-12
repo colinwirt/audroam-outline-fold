@@ -41,6 +41,16 @@ test.describe('mobile node menu colours', () => {
     });
     expect(size.w).toBeGreaterThanOrEqual(36);
     expect(size.h).toBeGreaterThanOrEqual(36);
+    await expect(more).toHaveAttribute('aria-label', /More colours/i);
+    const moreSize = await more.evaluate((e) => {
+      const r = e.getBoundingClientRect();
+      return { w: r.width, h: r.height, radius: getComputedStyle(e).borderRadius };
+    });
+    const swatchRadius = await swatches.first().evaluate((e) => getComputedStyle(e).borderRadius);
+    expect(moreSize.w).toBeCloseTo(size.w, 1);
+    expect(moreSize.h).toBeCloseTo(size.h, 1);
+    expect(moreSize.w).toBeCloseTo(moreSize.h, 1);
+    expect(moreSize.radius).toBe(swatchRadius);
     await expect(page.getByTestId('map-node-menu-close')).toBeVisible();
     await expect(page.getByTestId('map-node-menu-backdrop')).toBeVisible();
     // Menu taller-than-viewport would scroll inside: max-height is set.
@@ -83,6 +93,17 @@ test.describe('toolbar Colour button (touch)', () => {
     await page.getByTestId('of-colour-toolbar').tap();
     const pal = page.getByTestId('of-colour-palette');
     await expect(pal).toBeVisible();
+    const palMore = pal.getByTestId('map-node-menu-swatch-more');
+    const palSwatch = pal.locator('.map-node-menu-swatch:not(.map-node-menu-swatch-more)').first();
+    if (await palMore.count()) {
+      await expect(palMore).toHaveAttribute('aria-label', /More colours/i);
+      const a = await palSwatch.evaluate((e) => { const r = e.getBoundingClientRect(); return { w: r.width, h: r.height, radius: getComputedStyle(e).borderRadius }; });
+      const b = await palMore.evaluate((e) => { const r = e.getBoundingClientRect(); return { w: r.width, h: r.height, radius: getComputedStyle(e).borderRadius }; });
+      expect(b.w).toBeCloseTo(a.w, 1);
+      expect(b.h).toBeCloseTo(a.h, 1);
+      expect(b.w).toBeCloseTo(b.h, 1);
+      expect(b.radius).toBe(a.radius);
+    }
     const fern = pal.locator('[data-swatch="fern"]');
     await expect(fern).toBeVisible();
     await fern.tap();

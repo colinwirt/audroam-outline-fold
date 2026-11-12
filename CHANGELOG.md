@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+### Style toolbar follows session-key focus; Colour `…` is a swatch-sized circle
+
+- **Style tools (Cloud / Icon / Fill / Colour):** the focused node is resolved through the session index (`nodeForKey` / `focusedNode`), the same lookup the node menu uses, so a Map click or keyboard focus enables the toolbar without opening the menu. A host that tests `node.id === focusId` misses the session view key (`__sid-N`) on id-less and authored-id nodes and leaves the buttons disabled until the menu opens. Holds after a remote rewrite and after expand/collapse.
+- **Colour `…` more button** (compact node-menu row, coarse/mobile, and the toolbar Colour palette): a circle matching the neighbouring swatch (`22px` fine, `36px` compact/coarse, `border-radius: 50%`), keeping its accessible name.
+
 ## 0.7.1 — 2026-11-12
 
 Follow-in-text always keys on session view ids (prod 0.7.0 off-by-one around authored `<id:>` and id-less siblings). Compact mobile colour menu, a dedicated Colour toolbar button, and colour swatches hidden from the emoji-picker browse view.

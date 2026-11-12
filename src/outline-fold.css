@@ -1426,12 +1426,42 @@ div.of-unlock.of-unlock-sheet { border-radius: 12px 12px 8px 8px; border-left-wi
   width: 36px;
   height: 36px;
 }
-.map-node-menu-swatch-more {
+/* … more: a circle the same size as a swatch (not a wide pill). Fine 22px,
+   compact/coarse 36px. Keep the accessible name on the button itself. */
+.map-node-menu-swatch-more,
+.of-colour-palette .map-node-menu-swatch-more {
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  min-width: 22px;
+  min-height: 22px;
+  max-width: 22px;
+  max-height: 22px;
+  margin: 0;
+  padding: 0;
+  border-radius: 50%;
+  aspect-ratio: 1;
+  overflow: hidden;
   background: transparent;
   border: 2px dashed var(--of-muted, #8b9bab);
   color: var(--of-text, #e7ecf1);
   font-size: 16px;
   line-height: 1;
+}
+.map-node-menu[data-pointer="coarse"] .map-node-menu-swatch-more,
+.map-node-menu-swatches.is-compact .map-node-menu-swatch-more,
+.map-node-menu[data-compact="true"] .map-node-menu-swatch-more,
+.of-colour-palette .map-node-menu-swatches.is-compact .map-node-menu-swatch-more {
+  width: 36px;
+  height: 36px;
+  min-width: 36px;
+  min-height: 36px;
+  max-width: 36px;
+  max-height: 36px;
 }
 .of-colour-palette { z-index: 8; }
 .of-colour-toolbar-btn {
