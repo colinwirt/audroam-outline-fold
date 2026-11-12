@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.7.1 — 2026-11-12
+
+Follow-in-text always keys on session view ids (prod 0.7.0 off-by-one around authored `<id:>` and id-less siblings). Compact mobile colour menu, a dedicated Colour toolbar button, and colour swatches hidden from the emoji-picker browse view.
 
 ### Follow-in-text always keys on session view ids
 
@@ -17,8 +19,6 @@
 - **Map node menu on narrow or coarse (touch) viewports (≤600px or `pointer: coarse`):** colour swatches collapse to a compact 2-row strip (~6 finger-size 36px tiles, recent colours first). A `…` button expands the full labelled palette (Forest, Neutral, Bold, Pastel, Deep, Highlighter, Audroam). The menu is always dismissable: tap outside or the dimmed backdrop, or the visible `×` at the top. If the menu is taller than the viewport, it caps to `100dvh` and scrolls inside (`touch-action: pan-y`).
 - **Dedicated Colour toolbar button** (`createColourToolbarButton`, `openColourPalette`, `map.toggleColourPalette`): the main way to pick a colour, meant to sit next to fill / cloud / emoji in a host toolbar. Stay-open picks use the existing node-colour undo / style-preview path. Compact 2-row + `…` on mobile, same dismiss rules. Recent colours are remembered (`recentColours` / `rememberColour`).
 - **Emoji / icon picker:** colour sections are **hidden in the default browse view**. Typing a search that matches a colour name, alias (`red` → ember) or group (`pastel`, `forest`, `highlighter`) still shows the matching swatches in the results. The toolbar Colour button stays the main pick path.
-
-
 
 ## 0.7.0 — 2026-11-12
 
