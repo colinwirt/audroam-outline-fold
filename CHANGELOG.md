@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.7.0 — Unreleased
+## 0.7.0 — 2026-11-12
 
 Folds in the 0.6.6 candidate below. **BREAKING** where marked.
 
@@ -32,6 +32,16 @@ Folds in the 0.6.6 candidate below. **BREAKING** where marked.
 
 - A tag with no space before it (`3.92<r:5>`) is still a jump / note tag, but it stays mid-caption so serialize writes the original spacing. `(+)` remains the collapsed-fold marker.
 - `mergeKeeping` pairs body lines by node identity (authored id, then session-tree order), not by caption text or jump target. Folding or otherwise writing that line through the Map updates it in place; it never inserts `3.92 <r:5> (+)` beside the original.
+
+### Serialize always walks the tree in pre-order
+
+- **`serialize` emits a pre-order walk**, including blank `- ` nodes. `mergeKeeping` pairs body lines by node identity (authored id, then session-tree order), which is only safe under that walk. A seeded property test (`tests/serialize-tree-order-070.test.ts`) locks this.
+- A lone last-line bullet (`- `) is a blank node: `peelTrailingSections` keeps the trailing space so parse does not treat the bullet as a caption of `-` and serialize does not write `- -`.
+- Stale fold ids (including a deleted node's `__tmp-`) are dropped from the layout block. When a fold first writes a layout trailer, `mergeKeeping` no longer leaks `fold-:` into the body without the `--- layout ---` fences.
+
+### Fix: Levels… and fold-to-level resolve session view keys
+
+- The Map's node menu and fold-handle picker look up fold state by `node.id` (authored or `__tmp-`). After session view keys, that lookup was given `__sid-N`, so **Levels… vanished** and a handle right-click opened nothing. The picker now resolves the view key first (and mints a `__tmp-` id on an id-less line, the same way a fold does).
 
 ## 0.6.6 candidate (folded into 0.7.0)
 

@@ -28,12 +28,12 @@ it('0.4.4: unlocked anchor CSS tints only the pill, never every rect', async () 
   const { readFileSync } = await import('node:fs');
   const css = readFileSync('src/outline-fold.css', 'utf8');
   expect(css).not.toMatch(/is-unlocked-anchor\s*>\s*rect/);
-  expect(css).toMatch(/\.map-node\.is-unlocked-anchor \.map-pill \{ fill: var\(--pill-fill/);
+  expect(css).toMatch(/\.map-node\.is-unlocked-anchor \.map-pill \{ fill: var\(--map-node-bg/);
   const src = readFileSync('src/mapView.ts', 'utf8');
   // the 🔓 mark is part of the caption pillSize measures (pill width includes it), not a DOM patch
   expect(src).not.toContain('data-of-unlock-mark');
-  expect(src).toMatch(/const label = anchorCaption\(key, captionWithoutLinks/);
-  expect(src).toMatch(/const label = anchorCaption\(key, captionWithoutLinks\(displayCaption\(n\.title\)\)\);\n    const live = regionWidthLive\.get\(n\);\n    const sz = pillSize\(label/);
+  expect(src).toMatch(/const label = anchorCaption\(key, withNodeIcon\(n, captionWithoutLinks/);
+  expect(src).toMatch(/const label = anchorCaption\(key, withNodeIcon\(n, captionWithoutLinks\(displayCaption\(n\.title\)\)\)\);\n    const live = regionWidthLive\.get\(n\);\n    return pillSize\(label/);
 });
 
 it('0.4.4: region pill text uses the node font size, not a fixed 13px', async () => {

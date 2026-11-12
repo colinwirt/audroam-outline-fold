@@ -2898,11 +2898,41 @@ export function createMapView(
     positionLevelMenu();
   }
 
+
+  /**
+   * 0.7.0: Map keys are view keys (`__sid-N`). `foldLevelPicker` looks up
+   * `node.id` (authored or `__tmp-`), so resolve before calling it. `mint`
+   * adds a session id on an id-less line, the same way a fold does.
+   */
+  function foldLevelLocal(id: string, mint: boolean): { fc: NonNullable<ReturnType<typeof foldCtx>>; local: string } | null {
+    const fc = foldCtx(id);
+    if (!fc) return null;
+    if (fc.region) return { fc, local: fc.local };
+    const local = mint ? foldRef(fc.doc, fc.local) : toRef(fc.local);
+    return { fc, local };
+  }
+
+  /** True when the node has children (Levels… / handle hold), without minting an id. */
+  function nodeCanFoldLevel(id: string): boolean {
+    const fc = foldCtx(id);
+    if (!fc) return false;
+    const n = fc.region ? findNode(fc.doc.nodes, fc.local) : nodeByKey(id);
+    return !!n && hasKids(n);
+  }
+
+  function pickerForFoldLevel(id: string): { fc: NonNullable<ReturnType<typeof foldCtx>>; local: string; picker: NonNullable<ReturnType<typeof foldLevelPicker>> } | null {
+    const hit = foldLevelLocal(id, true);
+    if (!hit) return null;
+    const picker = foldLevelPicker(hit.fc.doc, hit.local);
+    return picker ? { ...hit, picker } : null;
+  }
+
   /** Open the menu for `id` (L1, L9). Returns false when the node has no children. */
   function openLevelMenu(id: string, how: { fine?: boolean; dragPointer?: number | null } = {}): boolean {
     closeLevelMenu(false);
-    const fc = foldCtx(id);
-    const picker = fc ? foldLevelPicker(fc.doc, fc.local) : null;
+    const hit = pickerForFoldLevel(id);
+    const fc = hit?.fc;
+    const picker = hit?.picker ?? null;
     if (!fc || !picker || !nodeEl(id)) return false;
     // One menu at a time: the node menu, link and width popovers close first.
     closeNodeMenu(false);
@@ -2987,23 +3017,21 @@ export function createMapView(
    * screen point (L10), and the live-region text (L13). Fold state only.
    */
   function applyFoldLevel(id: string, level: FoldLevelKey): void {
-    const fc = foldCtx(id);
-    if (!fc) return;
+    const hit = pickerForFoldLevel(id);
+    if (!hit) return;
+    const { fc, local, picker } = hit;
     if (fc.region) {
       // Same picker and helper, region fold store instead of the root doc (§R1 a).
-      const rp = foldLevelPicker(fc.doc, fc.local);
-      const rit = rp?.items.find((it) => it.key === level);
-      if (!rp || !rit || rit.disabled) return;
-      rfold.commitView(fc.region, setExpandLevel(fc.doc, level, { under: fc.local }));
-      announce(foldLevelAnnouncement(rp, level));
+      const rit = picker.items.find((it) => it.key === level);
+      if (!rit || rit.disabled) return;
+      rfold.commitView(fc.region, setExpandLevel(fc.doc, level, { under: local }));
+      announce(foldLevelAnnouncement(picker, level));
       return;
     }
     const doc = fc.doc;
-    const picker = foldLevelPicker(doc, id);
-    if (!picker) return;
     const item = picker.items.find((it) => it.key === level);
     if (!item || item.disabled) return;
-    const next = setExpandLevel(doc, level, { under: id });
+    const next = setExpandLevel(doc, level, { under: local });
     const r = handleRect(id);
     pendingLevelAnchor = r
       ? {
@@ -3208,7 +3236,7 @@ export function createMapView(
       entries.push({ key: 'colour-fill', label: 'Fill', group: 'Edit', checked: fillShownOn(key) });
       if (nodeCloudsOn && nodeByKey(key)?.cloud) entries.push(...swatchEntries('cloud-color', 'Cloud colour', nodeByKey(key)?.cloud));
     }
-    if (foldLevelPicker(getDoc(), key)) entries.push({ key: 'levels', label: 'Levels…', group: 'View', popup: true });
+    if (nodeCanFoldLevel(key)) entries.push({ key: 'levels', label: 'Levels…', group: 'View', popup: true });
     if (followMenu) entries.push({ key: 'follow', label: 'Follow in text', group: 'View', checked: followInText() });
     for (const it of copyItemsFor(key)) {
       if (it.hidden) continue;
@@ -7248,7 +7276,7 @@ export function createMapView(
         !barrel
       ) {
         const id = nodeEl.getAttribute('data-sid') || '';
-        if (id && foldLevelPicker(getDoc(), id)) beginLevelHold(e, id);
+        if (id && nodeCanFoldLevel(id)) beginLevelHold(e, id);
       }
       const next = nextGestureMode(mode, count, false);
       if (next === 'pinch' && mode !== 'pinch') {
@@ -7668,7 +7696,7 @@ export function createMapView(
         inMenu: !!t?.closest?.('.map-level-menu'),
         inOverlay: !!t?.closest?.('.map-link-pop, .map-width-pop, .of-map-controls, .map-toast, .map-copied'),
         onHandle: !!g,
-        foldable: !!fcx && !!foldLevelPicker(fcx.doc, fcx.local),
+        foldable: !!fcx && nodeCanFoldLevel(id),
         menuOpen: packageMenuOpen(),
         holding: !!levelHold,
         pointerType: pt,

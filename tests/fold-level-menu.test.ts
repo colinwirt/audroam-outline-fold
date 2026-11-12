@@ -343,7 +343,7 @@ describe('mapView wiring (source checks)', () => {
 
   it('a pick goes through setExpandLevel under the node and never mints ids', () => {
     const apply = src.slice(src.indexOf('function applyFoldLevel('), src.indexOf('function setWholeMapLevel('));
-    expect(apply).toContain('setExpandLevel(doc, level, { under: id })');
+    expect(apply).toContain('setExpandLevel(doc, level, { under: local })');
     expect(apply).not.toContain('assignPersistentId');
     expect(apply.match(/setDoc\(/g)?.length).toBe(1);
   });

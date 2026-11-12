@@ -127,6 +127,30 @@ describe('session index', () => {
     mv.destroy?.();
   });
 
+  it('Levels… and openLevelMenu resolve a view key to the node id', async () => {
+    const text = '- Root <id:r>\n  - Week\n    - Monday\n  - Month\n    - June\n';
+    const { host, mv, cur } = mount(((d) => () => d)(parse(text)), { nodeMenu: true });
+    await tick();
+    const week = byTitle(cur(), 'Week');
+    const key = mv.viewKey(week);
+    expect(key).toMatch(/^__sid-/);
+    expect(week.id).toBeUndefined();
+    const labels = (mv.nodeMenuEntries(key) as { label: string }[]).map((e) => e.label);
+    expect(labels).toContain('Levels…');
+    expect(mv.openLevelMenu(key)).toBe(true);
+    expect(host.querySelector('.map-level-menu')).not.toBeNull();
+    // Apply "Fold" under Week via the resolved id; Monday hides, Month stays.
+    const foldItem = [...host.querySelectorAll('.map-level-menu [data-level]')].find((b) => b.getAttribute('data-level') === '0');
+    expect(foldItem).toBeTruthy();
+    (foldItem as HTMLElement).click();
+    await tick();
+    const out = serialize(cur());
+    expect(out).toContain('  - Week (+)\n');
+    expect(out).toContain('  - Month\n');
+    expect(out).not.toMatch(/__sid-|__tmp-|__pos-/);
+    mv.destroy?.();
+  });
+
   it('round trip: style and icon writes through the Map never serialize a view or session key', async () => {
     const text = '- A <id:a>\n  - b\n    - c\n- d\n';
     const { mv, cur } = mount(((d) => () => d)(parse(text)));
