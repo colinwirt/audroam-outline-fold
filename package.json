@@ -1,6 +1,6 @@
 {
   "name": "@audroam/outline-fold",
-  "version": "0.7.1",
+  "version": "0.7.2",
   "description": "Pure TS outline language: parse/serialize, fold-/fold+, sealed branches (of-seal-v3 envelope, Argon2id-wrapped keyring), toHtml, createMapView/autoPack. Host owns unlock and key release.",
   "type": "module",
   "main": "./dist/index.js",

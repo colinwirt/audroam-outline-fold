@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.7.2 — 2026-11-12
+
+Style toolbar enables from session-key Map focus (no need to open the node menu). Colour `…` more button is a swatch-sized circle.
 
 ### Style toolbar follows session-key focus; Colour `…` is a swatch-sized circle
 
