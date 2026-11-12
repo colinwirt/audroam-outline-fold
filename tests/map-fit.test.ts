@@ -231,7 +231,9 @@ describe('hold-to-fit P1: mapView wiring (source)', () => {
   });
 
   it('the toast survives paint and is outside the gesture handlers', () => {
-    expect(src).toContain(".map-live, .map-link-pop, .map-toast, .map-node-menu, .map-node-ring, .map-copied'");
-    expect(src).toContain("'.map-width-pop, .of-map-controls, .map-level-menu, .map-link-pop, .map-toast, .map-node-menu, .map-copied'");
+    expect(src).toContain("'.map-width-pop, .of-map-controls, .map-level-menu, .map-level-ring, .map-live, .map-link-pop, .map-toast, .map-node-menu, .map-node-menu-backdrop, .of-colour-palette, .map-node-ring, .map-copied'");
+    expect(src).toContain('.map-toast');
+    expect(src).toContain('.map-node-menu-backdrop');
+    expect(src).toContain('.of-colour-palette');
   });
 });

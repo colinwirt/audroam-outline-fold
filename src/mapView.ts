@@ -183,7 +183,10 @@ import {
   type NodeCopyKind,
   type NodeMenuEntry,
   type NodeUriOption,
+  isCompactSwatchMenu,
 } from './nodeMenu.js';
+import { openColourPalette, type ColourPaletteHandle } from './colourPalette.js';
+import { recentColours, rememberColour } from './colourRecent.js';
 import { toggleTask, setTask, nextTaskState, nextTaskCycle, shouldFireAction } from './task.js';
 import { mapRefOf, type MapNodeRef } from './mapRef.js';
 import {
@@ -764,6 +767,16 @@ export interface MapViewHandle {
   isIconPickerOpen: () => boolean;
   /** 0.5.30: called with true/false when the map's icon picker opens or closes. Returns unsubscribe. */
   onIconPickerChange: (fn: (open: boolean) => void) => () => void;
+  /**
+   * Open the dedicated colour palette for a node (default: the focused one).
+   * Stay-open picks use the existing colour undo / style-preview path.
+   */
+  openColourPalette: (id?: string, how?: { toggle?: Element | null }) => boolean;
+  /** Toolbar toggle: close if open, else open for the focused (or given) node. */
+  toggleColourPalette: (id?: string, how?: { toggle?: Element | null }) => boolean;
+  closeColourPalette: () => void;
+  isColourPaletteOpen: () => boolean;
+  onColourPaletteChange: (fn: (open: boolean) => void) => () => void;
   /** 0.2.39: close the package node menu if it is open. */
   closeNodeMenu: () => void;
   /**
@@ -2738,6 +2751,7 @@ export function createMapView(
     closeLevelMenu(false);
     dismissLinkPop(false);
     dismissWidthPopHook?.();
+    closeColourPalette(false);
   }
 
   function nodeEl(id: string): Element | null {
@@ -3087,6 +3101,7 @@ export function createMapView(
     items: HTMLElement[];
     entries: NodeMenuEntry[];
     abort: AbortController;
+    backdrop: HTMLElement | null;
   };
   let nodeMenu: NodeMenuState | null = null;
   let copiedToast: { el: HTMLElement; timer: number } | null = null;
@@ -3251,6 +3266,7 @@ export function createMapView(
     nodeMenu = null;
     m.abort.abort();
     const hadFocus = m.el.contains(document.activeElement);
+    m.backdrop?.remove();
     m.el.remove();
     nodeEl(m.key)?.removeAttribute('data-node-menu-open');
     if (returnFocus || hadFocus) focusMapForKeys();
@@ -3297,6 +3313,7 @@ export function createMapView(
       })();
     const r = m.el.getBoundingClientRect();
     m.abort.abort();
+    m.backdrop?.remove();
     m.el.remove();
     nodeEl(m.key)?.removeAttribute('data-node-menu-open');
     nodeMenu = null;
@@ -3480,7 +3497,10 @@ export function createMapView(
         else { delete z.color; delete z.colorFill; }
         return true;
       }, color ? `Colour: ${colourLabel(color, paletteName)}` : 'Colour removed');
-      if (ok) commitStyleStep(key, before, readStyleSnap(zoneNode(key)));
+      if (ok) {
+        commitStyleStep(key, before, readStyleSnap(zoneNode(key)));
+        if (color) rememberColour(color);
+      }
       return;
     }
     const n = nodeByKey(key);
@@ -3496,6 +3516,7 @@ export function createMapView(
     onChange?.();
     commitStyleStep(id, before, readStyleSnap(nodeByKey(id) ?? n));
     announce(color ? `Colour: ${colourLabel(color, paletteName)}` : 'Colour removed');
+    if (color) rememberColour(color);
   }
 
   /** 0.6.2: the wash this node actually paints (own :fill, or inherited and not `fill: none`). */
@@ -3727,6 +3748,55 @@ export function createMapView(
     return true;
   }
 
+  let colourPalette: ColourPaletteHandle | null = null;
+  const colourPaletteListeners = new Set<(open: boolean) => void>();
+  const emitColourPalette = (open: boolean) => { for (const f of colourPaletteListeners) f(open); };
+
+  function closeColourPalette(_returnFocus = false): void {
+    if (!colourPalette) return;
+    const h = colourPalette;
+    colourPalette = null;
+    h.close(false);
+    emitColourPalette(false);
+  }
+
+  function openNodeColourPalette(key: string, how: { toggle?: Element | null } = {}): boolean {
+    if (!nodeColoursOn || typeof document === 'undefined') return false;
+    const node = zoneNode(key) ?? nodeByKey(key);
+    if (!node) return false;
+    closeNodeMenu(false);
+    closeLevelMenu(false);
+    dismissLinkPop(false);
+    dismissWidthPopHook?.();
+    nodePicker?.close(true);
+    closeColourPalette(false);
+    const handle = openColourPalette({
+      anchor: how.toggle ?? nodeEl(key)?.querySelector('.map-pill') ?? nodeEl(key),
+      toggle: how.toggle ?? null,
+      value: resolveColour(node.color) ?? undefined,
+      palette: paletteName,
+      onColour: (c) => setNodeColour(key, c),
+      stayOpen: true,
+      container: document.body,
+      bounds: host,
+      onClose: () => {
+        if (colourPalette === handle) {
+          colourPalette = null;
+          emitColourPalette(false);
+        }
+      },
+    });
+    colourPalette = handle;
+    emitColourPalette(true);
+    return true;
+  }
+
+  function toggleColourPalette(key?: string, how: { toggle?: Element | null } = {}): boolean {
+    if (colourPalette) { closeColourPalette(true); return false; }
+    const k = key ?? getFocusId();
+    return k ? openNodeColourPalette(k, how) : false;
+  }
+
   /** Host-local point under the pill's left edge, for a keyboard open. */
   function pillAnchor(key: string): { x: number; y: number } | null {
     const pill = nodeEl(key)?.querySelector('.map-pill');
@@ -3753,38 +3823,76 @@ export function createMapView(
     // Mouse → fine (22px) even on hybrid coarse matchMedia; touch/pen → coarse (36px).
     const pt = how.pointerType ?? '';
     const fine = how.fine ?? (pt === 'touch' || pt === 'pen' ? false : pt === 'mouse' ? true : !coarsePointer());
-    const view = renderNodeMenu({ title: widthTitle(node), entries, fine, nodeId: key });
+    const compact = isCompactSwatchMenu({ fine });
+    const view = renderNodeMenu({
+      title: widthTitle(node),
+      entries,
+      fine,
+      nodeId: key,
+      compact,
+      recent: recentColours(),
+      closable: compact,
+      backdrop: compact,
+      onItemsChange: (next) => {
+        m.items = next;
+        bindMenuItems();
+      },
+    });
     const abort = new AbortController();
-    const m: NodeMenuState = { key, el: view.el, items: view.items, entries, abort };
+    const m: NodeMenuState = { key, el: view.el, items: view.items, entries, abort, backdrop: view.backdrop };
     nodeMenu = m;
     const sig = abort.signal;
-    view.items.forEach((b, i) => {
+    const entryIndexFor = (el: Element | null): number => {
+      const k = (el as HTMLElement | null)?.dataset?.item;
+      if (!k) return -1;
+      return m.entries.findIndex((e) => e.key === k);
+    };
+    const bindMenuItems = () => {
+      for (const b of m.items) {
+        bindTap(
+          b,
+          (ev) => {
+            ev.preventDefault();
+            ev.stopPropagation();
+            if (ev.type === 'pointerup') {
+              const pe = ev as PointerEvent;
+              armClickSwallow?.(pe.clientX, pe.clientY);
+            }
+            const idx = entryIndexFor(b);
+            if (idx >= 0) pickNodeMenuItem(idx);
+          },
+          { signal: sig },
+        );
+      }
+    };
+    bindMenuItems();
+    if (view.closeBtn) {
       bindTap(
-        b,
+        view.closeBtn,
         (ev) => {
           ev.preventDefault();
           ev.stopPropagation();
-          if (ev.type === 'pointerup') {
-            const pe = ev as PointerEvent;
-            armClickSwallow?.(pe.clientX, pe.clientY);
-          }
-          pickNodeMenuItem(i);
+          closeNodeMenu(true);
         },
         { signal: sig },
       );
-    });
+    }
     view.el.addEventListener(
       'keydown',
       (e) => {
         const i = m.items.indexOf(document.activeElement as HTMLElement);
         // 0.5.19: ←/→ move along one target's swatches, across its Forest and Highlighter rows.
-        const sw = m.entries[i];
+        // Look up by data-item so a compact (recent-first, subset) strip stays aligned.
+        const swIdx = entryIndexFor(document.activeElement);
+        const sw = swIdx >= 0 ? m.entries[swIdx] : undefined;
         if (sw?.swatch && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
           e.preventDefault();
           e.stopPropagation();
           const j = i + (e.key === 'ArrowRight' ? 1 : -1);
           const pre = (k: string) => k.slice(0, k.indexOf(':'));
-          if (m.entries[j]?.swatch && pre(m.entries[j]!.key) === pre(sw.key)) focusNodeMenuItem(j);
+          const nextIdx = entryIndexFor(m.items[j] ?? null);
+          const next = nextIdx >= 0 ? m.entries[nextIdx] : undefined;
+          if (next?.swatch && pre(next.key) === pre(sw.key)) focusNodeMenuItem(j);
           return;
         }
         // t2499u: undo/redo while the stay-open style menu has focus.
@@ -3796,7 +3904,9 @@ export function createMapView(
           }
           return;
         }
-        const act = nodeMenuKeyAction(e.key, i, m.entries);
+        const visEntries = m.items.map((el) => m.entries.find((en) => en.key === el.dataset.item)).filter((x): x is NodeMenuEntry => !!x);
+        const visIndex = visEntries.findIndex((en) => en.key === (document.activeElement as HTMLElement | null)?.dataset?.item);
+        const act = nodeMenuKeyAction(e.key, visIndex, visEntries);
         // Every key stays inside the menu: no fold, zoom or host shortcut.
         e.stopPropagation();
         if (!act) return;
@@ -3810,12 +3920,15 @@ export function createMapView(
           // Enter / Space reach the button's own click (bindTap).
           if (e.key === 'Enter' || e.key === ' ') return;
           e.preventDefault();
-          pickNodeMenuItem(act.index);
+          const vis = visEntries[act.index];
+          const idx = vis ? m.entries.findIndex((en) => en.key === vis.key) : -1;
+          if (idx >= 0) pickNodeMenuItem(idx);
         }
       },
       { signal: sig },
     );
     view.el.addEventListener('contextmenu', (e) => e.preventDefault(), { signal: sig });
+    if (view.backdrop) host.appendChild(view.backdrop);
     host.appendChild(view.el);
     const hr = host.getBoundingClientRect();
     const point = at ? { x: at.clientX - hr.left, y: at.clientY - hr.top } : pillAnchor(key) ?? { x: 8, y: 8 };
@@ -5869,7 +5982,7 @@ export function createMapView(
     // in the map) survive the SVG rewrite (0.2.30).
     const overlays = Array.from(host.children).filter((el) =>
       el.matches?.(
-        '.map-width-pop, .of-map-controls, .map-level-menu, .map-level-ring, .map-live, .map-link-pop, .map-toast, .map-node-menu, .map-node-ring, .map-copied',
+        '.map-width-pop, .of-map-controls, .map-level-menu, .map-level-ring, .map-live, .map-link-pop, .map-toast, .map-node-menu, .map-node-menu-backdrop, .of-colour-palette, .map-node-ring, .map-copied',
       ),
     );
     // A focused menu item is detached by the rewrite below; put focus back after.
@@ -8096,6 +8209,17 @@ export function createMapView(
     onIconPickerChange: (fn: (open: boolean) => void) => {
       pickerListeners.add(fn);
       return () => { pickerListeners.delete(fn); };
+    },
+    openColourPalette: (id?: string, how: { toggle?: Element | null } = {}) => {
+      const k = id ?? getFocusId();
+      return k ? openNodeColourPalette(k, how) : false;
+    },
+    toggleColourPalette: (id?: string, how: { toggle?: Element | null } = {}) => toggleColourPalette(id, how),
+    closeColourPalette: () => closeColourPalette(false),
+    isColourPaletteOpen: () => !!colourPalette,
+    onColourPaletteChange: (fn: (open: boolean) => void) => {
+      colourPaletteListeners.add(fn);
+      return () => { colourPaletteListeners.delete(fn); };
     },
     openNodeMenu: (id?: string, at?: { clientX: number; clientY: number }, how?: { fine?: boolean; pointerType?: string }) => {
       const target = id ?? getFocusId();
