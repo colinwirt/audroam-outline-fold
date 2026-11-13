@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## 0.7.4 — 2026-11-13
+
+Follow stays on the node after a fold, and after Alt+Up / Alt+Down.
+
+- Follow in text keeps working after a fold. A fold clones the map tree, and that clone has no parsed line numbers. The session index remembers the last source line of each view key, so `lineOf` still lands when the map syncs that clone. An id-less line and an authored `<id:>` both follow again.
+- Alt+Up / Alt+Down swaps source lines without changing the line count. When that hunk is the same lines in a new order, the view key stays on the words, and Follow lands on the pill you click. Typing a new caption on a line still keeps that line's key.
+
 ## 0.7.3 — 2026-11-13
 
 One session id series. Fold and Follow name `__sid-N`. An authored `<id:>` stays the written reference.

@@ -14,14 +14,16 @@
  *   the reference, later lines keep their own view keys and are listed in `duplicates()`.
  * - Line numbers are derived data: `lineOf(key)` / `keyAtLine(line)` come from the
  *   last parse (see `parsedLineOf`) and are refreshed on every re-parse. A line is never
- *   used as a key.
+ *   used as a key. A later tree with no parse lines (a fold `structuredClone`) keeps
+ *   the line last recorded for that view key, so Follow still lands.
  * - View keys are never written: the parser only accepts ids that start with a letter
  *   or digit, and serialize writes `node.id` (authored) only, so `__sid-` cannot leak.
  *
  * Carry-over: when the host hands over a re-parsed tree (new node objects) the index
  * keeps each node's session id by (1) its authored id, then (2) the line map between the
- * old and new text (unchanged lines above and below the edit, and a same-size edited
- * hunk line for line, so typing on a line keeps its key), then (3) caption + depth in
+ * old and new text (unchanged lines above and below the edit; a same-size hunk line for
+ * line, so typing on a line keeps its key; a hunk that is the same lines in a new order,
+ * so Alt+Up / Alt+Down keeps the key on the words), then (3) caption + depth in
  * order for trees built without line information. Anything left gets a fresh key.
  * A session id already stored on `node.id` (`autoId`) is adopted as that key, so
  * fold state and Follow in text name one reference. Sync does not write a session
@@ -111,6 +113,32 @@ function preorder(roots: OutlineNode[]): OutlineNode[] {
   return out;
 }
 
+/**
+ * A same-size hunk whose lines are the same texts in a new order (Alt+Up / Alt+Down).
+ * Old line → new line, matched in order so two identical lines do not cross.
+ * Null when any line was edited: that hunk stays positional so typing keeps its key.
+ */
+function hunkReorder(a: string[], b: string[], start: number, n: number): Map<number, number> | null {
+  if (n === 0) return null;
+  let moved = false;
+  const queues = new Map<string, number[]>();
+  for (let i = 0; i < n; i++) {
+    if (a[start + i] !== b[start + i]) moved = true;
+    const q = queues.get(a[start + i]!) ?? [];
+    q.push(start + i);
+    queues.set(a[start + i]!, q);
+  }
+  if (!moved) return null;
+  const out = new Map<number, number>();
+  for (let i = 0; i < n; i++) {
+    const old = queues.get(b[start + i]!)?.shift();
+    if (old === undefined) return null;
+    out.set(old, start + i);
+  }
+  for (const q of queues.values()) if (q.length) return null;
+  return out;
+}
+
 /** old line → new line for lines outside the edit (and a same-size hunk line for line). */
 function lineMap(a: string[], b: string[]): Map<number, number> {
   const m = new Map<number, number>();
@@ -122,7 +150,11 @@ function lineMap(a: string[], b: string[]): Map<number, number> {
   for (let i = 0; i < s; i++) m.set(a.length - 1 - i, b.length - 1 - i);
   const ha = a.length - p - s;
   const hb = b.length - p - s;
-  if (ha === hb) for (let i = 0; i < ha; i++) m.set(p + i, p + i);
+  if (ha === hb) {
+    const reordered = hunkReorder(a, b, p, ha);
+    if (reordered) for (const [ol, nl] of reordered) m.set(ol, nl);
+    else for (let i = 0; i < ha; i++) m.set(p + i, p + i);
+  }
   return m;
 }
 
@@ -135,6 +167,8 @@ export function createSessionIndex(): SessionIndex {
   let dups = new Map<string, string[]>();
   let ordered: string[] = [];
   let keyByLine = new Map<number, string>();
+  /** Last source line seen for a view key. A lineless tree (fold clone) does not clear it. */
+  let lineByKey = new Map<string, number>();
 
   const mint = (): string => `${VIEW_KEY_PREFIX}${++seq}`;
 
@@ -175,7 +209,9 @@ export function createSessionIndex(): SessionIndex {
       nodeByKey.set(k, n);
       ordered.push(k);
       const line = parsedLineOf(n);
-      if (line !== null) keyByLine.set(line, k);
+      if (line !== null) lineByKey.set(k, line);
+      const known = line !== null ? line : lineByKey.get(k);
+      if (known !== undefined) keyByLine.set(known, k);
       if (!n.id) continue;
       const first = keyByRef.get(n.id);
       if (first === undefined) keyByRef.set(n.id, k);
@@ -185,6 +221,7 @@ export function createSessionIndex(): SessionIndex {
         dups.set(n.id, list);
       }
     }
+    for (const k of [...lineByKey.keys()]) if (!nodeByKey.has(k)) lineByKey.delete(k);
   };
 
   /** A new tree replaced `prev`: carry view keys over to the new node objects. */
@@ -298,8 +335,10 @@ export function createSessionIndex(): SessionIndex {
     },
     duplicates: () => { rebuild(); return new Map(dups); },
     lineOf: (key) => {
-      const n = nodeByKey.get(key);
-      return n ? parsedLineOf(n) : null;
+      if (!nodeByKey.has(key)) return null;
+      const live = parsedLineOf(nodeByKey.get(key)!);
+      if (live !== null) return live;
+      return lineByKey.get(key) ?? null;
     },
     keyAtLine: (line) => { rebuild(); return keyByLine.get(line) ?? null; },
     order: () => { rebuild(); return [...ordered]; },
