@@ -26,6 +26,7 @@ import { autoWrapCh } from '../mapFit.js';
 import { DEFAULT_WRAP_CH } from '../mapLabel.js';
 import type { RegionId } from '../hostApi.js';
 import type { OutlineDocHandle } from '../outlineDoc.js';
+import { dropUnattachedLayoutEntries } from '../textMerge.js';
 
 /** A host block widget placed after the first line containing `line`. */
 export interface HostRegion {
@@ -320,6 +321,28 @@ function buildEditor(host: HTMLElement, initial: string, opts: TextEditorOptions
   }
   const ro = new Compartment();
   ext.push(ro.of(EditorState.readOnly.of(!!opts.readOnly)));
+  // A body edit that removes a line also removes that line's layout entry
+  // (icon, colour, width, font) in the same step, so undo restores both.
+  // Registered before the trailer guard: filters run last-added first, and
+  // the guard must see the user's edit before this adds trailer deletions.
+  ext.push(EditorState.transactionFilter.of((tr) => {
+    if (writing || !tr.docChanged) return tr;
+    const next = tr.newDoc.toString();
+    const pruned = dropUnattachedLayoutEntries(next);
+    if (pruned === next) return tr;
+    const extra = minimalChange(next, pruned);
+    const userEvent = tr.annotation(Transaction.userEvent);
+    return [
+      {
+        changes: tr.changes,
+        selection: tr.newSelection,
+        effects: tr.effects,
+        scrollIntoView: tr.scrollIntoView,
+        ...(typeof userEvent === 'string' ? { userEvent } : {}),
+      },
+      { sequential: true, changes: { from: extra.from, to: extra.to, insert: extra.insert } },
+    ];
+  }));
   if (opts.protectTrailer !== false) {
     ext.push(trailerFold);
     // No vertical margin: CodeMirror measures a block widget with getBoundingClientRect.

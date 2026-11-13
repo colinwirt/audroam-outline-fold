@@ -117,6 +117,13 @@ export interface OutlineNode {
   colorFill?: boolean;
   /** 0.6.2: explicit "no fill" (layout `fill: none`): stops an inherited wash on this node and its sub-branch. */
   noFill?: boolean;
+  /**
+   * Caption format from `<font:code>` or `<style:code>` (also `text` / `none`).
+   * `code` paints this node and its children as code. `text` and `none` stop that.
+   * A layout `font:` / `style:` value wins; `inlineFont` keeps the shadowed tag.
+   */
+  font?: 'code' | 'text' | 'none';
+  inlineFont?: 'code' | 'text' | 'none';
   /** 0.5.22: an inline `<color:…>` shadowed by a layout colour, kept so the line round-trips. */
   inlineColor?: { color: string; fill?: boolean };
   /** 0.5.22: a leading inline icon shadowed by a layout icon, kept so the line round-trips. */
@@ -203,6 +210,10 @@ export interface NodeLayout {
   colorKey?: 'color' | 'colour';
   /** 0.6.2: `fill: none` — overrides a fill inherited from an ancestor. */
   noFill?: boolean;
+  /** Caption format (`font: code` or `style: code`). `text` / `none` stop an inherited code format. */
+  font?: 'code' | 'text' | 'none';
+  /** Which key was written (`font` or `style`). New writes use `font`. */
+  fontKey?: 'font' | 'style';
   /** 0.5.22: node icon token (emoji or `:name:`). Wins over a leading inline icon. */
   icon?: string;
 }
@@ -328,4 +339,4 @@ export interface ToHtmlOptions {
 }
 
 /** How colon tags were written when not `<name:value>`. See `OutlineNode.tagSpellings`. */
-export type TagSpellings = Partial<Record<'id' | 'kind' | 'action' | 'thread' | 'db' | 'color', string>>;
+export type TagSpellings = Partial<Record<'id' | 'kind' | 'action' | 'thread' | 'db' | 'color' | 'font', string>>;

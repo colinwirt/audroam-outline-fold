@@ -78,6 +78,8 @@ const IMG_TRAILING = /\s*<img:([A-Za-z0-9][A-Za-z0-9_-]*)>$/i;
 const CLOUD_TRAILING = /\s*<cloud(?::([a-z][a-z0-9-]*))?>$/i;
 /** 0.5.19 (Q12): `<color:name>` / `<colour:name>` with a palette name (never hex). */
 const COLOR_TRAILING = new RegExp(`\\s*<\\s*colou?r\\s*:\\s*(${[...NODE_COLOURS, ...Object.keys(COLOUR_ALIASES)].join('|')})\\s*(?::\\s*(fill)\\s*)?>\\s*$`, 'i');
+/** `<font:code>` / `<style:code>`. `text` and `none` stop a code format inherited from a parent. */
+const FONT_TRAILING = /\s*<(font|style)\s*:\s*(code|text|none)\s*>\s*$/i;
 const KIND_TRAILING = new RegExp(
   `\\s*<(?:\\s*kind\\s*:\\s*(${KIND_TAG_WORDS})\\s*|(${KIND_WORDS}))>\\s*$`,
   'i',
@@ -258,6 +260,8 @@ function endsWithKnownTag(core: string): boolean {
     NOTE_LINK_TRAILING.test(core) ||
     JUMP_TRAILING.test(core) ||
     KIND_TRAILING.test(core) ||
+    COLOR_TRAILING.test(core) ||
+    FONT_TRAILING.test(core) ||
     ID_TRAILING.test(core)
   );
 }
@@ -287,6 +291,7 @@ function parseTitleAndMeta(
   img?: string;
   color?: string;
   colorFill?: true;
+  font?: 'code' | 'text' | 'none';
   action?: string;
   thread?: string;
   noteLinks?: string[];
@@ -338,6 +343,7 @@ function parseTitleAndMeta(
   let img: string | undefined;
   let color: string | undefined;
   let colorFill: true | undefined;
+  let font: 'code' | 'text' | 'none' | undefined;
   {
     const lead = parseLeadingIcon(rest.replace(/^[ \t]+/, ''));
     if (lead) {
@@ -560,6 +566,15 @@ function parseTitleAndMeta(
       continue;
     }
 
+    m = rest.match(FONT_TRAILING);
+    if (m) {
+      font = m[2]!.toLowerCase() as 'code' | 'text' | 'none';
+      spell('font', m[0]);
+      rest = rest.slice(0, rest.length - m[0].length).trimEnd();
+      progressed = true;
+      continue;
+    }
+
     m = rest.match(IMG_TRAILING);
     if (m) {
       img = m[1];
@@ -649,12 +664,13 @@ function parseTitleAndMeta(
     img,
     color,
     colorFill,
+    font,
     action,
     thread,
     noteLinks: noteLinks.length ? noteLinks : undefined,
     noteLinkTags: Object.keys(noteLinkTags).length ? noteLinkTags : undefined,
     links: links.length ? links : undefined,
-    tagSpellings: keptSpellings(spelling, { id, kind, action, thread, db: dbRef, color: color && colorFill ? `${color}:fill` : color }),
+    tagSpellings: keptSpellings(spelling, { id, kind, action, thread, db: dbRef, color: color && colorFill ? `${color}:fill` : color, font }),
   };
 }
 
@@ -679,7 +695,11 @@ function keptSpellings(
     if (!value || !token) continue;
     const plain = `<${key}:${value}>`;
     // `<colour:x>` is the same tag as `<color:x>` (0.5.19).
-    const canon = key === 'color' ? canonTag(token).replace(/^<colour:/, '<color:') : canonTag(token);
+    const canon = key === 'color'
+      ? canonTag(token).replace(/^<colour:/, '<color:')
+      : key === 'font'
+        ? canonTag(token).replace(/^<style:/, '<font:')
+        : canonTag(token);
     if (token !== plain && canon === plain) out[key] = token;
   }
   return Object.keys(out).length ? out : undefined;
@@ -767,6 +787,7 @@ export function parse(text: string, opts?: ParseOptions): OutlineFoldDoc {
     if (meta.img) node.img = meta.img;
     if (meta.color) node.color = meta.color;
     if (meta.color && meta.colorFill) node.colorFill = true;
+    if (meta.font) node.font = meta.font;
     if (meta.action) node.action = meta.action;
     if (meta.thread) node.thread = meta.thread;
     if (meta.noteLinks) node.noteLinks = meta.noteLinks;
@@ -874,6 +895,10 @@ function applyLayoutStyle(list: OutlineNode[]): void {
     if (l?.icon) {
       if (n.icon) n.inlineIcon = n.icon;
       n.icon = l.icon;
+    }
+    if (l?.font) {
+      if (n.font) n.inlineFont = n.font;
+      n.font = l.font;
     }
     if (n.children?.length) applyLayoutStyle(n.children);
   }

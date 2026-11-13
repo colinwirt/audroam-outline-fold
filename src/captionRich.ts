@@ -81,8 +81,32 @@ export interface CaptionHtmlOptions {
  * `<br>` / `<br/>` / `<nr>` → LF.
  * Collapses 3+ LFs to at most one blank line (paragraph gap).
  */
+/**
+ * A backtick span (and a fenced block) is literal. Break tokens inside it —
+ * a backslash-n, `<br>`, `<nr>` — stay characters. The shield is only for
+ * this pass: the spans are put back before the caller parses them.
+ */
+function shieldCode(text: string): { text: string; spans: string[] } {
+  const spans: string[] = [];
+  const hold = (span: string) => {
+    spans.push(span);
+    return `\uE000${spans.length - 1}\uE001`;
+  };
+  let s = text.replace(/(^|\n)```[^\n`]*\n[\s\S]*?\n```[ \t]*(?=\n|$)/g, (m) => hold(m));
+  // A run of backticks is a fence, not an inline span. Do not shield from the
+  // middle of ```, or a <br> fence never becomes newlines.
+  s = s.replace(/(^|[^`])(`[^`\n]+`)(?!`)/g, (_all, lead: string, span: string) => lead + hold(span));
+  return { text: s, spans };
+}
+
+function unshieldCode(text: string, spans: string[]): string {
+  if (!spans.length) return text;
+  return text.replace(/\uE000(\d+)\uE001/g, (all, i: string) => spans[Number(i)] ?? all);
+}
+
 export function normalizeCaptionBreaks(text: string): string {
-  let s = String(text ?? '');
+  const shielded = shieldCode(String(text ?? ''));
+  let s = shielded.text;
   // Literal escapes first (editor may store backslash-n, not a real LF).
   // Order: \r\n before \n / \r so CRLF escape is one break, not two.
   s = s.replace(/\\r\\n/g, '\n').replace(/\\n/g, '\n').replace(/\\r/g, '\n');
@@ -93,7 +117,28 @@ export function normalizeCaptionBreaks(text: string): string {
   s = s.replace(/<\s*nr\s*\/?\s*>/gi, '\n');
   // At most one blank line (collapse 3+ newlines → 2)
   s = s.replace(/\n{3,}/g, '\n\n');
-  return s;
+  return unshieldCode(s, shielded.spans);
+}
+
+/** `<font:code>` / `<style:code>` paints this node as code. `text` and `none` stop an inherited code format. */
+export function showsAsCode(node: { font?: string | undefined }, inherited = false): boolean {
+  if (node.font === 'code') return true;
+  if (node.font === 'text' || node.font === 'none') return false;
+  return inherited;
+}
+
+/** Own or inherited code format for every node in the tree (children follow the parent unless they set font). */
+export function markCode<T extends { font?: 'code' | 'text' | 'none'; children?: readonly T[] | undefined }>(
+  nodes: readonly T[],
+  into = new WeakMap<T, boolean>(),
+  inherited = false,
+): WeakMap<T, boolean> {
+  for (const n of nodes) {
+    const on = showsAsCode(n, inherited);
+    into.set(n, on);
+    if (n.children?.length) markCode(n.children, into, on);
+  }
+  return into;
 }
 
 export interface CaptionStyleRun {
@@ -219,6 +264,8 @@ export function parseTinyHtmlRuns(text: string): CaptionStyleRun[] {
 function parseInlineRuns(text: string): CaptionStyleRun[] {
   const s = text;
   const runs: CaptionStyleRun[] = [];
+  // A real newline ends the span. Break tokens inside the span were left
+  // literal by normalizeCaptionBreaks, so they are not structure here.
   const re = /`([^`\n]+)`/g;
   let last = 0;
   let m: RegExpExecArray | null;
@@ -399,7 +446,8 @@ function renderLink(label: string, url: string, opts: CaptionHtmlOptions = {}): 
 export function tinyHtmlToSafeHtml(segment: string): string {
   const runs = parseTinyHtmlRuns(segment);
   let out = '';
-  for (const r of runs) {
+  for (let i = 0; i < runs.length; i++) {
+    const r = runs[i]!;
     // Escape text, then turn LF into <br>
     const parts = r.text.split('\n');
     const escaped = parts.map((p) => esc(p)).join('<br>');

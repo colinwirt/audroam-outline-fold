@@ -369,6 +369,11 @@ export function parseLayoutBlock(block: string): {
         else delete style.colorFill;
       }
       if (current && /^\s+fill\s*:\s*none\s*$/i.test(raw)) style.noFill = true;
+      const font = raw.match(/^\s+(font|style)\s*:\s*(code|text|none)\s*$/i);
+      if (font && current) {
+        style.font = font[2]!.toLowerCase() as 'code' | 'text' | 'none';
+        style.fontKey = font[1]!.toLowerCase() === 'style' ? 'style' : 'font';
+      }
       const ic = raw.match(/^\s+icon\s*:\s*([^\s<>]+)\s*$/i);
       if (ic && current) style.icon = ic[1]!;
       continue;
@@ -572,6 +577,10 @@ export function collectLayouts(nodes: OutlineNode[]): LayoutMap {
         }
         if (n.layout.icon) e.icon = n.layout.icon;
         if (n.layout.noFill && !n.layout.color) e.noFill = true;
+        if (n.layout.font) {
+          e.font = n.layout.font;
+          if (n.layout.fontKey) e.fontKey = n.layout.fontKey;
+        }
         if (Object.keys(e).length) out[n.id] = e;
       }
       if (n.children?.length) walk(n.children);
@@ -631,7 +640,8 @@ export function formatLayoutBlock(
     const color = e.color && /^[A-Za-z][\w-]*$/.test(e.color) ? e.color : undefined;
     const icon = e.icon && /^[^\s<>]+$/.test(e.icon) ? e.icon : undefined;
     const noFill = !color && !!e.noFill;
-    if (!hasW && !color && !icon && !noFill) continue;
+    const font = e.font === 'code' || e.font === 'text' || e.font === 'none' ? e.font : undefined;
+    if (!hasW && !color && !icon && !noFill && !font) continue;
     lines.push(`${id}:`);
     if (hasW) {
       lines.push(`  w: ${Math.round(w!)}`);
@@ -639,6 +649,7 @@ export function formatLayoutBlock(
       if (mode && /^[A-Za-z][\w-]*$/.test(mode)) lines.push(`  w-auto: ${mode}`);
     }
     if (color) lines.push(`  ${e.colorKey === 'colour' ? 'colour' : 'color'}: ${color}${e.colorFill ? ':fill' : ''}`);
+    if (font) lines.push(`  ${e.fontKey === 'style' ? 'style' : 'font'}: ${font}`);
     if (icon) lines.push(`  icon: ${icon}`);
     if (noFill) lines.push('  fill: none');
   }

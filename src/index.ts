@@ -718,7 +718,7 @@ export {
   type RegionStatus,
 } from './outlineDoc.js';
 export { createIdAllocator, linksTo, type IdAllocator, type IdScope, type IdDiagnostic } from './idAllocator.js';
-export { mergeKeeping } from './textMerge.js';
+export { mergeKeeping, dropUnattachedLayoutEntries } from './textMerge.js';
 export { resolveMapRef, mapRefOf, type MapNodeRef, type MapRefResult } from './mapRef.js';
 export { parseZoneText, oneZoneRoot, pinZoneIds } from './zoneText.js';
 // 0.5.18: node icon slot, emoji / Map clipart picker, `:` typeahead (Design UX 2026-11-04 EP-1…EP-30).

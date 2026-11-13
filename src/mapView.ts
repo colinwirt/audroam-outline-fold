@@ -13,7 +13,7 @@ import { openIconPicker, type IconPickerHandle } from './emoji/picker.js';
 import { applyNodePalette, setColourFill, colourGroups, colourLabel, isHighlighter, isAudroam, resolveColour, isSolidColour } from './nodeColour.js';
 import { resolveFollowInText, setFollowInText, loadMapResume } from './mapResume.js';
 import { ALT_HOLD_MS, altDragCommits, altPressKind } from './altGesture.js';
-import { captionLinks, captionWithoutLinks, captionRegionRefs } from './captionRich.js';
+import { captionLinks, captionWithoutLinks, captionRegionRefs, markCode, showsAsCode } from './captionRich.js';
 import {
   captionLinkRows,
   renderLinkPreview,
@@ -55,7 +55,7 @@ import {
   type PinchAnchor,
   type Pt,
 } from './mapGesture.js';
-import { cloudHull, cloudPad, cloudSvg, regionHull, regionSvg, wrapPlain, type MapRegion } from './mapRegion.js';
+import { CLOUD_OUTER, cloudHull, cloudPad, cloudSvg, regionHull, regionSvg, wrapPlain, type MapRegion } from './mapRegion.js';
 import { placeRegions, innerRegionEdges, type PlacedBox, type PlacedRegion, type RegionHostSpec } from './regionLayout.js';
 import { createRegionFoldStore, isMemoryOnlyRegion, revealScopedId, type RegionFoldStore } from './regionFold.js';
 import { parseScopedId, scopeId } from './scopedId.js';
@@ -356,6 +356,8 @@ export interface PillSizeOptions {
   timeLeaf?: TimeLeafKind | null;
   /** 0.5.21: thumbnail above the caption (T5/T6). `src` is a checked source (T4). */
   thumb?: ThumbSpec | null;
+  /** Whole caption is code (`<font:code>` / `<style:code>`, or inherited). */
+  code?: boolean;
 }
 
 export interface ThumbSpec {
@@ -1172,6 +1174,7 @@ export function pillSize(label: string, opts: PillSizeOptions = {}): PillSize {
       noteLinks: opts.noteLinks,
       thread: opts.thread,
       jumps: opts.jumps,
+      code: opts.code,
     });
   }
   const thumb = opts.thumb;
@@ -1189,6 +1192,7 @@ export function pillSize(label: string, opts: PillSizeOptions = {}): PillSize {
     thread: opts.thread,
     jumps: opts.jumps,
     semibold: opts.semibold,
+    code: opts.code,
   });
   if (thumb) {
     // T5: the image fills the box (minus the fold slot) with an 8px inset; T6 cap.
@@ -1204,6 +1208,7 @@ function nodePillOpts(
   defaults?: { wrapCh?: number; maxLines?: number | null; fontSize?: number },
   key?: string,
   doc?: OutlineFoldDoc,
+  code = false,
 ): PillSizeOptions {
   const lay =
     (key && nodeLayout ? nodeLayout[key] : undefined) ||
@@ -1220,7 +1225,8 @@ function nodePillOpts(
     return {
       timeLeaf: tl,
       fontSize: timeLeafNodeFontPx(lay?.fontSize, defaults?.fontSize, undefined),
-      ...nodeChips(n, doc),
+      ...nodeChips(n, doc, code),
+      code,
     };
   }
   return {
@@ -1232,7 +1238,8 @@ function nodePillOpts(
     maxLines,
     bodyExpanded: !!lay?.bodyExpanded,
     fontSize: lay?.fontSize ?? defaults?.fontSize,
-    ...nodeChips(n, doc),
+    ...nodeChips(n, doc, code),
+    code,
   };
 }
 
@@ -1256,12 +1263,13 @@ function timeLeafPaintOpts(
  * Chips after the caption (0.2.34): thread pill, `#N` notes (`<t:N>`, then
  * caption `[label](#pnid:N)`), `<r:x>` jumps labelled with the target's caption.
  */
-function nodeChips(n: OutlineNode, doc?: OutlineFoldDoc): MapChipSpec & { thumb?: ThumbSpec } {
+function nodeChips(n: OutlineNode, doc?: OutlineFoldDoc, code = false): MapChipSpec & { thumb?: ThumbSpec } {
   const notes = resolveNoteLinks(n);
-  for (const l of captionLinks(n.title || '')) if (l.pnid && !notes.includes(l.pnid)) notes.push(l.pnid);
+  // A code caption is literal: links written in it stay text, not chips.
+  if (!code) for (const l of captionLinks(n.title || '')) if (l.pnid && !notes.includes(l.pnid)) notes.push(l.pnid);
   const jumps = resolveJumps(n).map((id) => ({ id, label: jumpChipLabel(doc, id) }));
   // `<r:REGION:N>` chips: the click goes through setFocus → revealScoped.
-  for (const id of captionRegionRefs(n.title || '')) jumps.push({ id, label: jumpChipLabel(null, id) });
+  if (!code) for (const id of captionRegionRefs(n.title || '')) jumps.push({ id, label: jumpChipLabel(null, id) });
   const out: MapChipSpec & { thumb?: ThumbSpec } = { thread: !!resolveThread(n), noteLinks: notes, jumps };
   if (n.img && !timeLeafKind(n)) {
     const a = doc?.assets?.find((e) => e.key === n.img);
@@ -1457,6 +1465,7 @@ export function autoPackPositions(
   const nodeLayout = opts.nodeLayout;
 
   const keyOf = opts.keyOf ?? publicPackKeys(doc.nodes || []);
+  const codes = markCode(doc.nodes || []);
   const visible: { n: OutlineNode; depth: number }[] = [];
   function walkVis(n: OutlineNode, depth: number): void {
     if (!n || isBlankNode(n)) return;
@@ -1470,10 +1479,31 @@ export function autoPackPositions(
   const positions: Record<string, MapPoint> = {};
   const paintedSize = new Map<string, { w: number; h: number }>();
 
-  function layoutSubtree(n: OutlineNode, groupLeft: number, top: number): number {
+  // How far a visible cloud outline sticks out past this subtree's pills.
+  function cloudOutset(n: OutlineNode, depth: number): number {
+    let p = n.cloud ? cloudPad(depth) : 0;
+    if (hasKids(n) && !(n.id && isNodeCollapsed(n.id))) {
+      const childDepth = n.cloud ? depth + 1 : depth;
+      for (const c of n.children || []) {
+        if (isBlankNode(c)) continue;
+        p = Math.max(p, cloudOutset(c, childDepth));
+      }
+    }
+    return p;
+  }
+  // Sibling gap that leaves CLOUD_OUTER outside each cloud outline.
+  function stackGap(a: OutlineNode, b: OutlineNode, depth: number, base: number): number {
+    const protrude = cloudOutset(a, depth) + cloudOutset(b, depth);
+    if (protrude <= 0) return base;
+    return Math.max(base, protrude + CLOUD_OUTER);
+  }
+
+  function layoutSubtree(n: OutlineNode, groupLeft: number, top: number, depth: number): number {
     const key = keyOf(n);
-    const label = nodeIconLabel(n, captionWithoutLinks(displayCaption(n.title)));
-    const painted = pillSize(label, nodePillOpts(n, nodeLayout, defaults, key, doc));
+    const code = codes.get(n) === true;
+    const shown = displayCaption(n.title);
+    const label = nodeIconLabel(n, code ? shown : captionWithoutLinks(shown));
+    const painted = pillSize(label, nodePillOpts(n, nodeLayout, defaults, key, doc, code));
     paintedSize.set(key, { w: painted.w, h: painted.h });
     const x = groupLeft + painted.w / 2;
     // A blank `- ` line is not drawn on the Map until it has content (0.6.6).
@@ -1488,14 +1518,17 @@ export function autoPackPositions(
     }
 
     const childGroupLeft = groupLeft + painted.w + gapX;
+    const childDepth = n.cloud ? depth + 1 : depth;
     let y = top;
     const seen = new Set(Object.keys(positions));
     for (let i = 0; i < kids.length; i++) {
-      const ch = layoutSubtree(kids[i]!, childGroupLeft, y);
+      const ch = layoutSubtree(kids[i]!, childGroupLeft, y, childDepth);
       y += ch;
       // TL5: two consecutive time leaves under one parent stack 6 px apart.
+      // A cloud outline needs room beyond that, or it lands on the next pill.
       if (i < kids.length - 1) {
-        y += timeLeafKind(kids[i]) && timeLeafKind(kids[i + 1]) ? Math.min(gapY, TIME_LEAF_GAP_Y) : gapY;
+        const base = timeLeafKind(kids[i]) && timeLeafKind(kids[i + 1]) ? Math.min(gapY, TIME_LEAF_GAP_Y) : gapY;
+        y += stackGap(kids[i]!, kids[i + 1]!, childDepth, base);
       }
     }
     const stackH = y - top;
@@ -1515,10 +1548,13 @@ export function autoPackPositions(
   let top = margin;
   const roots = doc.nodes || [];
   const drawn = roots.filter((r) => !isBlankNode(r));
+  const edge = drawn.reduce((m, r) => Math.max(m, cloudOutset(r, 0)), 0);
+  const origin = Math.max(margin, edge > 0 ? edge + CLOUD_OUTER : margin);
+  top = origin;
   for (let i = 0; i < drawn.length; i++) {
-    const h = layoutSubtree(drawn[i]!, margin, top);
+    const h = layoutSubtree(drawn[i]!, origin, top, 0);
     top += h;
-    if (i < drawn.length - 1) top += gapY * 2;
+    if (i < drawn.length - 1) top += stackGap(drawn[i]!, drawn[i + 1]!, 0, gapY * 2);
   }
 
   let maxX = margin;
@@ -1532,11 +1568,12 @@ export function autoPackPositions(
     maxY = Math.max(maxY, pos.y + size.h / 2);
   }
 
+  const hullAir = edge > 0 ? Math.max(0, edge + CLOUD_OUTER - margin) : 0;
   return {
     nodes: positions,
     viewBox: {
-      w: Math.max(400, Math.ceil(maxX + margin)),
-      h: Math.max(300, Math.ceil(maxY + margin)),
+      w: Math.max(400, Math.ceil(maxX + margin + hullAir)),
+      h: Math.max(300, Math.ceil(maxY + margin + hullAir)),
     },
   };
 }
@@ -1900,6 +1937,12 @@ export function createMapView(
       walk(nodes || []);
       if (hit) return hit;
     }
+    // A zone tree is not in the main session index. A row id `__sid-N` can resolve
+    // to a main-doc public id; that rewrite painted another zone row's caption here.
+    if (nodes !== live) {
+      const direct = findNodeById(nodes, id);
+      if (direct) return direct;
+    }
     return findNodeById(nodes, toRef(id));
   };
   const parentOf = (nodes: OutlineNode[], id: string, parent: OutlineNode | null = null) =>
@@ -2055,7 +2098,9 @@ export function createMapView(
       const key = vkey(n);
       if (!layout.nodes?.[key]) return;
       const pos = layout.nodes[key]!;
-      const label = withNodeIcon(n, captionWithoutLinks(displayCaption(n.title)));
+      const code = codeFor(n);
+      const shown = displayCaption(n.title);
+      const label = withNodeIcon(n, code ? shown : captionWithoutLinks(shown));
       const foldable = hasKids(n);
       const size = pillSize(label, timeLeafPaintOpts(n, pos, layout.fontSize, doc.frontmatter?.fontSize, doc) ?? {
         reserveFold: foldable,
@@ -2066,7 +2111,8 @@ export function createMapView(
         maxLines: pos.maxLines,
         bodyExpanded: !!pos.bodyExpanded,
         fontSize: resolveFontPx(pos.fontSize, layout.fontSize, doc.frontmatter?.fontSize),
-        ...nodeChips(n, doc),
+        ...nodeChips(n, doc, code),
+        code,
       });
       const r = pillWorldRect(pos.x, pos.y, size.w, size.h);
       rects.push(r);
@@ -4159,7 +4205,7 @@ export function createMapView(
     const layout = getLayout();
     const pos = layout.nodes?.[key];
     return {
-      label: withNodeIcon(n, captionWithoutLinks(displayCaption(n.title))),
+      label: withNodeIcon(n, (codeFor(n) ? displayCaption(n.title) : captionWithoutLinks(displayCaption(n.title)))),
       opts: {
         fontSize: resolveFontPx(pos?.fontSize, layout.fontSize, getDoc().frontmatter?.fontSize),
         reserveTask: !!resolveTask(n),
@@ -4167,6 +4213,7 @@ export function createMapView(
         wrapCh: pos?.wrapCh ?? autoCh(),
         maxLines: pos?.maxLines,
         bodyExpanded: !!pos?.bodyExpanded,
+        code: codeFor(n),
       },
     };
   }
@@ -5047,8 +5094,19 @@ export function createMapView(
   function anchorCaption(key: string | undefined, label: string, anchors: Set<string> = unlockedAnchorKeys()): string {
     return key !== undefined && anchors.has(key) ? UNLOCK_MARK + label : label;
   }
+  let codeMemo: WeakMap<OutlineNode, boolean> | null = null;
+  /** Code format for a node in the live doc or an open zone, including children of a code parent. */
+  function codeFor(n: OutlineNode): boolean {
+    if (!codeMemo) {
+      codeMemo = markCode(getDoc().nodes);
+      for (const h of regionHosts()) if (h.doc) markCode(h.doc.nodes, codeMemo);
+    }
+    return codeMemo.get(n) ?? showsAsCode(n, false);
+  }
   function nodeMeasure(d: OutlineFoldDoc, n: OutlineNode, pos: MapPoint | undefined, key?: string) {
-    const label = anchorCaption(key, withNodeIcon(n, captionWithoutLinks(displayCaption(n.title))));
+    const code = codeFor(n);
+    const shown = displayCaption(n.title);
+    const label = anchorCaption(key, withNodeIcon(n, code ? shown : captionWithoutLinks(shown)));
     const live = regionWidthLive.get(n);
     return pillSize(label, {
       reserveFold: hasKids(n),
@@ -5058,6 +5116,7 @@ export function createMapView(
       widthPx: live ?? pos?.w ?? n.layout?.w,
       maxLines: pos?.maxLines,
       fontSize: resolveFontPx(pos?.fontSize, getLayout().fontSize, d.frontmatter?.fontSize),
+      code,
     });
   }
   function quickSize(d: OutlineFoldDoc, n: OutlineNode, pos: MapPoint | undefined, key?: string): { w: number; h: number } {
@@ -5203,7 +5262,10 @@ export function createMapView(
             // 0.4.5 (Colin): the folded pill sits right under its anchor, whose caption already is the
             // public label (or the 'Sealed branch' placeholder). Show only the lock glyph, not a copy.
             const regionName = r.host.label || (r.host.kind === 'sealed' ? 'Sealed branch' : 'Record');
-            const t = folded ? (r.host.kind === 'sealed' ? (r.host.doc ? '🔓' : '🔒') : regionName) : captionWithoutLinks(displayCaption(b.title));
+            const node = !folded && b.localId && r.host.doc ? findNode(r.host.doc.nodes, b.localId) : null;
+            const zoneCode = !folded && node ? codeFor(node) : false;
+            const shown = displayCaption(b.title);
+            const t = folded ? (r.host.kind === 'sealed' ? (r.host.doc ? '🔓' : '🔒') : regionName) : (zoneCode ? shown : captionWithoutLinks(shown));
             const ariaName = folded && r.host.kind === 'sealed' ? `${regionName}${r.host.doc ? '' : `, Unlock ${r.host.kid ?? 'key'}`}` : t;
             const cy = b.y + b.h / 2;
             const slot = b.foldable ? FOLD_SLOT : 0;
@@ -5219,7 +5281,6 @@ export function createMapView(
             const kidChip = locked && r.host.kid
               ? `<g class="map-region-kid"><rect x="${b.x + b.w - slot - 34}" y="${b.y - 8}" width="30" height="16" rx="8"/><text x="${b.x + b.w - slot - 19}" y="${b.y + 4}" text-anchor="middle">${esc(r.host.kid.slice(0, 4))}</text></g>`
               : '';
-            const node = !folded && b.localId && r.host.doc ? findNode(r.host.doc.nodes, b.localId) : null;
             // Same measure as the box, so a stored or live width wraps the caption
             // instead of drawing one line at the map's character width.
             const measured = node ? nodeMeasure(getDoc(), node, undefined) : null;
@@ -5714,6 +5775,7 @@ export function createMapView(
   // 0.5.26: stored `:code:` labels show as emoji once the table loads (display only).
   void loadEmojiData().then(() => { try { paint(); } catch { /* destroyed */ } });
   function paint(): void {
+    codeMemo = null;
     invalidateContentUnion();
     // Boolean snapshot BEFORE the DOM rebuild (an element ref would be detached
     // afterwards). Never steal focus from the editor.
@@ -5770,7 +5832,9 @@ export function createMapView(
       if (bc) branchColour.set(n, bc);
       const key = vkey(n);
       const pos = layout.nodes![key] || { x: 100, y: 100 };
-      const label = anchorCaption(key, withNodeIcon(n, captionWithoutLinks(displayCaption(n.title))), anchors);
+      const code = codeFor(n);
+      const shown = displayCaption(n.title);
+      const label = anchorCaption(key, withNodeIcon(n, code ? shown : captionWithoutLinks(shown)), anchors);
       const foldable = hasKids(n);
       const col = foldable && !!n.id && isCollapsed(doc, n.id);
       const taskParsed = resolveTask(n);
@@ -5784,7 +5848,8 @@ export function createMapView(
         maxLines: pos.maxLines,
         bodyExpanded: !!pos.bodyExpanded,
         fontSize: resolveFontPx(pos.fontSize, layout.fontSize, doc.frontmatter?.fontSize),
-        ...nodeChips(n, doc),
+        ...nodeChips(n, doc, code),
+        code,
       });
       const cue = !timeLeaf && isCue(n);
       const thread = resolveThread(n);
@@ -5823,7 +5888,9 @@ export function createMapView(
           if (isBlankNode(c)) continue;
           const cKey = vkey(c);
           const cpos = layout.nodes![cKey] || { x: pos.x + 200, y: pos.y };
-          const clabel = anchorCaption(cKey, withNodeIcon(c, captionWithoutLinks(displayCaption(c.title))), anchors);
+          const childCode = codeFor(c);
+          const cShown = displayCaption(c.title);
+          const clabel = anchorCaption(cKey, withNodeIcon(c, childCode ? cShown : captionWithoutLinks(cShown)), anchors);
           const cTask = resolveTask(c);
           const cs = pillSize(clabel, timeLeafPaintOpts(c, cpos, layout.fontSize, doc.frontmatter?.fontSize, doc) ?? {
             reserveFold: hasKids(c),
@@ -5834,7 +5901,8 @@ export function createMapView(
             maxLines: cpos.maxLines,
             bodyExpanded: !!cpos.bodyExpanded,
             fontSize: resolveFontPx(cpos.fontSize, layout.fontSize, doc.frontmatter?.fontSize),
-            ...nodeChips(c, doc),
+            ...nodeChips(c, doc, childCode),
+            code: childCode,
           });
           // Starts past the fold handle, not under it.
           edges.push({

@@ -4,7 +4,7 @@ import { resolveColour, colourVar } from './nodeColour.js';
 import { timeLeafKind } from './timeLeaf.js';
 import { isBlankNode } from './sessionIndex.js';
 import { isCollapsed } from './fold.js';
-import { captionToHtml } from './captionRich.js';
+import { captionToHtml, showsAsCode } from './captionRich.js';
 import { iconForNode, iconForTask } from './icons.js';
 import { jumpChipLabel, noteLinkHref, resolveJumps, stripLinkTags } from './taskChrome.js';
 import { hasSealed } from './sealed.js';
@@ -24,6 +24,7 @@ function renderNode(
   opts: Required<Pick<ToHtmlOptions, 'classPrefix' | 'lockedChrome'>> &
     ToHtmlOptions & { ids: Set<string> },
   inherited: { c: string; fill: boolean } | null = null,
+  inheritedCode = false,
 ): string {
   const p = opts.classPrefix;
   // 0.6.6: a blank `- ` line is vertical space in the Outline (not a row: no
@@ -151,11 +152,16 @@ function renderNode(
       return `<a class="${cls}" href="#id:${esc(id)}" data-hop-id="${esc(id)}" data-testid="of-jump-${esc(id)}"${ok ? '' : ' aria-disabled="true"'}>${esc(jumpChipLabel(doc, id))}</a>`;
     })
     .join('');
-  const caption = captionToHtml(stripLinkTags(node.title), {
-    hasNode: (id) => opts.ids.has(id),
-    noteHref: (pnid) => noteLinkHref(notePattern, pnid),
-    nodeId: node.id,
-  });
+  const code = showsAsCode(node, inheritedCode);
+  const caption = !node.title
+    ? ''
+    : code
+      ? `<code class="${p}-code">${esc(node.title).replace(/\n/g, '<br>')}</code>`
+      : captionToHtml(stripLinkTags(node.title), {
+          hasNode: (id) => opts.ids.has(id),
+          noteHref: (pnid) => noteLinkHref(notePattern, pnid),
+          nodeId: node.id,
+        });
 
   const body = locked
     ? `<div class="${p}-locked-chrome" aria-hidden="true">•••• locked ••••</div>`
@@ -163,7 +169,7 @@ function renderNode(
 
   // Keep children in the DOM when collapsed (CSS hides). Focus + a11y stable.
   const kids = hasKids
-    ? `<ul class="${p}-children" role="group">${node.children!.map((c) => renderNode(c, doc, opts, bc)).join('')}</ul>`
+    ? `<ul class="${p}-children" role="group">${node.children!.map((c) => renderNode(c, doc, opts, bc, code)).join('')}</ul>`
     : '';
 
   const ariaExpanded = hasKids

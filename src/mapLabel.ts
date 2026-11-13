@@ -232,10 +232,19 @@ export function wrapLines(
   wrapCh: number = DEFAULT_WRAP_CH,
   maxLines: number | null = DEFAULT_MAX_LINES,
 ): WrapResult {
+  return wrapPrepared(text, wrapCh, maxLines, false);
+}
+
+function wrapPrepared(
+  text: string,
+  wrapCh: number,
+  maxLines: number | null,
+  code: boolean,
+): WrapResult {
   const original = String(text ?? '');
-  let runs = captionStyleRuns(original);
-  // Soft-safety on visible length
-  let visible = captionVisibleText(original);
+  let runs = sourceRuns(original, code);
+  // Soft-safety on visible length. A code caption is already literal.
+  let visible = code ? original : captionVisibleText(original);
   let softSafetyHit = false;
   if (visible.length > SOFT_SAFETY_MAX_CHARS) {
     softSafetyHit = true;
@@ -253,31 +262,13 @@ export function wrapLines(
       }
     }
     runs = trimmed;
-    visible = captionVisibleText(
-      // rebuild approx — visible from trimmed runs
-      runs.map((r) => r.text).join(''),
-    );
+    const joined = runs.map((r) => r.text).join('');
+    visible = code ? joined : captionVisibleText(joined);
   }
 
   const ch = Math.max(8, Math.floor(wrapCh) || DEFAULT_WRAP_CH);
 
-  // Split runs into paragraphs on LF inside run text
-  const paragraphs: CaptionStyleRun[][] = [[]];
-  for (const r of runs) {
-    const parts = r.text.split('\n');
-    for (let pi = 0; pi < parts.length; pi++) {
-      if (pi > 0) paragraphs.push([]);
-      const piece = parts[pi]!;
-      if (piece.length || (pi === 0 && parts.length === 1)) {
-        paragraphs[paragraphs.length - 1]!.push({
-          text: piece,
-          bold: r.bold,
-          italic: r.italic,
-          code: r.code,
-        });
-      }
-    }
-  }
+  const paragraphs = runsToParagraphs(runs);
 
   const rawRich: CaptionStyleRun[][] = [];
   for (const para of paragraphs) {
@@ -418,6 +409,11 @@ export interface MeasurePillOpts {
   compactPadY?: number;
   /** Left pad before the caption in place of the default pad (time leaf kind letter). */
   padLeft?: number;
+  /**
+   * The whole caption is code (`<font:code>` / `<style:code>`, inherited).
+   * It is not parsed: backticks, break tokens and tags stay characters.
+   */
+  code?: boolean;
 }
 
 export interface MeasuredPill {
@@ -608,25 +604,30 @@ function wrapCharsToWidth(chars: StyledChar[], maxW: number, fontPx: number): St
   return lines;
 }
 
-function paragraphRuns(label: string): CaptionStyleRun[][] {
-  const runs = captionStyleRuns(String(label ?? ''));
+/** Split style runs on real newlines. A code run is not pulled onto its own line. */
+function runsToParagraphs(runs: CaptionStyleRun[]): CaptionStyleRun[][] {
   const paragraphs: CaptionStyleRun[][] = [[]];
   for (const r of runs) {
     const parts = r.text.split('\n');
-    for (let i = 0; i < parts.length; i++) {
-      if (i > 0) paragraphs.push([]);
-      const piece = parts[i] ?? '';
-      if (piece.length) {
-        paragraphs[paragraphs.length - 1]!.push({
-          text: piece,
-          bold: r.bold,
-          italic: r.italic,
-          code: r.code,
-        });
+    for (let pi = 0; pi < parts.length; pi++) {
+      if (pi > 0) paragraphs.push([]);
+      const piece = parts[pi]!;
+      if (piece.length || (pi === 0 && parts.length === 1)) {
+        paragraphs[paragraphs.length - 1]!.push({ text: piece, bold: r.bold, italic: r.italic, code: r.code });
       }
     }
   }
   return paragraphs;
+}
+
+/** Code format: the caption is one code string. Break tokens and tags inside it stay characters. */
+function sourceRuns(text: string, code: boolean): CaptionStyleRun[] {
+  if (code) return [{ text: String(text ?? ''), bold: false, italic: false, code: true }];
+  return captionStyleRuns(text);
+}
+
+function paragraphRuns(label: string, code = false): CaptionStyleRun[][] {
+  return runsToParagraphs(sourceRuns(String(label ?? ''), code));
 }
 
 function plainLine(runs: CaptionStyleRun[]): string {
@@ -694,9 +695,10 @@ function balanceAutoWrap(
   wrapCh: number,
   maxLines: number | null,
   fontPx: number,
+  code = false,
 ): WrapResult {
-  const base = wrapLines(label, wrapCh, maxLines);
-  const paras = paragraphRuns(label);
+  const base = wrapPrepared(label, wrapCh, maxLines, code);
+  const paras = paragraphRuns(label, code);
   const rich: CaptionStyleRun[][] = [];
   let changed = false;
   for (const para of paras) {
@@ -705,7 +707,7 @@ function balanceAutoWrap(
       rich.push([{ text: '', bold: false, italic: false, code: false }]);
       continue;
     }
-    const wrappedPara = wrapLines(plain, wrapCh, null).richLines;
+    const wrappedPara = wrapPrepared(plain, wrapCh, null, code).richLines;
     const next = widenToAvoidOrphan(para, wrappedPara, fontPx);
     if (next.length !== wrappedPara.length || next.some((line, i) => line !== wrappedPara[i])) {
       changed = true;
@@ -741,8 +743,9 @@ function wrapLinesToWidth(
   fontPx: number,
   padLeft = PILL_PAD_X,
   padRight = PILL_PAD_X,
+  code = false,
 ): WrapResult {
-  const loose = wrapLines(text, 100000, null);
+  const loose = wrapPrepared(text, 100000, null, code);
   const inner = Math.max(48, widthPx - padLeft - padRight);
   const rawRich: CaptionStyleRun[][] = [];
   for (const line of loose.richLines) {
@@ -796,6 +799,7 @@ function measurePillAt(label: string, opts: MeasurePillOpts): MeasuredPill {
     (opts.jumps || []).map((j) => `${j.id}\u0002${j.label}`).join('\u0003'),
     opts.reserveMoreAffordance === false ? 0 : 1,
     opts.fontSize ?? '',
+    opts.code ? 1 : 0,
     opts.semibold ? 1 : 0,
     opts.compactPadY ?? '',
     opts.padLeft ?? '',
@@ -818,9 +822,10 @@ function measurePillAt(label: string, opts: MeasurePillOpts): MeasuredPill {
   const padLeft =
     typeof opts.padLeft === 'number' && opts.padLeft >= 0 ? opts.padLeft : taskLead > 0 ? 0 : PILL_PAD_X;
   const padRight = PILL_PAD_X;
+  const code = !!opts.code;
   const wrapped = widthPx
-    ? wrapLinesToWidth(label, widthPx, effectiveMaxLines, fontPx, padLeft, padRight)
-    : balanceAutoWrap(label, wrapCh, effectiveMaxLines, fontPx);
+    ? wrapLinesToWidth(label, widthPx, effectiveMaxLines, fontPx, padLeft, padRight, code)
+    : balanceAutoWrap(label, wrapCh, effectiveMaxLines, fontPx, code);
   const widest = wrapped.richLines.reduce((max, line) => Math.max(max, lineWidth(line, fontPx)), 0);
   const textW = widthPx
     ? Math.round(widthPx)

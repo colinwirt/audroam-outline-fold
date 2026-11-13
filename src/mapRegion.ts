@@ -26,7 +26,7 @@ export interface RegionBox {
 }
 
 /** Padded bounding rectangle (MVP hull) of the given boxes. */
-export function regionHull(boxes: RegionBox[], pad = 14): RegionBox | null {
+export function regionHull(boxes: RegionBox[], pad = 28): RegionBox | null {
   if (!boxes.length) return null;
   let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
   for (const b of boxes) {
@@ -94,13 +94,18 @@ export interface MapCloud {
   depth: number;
 }
 
+/** Space between a cloud outline and the pills it wraps. */
+export const CLOUD_PAD = 28;
+/** Space outside a cloud outline before the next pill or cloud. */
+export const CLOUD_OUTER = 20;
+
 /** Padding for a cloud at a nesting depth (EP-41: inner clouds inset by 6px). */
-export function cloudPad(depth: number, pad = 12): number {
+export function cloudPad(depth: number, pad = CLOUD_PAD): number {
   return Math.max(4, pad - 6 * depth);
 }
 
 /** Angled hull points (clockwise in screen space) around the boxes, or null for none. */
-export function cloudHull(boxes: RegionBox[], pad = 12): CloudPoint[] | null {
+export function cloudHull(boxes: RegionBox[], pad = CLOUD_PAD): CloudPoint[] | null {
   if (!boxes.length) return null;
   const pts: CloudPoint[] = [];
   for (const b of boxes) {

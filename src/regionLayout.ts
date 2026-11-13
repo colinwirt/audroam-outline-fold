@@ -18,8 +18,11 @@ function countAll(nodes: OutlineNode[] | undefined): number {
   return c;
 }
 
-export const REGION_PAD = 14;
-const LABEL_H = 14;
+/** Space between a region outline and the pills inside it. */
+export const REGION_PAD = 28;
+/** Space outside a region outline before the next pill or region. */
+export const REGION_OUTER = 20;
+const LABEL_H = 22;
 export const MAX_REGION_DEPTH = 4;
 
 export interface RegionHostSpec {
@@ -114,7 +117,7 @@ export function placeRegions(
   deps: RegionLayoutDeps,
   depth = 0,
 ): PlacedRegion[] {
-  const gap = deps.gapY ?? 14;
+  const gap = Math.max(deps.gapY ?? 14, REGION_OUTER);
   const placed: PlacedRegion[] = [];
   const parents = new Map<string, string>();
   for (const k of boxes.keys()) for (const c of childrenOf(k)) parents.set(c, k);

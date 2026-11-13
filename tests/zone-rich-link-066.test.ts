@@ -61,6 +61,22 @@ it('zone globe click opens the Links popover', async () => {
   mv.destroy?.();
 });
 
+it('an id-less zone row paints its own caption once', async () => {
+  const { host, mv } = await mount('- header\n  - `Alpha note`\n  - `Beta note` <id:14>\n    - `Gamma note`\n');
+  const pills = [...host.querySelectorAll('.map-region-node')].filter((g) => (g.textContent || '').includes('note'));
+  const texts = pills.map((g) => (g.textContent || '').replace(/\s+/g, ' ').trim());
+  expect(texts.filter((t) => t.includes('Alpha note'))).toHaveLength(1);
+  expect(texts.filter((t) => t.includes('Gamma note'))).toHaveLength(1);
+  const alpha = pills.find((g) => (g.textContent || '').includes('Alpha note'))!;
+  const gamma = pills.find((g) => (g.textContent || '').includes('Gamma note'))!;
+  expect(alpha).not.toBe(gamma);
+  expect(alpha.textContent).not.toContain('Gamma');
+  expect(gamma.textContent).not.toContain('Alpha');
+  expect(alpha.textContent).not.toContain('`');
+  expect(alpha.querySelector('.map-code')).not.toBeNull();
+  mv.destroy?.();
+});
+
 it('zone code ink rule covers region nodes', () => {
   expect(readFileSync('src/outline-fold.css', 'utf8')).toMatch(/\.map-region-node \.map-label tspan\.map-code/);
 });

@@ -144,6 +144,12 @@ function formatTrailingSpans(
     const k = kept?.color;
     parts.push(k && canonTag(k).replace(/^<colour:/, '<color:') === plain ? k : plain);
   }
+  const fontTag = node.layout?.font ? node.inlineFont : node.font;
+  if (fontTag) {
+    const plain = `<font:${fontTag}>`;
+    const k = kept?.font;
+    parts.push(k && canonTag(k).replace(/^<style:/, '<font:') === plain ? k : plain);
+  }
   if (node.cloud) parts.push(node.cloud === 'default' ? '<cloud>' : `<cloud:${node.cloud}>`);
   if (node.img) parts.push(`<img:${node.img}>`);
   if (node.id && !node.autoId) parts.push(spelledTag(kept?.id, `<id:${node.id}>`));

@@ -11,6 +11,10 @@
  * of the parsed nodes), never by caption text or jump target. A glued tag that
  * serialize would space out (`3.92<r:5>` vs `3.92 <r:5>`) is the same node, so a
  * Map fold updates that line in place instead of inserting a copy.
+ *
+ * A layout id whose line is gone is dropped (icon, colour, width, font). The
+ * serialiser never emits that entry, and an unchanged save used to keep the
+ * typed block. A key that still names a line stays byte for byte.
  */
 import { parse } from './parse.js';
 import { parsedLineOf } from './sessionIndex.js';
@@ -142,9 +146,91 @@ function match(
   return out.concat(tail.reverse());
 }
 
+const LAYOUT_FENCE = /^---\s*layout\s*---\s*$/i;
+const LAYOUT_END = /^---(?:\s*$|\s+\S)/;
+const NODE_KEY = /^([A-Za-z0-9][A-Za-z0-9_-]*):\s*$/;
+
+/**
+ * Ids and position keys that `attachLayouts` would apply. A position key is
+ * live only for an id-less line at that 1-based preorder place, and only when
+ * no line already uses that number as its id.
+ */
+function liveLayoutKeys(nodes: OutlineNode[]): Set<string> {
+  const ids = new Set<string>();
+  const ordered: OutlineNode[] = [];
+  const walk = (list: OutlineNode[] | undefined) => {
+    for (const n of list ?? []) {
+      if (n.id) ids.add(n.id);
+      ordered.push(n);
+      if (n.children?.length) walk(n.children);
+    }
+  };
+  walk(nodes);
+  const live = new Set<string>(ids);
+  for (let i = 0; i < ordered.length; i++) {
+    if (ordered[i]!.id) continue;
+    const key = String(i + 1);
+    if (!ids.has(key)) live.add(key);
+  }
+  return live;
+}
+
+/**
+ * Drop layout entries that name no line. The rest of the note, including a
+ * live entry's own spacing, stays byte for byte. A position key for an
+ * id-less line stays. Parse errors leave the text alone.
+ */
+export function dropUnattachedLayoutEntries(text: string): string {
+  if (!/^---\s*layout\s*---/im.test(text)) return text;
+  let live: Set<string>;
+  try {
+    live = liveLayoutKeys(parse(text).nodes);
+  } catch {
+    return text;
+  }
+  const lines = text.split('\n');
+  const out: string[] = [];
+  let i = 0;
+  while (i < lines.length) {
+    const line = lines[i]!;
+    if (!LAYOUT_FENCE.test(line)) {
+      out.push(line);
+      i++;
+      continue;
+    }
+    out.push(line);
+    i++;
+    while (i < lines.length && !LAYOUT_END.test(lines[i]!)) {
+      const cur = lines[i]!;
+      const key = NODE_KEY.exec(cur);
+      if (!key || live.has(key[1]!)) {
+        out.push(cur);
+        i++;
+        continue;
+      }
+      i++;
+      while (i < lines.length && !LAYOUT_END.test(lines[i]!)) {
+        if (!lines[i]!.trim()) {
+          let k = i + 1;
+          while (k < lines.length && !lines[k]!.trim() && !LAYOUT_END.test(lines[k]!)) k++;
+          if (k < lines.length && /^\s/.test(lines[k]!)) {
+            i++;
+            continue;
+          }
+          break;
+        }
+        if (!/^\s/.test(lines[i]!)) break;
+        i++;
+      }
+    }
+  }
+  const joined = out.join('\n');
+  return joined === text ? text : joined;
+}
+
 export function mergeKeeping(prev: string, normPrev: string, next: string): string {
-  if (next === normPrev) return prev;
-  if (prev === normPrev) return next;
+  if (next === normPrev) return dropUnattachedLayoutEntries(prev);
+  if (prev === normPrev) return dropUnattachedLayoutEntries(next);
   const P = prev.split('\n'), N = normPrev.split('\n'), X = next.split('\n');
   // prev line for each normPrev line: node identity first, then loose text for
   // layout / trailer lines that are not nodes.
@@ -199,7 +285,7 @@ export function mergeKeeping(prev: string, normPrev: string, next: string): stri
     nPos = ni + 1; xPos = xi + 1;
   }
   pushGap(P.length);
-  return reattachTrailers(out.join('\n'), next);
+  return dropUnattachedLayoutEntries(reattachTrailers(out.join('\n'), next));
 }
 
 const LAYOUT_KEY = /^(?:fold[-+]\s*:|collapsedMarker\s*:|expandedMarker\s*:)/;

@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.7.6 — 2026-11-13
+
+Code format on a node, and layout entries that leave with the line.
+
+- `<font:code>` or `<style:code>` (and layout `font: code` / `style: code`) paints that node and its children as code. `<font:text>` or `<font:none>` stops the inheritance. A code caption is literal: break tokens and tags inside backticks are not structure.
+- Deleting a node removes its layout entry (icon, colour, width, font) from the layout block. The open layout trailer updates in the same edit, and undo brings the entry back with the line. A layout key that still names a line is left as typed, including a position key for a line with no id.
+- Cloud and sealed-region outlines sit further off the pills (28px inside, 20px outside) so neighbouring regions no longer touch.
+- An id-less row inside an open zone keeps its own caption. A session id on that row is no longer resolved through the main document, which was painting another row's text and leaving the real caption as raw backticks.
+
 ## 0.7.5 — 2026-11-13
 
 Clicking the map item that is already focused runs Follow in text again.
