@@ -74,7 +74,7 @@ export interface SealedDiscardedSlot {
 export interface OutlineNode {
   id?: string;
   /**
-   * `id` is a session id (`__tmp-N`) from `parse(text, { sessionIds: true })`: fold,
+   * `id` is a session id (`__sid-N`) from `parse(text, { sessionIds: true })`: fold,
    * focus and keys work, but serialize does not write `<id:…>` for it. A width, a
    * payload or a fold+ entry mints a normal id (see `assignPersistentId`).
    */

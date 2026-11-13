@@ -166,7 +166,7 @@ import {
   type CamState,
   type WorldRect,
 } from './mapCamera.js';
-import { assignPersistentId, mintNodeId, nextSessionId, previewPersistentId, writtenId } from './nodeAddress.js';
+import { assignPersistentId, mintNodeId, previewPersistentId, writtenId } from './nodeAddress.js';
 import { createSessionIndex, isBlankNode, isViewKey, viewLayout, type SessionIndex } from './sessionIndex.js';
 import {
   COPIED_TOAST_MS,
@@ -801,7 +801,7 @@ export interface MapViewHandle {
   focusNode: (id: string) => boolean;
   /**
    * 0.6.6: the view key (`__sid-N`) of a node object, or of a fixed reference
-   * (`<id:N>` / `__tmp-N`). Every Map method that takes a key accepts either.
+   * (`<id:N>` / `__sid-N`). Every Map method that takes a key accepts either.
    */
   viewKey: (nodeOrRef: OutlineNode | string) => string | null;
   /** The node a view key or fixed reference names in the current doc. */
@@ -1868,8 +1868,8 @@ export function createMapView(
     opts.onFocusChange?.(id);
   };
   /**
-   * Host + FocusLink key is the session view key. An authored `<id:>` or `__tmp-`
-   * is resolved once via the fixed-ref index and never stored or emitted as the key.
+   * Host + FocusLink key is the session id. An authored `<id:>` is resolved once
+   * via the fixed-ref index and never stored or emitted as the key.
    */
   const setFocusId = (id: string) => {
     setFocusIdRaw(sessionFocus(id) || id);
@@ -1907,20 +1907,29 @@ export function createMapView(
   const patchNodeTitle = (nodes: OutlineNode[], id: string, title: string) => patchNodeTitleById(nodes, toRef(id), title);
   const isCollapsed = (doc: OutlineFoldDoc, id: string) => isCollapsedById(doc, toRef(id));
   /**
-   * Fold by view key. A line with no fixed reference first gets a session id
-   * (`__tmp-N`, never written: serialize keeps the fold as the line's `(+)`), so a
-   * view key never reaches the fold list.
+   * Fold by one session id. An authored id is used as written. A line with no
+   * authored id uses the view key Follow in text holds (`__sid-N`). A session id
+   * already on the node that is not that key is renamed to it, including its
+   * `doc.fold` entry. Serialize keeps the fold as the line's `(+)` and does not
+   * write the session id.
    */
   const foldRef = (doc: OutlineFoldDoc, id: string): string => {
-    const ref = toRef(id);
-    if (!isViewKey(ref)) return ref;
     const n = findNode(nodes0(doc) || [], id);
-    if (!n) return ref;
-    const used = new Set<string>();
-    walkNodes(doc.nodes || [], (x) => { if (x.id) used.add(x.id); });
-    n.id = nextSessionId(used);
-    n.autoId = true;
-    return n.id;
+    if (n?.id && !n.autoId) return n.id;
+    if (!n) return toRef(id);
+    const key = vkey(n);
+    if (n.id && n.id !== key && doc.fold?.ids) {
+      const at = doc.fold.ids.indexOf(n.id);
+      if (at >= 0) {
+        doc.fold.ids[at] = key;
+        if (doc.frontmatter?.foldIds) doc.frontmatter.foldIds = [...doc.fold.ids];
+      }
+    }
+    if (n.id !== key || !n.autoId) {
+      n.id = key;
+      n.autoId = true;
+    }
+    return key;
   };
   const nodes0 = (doc: OutlineFoldDoc) => doc.nodes;
   const toggleFold = (doc: OutlineFoldDoc, id: string) => toggleFoldById(doc, foldRef(doc, id));
@@ -2935,7 +2944,7 @@ export function createMapView(
 
   /**
    * 0.7.0: Map keys are view keys (`__sid-N`). `foldLevelPicker` looks up
-   * `node.id` (authored or `__tmp-`), so resolve before calling it. `mint`
+   * `node.id` (authored or `__sid-`), so resolve before calling it. `mint`
    * adds a session id on an id-less line, the same way a fold does.
    */
   function foldLevelLocal(id: string, mint: boolean): { fc: NonNullable<ReturnType<typeof foldCtx>>; local: string } | null {
@@ -3151,7 +3160,7 @@ export function createMapView(
   }
 
   /**
-   * The line's written id, or a new one: `assignPersistentId` (a `__tmp-` session
+   * The line's written id, or a new one: `assignPersistentId` (a `__sid-` session
    * id is replaced by a normal id; otherwise the free position or the next number), then
    * one setDoc + onChange so the host marks the document dirty. Only `<id:…>`
    * is added; the caption, its tags and their spacing are untouched.
@@ -4067,7 +4076,7 @@ export function createMapView(
   let openWidthPopHook: ((key: string, how: { keyboard?: boolean }) => boolean) | null = null;
   let widthToast: { el: HTMLElement; timer: number; abort: AbortController } | null = null;
 
-  /** Node for a view key, or for a fixed reference (`<id:>` / `__tmp-`) from outside. */
+  /** Node for a session id, or for an authored `<id:>` from outside. */
   function nodeByKey(key: string): OutlineNode | null {
     viewIndex.sync(getDoc());
     return viewIndex.nodeOf(key);

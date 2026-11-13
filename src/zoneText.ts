@@ -31,7 +31,7 @@ export function oneZoneRoot(doc: OutlineFoldDoc): OutlineFoldDoc {
   return doc;
 }
 
-/** Session ids for id-less rows: previous ids by preorder position first, then fresh `__tmp-N`. */
+/** Session ids for id-less rows: previous ids by preorder position first, then fresh `__sid-N`. */
 export function pinZoneIds(doc: OutlineFoldDoc, prev: OutlineFoldDoc | null, reserved: Iterable<string> = []): void {
   const used = new Set<string>([...reserved].map(String));
   walk(doc.nodes, (n) => { if (n.id) used.add(String(n.id)); });

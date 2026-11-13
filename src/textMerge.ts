@@ -90,7 +90,7 @@ function nodeRows(text: string): NodeRow[] | null {
  * normPrev line index → prev line index. Authored ids first, then remaining
  * nodes in document order by a spacing-insensitive signature (depth, caption
  * without inline t/r tags, task, tag links). Independent parses mint their own
- * `__tmp-N` ids, so those are not compared.
+ * `__sid-N` ids, so those are not compared.
  */
 function nodeLineMap(prev: string, norm: string): Map<number, number> | null {
   const P = nodeRows(prev);

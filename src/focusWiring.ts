@@ -42,7 +42,7 @@ export function wireFocus(link: FocusLink): FocusWiring {
   let outline: FocusWiringOutline | null = null;
   let revealOutline: ((id: string) => string) | undefined;
   let pending: FocusSource | null = null;
-  /** Authored / `__tmp-` / view key → session view key. Missing index: identity. */
+  /** Authored id or session id → session id. Missing index: identity. */
   const toSession = (id: string): string => map?.sessionIndex?.().resolve(id) || id;
   /**
    * Outline HTML is still tagged with the authored `data-id`. Convert a session

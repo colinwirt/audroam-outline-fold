@@ -189,7 +189,7 @@ function replace(nodes: OutlineNode[] | undefined, from: OutlineNode, to: Outlin
   if (i >= 0) { nodes[i] = to; return true; }
   return nodes.some((n) => n && replace(n.children, from, to));
 }
-/** Region rows with no stored id get a session id (`__tmp-N`: never serialized, never sealed). */
+/** Region rows with no stored id get a session id (`__sid-N`: never serialized, never sealed). */
 function pinIds(doc: OutlineFoldDoc | null): void {
   const used = new Set<string>();
   walk(doc?.nodes, (n) => { if (n.id) used.add(String(n.id)); });
@@ -582,7 +582,7 @@ export function createOutlineDoc(o: OutlineDocOptions): OutlineDocHandle {
     toggleTask(id, ref, to) {
       const raw = handle.getText();
       const key = String(id);
-      // 0.5.15: resolve the row for certain against the whole text: written <id:N> or __tmp-N
+      // 0.5.15: resolve the row for certain against the whole text: written <id:N> or __sid-N
       // session id first, then the path from the shown top row, then the ordinal, each behind
       // a title check. A row that cannot be found for certain is refused and reported.
       const r0: MapNodeRef = typeof ref === 'number' ? { id: key, ordinal: ref } : ref ?? { id: key };

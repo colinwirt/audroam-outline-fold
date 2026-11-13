@@ -198,7 +198,7 @@ function layoutFoldIds(doc: OutlineFoldDoc): string[] {
   };
   walk(doc.nodes);
   // Drop ids whose node is gone (a Map delete left them in fold.ids). A stale
-  // `__tmp-` written into the layout block was then merged back as a body line.
+  // `__sid-` written into the layout block was then merged back as a body line.
   const live = doc.fold.ids.filter((id) => present.has(id));
   if (live.length !== doc.fold.ids.length) {
     doc.fold.ids = live;
@@ -243,7 +243,7 @@ function linkJumpTargets(doc: OutlineFoldDoc): void {
   walk(doc.nodes);
   for (const n of auto) {
     if (!n.id || !targets.has(n.id)) continue;
-    // A `__tmp-` id cannot be written. A jump that names one gets a normal id.
+    // A `__sid-` id cannot be written. A jump that names one gets a normal id.
     if (!isSessionId(n.id)) { delete n.autoId; continue; }
     const old = n.id;
     const neu = assignPersistentId(doc, n);

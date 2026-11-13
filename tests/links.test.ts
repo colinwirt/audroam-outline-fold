@@ -151,7 +151,7 @@ describe('ids: lazy, never written by the parser', () => {
     const text = serialize(doc);
     expect(b.id).toMatch(/^[A-Za-z0-9]/);
     expect(text).toBe(`- A <r:${b.id}>\n- B <id:${b.id}>\n`);
-    expect(text).not.toContain('__tmp-');
+    expect(text).not.toMatch(/__tmp-|__sid-/);
   });
 
   it('cleanIds keeps an id a <r:> jump names', () => {

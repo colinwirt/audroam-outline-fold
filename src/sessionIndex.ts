@@ -1,13 +1,15 @@
 /**
- * Session index (0.6.6): every node in a visualisation session gets a fresh
- * view key (`__sid-N`), including nodes with an authored `<id:N>`.
+ * Session index (0.6.6): every node in a visualisation session gets one session
+ * id (`__sid-N`), including nodes with an authored `<id:N>`.
  *
  * - All internal keying (Map paint, hit-test, layout, selection, focus, style and
- *   fold targets) uses view keys only. No positional key is ever an identity.
- * - Authored ids (`<id:N>`) and session ids (`__tmp-N`) stay on `node.id`: they are
- *   the node's fixed reference, the one serialize writes (authored only) and the one
- *   external callers use (deep links, `#id:N`, `<r:…>` jumps, fold lists, host focus).
- *   `resolve(ref)` turns a fixed reference into the view key; `refOf(key)` goes back.
+ *   fold targets) uses that session id. No positional key is ever an identity.
+ * - The view key lives in this index. It is stored on `node.id` with `autoId` only
+ *   when a caller already needs a name for the line (`parse({ sessionIds: true })`,
+ *   a region row, a zone row, or a fold). Sync does not write one onto a line that
+ *   has none. An authored id (`<id:N>`) stays on `node.id` and is a separate fixed
+ *   reference: serialize writes it, and deep links, `#id:N`, and `<r:…>` jumps use
+ *   it. `resolve(ref)` turns an authored id into the session id; `fixedOf(key)` goes back.
  * - A duplicate authored id never shares a key: the first line in document order owns
  *   the reference, later lines keep their own view keys and are listed in `duplicates()`.
  * - Line numbers are derived data: `lineOf(key)` / `keyAtLine(line)` come from the
@@ -17,14 +19,18 @@
  *   or digit, and serialize writes `node.id` (authored) only, so `__sid-` cannot leak.
  *
  * Carry-over: when the host hands over a re-parsed tree (new node objects) the index
- * keeps each node's view key by (1) its authored id, then (2) the line map between the
+ * keeps each node's session id by (1) its authored id, then (2) the line map between the
  * old and new text (unchanged lines above and below the edit, and a same-size edited
  * hunk line for line, so typing on a line keeps its key), then (3) caption + depth in
  * order for trees built without line information. Anything left gets a fresh key.
+ * A session id already stored on `node.id` (`autoId`) is adopted as that key, so
+ * fold state and Follow in text name one reference. Sync does not write a session
+ * id onto a line that does not have one.
  */
+import { SESSION_ID_PREFIX } from './nodeAddress.js';
 import type { OutlineNode } from './types.js';
 
-export const VIEW_KEY_PREFIX = '__sid-';
+export const VIEW_KEY_PREFIX = SESSION_ID_PREFIX;
 
 /** True for a view key minted by a session index. */
 export function isViewKey(k: string | null | undefined): boolean {
@@ -66,13 +72,13 @@ export interface SessionIndex {
   keyOf(n: OutlineNode): string;
   /** The node's view key when it already has one (never mints). */
   peek(n: OutlineNode): string | null;
-  /** Node for a view key or a fixed reference (`<id:>` / `__tmp-`). */
+  /** Node for a session id or an authored `<id:>`. */
   nodeOf(keyOrRef: string | null | undefined): OutlineNode | null;
   /** View key for a view key or a fixed reference; null when unknown. */
   resolve(keyOrRef: string | null | undefined): string | null;
-  /** The node's fixed reference (`node.id`: authored or `__tmp-`), or null. */
+  /** The node's `node.id` (authored or session), or null. */
   refOf(key: string): string | null;
-  /** Authored id only (never `__tmp-`), or null. */
+  /** Authored id only (never a session id), or null. */
   fixedOf(key: string): string | null;
   /** Fixed reference when the node has one, else the view key. */
   publicId(key: string): string;
@@ -132,10 +138,21 @@ export function createSessionIndex(): SessionIndex {
 
   const mint = (): string => `${VIEW_KEY_PREFIX}${++seq}`;
 
+  const claim = (id: string): void => {
+    if (!isViewKey(id)) return;
+    const n = Number(id.slice(VIEW_KEY_PREFIX.length));
+    if (Number.isFinite(n) && n > seq) seq = n;
+  };
+
   const keyOf = (n: OutlineNode): string => {
     let k = keyByNode.get(n);
     if (!k) {
-      k = mint();
+      if (n.id && n.autoId && isViewKey(n.id) && !nodeByKey.has(n.id)) {
+        k = n.id;
+        claim(k);
+      } else {
+        k = mint();
+      }
       keyByNode.set(n, k);
       nodeByKey.set(k, n);
       if (n.id && !keyByRef.has(n.id)) keyByRef.set(n.id, k);
@@ -150,6 +167,9 @@ export function createSessionIndex(): SessionIndex {
     dups = new Map();
     ordered = [];
     keyByLine = new Map();
+    for (const n of preorder(roots || [])) {
+      if (n.id && n.autoId && isViewKey(n.id)) claim(n.id);
+    }
     for (const n of preorder(roots || [])) {
       const k = keyOf(n);
       nodeByKey.set(k, n);
@@ -183,7 +203,7 @@ export function createSessionIndex(): SessionIndex {
       taken.add(k);
       return true;
     };
-    // (1) Authored ids (not `__tmp-`: those are re-minted by every parse).
+    // (1) Authored ids. A session id already on the node is adopted in keyOf.
     const oldByFixed = new Map<string, string>();
     for (const o of oldNodes) {
       if (o.id && !o.autoId && !oldByFixed.has(o.id)) oldByFixed.set(o.id, keyByNode.get(o)!);

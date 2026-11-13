@@ -28,21 +28,22 @@ export function collectNodeIds(nodes: OutlineNode[]): Set<string> {
 }
 
 /**
- * Session ids (`__tmp-7`). One series for the main outline, an open secure zone,
- * and any nested submap. Never a saved `<id:>`: the parser only accepts an id
+ * Session ids (`__sid-7`). One series for the renderer, the main outline, an open
+ * secure zone, and any nested submap. This is the same id Follow in text and the
+ * Map use as a view key. Never a saved `<id:>`: the parser only accepts an id
  * that starts with a letter or a digit, so this spelling cannot be written and
  * read back as a persistent id. A width, a payload, or a fold that must survive
  * a reload mints a normal id instead (`assignPersistentId`). Style
  * (colour / icon / fill:none) mints the same way width and payload do.
  */
-export const SESSION_ID_PREFIX = '__tmp-';
+export const SESSION_ID_PREFIX = '__sid-';
 
-/** True for a tab-local id minted by `nextSessionId`. */
+/** True for a tab-local session id (`__sid-N`). */
 export function isSessionId(id: string | null | undefined): boolean {
   return !!id && id.startsWith(SESSION_ID_PREFIX);
 }
 
-/** Next `__tmp-N` not already in `used`. The id is added to `used`. */
+/** Next `__sid-N` not already in `used`. The id is added to `used`. */
 export function nextSessionId(used: Set<string>): string {
   return nextAutoId(used, SESSION_ID_PREFIX);
 }
@@ -85,7 +86,8 @@ export function assignPersistentId(
   node: OutlineNode,
   opts?: AutoIdOptions,
 ): string {
-  // A real id is already safe to write. A `__tmp-` id is not: mint a normal one.
+  // A real id is already safe to write. A session id is not: mint a normal one.
+  const previous = node.id && isSessionId(node.id) ? node.id : undefined;
   if (node.id && !isSessionId(node.id)) {
     delete node.autoId;
     return node.id;
@@ -100,6 +102,13 @@ export function assignPersistentId(
   }
   node.id = id ?? nextAutoId(used, prefix);
   delete node.autoId;
+  if (previous && previous !== node.id && doc.fold?.ids) {
+    const at = doc.fold.ids.indexOf(previous);
+    if (at >= 0) {
+      doc.fold.ids[at] = node.id;
+      if (doc.frontmatter?.foldIds) doc.frontmatter.foldIds = [...doc.fold.ids];
+    }
+  }
   moveFoldMarkToDoc(doc, node);
   return node.id;
 }
@@ -131,7 +140,7 @@ export function writtenId(node: OutlineNode | null | undefined): string | null {
 
 /**
  * Copy jump / Copy link (0.2.39): the line's written id, or a new one when
- * `canMint`. A new id comes from `assignPersistentId` (a `__tmp-` session id
+ * `canMint`. A new id comes from `assignPersistentId` (a `__sid-` session id
  * is replaced by a normal id; otherwise the free position or the next number).
  * Only `node.id` changes: the caption, its tags and their spelling and spacing
  * are untouched. Read-only (`canMint: false`) and no written id: nothing is
@@ -164,7 +173,7 @@ function moveFoldMarkToDoc(doc: OutlineFoldDoc, node: OutlineNode): void {
 function needsPersistentId(node: OutlineNode): boolean {
   if (node.id && !node.autoId) return false;
   // 0.6.2: any layout entry that serialize would write (w / colour / icon / fill:none)
-  // needs a real id — not only width. Otherwise `__tmp-N:` leaks into the layout block.
+  // needs a real id — not only width. Otherwise `__sid-N:` leaks into the layout block.
   const L = node.layout;
   if (L && (typeof L.w === 'number' || L.color || L.icon || L.noFill)) return true;
   if (node.sealed && (node.sealed.ciphertext || node.sealed.uri)) return true;

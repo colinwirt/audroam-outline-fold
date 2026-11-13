@@ -18,7 +18,7 @@ function stableView() {
     each(d.nodes, (n) => {
       if (!n.autoId) return;
       const k = n.title;
-      if (!seen.has(k)) seen.set(k, `__tmp-${next++}`);
+      if (!seen.has(k)) seen.set(k, `__sid-${next++}`);
       n.id = seen.get(k)!;
     });
     return d;

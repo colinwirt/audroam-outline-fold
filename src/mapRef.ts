@@ -6,7 +6,7 @@ import type { OutlineNode } from './types.js';
  * of the note ("View from here"), so the reference is resolved against a parse of the WHOLE
  * text, never by position within what the Map shows.
  *
- * Order: the id (a written `<id:N>`, or a `__tmp-N` session id, which `parse(text,
+ * Order: the id (a written `<id:N>`, or a `__sid-N` session id, which `parse(text,
  * { sessionIds: true })` gives the same row every time for the same text), then the path
  * (the shown top row's id or index, then child indexes), then the 0.5.14 ordinal as a last
  * resort. Every match must carry the same title, or the edit is refused.

@@ -13,7 +13,7 @@ const COLIN = [
 ].join('\n');
 
 function dropTmp(text: string) {
-  return text.replace(/\s*<id:__tmp-\d+>/g, '');
+  return text.replace(/\s*<id:__(?:tmp|sid)-\d+>/g, '');
 }
 
 function findMitre(nodes: any[]): any | undefined {

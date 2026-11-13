@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+## 0.7.3 — 2026-11-13
+
+One session id series. Fold and Follow name `__sid-N`. An authored `<id:>` stays the written reference.
+
+### One session id for fold and follow
+
+- **One series, `__sid-N`.** Parse, zones, region rows, and Map fold use that id, and the session index adopts it as the view key. Follow in text and `doc.fold` name the same reference. A fold renames a different session id already on the node to that view key. Assigning an authored id moves a fold entry off the session id onto the new id. Reading the index does not write a session id onto a line that does not have one. `__tmp-N` is no longer minted.
+- Every node still has a session view key, including a node that already has an authored id. Map paint, hit-testing, focus, and Follow hold that key. The authored id is what serialize writes, and a fold of a node that already has one is stored under that id.
+
 ## 0.7.2 — 2026-11-12
 
 Style toolbar enables from session-key Map focus (no need to open the node menu). Colour `…` more button is a swatch-sized circle.

@@ -38,7 +38,7 @@ function mount(doc: ReturnType<typeof mk>, view: () => OutlineFoldDoc) {
 
 const each = (l: OutlineNode[] | undefined, f: (n: OutlineNode) => void): void => { for (const n of l ?? []) { f(n); each(n.children, f); } };
 
-it('page/library agreement: every row of a __tmp view resolves by its id in the whole text', () => {
+it('page/library agreement: every row of a session-id view resolves by its id in the whole text', () => {
   const view = parse(TEXT, { sessionIds: true });
   let n = 0;
   each(view.nodes, (node) => {
@@ -77,6 +77,6 @@ it('title mismatch: a stale Map row is refused, the text is not touched, and a r
   const { mv, click } = mount(doc, () => stale);
   click('dust the lamp');
   expect(doc.getText()).toBe(edited);
-  expect(events).toEqual([{ action: 'tick', id: '__tmp-1', reason: 'title-mismatch', title: 'dust the lamp' }]);
+  expect(events).toEqual([{ action: 'tick', id: '__sid-1', reason: 'title-mismatch', title: 'dust the lamp' }]);
   mv.destroy?.();
 });

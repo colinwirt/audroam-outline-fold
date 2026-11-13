@@ -687,7 +687,7 @@ function keptSpellings(
 
 export interface ParseOptions {
   /**
-   * Give every line without `<id:…>` a session id (`autoId: true`, `__tmp-N`)
+   * Give every line without `<id:…>` a session id (`autoId: true`, `__sid-N`)
    * from `nextAutoId`. The same series is used in an open secure zone and a
    * nested submap. A `(+)` on such a line folds it. Serialize does not write
    * session ids. Pass `{ prefix }` to mint a different series.

@@ -71,7 +71,7 @@ describe('bug 1: zone Tab never breaks the tree, Save / Lock always settle', () 
     const walk = (l: typeof a.nodes) => l.forEach((n) => { ids.push(n.id!); if (n.children) walk(n.children); });
     walk(a.nodes);
     expect(new Set(ids).size).toBe(ids.length);
-    expect(ids.slice(1).every((i) => /^__tmp-\d+$/.test(i) && i !== '4')).toBe(true);
+    expect(ids.slice(1).every((i) => /^__sid-\d+$/.test(i) && i !== '4')).toBe(true);
     const b = parseZoneText('- head\n  - a!\n- shallow\n    - deep\n  - b', '4', a);
     expect(b.nodes[0]!.children![0]!.id).toBe(a.nodes[0]!.children![0]!.id); // carried while typing
     expect(oneZoneRoot(parse('')).nodes).toHaveLength(1);

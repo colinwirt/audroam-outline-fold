@@ -103,7 +103,8 @@ describe('0.5.22 colour + icon in the layout block', () => {
     expect(keyB).toMatch(/^__sid-/);
     mv.setNodeColour(keyB, 'creek');
     const b = doc().nodes[1]!;
-    expect(b.id && !b.id.startsWith('__tmp')).toBeTruthy();
+    expect(b.id).toMatch(/^[A-Za-z0-9]/);
+    expect(b.autoId).toBeFalsy();
     mv.setNodeColourFill(b.id!, true);
     mv.setNodeIcon('a', '🌲');
     const out = serialize(doc());

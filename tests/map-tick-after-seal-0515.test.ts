@@ -71,7 +71,7 @@ const ROWS: [string, string, string][] = [
 ];
 
 for (const [label, from, to] of ROWS) for (const hv of [false, true]) {
-  it(`below locked seals (${hv ? 'host minted ids' : '__tmp ids'}): '${label}' toggles its own line in place`, () => {
+  it(`below locked seals (${hv ? 'host minted ids' : 'session ids'}): '${label}' toggles its own line in place`, () => {
     const { doc, mv, click } = mount(TEXT, hv);
     click(label);
     expect(doc.getText()).toBe(TEXT.replace(from, to));
@@ -81,7 +81,7 @@ for (const [label, from, to] of ROWS) for (const hv of [false, true]) {
 
 // "View from here": the host shows one branch ({ nodes: [branch] }), so a row's place in the
 // shown doc is not its place in the note.
-it('View from here (__tmp ids, as the page now mints them): a tick on the shown branch toggles its own line', () => {
+it('View from here (session ids, as the page now mints them): a tick on the shown branch toggles its own line', () => {
   document.body.innerHTML = '';
   const doc = createOutlineDoc({ text: TEXT, wipeOnPagehide: false, autoLockMs: 60000, debounceMs: 60000 });
   const shown = () => { const d = parse(doc.getText(), { sessionIds: true }); return { ...d, nodes: [d.nodes.find((n) => n.title.includes('issues'))!] }; };

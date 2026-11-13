@@ -67,7 +67,7 @@ describe('0.6.2 layout never serializes __tmp- ids', () => {
     const { layouts } = parseLayoutBlock(
       COLIN_LAYOUT.slice(COLIN_LAYOUT.indexOf('--- layout ---')),
     );
-    expect(Object.keys(layouts).some((k) => k.startsWith('__tmp-'))).toBe(false);
+    expect(Object.keys(layouts).some((k) => k.startsWith('__tmp-') || k.startsWith('__sid-'))).toBe(false);
     expect(layouts['5']?.icon).toBe('⭐');
   });
 
@@ -79,7 +79,7 @@ describe('0.6.2 layout never serializes __tmp- ids', () => {
     b.icon = '⭐';
     b.layout = { ...(b.layout || {}), icon: '⭐' };
     const text = serialize(d);
-    expect(text).not.toMatch(/__tmp-/);
+    expect(text).not.toMatch(/__tmp-|__sid-/);
     expect(text).toMatch(/\n\d+:\n {2}icon: ⭐\n/);
     expect(b.id && !isSessionId(b.id)).toBe(true);
     expect(text).toContain(`- B <id:${b.id}>`);
@@ -91,7 +91,7 @@ describe('0.6.2 layout never serializes __tmp- ids', () => {
     a.color = 'moss';
     a.layout = { color: 'moss', colorKey: 'colour' };
     const text = serialize(d);
-    expect(text).not.toMatch(/__tmp-/);
+    expect(text).not.toMatch(/__tmp-|__sid-/);
     expect(text).toMatch(/\n\d+:\n {2}colour: moss\n/);
 
     const d2 = parse('- A\n', { sessionIds: true });
@@ -99,7 +99,7 @@ describe('0.6.2 layout never serializes __tmp- ids', () => {
     n.noFill = true;
     n.layout = { noFill: true };
     const t2 = serialize(d2);
-    expect(t2).not.toMatch(/__tmp-/);
+    expect(t2).not.toMatch(/__tmp-|__sid-/);
     expect(t2).toMatch(/\n\d+:\n {2}fill: none\n/);
   });
 
@@ -109,7 +109,7 @@ describe('0.6.2 layout never serializes __tmp- ids', () => {
     a.layout = { icon: '⭐' };
     // Deliberately do not mint.
     const layouts = collectLayouts(d.nodes);
-    expect(Object.keys(layouts).some((k) => k.startsWith('__tmp-'))).toBe(false);
+    expect(Object.keys(layouts).some((k) => k.startsWith('__tmp-') || k.startsWith('__sid-'))).toBe(false);
   });
 
   it('FAILING: restyle of real id 5 updates 5: and does not add __tmp- keys', () => {
@@ -120,7 +120,7 @@ describe('0.6.2 layout never serializes __tmp- ids', () => {
     mitre.layout = { ...(mitre.layout || {}), icon: '🌲' };
     assignPersistentId(d, mitre); // real id stays 5
     const text = serialize(d);
-    expect(text).not.toMatch(/__tmp-/);
+    expect(text).not.toMatch(/__tmp-|__sid-/);
     expect(text).toMatch(/\n5:\n {2}icon: 🌲\n/);
     // Round-trip: 5 still carries the new icon
     const again = parse(text);

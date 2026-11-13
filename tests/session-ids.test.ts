@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   assignPersistentId,
+  createSessionIndex,
   parse,
   serialize,
   setExpandLevel,
@@ -40,7 +41,7 @@ const load = (text: string) => parse(text, { sessionIds: true });
 describe('parse sessionIds', () => {
   it('gives id-less lines session ids in document order and round-trips byte for byte', () => {
     const doc = load(NOTE);
-    expect(byTitle(doc, 'Food').id).toBe('__tmp-6');
+    expect(byTitle(doc, 'Food').id).toBe('__sid-6');
     expect(byTitle(doc, 'Food').autoId).toBe(true);
     expect(serialize(doc)).toBe(NOTE);
   });
@@ -97,9 +98,9 @@ describe('parse sessionIds', () => {
 
   it('sparse ids: session ids skip 2 and 5, never collide, and the written id is one of them', () => {
     const doc = load(SPARSE);
-    expect(['a', 'b', 'c', 'd', 'e', 'f'].map((t) => byTitle(doc, t).id)).toEqual(['__tmp-1', '2', '__tmp-2', '__tmp-3', '5', '__tmp-4']);
+    expect(['a', 'b', 'c', 'd', 'e', 'f'].map((t) => byTitle(doc, t).id)).toEqual(['__sid-1', '2', '__sid-2', '__sid-3', '5', '__sid-4']);
     expect(serialize(doc)).toBe(SPARSE);
-    const folded = serialize(toggleFold(doc, '__tmp-3'));
+    const folded = serialize(toggleFold(doc, '__sid-3'));
     expect(folded).toBe(SPARSE.replace('- d\n', '- d (+)\n'));
     const node = byTitle(doc, 'c');
     expect(assignPersistentId(doc, node)).toBe('3');
@@ -110,7 +111,42 @@ describe('parse sessionIds', () => {
   it('skips ids keyed in the payloads and layout blocks', () => {
     const text = '- a\n- b <id:3>\n\n--- layout ---\nfold-: \n9:\n  w: 120\n---\n';
     const doc = load(text);
-    expect(byTitle(doc, 'a').id).toBe('__tmp-1');
+    expect(byTitle(doc, 'a').id).toBe('__sid-1');
+  });
+
+  it('the session index adopts the parsed session id as the view key', () => {
+    const doc = load(SPARSE);
+    const idx = createSessionIndex();
+    idx.sync(doc);
+    const c = byTitle(doc, 'c');
+    expect(c.autoId).toBe(true);
+    expect(idx.keyOf(c)).toBe(c.id);
+  });
+
+  it('a reparse keeps the view key and does not write it onto an id-less line', () => {
+    const idx = createSessionIndex();
+    const first = parse('- a\n  - b\n');
+    idx.sync(first);
+    const key = idx.keyOf(first.nodes[0]!);
+    expect(key).toMatch(/^__sid-/);
+    expect(first.nodes[0]!.id).toBeUndefined();
+    const second = parse('- a\n  - b\n');
+    idx.sync(second);
+    expect(idx.keyOf(second.nodes[0]!)).toBe(key);
+    expect(second.nodes[0]!.id).toBeUndefined();
+  });
+
+  it('promoting a folded session id moves the fold onto the authored id', () => {
+    const doc = load('- a\n  - b\n- c\n  - d\n');
+    const id = byTitle(doc, 'c').id!;
+    const folded = toggleFold(doc, id);
+    expect(folded.fold.ids).toContain(id);
+    const node = byTitle(folded, 'c');
+    const authored = assignPersistentId(folded, node);
+    expect(authored).toBe('3');
+    expect(folded.fold.ids).toContain('3');
+    expect(folded.fold.ids).not.toContain(id);
+    expect(serialize(folded)).toMatch(/^- a\n {2}- b\n- c <id:3> \(\+\)\n {2}- d\n/);
   });
 
   it('a real fold- id stays listed; a session id stays off the list', () => {

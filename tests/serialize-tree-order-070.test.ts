@@ -372,7 +372,7 @@ describe('serialize emits nodes in tree pre-order', () => {
     expect(parseSession(merged).nodes.map((n) => n.title)).toEqual(['Target', 'Keep']);
   });
 
-  it('deleting a folded session-id node does not leak fold-: or __tmp- into the body', () => {
+  it('deleting a folded session-id node does not leak fold-: or a session id into the body', () => {
     const prev = ['- Root <id:r> (+)', '  - Keep <id:k> (+)', '  - ', ''].join('\n');
     const doc = parseSession(prev);
     const blank = doc.nodes[0]!.children!.find((n) => !String(n.title ?? '').trim());
@@ -385,7 +385,7 @@ describe('serialize emits nodes in tree pre-order', () => {
     const gone = still.splice(i, 1)[0]!;
     if (gone.id && !live.fold.ids.includes(gone.id)) live.fold.ids.push(gone.id);
     const next = assertPreorder('delete-folded-blank', live);
-    expect(next).not.toMatch(/__tmp-/);
+    expect(next).not.toMatch(/__tmp-|__sid-/);
     expect(bodyHasLayoutLeak(next)).toBe(false);
     const merged = mergeKeeping(prev, serialize(parseSession(prev)), next);
     expect(nodeLines(merged)).toEqual(nodeLines(next));

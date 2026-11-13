@@ -385,7 +385,7 @@ export function parseLayoutBlock(block: string): {
       current = isSessionId(top[1]) ? null : top[1]!;
       continue;
     }
-    // Unknown top-level line (`__tmp-3:` before KEY_LINE rejected it, typos, …):
+    // Unknown top-level line (`__sid-3:` does not match KEY_LINE, typos, …):
     // flush so following indented fields do not stick to the previous id.
     flush();
   }
