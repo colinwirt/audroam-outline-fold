@@ -20,7 +20,7 @@ export type OFEvent =
   | { type: 'focusChange'; id: ScopedId; source: FocusSource };
 
 /** Who moved the shared focus. */
-export type FocusSource = 'map' | 'outline' | 'editor' | 'command';
+export type FocusSource = 'map' | 'outline' | 'editor' | 'command' | 'again';
 
 export type OFCommand =
   | { cmd: 'open'; region: RegionId; passphrase: string }

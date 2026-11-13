@@ -47,6 +47,22 @@ describe('a line swap keeps the view key on the words', () => {
     expect(idx.keyOf(byTitle(edited, 'Beta'))).toBe(kB);
   });
 
+  it('a fresh session-id reparse, as the host does, still keeps the key on the words', () => {
+    const doc = createOutlineDoc({
+      text: '- Alpha\n- Beta\n- Gamma\n',
+      wipeOnPagehide: false,
+      autoLockMs: 60_000,
+      debounceMs: 60_000,
+    });
+    const idx = doc.sessionIndex();
+    const kB = idx.keyOf(byTitle(doc.root(), 'Beta'));
+    doc.on('change', () => { idx.sync(parse(doc.getText(), { sessionIds: true })); });
+    doc.setText('- Beta\n- Alpha\n- Gamma\n', { source: 'text' });
+    expect(idx.keyOf(byTitle(doc.root(), 'Beta'))).toBe(kB);
+    expect(doc.lineOf(kB)).toBe(0);
+    expect(idx.keyOf(byTitle(doc.root(), 'Alpha'))).not.toBe(kB);
+  });
+
   it('a parent line swapped with its child keeps both keys on their text', () => {
     const idx = createSessionIndex();
     const a = parse('- Parent\n  - Child\n- Sibling\n');
@@ -117,5 +133,62 @@ describe('a line swap keeps the view key on the words', () => {
     await tick();
     expect(caretLine()).toContain('Beta');
     expect(state.focus).toBe(key);
+  });
+
+  it('clicking the focused pill again follows, and does nothing when the caret is already there', async () => {
+    document.body.innerHTML = '';
+    const doc = createOutlineDoc({
+      text: '- Alpha\n- Beta\n- Gamma\n',
+      wipeOnPagehide: false,
+      autoLockMs: 60_000,
+      debounceMs: 60_000,
+    });
+    const mapHost = document.createElement('div');
+    Object.defineProperty(mapHost, 'clientWidth', { value: 1200, configurable: true });
+    Object.defineProperty(mapHost, 'clientHeight', { value: 800, configurable: true });
+    const edHost = document.createElement('div');
+    document.body.append(mapHost, edHost);
+    const layout = { version: 1, nodes: {} as Record<string, unknown>, _source: 'auto-pack' };
+    const state = { focus: '' };
+    const link = doc.focusLink;
+    const w = wireFocus(link);
+    mountTextEditor(edHost, doc, { followInText: () => true });
+    const mv = createMapView(mapHost, {
+      ...doc.mapOptions(),
+      getDoc: () => doc.root(),
+      setDoc: () => {},
+      getLayout: () => layout,
+      getFocusId: () => state.focus,
+      setFocusId: (id: string) => {
+        const again = state.focus === id;
+        state.focus = id;
+        if (!link.set(id, 'map') && again) link.again();
+      },
+      onFocusChange: (id: string) => w.onMapFocus(id),
+      onChange: () => mv.paint(),
+    });
+    w.attachMap(mv);
+    mv.paint();
+    await tick();
+    const pill = (title: string) => {
+      const hit = [...mapHost.querySelectorAll<HTMLElement>('.map-node')].find((n) => (n.textContent || '').includes(title));
+      if (!hit) throw new Error('no pill ' + title);
+      return hit;
+    };
+    const view = () => EditorView.findFromDOM(document.querySelector('.of-text-editor .cm-editor') as HTMLElement);
+    pill('Beta').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    await tick();
+    expect(caretLine()).toContain('Beta');
+    view().dom.dispatchEvent(new KeyboardEvent('keydown', { key: 'x' }));
+    view().dispatch({ selection: { anchor: view().state.doc.line(3).from } });
+    expect(caretLine()).toContain('Gamma');
+    pill('Beta').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    await tick();
+    expect(caretLine()).toContain('Beta');
+    const head = view().state.selection.main.head;
+    pill('Beta').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    await tick();
+    expect(view().state.selection.main.head).toBe(head);
+    expect(caretLine()).toContain('Beta');
   });
 });

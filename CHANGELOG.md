@@ -1,6 +1,10 @@
 # Changelog
 
-## Unreleased
+## 0.7.5 — 2026-11-13
+
+Clicking the map item that is already focused runs Follow in text again.
+
+- A second click on the focused map item follows that line again, including during the pause after a keystroke. If the caret is already on that line, the editor does not move the selection or scroll. Moving focus to a different item still waits out the typing pause.
 
 ## 0.7.4 — 2026-11-13
 

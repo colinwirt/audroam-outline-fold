@@ -50,6 +50,8 @@ export function wireFocus(link: FocusLink): FocusWiring {
    */
   const toOutlineLook = (id: string): string => map?.hostId?.(id) ?? id;
   const off = link.subscribe((id, source) => {
+    // A second click on the focused item only re-runs Follow in text.
+    if (source === 'again') return;
     if (source !== 'map' && source !== 'command') map?.setFocus(id);
     if (source !== 'outline' && outline) {
       const look = toOutlineLook(id);

@@ -9,6 +9,12 @@ export interface FocusLink {
   get(): ScopedId | null;
   /** Returns true when focus moved (and `focusChange` was emitted). */
   set(id: ScopedId, source: FocusSource): boolean;
+  /**
+   * Tell followers to follow the current id again. A `set` of the current id stays a
+   * no-op, so a second click on the focused map item uses this. Source is `again`:
+   * Map and Outline do not move. Returns false when nothing is focused.
+   */
+  again(): boolean;
   /** Followers: called with the new id and who moved it (skip your own source). */
   subscribe(fn: (id: ScopedId, source: FocusSource) => void): () => void;
 }
@@ -31,6 +37,19 @@ export function createFocusLink(api?: HostApi): FocusLink {
         busy = false;
       }
       api?.emit({ type: 'focusChange', id, source });
+      return true;
+    },
+    again() {
+      if (busy || !cur) return false;
+      const id = cur;
+      busy = true;
+      try {
+        for (const fn of [...subs]) {
+          try { fn(id, 'again'); } catch { /* one broken follower must not stop the rest */ }
+        }
+      } finally {
+        busy = false;
+      }
       return true;
     },
     subscribe(fn) {

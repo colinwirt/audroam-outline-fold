@@ -1005,6 +1005,8 @@ export function outlineEditor(opts: OutlineEditorOptions): Extension[] {
     }
     if (pos == null && local === known.branchId && doc.lines) pos = doc.line(1).from;
     if (pos == null) return false;
+    const row = doc.lineAt(pos);
+    if (z.state.selection.main.head >= row.from && z.state.selection.main.head <= row.to) return true;
     // Map focus must not take DOM focus. The scroll target is this row, not the
     // zone widget: a tall widget's end would sit on the lower half of the pane.
     followSnapUntil.set(region, Date.now() + 500);
@@ -1046,15 +1048,21 @@ export function outlineEditor(opts: OutlineEditorOptions): Extension[] {
       // id once through the fixed-ref index; the raw id is never a line or position.
       const local = id.includes(':') ? id.slice(id.lastIndexOf(':') + 1) : id;
       const doc = view.state.doc;
+      const onLine = (line: { from: number; to: number }): boolean => {
+        const head = view.state.selection.main.head;
+        return head >= line.from && head <= line.to;
+      };
       const ln = opts.lineOf?.(id);
       if (typeof ln === 'number' && ln >= 0 && ln < doc.lines) {
         const line = doc.line(ln + 1);
+        if (onLine(line)) return;
         view.dispatch({ selection: { anchor: line.from }, effects: EditorView.scrollIntoView(line.from, { y: 'center' }) });
         return;
       }
       for (let i = 1; i <= doc.lines; i++) {
         const line = doc.line(i);
         if (line.text.includes(`<id:${local}>`)) {
+          if (onLine(line)) return;
           view.dispatch({ selection: { anchor: line.from }, effects: EditorView.scrollIntoView(line.from, { y: 'center' }) });
           return;
         }
@@ -1062,7 +1070,9 @@ export function outlineEditor(opts: OutlineEditorOptions): Extension[] {
     };
     const off = opts.focus?.subscribe((id, source) => {
       if (source === 'editor') return;
-      if (Date.now() - typedAt < 1500) return; // paused while typing
+      // A second click on the focused item follows even during the typing pause.
+      // Other focus moves still wait, so a keystroke is not yanked back.
+      if (source !== 'again' && Date.now() - typedAt < 1500) return;
       placeFollow(id);
     });
     return {
