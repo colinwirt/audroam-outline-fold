@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.7.7 — 2026-11-14
+
+A `\n` inside code stays literal, and `<font:code>` paints children on the map.
+
+- A `\n` inside a backtick code block stays the two characters. It no longer becomes a line break in the middle of the code. The `\n` that opens and closes a fenced block still starts the block. `<br>` still breaks a fence into lines.
+- `<font:code>` on a node paints its children as code on the map, including the rows inside an open zone and a time or session leaf. `<font:text>` or `<font:none>` on a child still stops it.
+- The Map node menu and the host Style menu have a Code item. Turning it on writes `font: code` in that node's layout entry and gives the line an id when it has none. Turning it off removes the entry, so the node follows its parent again. A row inside a sealed zone gets `<font:code>` on the line instead of a layout entry.
+
 ## 0.7.6 — 2026-11-13
 
 Code format on a node, and layout entries that leave with the line.

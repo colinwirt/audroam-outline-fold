@@ -64,6 +64,22 @@ it('setNodeCloud / setNodeIcon / setNodeColour on a scoped id style the zone chi
   mv.destroy?.();
 });
 
+it('setNodeFont on a scoped id writes <font:code> on the zone line, not the layout block', async () => {
+  const { mv, doc, sub, styled } = await mountMap();
+  const id = scopeId('s:3', '6');
+  mv.setNodeFont(id, 'code');
+  const n = sub.nodes[0]!.children![0]!;
+  expect(n.font).toBe('code');
+  expect(n.layout?.font).toBeUndefined();
+  expect(serialize(sub)).toMatch(/seems good <font:code>/);
+  expect(serialize(doc)).not.toMatch(/font:\s*code/);
+  expect(styled).toEqual([id]);
+  mv.setNodeFont(id, undefined);
+  expect(sub.nodes[0]!.children![0]!.font).toBeUndefined();
+  expect(serialize(sub)).not.toMatch(/<font:/);
+  mv.destroy?.();
+});
+
 it('a locked zone ignores the setters (no write, no host call)', async () => {
   const { mv, sub, styled } = await mountMap(true);
   const id = scopeId('s:3', '6');

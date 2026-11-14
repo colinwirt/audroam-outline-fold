@@ -73,7 +73,13 @@ describe('0.5.23 code regions', () => {
     expect(css).not.toMatch(/\.colour-fill[^{},]*\.map-code-bg/);
     // Code ink outranks the dark-ink label rule of a Highlighter/Audroam fill.
     expect(g('c')!.querySelector('tspan.map-code')).toBeTruthy();
-    expect(css).toContain('.map-node.map-node .map-label tspan.map-code { fill: var(--map-code-ink); }');
+    expect(css).toContain(
+      '.map-node.map-node .map-label tspan.map-code,\n' +
+        '.map-svg .map-region-node .map-label tspan.map-code {\n' +
+        '  fill: var(--map-code-ink);\n' +
+        '  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;\n' +
+        '}',
+    );
     const rd = [...g('d')!.querySelectorAll('rect.map-code-bg')];
     expect(rd.length).toBe(1); // two fenced lines join into one block
     expect(Number(rd[0]!.getAttribute('height'))).toBeGreaterThan(20);

@@ -731,6 +731,12 @@ export interface MapViewHandle {
   setNodeColour: (id: string, color: string | undefined) => void;
   /** 0.5.22: set or clear a node icon (written to its layout entry). */
   setNodeIcon: (id: string, token: string | undefined) => void;
+  /**
+   * Set or clear a node's code font. On writes `font: code` in that node's
+   * layout entry (and mints an id when the line has none). Off removes it,
+   * so the node follows its parent again. A sealed-zone row is written inline.
+   */
+  setNodeFont: (id: string, font: 'code' | undefined) => void;
   /** 0.5.21: add an image under a node as a thumbnail child (editors). Resolves the child key, or null. */
   addImage: (id: string, file: File) => Promise<string | null>;
   /** 0.5.21: set a thumbnail node's width (clamped 120–480), one undo step. */
@@ -1253,10 +1259,11 @@ function timeLeafPaintOpts(
   layoutFont: number | undefined,
   fmFont: number | undefined,
   doc?: OutlineFoldDoc,
+  code = false,
 ): PillSizeOptions | null {
   const tl = timeLeafKind(n);
   if (!tl) return null;
-  return { timeLeaf: tl, fontSize: timeLeafNodeFontPx(pos?.fontSize, layoutFont, fmFont), ...nodeChips(n, doc) };
+  return { timeLeaf: tl, fontSize: timeLeafNodeFontPx(pos?.fontSize, layoutFont, fmFont), ...nodeChips(n, doc, code), code };
 }
 
 /**
@@ -2102,7 +2109,7 @@ export function createMapView(
       const shown = displayCaption(n.title);
       const label = withNodeIcon(n, code ? shown : captionWithoutLinks(shown));
       const foldable = hasKids(n);
-      const size = pillSize(label, timeLeafPaintOpts(n, pos, layout.fontSize, doc.frontmatter?.fontSize, doc) ?? {
+      const size = pillSize(label, timeLeafPaintOpts(n, pos, layout.fontSize, doc.frontmatter?.fontSize, doc, code) ?? {
         reserveFold: foldable,
         reserveTask: !!resolveTask(n),
         semibold: false,
@@ -3326,6 +3333,9 @@ export function createMapView(
       entries.push({ key: 'colour-fill', label: 'Fill', group: 'Edit', checked: fillShownOn(key) });
       if (nodeCloudsOn && nodeByKey(key)?.cloud) entries.push(...swatchEntries('cloud-color', 'Cloud colour', nodeByKey(key)?.cloud));
     }
+    if (nodeByKey(key)) {
+      entries.push({ key: 'font-code', label: 'Code', group: 'Edit', checked: nodeByKey(key)?.font === 'code' });
+    }
     if (nodeCanFoldLevel(key)) entries.push({ key: 'levels', label: 'Levels…', group: 'View', popup: true });
     if (followMenu) entries.push({ key: 'follow', label: 'Follow in text', group: 'View', checked: followInText() });
     for (const it of copyItemsFor(key)) {
@@ -3366,6 +3376,7 @@ export function createMapView(
       entry.swatch ||
       entry.key === 'colour-fill' ||
       entry.key === 'cloud' ||
+      entry.key === 'font-code' ||
       entry.key === 'icon-remove'
     );
   }
@@ -3431,6 +3442,11 @@ export function createMapView(
     }
     if (entry.key === 'cloud') {
       setNodeCloud(key, nodeByKey(key)?.cloud ? undefined : 'default');
+      if (styleStayOpen) refreshOpenNodeMenu(entry.key);
+      return;
+    }
+    if (entry.key === 'font-code') {
+      setNodeFont(key, nodeByKey(key)?.font === 'code' ? undefined : 'code');
       if (styleStayOpen) refreshOpenNodeMenu(entry.key);
       return;
     }
@@ -3504,6 +3520,66 @@ export function createMapView(
     onChange?.();
     commitStyleStep(id, before, readStyleSnap(nodeByKey(id) ?? n));
     announce(token ? `Icon set: ${iconLabel(token)}` : 'Icon removed');
+  }
+
+  /**
+   * Code font on a node. Main outline: `layout.font`, which serialises as
+   * `font: code` under the node's id. Zone: the line tag only, never the
+   * plaintext layout block. Clearing deletes the own value so the node inherits.
+   */
+  function applyNodeFont(n: OutlineNode, font: 'code' | 'text' | 'none' | undefined, zone: boolean): void {
+    delete n.inlineFont;
+    if (n.tagSpellings?.font) {
+      delete n.tagSpellings.font;
+      if (!Object.keys(n.tagSpellings).length) delete n.tagSpellings;
+    }
+    if (font) n.font = font;
+    else delete n.font;
+    if (zone) {
+      if (n.layout) {
+        delete n.layout.font;
+        delete n.layout.fontKey;
+        if (!Object.keys(n.layout).length) delete n.layout;
+      }
+      return;
+    }
+    const nl: NonNullable<OutlineNode['layout']> = { ...(n.layout || {}) };
+    if (font) {
+      nl.font = font;
+      if (nl.fontKey !== 'style') nl.fontKey = 'font';
+    } else {
+      delete nl.font;
+      delete nl.fontKey;
+    }
+    if (Object.keys(nl).length) n.layout = nl;
+    else delete n.layout;
+  }
+
+  function setNodeFont(key: string, font: 'code' | undefined): void {
+    const next = font === 'code' ? 'code' : undefined;
+    if (zoneNode(key)) {
+      const z0 = zoneNode(key);
+      const before = readStyleSnap(z0);
+      const ok = zoneStyle(key, (z) => {
+        const settled = z.font === 'code' && !z.inlineFont && !z.layout?.font;
+        if (next ? settled : z.font !== 'code' && z.layout?.font !== 'code' && !z.inlineFont) return false;
+        applyNodeFont(z, next, true);
+        return true;
+      }, next ? 'Code font' : 'Code font removed');
+      if (ok) commitStyleStep(key, before, readStyleSnap(zoneNode(key)));
+      return;
+    }
+    const n = nodeByKey(key);
+    if (!n) return;
+    const settled = n.font === 'code' && n.layout?.font === 'code' && !n.inlineFont;
+    if (next ? settled : n.font !== 'code' && n.layout?.font !== 'code' && !n.inlineFont) return;
+    const before = readStyleSnap(n);
+    applyNodeFont(n, next, false);
+    if (next) assignPersistentId(getDoc(), n);
+    setDoc(getDoc());
+    onChange?.();
+    commitStyleStep(key, before, readStyleSnap(nodeByKey(key) ?? n));
+    announce(next ? 'Code font' : 'Code font removed');
   }
 
   /**
@@ -4107,6 +4183,7 @@ export function createMapView(
     noFill?: boolean;
     cloud?: string;
     icon?: string;
+    font?: 'code' | 'text' | 'none';
   };
   type StyleStepRec = { key: string; before: StyleSnap; after: StyleSnap };
   type MapEditRec = { type: 'width'; rec: WidthStepRec } | { type: 'style'; rec: StyleStepRec };
@@ -4400,6 +4477,7 @@ export function createMapView(
       noFill: n.noFill || undefined,
       cloud: n.cloud,
       icon: n.icon,
+      font: n.font,
     };
   }
 
@@ -4409,7 +4487,8 @@ export function createMapView(
       !!a.colorFill === !!b.colorFill &&
       !!a.noFill === !!b.noFill &&
       (a.cloud ?? undefined) === (b.cloud ?? undefined) &&
-      (a.icon ?? undefined) === (b.icon ?? undefined)
+      (a.icon ?? undefined) === (b.icon ?? undefined) &&
+      (a.font ?? undefined) === (b.font ?? undefined)
     );
   }
 
@@ -4431,6 +4510,7 @@ export function createMapView(
             else delete z.cloud;
             if (snap.icon) z.icon = snap.icon;
             else delete z.icon;
+            applyNodeFont(z, snap.font, true);
             return true;
           },
           'Style restored.',
@@ -4449,6 +4529,8 @@ export function createMapView(
       else delete n.cloud;
       if (snap.icon) n.icon = snap.icon;
       else delete n.icon;
+      applyNodeFont(n, snap.font, false);
+      if (snap.font) assignPersistentId(getDoc(), n);
       const id = persistStyle(key, n);
       setDoc(getDoc());
       onChange?.();
@@ -5095,11 +5177,29 @@ export function createMapView(
     return key !== undefined && anchors.has(key) ? UNLOCK_MARK + label : label;
   }
   let codeMemo: WeakMap<OutlineNode, boolean> | null = null;
-  /** Code format for a node in the live doc or an open zone, including children of a code parent. */
+  /**
+   * Code format for a node in the live doc or an open zone.
+   * Children follow a code parent. An open zone follows its anchor, so a
+   * `<font:code>` anchor paints the rows inside the cloud as code too.
+   */
   function codeFor(n: OutlineNode): boolean {
     if (!codeMemo) {
-      codeMemo = markCode(getDoc().nodes);
-      for (const h of regionHosts()) if (h.doc) markCode(h.doc.nodes, codeMemo);
+      const doc = getDoc();
+      const memo = markCode(doc.nodes);
+      const hosts = regionHosts();
+      const byId = new Map(hosts.map((h) => [h.id, h]));
+      const ordered = [...hosts].sort((a, b) => a.id.split('/').length - b.id.split('/').length);
+      for (const h of ordered) {
+        if (!h.doc) continue;
+        let inherited = false;
+        if (h.anchor) {
+          const parentDoc = h.parent ? byId.get(h.parent)?.doc : doc;
+          const anchor = parentDoc ? findNode(parentDoc.nodes, h.anchor) : null;
+          if (anchor) inherited = memo.get(anchor) ?? showsAsCode(anchor, false);
+        }
+        markCode(h.doc.nodes, memo, inherited);
+      }
+      codeMemo = memo;
     }
     return codeMemo.get(n) ?? showsAsCode(n, false);
   }
@@ -5824,7 +5924,7 @@ export function createMapView(
     const nodes: NodePaint[] = [];
 
     const anchors = unlockedAnchorKeys();
-    function walk(n: OutlineNode, inherited: { c: string; fill: boolean } | null = null): void {
+    function walk(n: OutlineNode, inherited: { c: string; fill: boolean } | null = null, inheritedCode = false): void {
       // A blank `- ` line is not drawn until it has content; its view key is kept (0.6.6).
       if (isBlankNode(n)) return;
       const own = resolveColour(n.color);
@@ -5832,14 +5932,16 @@ export function createMapView(
       if (bc) branchColour.set(n, bc);
       const key = vkey(n);
       const pos = layout.nodes![key] || { x: 100, y: 100 };
-      const code = codeFor(n);
+      // Follow the parent the way branch colour does. A fresh parse on each
+      // getDoc() call is a different object, so the memo alone would drop the child.
+      const code = showsAsCode(n, inheritedCode);
       const shown = displayCaption(n.title);
       const label = anchorCaption(key, withNodeIcon(n, code ? shown : captionWithoutLinks(shown)), anchors);
       const foldable = hasKids(n);
       const col = foldable && !!n.id && isCollapsed(doc, n.id);
       const taskParsed = resolveTask(n);
       const timeLeaf = timeLeafKind(n);
-      const size = pillSize(label, timeLeafPaintOpts(n, pos, layout.fontSize, doc.frontmatter?.fontSize, doc) ?? {
+      const size = pillSize(label, timeLeafPaintOpts(n, pos, layout.fontSize, doc.frontmatter?.fontSize, doc, code) ?? {
         reserveFold: foldable,
         reserveTask: !!taskParsed,
         semibold: false,
@@ -5888,11 +5990,11 @@ export function createMapView(
           if (isBlankNode(c)) continue;
           const cKey = vkey(c);
           const cpos = layout.nodes![cKey] || { x: pos.x + 200, y: pos.y };
-          const childCode = codeFor(c);
+          const childCode = showsAsCode(c, code);
           const cShown = displayCaption(c.title);
           const clabel = anchorCaption(cKey, withNodeIcon(c, childCode ? cShown : captionWithoutLinks(cShown)), anchors);
           const cTask = resolveTask(c);
-          const cs = pillSize(clabel, timeLeafPaintOpts(c, cpos, layout.fontSize, doc.frontmatter?.fontSize, doc) ?? {
+          const cs = pillSize(clabel, timeLeafPaintOpts(c, cpos, layout.fontSize, doc.frontmatter?.fontSize, doc, childCode) ?? {
             reserveFold: hasKids(c),
             reserveTask: !!cTask,
             semibold: false,
@@ -5913,7 +6015,7 @@ export function createMapView(
             timeLeaf: !!timeLeafKind(c),
             colour: resolveColour(c.color) ?? bc?.c ?? null,
           });
-          walk(c, bc);
+          walk(c, bc, code);
         }
       }
     }
@@ -8286,6 +8388,7 @@ export function createMapView(
     setNodeCloud: (id: string, c: string | undefined) => setNodeCloud(id, c),
     setNodeColour: (id: string, c: string | undefined) => setNodeColour(id, c),
     setNodeIcon: (id: string, t: string | undefined) => setNodeIcon(id, t),
+    setNodeFont: (id: string, font: 'code' | undefined) => setNodeFont(id, font),
     addImage,
     setThumbWidth,
     nodeMenuEntries: (id: string) => nodeMenuEntries(id),

@@ -62,6 +62,19 @@ describe('code strings stay literal', () => {
     expect(captionToHtml('Say `a\\nb` now')).toBe('Say <code class="of-code">a\\nb</code> now');
   });
 
+  it('keeps a backslash-n inside a fenced block as the two characters', () => {
+    const runs = captionStyleRuns('```js\\nconst s = "a\\n"\\n```');
+    const code = runs.find((r) => r.code);
+    expect(code?.text).toBe('const s = "a\\n"');
+    expect(code?.text.includes('\n')).toBe(false);
+    expect(captionToHtml('```js\\nconst s = "a\\n"\\n```')).toBe(
+      '<code class="of-code">const s = &quot;a\\n&quot;</code>',
+    );
+    const lines = captionStyleRuns('```\\nline1\\nline2\\n```');
+    expect(lines.find((r) => r.code)?.text).toBe('line1\\nline2');
+    expect(captionStyleRuns('```\\nconst x = 1\\n```').some((r) => r.code && r.text === 'const x = 1')).toBe(true);
+  });
+
   it('leaves a one-line chip inline', () => {
     const { lines, richLines } = wrapLines('Use `npm t` now', 40, null);
     expect(lines).toEqual(['Use npm t now']);

@@ -85,6 +85,10 @@ export interface CaptionHtmlOptions {
  * A backtick span (and a fenced block) is literal. Break tokens inside it —
  * a backslash-n, `<br>`, `<nr>` — stay characters. The shield is only for
  * this pass: the spans are put back before the caller parses them.
+ *
+ * A one-line fence is written with a backslash-n between the markers
+ * (```js\ncode\n```). That pair still opens the block. A backslash-n inside
+ * the code stays the two characters; turning it into a line break split the block.
  */
 function shieldCode(text: string): { text: string; spans: string[] } {
   const spans: string[] = [];
@@ -96,6 +100,16 @@ function shieldCode(text: string): { text: string; spans: string[] } {
   // A run of backticks is a fence, not an inline span. Do not shield from the
   // middle of ```, or a <br> fence never becomes newlines.
   s = s.replace(/(^|[^`])(`[^`\n]+`)(?!`)/g, (_all, lead: string, span: string) => lead + hold(span));
+  s = s.replace(
+    /(^|[^`])```([^\n`\\]*)(?:\\r\\n|\\n|\\r)([\s\S]*?)(?:\\r\\n|\\n|\\r)```(?!`)/g,
+    (_all, lead: string, info: string, body: string) => {
+      const kept = body
+        .replace(/\\r\\n|\\n|\\r/g, (esc) => hold(esc))
+        .replace(/<\s*br\s*\/?\s*>/gi, (tag) => hold(tag))
+        .replace(/<\s*nr\s*\/?\s*>/gi, (tag) => hold(tag));
+      return `${lead}\`\`\`${info}\n${kept}\n\`\`\``;
+    },
+  );
   return { text: s, spans };
 }
 
