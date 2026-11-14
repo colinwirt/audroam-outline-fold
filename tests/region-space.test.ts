@@ -5,6 +5,13 @@ import { CLOUD_OUTER, CLOUD_PAD, cloudHull, cloudPad } from '../src/mapRegion.js
 import { REGION_OUTER, REGION_PAD, placeRegions, type RegionHostSpec } from '../src/regionLayout.js';
 
 describe('space around regions', () => {
+  it('keeps the old inside distance and the outside clearance', () => {
+    expect(CLOUD_PAD).toBe(12);
+    expect(REGION_PAD).toBe(14);
+    expect(CLOUD_OUTER).toBe(20);
+    expect(REGION_OUTER).toBe(20);
+  });
+
   it('keeps cloud outlines off the pills and off each other', () => {
     const doc = parse('- Input <cloud:lemon> <id:in>\n- Charging <cloud:green> <id:ch>\n');
     const packed = autoPackPositions(doc, { gapY: 14 });

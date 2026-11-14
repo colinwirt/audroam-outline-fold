@@ -19,7 +19,7 @@ function countAll(nodes: OutlineNode[] | undefined): number {
 }
 
 /** Space between a region outline and the pills inside it. */
-export const REGION_PAD = 28;
+export const REGION_PAD = 14;
 /** Space outside a region outline before the next pill or region. */
 export const REGION_OUTER = 20;
 const LABEL_H = 22;

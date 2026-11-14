@@ -26,7 +26,7 @@ export interface RegionBox {
 }
 
 /** Padded bounding rectangle (MVP hull) of the given boxes. */
-export function regionHull(boxes: RegionBox[], pad = 28): RegionBox | null {
+export function regionHull(boxes: RegionBox[], pad = 14): RegionBox | null {
   if (!boxes.length) return null;
   let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
   for (const b of boxes) {
@@ -95,7 +95,7 @@ export interface MapCloud {
 }
 
 /** Space between a cloud outline and the pills it wraps. */
-export const CLOUD_PAD = 28;
+export const CLOUD_PAD = 12;
 /** Space outside a cloud outline before the next pill or cloud. */
 export const CLOUD_OUTER = 20;
 

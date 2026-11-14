@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.7.9 — 2026-11-15
+
+Cloud and sealed-region outlines sit close to their pills again. The gap outside the outline stays.
+
+- The space inside a cloud outline is 12px, and inside a sealed region is 14px. The 20px gap outside the outline still keeps neighbouring regions from touching.
+
 ## 0.7.8 — 2026-11-14
 
 `font: auto` clears a code font.
