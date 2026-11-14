@@ -78,8 +78,8 @@ const IMG_TRAILING = /\s*<img:([A-Za-z0-9][A-Za-z0-9_-]*)>$/i;
 const CLOUD_TRAILING = /\s*<cloud(?::([a-z][a-z0-9-]*))?>$/i;
 /** 0.5.19 (Q12): `<color:name>` / `<colour:name>` with a palette name (never hex). */
 const COLOR_TRAILING = new RegExp(`\\s*<\\s*colou?r\\s*:\\s*(${[...NODE_COLOURS, ...Object.keys(COLOUR_ALIASES)].join('|')})\\s*(?::\\s*(fill)\\s*)?>\\s*$`, 'i');
-/** `<font:code>` / `<style:code>`. `text` and `none` stop a code format inherited from a parent. */
-const FONT_TRAILING = /\s*<(font|style)\s*:\s*(code|text|none)\s*>\s*$/i;
+/** `<font:code>` / `<style:code>`. `text` and `none` stop a code format inherited from a parent. `auto` clears an own value and follows the parent. */
+const FONT_TRAILING = /\s*<(font|style)\s*:\s*(code|text|none|auto)\s*>\s*$/i;
 const KIND_TRAILING = new RegExp(
   `\\s*<(?:\\s*kind\\s*:\\s*(${KIND_TAG_WORDS})\\s*|(${KIND_WORDS}))>\\s*$`,
   'i',
@@ -291,7 +291,7 @@ function parseTitleAndMeta(
   img?: string;
   color?: string;
   colorFill?: true;
-  font?: 'code' | 'text' | 'none';
+  font?: 'code' | 'text' | 'none' | 'auto';
   action?: string;
   thread?: string;
   noteLinks?: string[];
@@ -343,7 +343,7 @@ function parseTitleAndMeta(
   let img: string | undefined;
   let color: string | undefined;
   let colorFill: true | undefined;
-  let font: 'code' | 'text' | 'none' | undefined;
+  let font: 'code' | 'text' | 'none' | 'auto' | undefined;
   {
     const lead = parseLeadingIcon(rest.replace(/^[ \t]+/, ''));
     if (lead) {
@@ -568,7 +568,7 @@ function parseTitleAndMeta(
 
     m = rest.match(FONT_TRAILING);
     if (m) {
-      font = m[2]!.toLowerCase() as 'code' | 'text' | 'none';
+      font = m[2]!.toLowerCase() as 'code' | 'text' | 'none' | 'auto';
       spell('font', m[0]);
       rest = rest.slice(0, rest.length - m[0].length).trimEnd();
       progressed = true;

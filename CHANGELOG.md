@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.7.8 — 2026-11-14
+
+`font: auto` clears a code font.
+
+- `font: auto` and `<font:auto>` (and the `style:` spellings) clear an own code format. The node follows its parent again, and is ordinary text when no ancestor is code. `text` and `none` still stop inheritance for that node and its children.
+- Turning Code off in the Style menu writes `font: auto` on that node's layout entry. Turning it on still writes `font: code`. A sealed-zone row writes `<font:auto>` on the line.
+
 ## 0.7.7 — 2026-11-14
 
 A `\n` inside code stays literal, and `<font:code>` paints children on the map.

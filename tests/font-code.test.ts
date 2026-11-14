@@ -19,6 +19,19 @@ describe('font and style code', () => {
     expect(parse(again).nodes[0]!.children![1]!.font).toBe('text');
   });
 
+  it('font: auto clears an own code format and follows the parent', () => {
+    const doc = parse('- Parent <id:p>\n  - Child <id:c>\n\n--- layout ---\np:\n  font: code\nc:\n  font: auto\n---\n');
+    expect(doc.nodes[0]!.font).toBe('code');
+    expect(doc.nodes[0]!.children![0]!.font).toBe('auto');
+    const html = toHtml(doc);
+    expect(html).toContain('<code class="of-code">Parent</code>');
+    expect(html).toContain('<code class="of-code">Child</code>');
+    const cleared = parse('- Item <font:auto> <id:a>\n');
+    expect(cleared.nodes[0]!.font).toBe('auto');
+    expect(serialize(cleared)).toContain('<font:auto>');
+    expect(toHtml(cleared)).not.toContain('<code class="of-code">');
+  });
+
   it('reads font: code from the layout block and keeps a style tag spelling', () => {
     const doc = parse('- Item <id:a>\n\n--- layout ---\na:\n  style: code\n---\n');
     expect(doc.nodes[0]!.font).toBe('code');

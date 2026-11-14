@@ -118,12 +118,13 @@ export interface OutlineNode {
   /** 0.6.2: explicit "no fill" (layout `fill: none`): stops an inherited wash on this node and its sub-branch. */
   noFill?: boolean;
   /**
-   * Caption format from `<font:code>` or `<style:code>` (also `text` / `none`).
+   * Caption format from `<font:code>` or `<style:code>` (also `text` / `none` / `auto`).
    * `code` paints this node and its children as code. `text` and `none` stop that.
-   * A layout `font:` / `style:` value wins; `inlineFont` keeps the shadowed tag.
+   * `auto` clears an own value and follows the parent. A layout `font:` / `style:`
+   * value wins; `inlineFont` keeps the shadowed tag.
    */
-  font?: 'code' | 'text' | 'none';
-  inlineFont?: 'code' | 'text' | 'none';
+  font?: 'code' | 'text' | 'none' | 'auto';
+  inlineFont?: 'code' | 'text' | 'none' | 'auto';
   /** 0.5.22: an inline `<color:…>` shadowed by a layout colour, kept so the line round-trips. */
   inlineColor?: { color: string; fill?: boolean };
   /** 0.5.22: a leading inline icon shadowed by a layout icon, kept so the line round-trips. */
@@ -210,8 +211,8 @@ export interface NodeLayout {
   colorKey?: 'color' | 'colour';
   /** 0.6.2: `fill: none` — overrides a fill inherited from an ancestor. */
   noFill?: boolean;
-  /** Caption format (`font: code` or `style: code`). `text` / `none` stop an inherited code format. */
-  font?: 'code' | 'text' | 'none';
+  /** Caption format (`font: code` or `style: code`). `text` / `none` stop an inherited code format. `auto` clears it and follows the parent. */
+  font?: 'code' | 'text' | 'none' | 'auto';
   /** Which key was written (`font` or `style`). New writes use `font`. */
   fontKey?: 'font' | 'style';
   /** 0.5.22: node icon token (emoji or `:name:`). Wins over a leading inline icon. */

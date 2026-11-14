@@ -732,11 +732,12 @@ export interface MapViewHandle {
   /** 0.5.22: set or clear a node icon (written to its layout entry). */
   setNodeIcon: (id: string, token: string | undefined) => void;
   /**
-   * Set or clear a node's code font. On writes `font: code` in that node's
-   * layout entry (and mints an id when the line has none). Off removes it,
-   * so the node follows its parent again. A sealed-zone row is written inline.
+   * Set or clear a node's code font. `code` writes `font: code` in that node's
+   * layout entry (and mints an id when the line has none). `auto` writes
+   * `font: auto`, which clears the own value so the node follows its parent.
+   * A sealed-zone row is written inline.
    */
-  setNodeFont: (id: string, font: 'code' | undefined) => void;
+  setNodeFont: (id: string, font: 'code' | 'auto' | undefined) => void;
   /** 0.5.21: add an image under a node as a thumbnail child (editors). Resolves the child key, or null. */
   addImage: (id: string, file: File) => Promise<string | null>;
   /** 0.5.21: set a thumbnail node's width (clamped 120–480), one undo step. */
@@ -3446,7 +3447,7 @@ export function createMapView(
       return;
     }
     if (entry.key === 'font-code') {
-      setNodeFont(key, nodeByKey(key)?.font === 'code' ? undefined : 'code');
+      setNodeFont(key, nodeByKey(key)?.font === 'code' ? 'auto' : 'code');
       if (styleStayOpen) refreshOpenNodeMenu(entry.key);
       return;
     }
@@ -3524,10 +3525,11 @@ export function createMapView(
 
   /**
    * Code font on a node. Main outline: `layout.font`, which serialises as
-   * `font: code` under the node's id. Zone: the line tag only, never the
-   * plaintext layout block. Clearing deletes the own value so the node inherits.
+   * `font: code` or `font: auto` under the node's id. Zone: the line tag only,
+   * never the plaintext layout block. `auto` clears an own value so the node
+   * follows its parent.
    */
-  function applyNodeFont(n: OutlineNode, font: 'code' | 'text' | 'none' | undefined, zone: boolean): void {
+  function applyNodeFont(n: OutlineNode, font: 'code' | 'text' | 'none' | 'auto' | undefined, zone: boolean): void {
     delete n.inlineFont;
     if (n.tagSpellings?.font) {
       delete n.tagSpellings.font;
@@ -3555,31 +3557,33 @@ export function createMapView(
     else delete n.layout;
   }
 
-  function setNodeFont(key: string, font: 'code' | undefined): void {
-    const next = font === 'code' ? 'code' : undefined;
+  function setNodeFont(key: string, font: 'code' | 'auto' | undefined): void {
+    const next = font === 'code' || font === 'auto' ? font : undefined;
+    const zoneSettled = (z: OutlineNode) =>
+      z.font === next && !z.inlineFont && !z.layout?.font;
+    const mainSettled = (n: OutlineNode) =>
+      n.font === next && n.layout?.font === next && !n.inlineFont;
     if (zoneNode(key)) {
       const z0 = zoneNode(key);
       const before = readStyleSnap(z0);
       const ok = zoneStyle(key, (z) => {
-        const settled = z.font === 'code' && !z.inlineFont && !z.layout?.font;
-        if (next ? settled : z.font !== 'code' && z.layout?.font !== 'code' && !z.inlineFont) return false;
+        if (next ? zoneSettled(z) : z.font == null && !z.layout?.font && !z.inlineFont) return false;
         applyNodeFont(z, next, true);
         return true;
-      }, next ? 'Code font' : 'Code font removed');
+      }, next === 'code' ? 'Code font' : 'Code font cleared');
       if (ok) commitStyleStep(key, before, readStyleSnap(zoneNode(key)));
       return;
     }
     const n = nodeByKey(key);
     if (!n) return;
-    const settled = n.font === 'code' && n.layout?.font === 'code' && !n.inlineFont;
-    if (next ? settled : n.font !== 'code' && n.layout?.font !== 'code' && !n.inlineFont) return;
+    if (next ? mainSettled(n) : n.font == null && n.layout?.font == null && !n.inlineFont) return;
     const before = readStyleSnap(n);
     applyNodeFont(n, next, false);
     if (next) assignPersistentId(getDoc(), n);
     setDoc(getDoc());
     onChange?.();
     commitStyleStep(key, before, readStyleSnap(nodeByKey(key) ?? n));
-    announce(next ? 'Code font' : 'Code font removed');
+    announce(next === 'code' ? 'Code font' : 'Code font cleared');
   }
 
   /**
@@ -4183,7 +4187,7 @@ export function createMapView(
     noFill?: boolean;
     cloud?: string;
     icon?: string;
-    font?: 'code' | 'text' | 'none';
+    font?: 'code' | 'text' | 'none' | 'auto';
   };
   type StyleStepRec = { key: string; before: StyleSnap; after: StyleSnap };
   type MapEditRec = { type: 'width'; rec: WidthStepRec } | { type: 'style'; rec: StyleStepRec };
@@ -8388,7 +8392,7 @@ export function createMapView(
     setNodeCloud: (id: string, c: string | undefined) => setNodeCloud(id, c),
     setNodeColour: (id: string, c: string | undefined) => setNodeColour(id, c),
     setNodeIcon: (id: string, t: string | undefined) => setNodeIcon(id, t),
-    setNodeFont: (id: string, font: 'code' | undefined) => setNodeFont(id, font),
+    setNodeFont: (id: string, font: 'code' | 'auto' | undefined) => setNodeFont(id, font),
     addImage,
     setThumbWidth,
     nodeMenuEntries: (id: string) => nodeMenuEntries(id),

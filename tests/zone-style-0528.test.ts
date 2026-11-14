@@ -74,9 +74,10 @@ it('setNodeFont on a scoped id writes <font:code> on the zone line, not the layo
   expect(serialize(sub)).toMatch(/seems good <font:code>/);
   expect(serialize(doc)).not.toMatch(/font:\s*code/);
   expect(styled).toEqual([id]);
-  mv.setNodeFont(id, undefined);
-  expect(sub.nodes[0]!.children![0]!.font).toBeUndefined();
-  expect(serialize(sub)).not.toMatch(/<font:/);
+  mv.setNodeFont(id, 'auto');
+  expect(sub.nodes[0]!.children![0]!.font).toBe('auto');
+  expect(serialize(sub)).toMatch(/seems good <font:auto>/);
+  expect(serialize(doc)).not.toMatch(/font:\s*auto/);
   mv.destroy?.();
 });
 

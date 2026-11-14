@@ -50,15 +50,19 @@ describe('Style menu Code writes font: code into the layout block', () => {
     mv.destroy?.();
   });
 
-  it('turning Code off removes the layout entry and the line follows its parent', async () => {
+  it('turning Code off writes font: auto so the node follows its parent', async () => {
     const { mv, doc } = await paint('- Parent <id:a>\n  - Child <id:b>\n\n--- layout ---\na:\n  font: code\nb:\n  font: code\n---\n');
-    mv.setNodeFont('b', undefined);
+    mv.setNodeFont('b', 'auto');
     const out = serialize(doc());
     expect(out).toContain('a:\n  font: code');
-    expect(out).not.toMatch(/b:\n  font:/);
-    expect(doc().nodes[0]!.children![0]!.font).toBeUndefined();
-    mv.setNodeFont('a', undefined);
-    expect(serialize(doc())).toBe('- Parent <id:a>\n  - Child <id:b>\n');
+    expect(out).toContain('b:\n  font: auto');
+    expect(doc().nodes[0]!.children![0]!.font).toBe('auto');
+    const again = parse(out);
+    expect(again.nodes[0]!.font).toBe('code');
+    expect(again.nodes[0]!.children![0]!.font).toBe('auto');
+    mv.setNodeFont('a', 'auto');
+    expect(serialize(doc())).toContain('a:\n  font: auto');
+    expect(serialize(doc())).toContain('b:\n  font: auto');
     mv.destroy?.();
   });
 

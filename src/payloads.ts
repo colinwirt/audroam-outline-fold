@@ -369,9 +369,9 @@ export function parseLayoutBlock(block: string): {
         else delete style.colorFill;
       }
       if (current && /^\s+fill\s*:\s*none\s*$/i.test(raw)) style.noFill = true;
-      const font = raw.match(/^\s+(font|style)\s*:\s*(code|text|none)\s*$/i);
+      const font = raw.match(/^\s+(font|style)\s*:\s*(code|text|none|auto)\s*$/i);
       if (font && current) {
-        style.font = font[2]!.toLowerCase() as 'code' | 'text' | 'none';
+        style.font = font[2]!.toLowerCase() as 'code' | 'text' | 'none' | 'auto';
         style.fontKey = font[1]!.toLowerCase() === 'style' ? 'style' : 'font';
       }
       const ic = raw.match(/^\s+icon\s*:\s*([^\s<>]+)\s*$/i);
@@ -640,7 +640,7 @@ export function formatLayoutBlock(
     const color = e.color && /^[A-Za-z][\w-]*$/.test(e.color) ? e.color : undefined;
     const icon = e.icon && /^[^\s<>]+$/.test(e.icon) ? e.icon : undefined;
     const noFill = !color && !!e.noFill;
-    const font = e.font === 'code' || e.font === 'text' || e.font === 'none' ? e.font : undefined;
+    const font = e.font === 'code' || e.font === 'text' || e.font === 'none' || e.font === 'auto' ? e.font : undefined;
     if (!hasW && !color && !icon && !noFill && !font) continue;
     lines.push(`${id}:`);
     if (hasW) {

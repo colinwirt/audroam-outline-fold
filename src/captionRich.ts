@@ -134,7 +134,7 @@ export function normalizeCaptionBreaks(text: string): string {
   return unshieldCode(s, shielded.spans);
 }
 
-/** `<font:code>` / `<style:code>` paints this node as code. `text` and `none` stop an inherited code format. */
+/** `<font:code>` / `<style:code>` paints this node as code. `text` and `none` stop an inherited code format. `auto` follows the parent. */
 export function showsAsCode(node: { font?: string | undefined }, inherited = false): boolean {
   if (node.font === 'code') return true;
   if (node.font === 'text' || node.font === 'none') return false;
@@ -142,7 +142,7 @@ export function showsAsCode(node: { font?: string | undefined }, inherited = fal
 }
 
 /** Own or inherited code format for every node in the tree (children follow the parent unless they set font). */
-export function markCode<T extends { font?: 'code' | 'text' | 'none'; children?: readonly T[] | undefined }>(
+export function markCode<T extends { font?: 'code' | 'text' | 'none' | 'auto'; children?: readonly T[] | undefined }>(
   nodes: readonly T[],
   into = new WeakMap<T, boolean>(),
   inherited = false,
