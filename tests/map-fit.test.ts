@@ -207,8 +207,8 @@ describe('hold-to-fit P1: mapView wiring (source)', () => {
 
   it('ids are minted only through writeWidth for a written w (F8)', () => {
     const calls = src.match(/assignPersistentId\(/g) || [];
-    // writeWidth, plus 0.5.22 persistStyle (only once a colour or icon is set), plus the import line.
-    expect(calls.length).toBe(2);
+    // writeWidth, persistStyle (colour or icon), setNodeFont, and a font restore.
+    expect(calls.length).toBe(4);
     const ps = src.slice(src.indexOf('function persistStyle('), src.indexOf('function setNodeCloud('));
     expect(ps.indexOf('if (!wantColour && !wantIcon) return key;')).toBeLessThan(ps.indexOf('assignPersistentId('));
     expect(src).toMatch(/import \{ assignPersistentId,/);

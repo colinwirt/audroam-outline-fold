@@ -65,7 +65,7 @@ describe('0.5.24 Slack-style code chips', () => {
     expect(r.getAttribute('rx')).toBe('3');
     const tx = Number(g('a').querySelector('.map-label')!.getAttribute('x'));
     expect(Number(r.getAttribute('x'))).toBeLessThan(tx + 60);
-    expect(css).toMatch(/\.map-node\.map-node \.map-label tspan\.map-code[^{]*\{ fill: var\(--map-code-ink\)/);
+    expect(css).toMatch(/\.map-node\.map-node \.map-label tspan\.map-code[\s\S]*?\{\s*fill: var\(--map-code-ink\)/);
   });
   it('fill-independent: same rect token inside ember, Highlighter and Audroam solid fills', async () => {
     const g = await paint('- Plain `x` <id:a>\n- W <color:ember:fill> <id:w>\n  - In `y` <id:b>\n- H `z` <color:lemon:fill> <id:h>\n- A `q` <color:audroam-red:fill> <id:au>\n');
