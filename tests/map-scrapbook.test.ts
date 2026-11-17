@@ -295,8 +295,22 @@ describe('mapBackgroundPanSelection', () => {
         onNode: true,
         clickDetail: 2,
         selectionOutside: true,
+        labelTextSelect: true,
       }),
     ).toBe('ignore');
+  });
+
+
+  it('clears label selection in hand mode', () => {
+    expect(
+      mapBackgroundPanSelection({
+        onLabel: true,
+        onNode: true,
+        clickDetail: 2,
+        selectionOutside: true,
+        labelTextSelect: false,
+      }),
+    ).toBe('clear');
   });
 
   it('prevents a double-click on empty canvas from selecting text outside the map', () => {
@@ -306,6 +320,7 @@ describe('mapBackgroundPanSelection', () => {
         onNode: false,
         clickDetail: 2,
         selectionOutside: false,
+        labelTextSelect: true,
       }),
     ).toBe('prevent-and-clear');
   });
@@ -317,6 +332,7 @@ describe('mapBackgroundPanSelection', () => {
         onNode: false,
         clickDetail: 1,
         selectionOutside: false,
+        labelTextSelect: true,
       }),
     ).toBe('prevent-and-clear');
   });
@@ -328,6 +344,7 @@ describe('mapBackgroundPanSelection', () => {
         onNode: false,
         clickDetail: 1,
         selectionOutside: true,
+        labelTextSelect: true,
       }),
     ).toBe('prevent-and-clear');
   });
@@ -339,6 +356,7 @@ describe('mapBackgroundPanSelection', () => {
         onNode: true,
         clickDetail: 1,
         selectionOutside: true,
+        labelTextSelect: true,
       }),
     ).toBe('clear');
   });

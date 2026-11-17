@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.7.10 — 2026-11-17
+
+Hand mode now hard-blocks label text selection.
+
+- New gesture option `gestures.labelTextSelect` (boolean or function, default `true`).
+- When it is `false`, label presses no longer stay in browser text-select mode, so drag always pans and double-click no longer selects label text.
+
 ## 0.7.9 — 2026-11-15
 
 Cloud and sealed-region outlines sit close to their pills again. The gap outside the outline stays.

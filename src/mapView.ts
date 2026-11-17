@@ -529,6 +529,8 @@ export interface MapViewOptions {
     rubberBand?: boolean;
     doubleTapZoom?: boolean;
     twoFingerTapZoomOut?: boolean;
+    /** Hand mode: false blocks label text selection and always treats drags as pan. */
+    labelTextSelect?: boolean | (() => boolean);
   };
   onCameraSettle?: (cam: { x: number; y: number; k: number }) => void;
   /**
@@ -1742,8 +1744,9 @@ export function mapBackgroundPanSelection(opts: {
   onNode: boolean;
   clickDetail: number;
   selectionOutside: boolean;
+  labelTextSelect: boolean;
 }): 'ignore' | 'clear' | 'prevent-and-clear' {
-  if (opts.onLabel) return 'ignore';
+  if (opts.onLabel) return opts.labelTextSelect ? 'ignore' : 'clear';
   if (!opts.onNode) return 'prevent-and-clear';
   return 'clear';
 }
@@ -2037,6 +2040,10 @@ export function createMapView(
   const rubberOn = gestureOpts.rubberBand !== false;
   const doubleTapOn = gestureOpts.doubleTapZoom !== false;
   const twoFingerZoomOut = gestureOpts.twoFingerTapZoomOut !== false;
+  const labelTextSelectOn = () =>
+    typeof gestureOpts.labelTextSelect === 'function'
+      ? gestureOpts.labelTextSelect()
+      : gestureOpts.labelTextSelect !== false;
 
   function recentreEnabled(): boolean {
     return typeof cameraRecentreOpt === 'function'
@@ -7498,7 +7505,14 @@ export function createMapView(
         return;
       }
       if (type === 'mouse' && performance.now() - lastFingerDown < 700) return;
-      if (!finger && (type === 'mouse' || type === 'pen') && onLabel && !barrel && e.button !== 1) return;
+      if (
+        !finger &&
+        (type === 'mouse' || type === 'pen') &&
+        onLabel &&
+        labelTextSelectOn() &&
+        !barrel &&
+        e.button !== 1
+      ) return;
       const sel =
         typeof window !== 'undefined' && window.getSelection ? window.getSelection() : null;
       const anchor = sel?.anchorNode ?? null;
@@ -7509,6 +7523,7 @@ export function createMapView(
         onNode: !!target?.closest?.('.map-node'),
         clickDetail: e.detail || 0,
         selectionOutside,
+        labelTextSelect: labelTextSelectOn(),
       });
       if (selAction === 'prevent-and-clear') e.preventDefault();
       if (selAction !== 'ignore') {
@@ -7603,7 +7618,7 @@ export function createMapView(
         clearLongPress();
       } else {
         mode = 'pending';
-        if (finger && onLabel) {
+        if (finger && onLabel && labelTextSelectOn()) {
           const label = target!.closest('.map-label') as Element;
           clearLongPress();
           longPressTimer = window.setTimeout(() => {
