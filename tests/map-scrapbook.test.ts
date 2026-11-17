@@ -310,7 +310,7 @@ describe('mapBackgroundPanSelection', () => {
         selectionOutside: true,
         labelTextSelect: false,
       }),
-    ).toBe('clear');
+    ).toBe('prevent-and-clear');
   });
 
   it('prevents a double-click on empty canvas from selecting text outside the map', () => {

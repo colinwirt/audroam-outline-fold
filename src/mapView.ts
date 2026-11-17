@@ -1746,7 +1746,7 @@ export function mapBackgroundPanSelection(opts: {
   selectionOutside: boolean;
   labelTextSelect: boolean;
 }): 'ignore' | 'clear' | 'prevent-and-clear' {
-  if (opts.onLabel) return opts.labelTextSelect ? 'ignore' : 'clear';
+  if (opts.onLabel) return opts.labelTextSelect ? 'ignore' : 'prevent-and-clear';
   if (!opts.onNode) return 'prevent-and-clear';
   return 'clear';
 }
@@ -7871,7 +7871,7 @@ export function createMapView(
           !wasPan &&
           !wasPinch &&
           moved <= 30 &&
-          !(e.target as Element | null)?.closest?.('.map-node') &&
+          (!(e.target as Element | null)?.closest?.('.map-node') || !labelTextSelectOn()) &&
           isDoubleTap(now - lastTap.t, Math.hypot(had.x - lastTap.x, had.y - lastTap.y))
         ) {
           const rect = host.getBoundingClientRect();
