@@ -593,7 +593,11 @@ export function createOutlineDoc(o: OutlineDocOptions): OutlineDocHandle {
       }
       const r = to === undefined ? toggleTaskAtLine(raw, hit.ordinal) : setTaskAtLine(raw, hit.ordinal, to);
       if (!r) return null;
-      handle.setText(r.text, { source: 'host' });
+      // One line, same session keys. source 'map' is the host's "do not re-parse"
+      // gate: a re-parse runs keepViewAfterParse, which can drop an authored (+)
+      // and open the branch. The map stamps this task onto its own view node.
+      // reason stays 'text' so the save debounce matches the previous host edit.
+      handle.setText(r.text, { source: 'map', reason: 'text' });
       return { from: r.from, to: r.to };
     },
     sessionIndex: () => { rootNow(); return index; },

@@ -14,6 +14,7 @@ import {
   inertiaEligible,
   isDoubleTap,
   isTwoFingerTap,
+  panIsClick,
   rubberOffset,
   softAxis,
   softZoom,
@@ -178,6 +179,10 @@ describe('wheel', () => {
     ).toBe(false);
     expect(isDoubleTap(200, 10)).toBe(true);
     expect(isDoubleTap(400, 10)).toBe(false);
+    expect(panIsClick(0)).toBe(true);
+    expect(panIsClick(12)).toBe(true);
+    expect(panIsClick(30)).toBe(true);
+    expect(panIsClick(31)).toBe(false);
     expect(
       isTwoFingerTap({
         secondDownDelayMs: 40,

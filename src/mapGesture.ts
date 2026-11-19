@@ -254,8 +254,21 @@ export function velocityFromSamples(
   return { vx: (b.x - a.x) / dt, vy: (b.y - a.y) / dt, sinceLastMoveMs: since };
 }
 
+export const DOUBLE_TAP_MS = 300;
+export const DOUBLE_TAP_PX = 30;
+
 export function isDoubleTap(dtMs: number, distPx: number): boolean {
-  return dtMs > 0 && dtMs <= 300 && distPx <= 30;
+  return dtMs > 0 && dtMs <= DOUBLE_TAP_MS && distPx <= DOUBLE_TAP_PX;
+}
+
+/**
+ * A one-finger pan that never left the double-tap radius. The pan slop is 4px
+ * on a mouse, so an ordinary click is often classified as a pan: the click is
+ * swallowed and a hand-mode double-click does not zoom. Callers put the camera
+ * back and run the tap.
+ */
+export function panIsClick(movedPx: number): boolean {
+  return movedPx <= DOUBLE_TAP_PX;
 }
 
 export function isTwoFingerTap(opts: {

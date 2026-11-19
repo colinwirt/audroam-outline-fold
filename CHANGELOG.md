@@ -1,11 +1,14 @@
 # Changelog
 
-## 0.7.10 — 2026-11-17
+## 0.7.10 — 2026-11-19
 
-Hand mode now hard-blocks label text selection.
+Hand mode zooms on a double-click, and a checkbox tick no longer opens folded branches.
 
-- New gesture option `gestures.labelTextSelect` (boolean or function, default `true`).
-- When it is `false`, label presses no longer stay in browser text-select mode, so drag always pans and double-click no longer selects label text.
+- `gestures.labelTextSelect` (boolean or function, default `true`). When it is `false`, a label press does not stay in browser text-select mode, so a drag pans and a double-click zooms.
+- A pointer that drifts a few pixels is still a click. Hand mode zooms, and a fold or task click still lands. A real pan still pans.
+- A checkbox tick edits that one line and does not re-parse the map, so an authored `(+)` stays collapsed in the map and in the text.
+- Only a primary click or tap on a fold handle toggles it. A right-click, and the click after the level menu or a hold, do not fold.
+- Pills animate only when a fold or a level actually changed.
 
 ## 0.7.9 — 2026-11-15
 

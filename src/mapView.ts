@@ -37,6 +37,7 @@ import {
   inertiaEligible,
   isDoubleTap,
   isTwoFingerTap,
+  panIsClick,
   mid,
   panFrame,
   pinchFrame,
@@ -2082,6 +2083,13 @@ export function createMapView(
     | null;
   let pendingFollow: PendingFollow = null;
   let keyboardBound = false;
+  /** Fold signature of the last paint. Unchanged folds do not FLIP. */
+  let paintedFoldSig = '';
+  /**
+   * The next primary click on a fold handle is the click that follows a
+   * context menu or a hold that opened the level menu. It must not fold.
+   */
+  let ignoreNextFoldClick = false;
   let taskCycleOrigin: { id: string; includeNone: boolean } | null = null;
 
   function hostViewport(): { w: number; h: number } {
@@ -5574,6 +5582,37 @@ export function createMapView(
     return allowTaskToggleOpt !== false;
   }
 
+  /**
+   * The host already wrote the one-line task edit. Stamp the same state on the
+   * live view node so paint and a later commit see it. Fold ids are not touched.
+   * A title that still carries the box loses it: serialize writes `node.task`.
+   */
+  function stampViewTask(n: OutlineNode, to: TaskState | null): void {
+    if (to) n.task = to;
+    else delete n.task;
+    const parsed = parseLeadingTask(n.title);
+    if (parsed) n.title = parsed.label;
+  }
+
+  /** Collapsed/open foldables, in paint order. FLIP runs only when this changes. */
+  function foldVisibleSig(doc: OutlineFoldDoc): string {
+    const parts: string[] = [];
+    const walk = (list?: OutlineNode[]) => {
+      for (const n of list ?? []) {
+        if (!n.children?.length) continue;
+        if (!n.id) {
+          walk(n.children);
+          continue;
+        }
+        const col = isCollapsed(doc, n.id);
+        parts.push(`${n.id}${col ? '-' : '+'}`);
+        if (!col) walk(n.children);
+      }
+    };
+    walk(doc.nodes);
+    return parts.join(',');
+  }
+
   function applyTaskToggle(id: string): void {
     if (!tasksEditable()) {
       announce('Task toggle is read-only');
@@ -5594,7 +5633,8 @@ export function createMapView(
       // text side against the whole note, never by position within the shown subset.
       const viaText = opts.onMainTaskToggle(toRef(id), mapRefOf(doc, n) ?? undefined);
       if (!viaText || !viaText.from || !viaText.to) return;
-      const node = { ...n, task: viaText.to };
+      stampViewTask(n, viaText.to);
+      const node = { ...n };
       onTaskToggle?.({ id: toRef(id), from: viaText.from, to: viaText.to, node });
       if (shouldFireAction(viaText.from, viaText.to)) {
         const action = resolveAction(node);
@@ -5676,9 +5716,8 @@ export function createMapView(
     if (opts.onMainTaskToggle) {
       const viaText = opts.onMainTaskToggle(toRef(id), mapRefOf(doc, n) ?? undefined, to);
       if (!viaText) return false;
-      const node = { ...n } as OutlineNode;
-      if (viaText.to) node.task = viaText.to;
-      else delete node.task;
+      stampViewTask(n, viaText.to ?? null);
+      const node = { ...n };
       if (viaText.from && viaText.to) {
         onTaskToggle?.({ id: toRef(id), from: viaText.from, to: viaText.to, node });
         if (shouldFireAction(viaText.from, viaText.to)) {
@@ -5773,6 +5812,14 @@ export function createMapView(
     if (!id) return;
     if (t?.closest?.('.map-width-hit')) return;
     if (t?.closest?.('.map-fold-hit') || t?.closest?.('.map-fold-indicator')) {
+      // Right-click and other buttons open the level menu at most.
+      // Keyboard events have no button and still fold.
+      const button = (e as MouseEvent).button;
+      if (typeof button === 'number' && button !== 0) return;
+      if (ignoreNextFoldClick) {
+        ignoreNextFoldClick = false;
+        return;
+      }
       setFocusId(id);
       // Focus host/pill BEFORE paint so Map keys work (0.2.13).
       focusMapForKeys();
@@ -5896,6 +5943,8 @@ export function createMapView(
 
     const prev = snapshotPositions();
     const hadViewport = !!host.querySelector('#mapViewport');
+    const foldSig = foldVisibleSig(getDoc());
+    const foldMoved = foldSig !== paintedFoldSig;
 
     ensurePositions();
     const doc = getDoc();
@@ -6367,9 +6416,12 @@ export function createMapView(
     if (!hadViewport) resetCam();
     else applyCam();
 
-    if (hadViewport && isAutoPack(layout) && !skipFlip) {
+    // A tick, a resize re-measure, or a no-op fold click must not slide pills.
+    // FLIP runs only when a fold or a level actually changed.
+    if (hadViewport && isAutoPack(layout) && !skipFlip && foldMoved) {
       runFlipAnimation(prev, flipShift);
     }
+    paintedFoldSig = foldSig;
 
     host.querySelectorAll<SVGGElement>('.map-node').forEach((g) => {
       g.addEventListener('click', (e) => {
@@ -6480,6 +6532,9 @@ export function createMapView(
       return altDragCommits({ dx: t.x - t.sx, dy: t.y - t.sy, path: t.path, pointerType: type ?? t.type });
     }
     let mode: 'idle' | 'pending' | 'pan' | 'pinch' = 'idle';
+    /** Camera and follow flag at pointerdown, so a click that drifted into a pan can be undone. */
+    let gestureCam: { x: number; y: number; k: number } | null = null;
+    let gestureUserCam = false;
     let widthDrag: {
       pointerId: number;
       key: string;
@@ -7214,6 +7269,7 @@ export function createMapView(
         }
         const fine = h.pointerType === 'mouse';
         if (!openLevelMenu(h.id, { fine, dragPointer: h.pointerId })) return;
+        ignoreNextFoldClick = true;
       }, LEVEL_HOLD_MS);
     }
 
@@ -7390,6 +7446,14 @@ export function createMapView(
       (e) => {
         const now = performance.now();
         const target = e.target as Element | null;
+        // The click that follows contextmenu or a hold that opened the level menu.
+        if (ignoreNextFoldClick && target?.closest?.('.map-fold-hit, .map-fold-indicator')) {
+          ignoreNextFoldClick = false;
+          swallow = null;
+          e.preventDefault();
+          e.stopPropagation();
+          return;
+        }
         // The click that follows a handle activated on touch pointerup
         // (bindTap rule: 800 ms, keyboard clicks never). The popover and
         // in-map controls guard their own clicks.
@@ -7553,8 +7617,11 @@ export function createMapView(
       cancelFollowAnim();
       stopMotion();
       focusMapForKeys();
-      if (pointers.size === 0) firstDownAt = performance.now();
-      else if (pointers.size === 1) secondDownAt = performance.now();
+      if (pointers.size === 0) {
+        firstDownAt = performance.now();
+        gestureCam = { x: cam.x, y: cam.y, k: cam.k };
+        gestureUserCam = userCamGesture;
+      } else if (pointers.size === 1) secondDownAt = performance.now();
       const pt = localPt(e);
       const role: Tracked['role'] = pointers.size >= 2 ? 'spare' : 'driver';
       const nodeEl = (target as Element | null)?.closest?.('.map-node');
@@ -7826,8 +7893,31 @@ export function createMapView(
       const ds = drivers();
       const wasPinch = mode === 'pinch';
       const wasPan = mode === 'pan';
+      const moved = Math.hypot(had.x - had.sx, had.y - had.sy);
+      // Jitter past the 4px pan slop is still a click. The pan already captured
+      // the pointer and armed a click swallow, which drops the fold / task click
+      // and skips hand-mode double-click zoom. Put the camera back and let the click through.
+      const clickPan = wasPan && !wasPinch && panIsClick(moved);
+      if (clickPan) {
+        if (gestureCam) {
+          cam.x = gestureCam.x;
+          cam.y = gestureCam.y;
+          cam.k = gestureCam.k;
+          applyCam();
+        }
+        userCamGesture = gestureUserCam;
+        swallow = null;
+        releasing = true;
+        try {
+          host.releasePointerCapture(e.pointerId);
+        } catch {
+          /* not captured */
+        }
+        releasing = false;
+      }
+      const panned = wasPan && !clickPan;
       // The swallow follows the gesture to where the finger lifted.
-      if (wasPan || wasPinch) swallow = armSwallow(performance.now(), e.clientX, e.clientY);
+      if (panned || wasPinch) swallow = armSwallow(performance.now(), e.clientX, e.clientY);
       const lift = afterLift(mode, ds.length, singlePanLocked);
       mode = lift.mode;
       singlePanLocked = lift.singlePanLocked;
@@ -7846,7 +7936,6 @@ export function createMapView(
       }
       if (ds.length === 0) {
         const skipFling = lift.skipFling;
-        const moved = Math.hypot(had.x - had.sx, had.y - had.sy);
         const now = performance.now();
         mode = 'idle';
         pinch = null;
@@ -7868,9 +7957,9 @@ export function createMapView(
           springBack();
         } else if (
           doubleTapOn &&
-          !wasPan &&
+          !panned &&
           !wasPinch &&
-          moved <= 30 &&
+          panIsClick(moved) &&
           (!(e.target as Element | null)?.closest?.('.map-node') || !labelTextSelectOn()) &&
           isDoubleTap(now - lastTap.t, Math.hypot(had.x - lastTap.x, had.y - lastTap.y))
         ) {
@@ -7878,7 +7967,7 @@ export function createMapView(
           zoomAt(rect.left + had.x, rect.top + had.y, 2);
           springBack();
           lastTap = { t: 0, x: 0, y: 0 };
-        } else if (!wasPan && !wasPinch) {
+        } else if (!panned && !wasPinch) {
           // Touch / pen tap on an in-map handle: activate now. After a fling
           // the browser can drop the click for a few hundred ms (0.2.30).
           if (e.type === 'pointerup' && had.hit) {
@@ -8042,7 +8131,9 @@ export function createMapView(
       e.preventDefault();
       e.stopPropagation();
       e.stopImmediatePropagation();
-      if (act === 'open') openLevelMenu(id, { fine: pt !== 'touch' && pt !== 'pen' });
+      if (act === 'open') {
+        if (openLevelMenu(id, { fine: pt !== 'touch' && pt !== 'pen' })) ignoreNextFoldClick = true;
+      }
     }, { capture: true, signal });
     window.addEventListener('blur', () => resetPointers(), { signal });
     document.addEventListener('visibilitychange', () => {
