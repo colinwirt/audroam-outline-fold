@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.7.11 — 2026-11-22
+
+Inline `(+)` is the only fold store, and a childless line never gets `(+)`.
+
+- A document that already has an inline `(+)` ignores `fold-:` and `fold+:` on parse. A legacy note with only a fold list, and no inline marker, still opens from that list once.
+- Save no longer writes `fold-:` or `fold+:`. The default `collapsedMarker: "(+)"` is omitted. A custom marker is still written. The first save drops a legacy fold list.
+- A node with no children never gets `(+)` or the expanded marker, and its id is dropped from the fold list on save.
+
 ## 0.7.10 — 2026-11-19
 
 Hand mode zooms on a double-click, and a checkbox tick no longer opens folded branches.

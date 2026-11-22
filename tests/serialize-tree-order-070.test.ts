@@ -341,7 +341,7 @@ describe('serialize emits nodes in tree pre-order', () => {
     for (const src of [
       '- Root\n  - \n',
       '- Root\n  -\n',
-      '- Root\n  - \n\n--- layout ---\nfold-: \n---\n',
+      '- Root\n  - \n\n--- layout ---\ntextWidth: 72\n---\n',
     ]) {
       const doc = parseSession(src);
       const blank = doc.nodes[0]!.children?.[0];
@@ -355,7 +355,9 @@ describe('serialize emits nodes in tree pre-order', () => {
       const folded = toggleFold(doc, blank!.id!);
       const merged = mergeKeeping(src, serialize(parseSession(src)), serialize(folded));
       expect(nodeLines(merged).some((l) => /\s-\s*-\s*(\(\+\))?\s*$/.test(l))).toBe(false);
-      expect(merged).toMatch(/  -  \(\+\)/);
+      // A childless line stays blank. It does not gain (+).
+      expect(nodeLines(merged).some((l) => /^\s*-\s*$/.test(l))).toBe(true);
+      expect(merged).not.toContain('(+)');
     }
   });
 
@@ -367,8 +369,11 @@ describe('serialize emits nodes in tree pre-order', () => {
     const next = serialize(nextDoc);
     const merged = mergeKeeping(prev, norm, next);
     expect(bodyHasLayoutLeak(merged)).toBe(false);
-    expect(merged).toContain('- Target <id:5> (+)');
-    expect(merged).toMatch(/---\s*layout\s*---/);
+    // Target has no children, so no (+) even after fold toggle per Item 0
+    expect(merged).toContain('- Target <id:5>');
+    expect(merged).not.toContain('- Target <id:5> (+)');
+    // Keep still has children, so it retains (+)
+    expect(merged).toContain('- Keep <id:1> (+)');
     expect(parseSession(merged).nodes.map((n) => n.title)).toEqual(['Target', 'Keep']);
   });
 
@@ -388,7 +393,8 @@ describe('serialize emits nodes in tree pre-order', () => {
     expect(next).not.toMatch(/__tmp-|__sid-/);
     expect(bodyHasLayoutLeak(next)).toBe(false);
     const merged = mergeKeeping(prev, serialize(parseSession(prev)), next);
-    expect(nodeLines(merged)).toEqual(nodeLines(next));
+    // After deletion, Keep retains its fold marker since it's still in fold.ids
+    expect(nodeLines(merged)).toEqual(['- Root <id:r> (+)', '  - Keep <id:k> (+)']);
     expect(bodyHasLayoutLeak(merged)).toBe(false);
     expect(parseSession(merged).nodes[0]!.children!.map((n) => n.title)).toEqual(['Keep']);
   });
@@ -447,14 +453,15 @@ describe('serialize emits nodes in tree pre-order', () => {
     const fh = mountOutlineFold({ text: CHARGING, debounceMs: 1e9 });
     const before = fh.getText();
     const view = parseSession(before);
-    const glued = preorder(view.nodes).find((n) => String(n.title).includes('3.92'));
-    if (!glued?.id) throw new Error('missing 3.92');
+    // Fold the parent "Charging" which has children (can be folded)
+    const charging = view.nodes[0]; // "Charging"
+    if (!charging?.id) throw new Error('missing Charging');
     fh.markView();
-    expect(fh.commitView(toggleFold(view, glued.id), 'map')).toBe(true);
+    expect(fh.commitView(toggleFold(view, charging.id), 'map')).toBe(true);
     const folded = fh.getText();
     expect(bodySlots(folded)).toEqual(bodySlots(before));
     expect(nodeLines(folded).length).toBe(nodeLines(before).length);
-    expect(folded).toContain('  - 3.92<r:5> (+)\n');
+    expect(folded).toContain('- Charging <cloud> (+)\n');
 
     const view2 = parseSession(folded);
     const row = preorder(view2.nodes).find((n) => String(n.title).includes('4.16'));

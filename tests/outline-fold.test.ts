@@ -250,6 +250,7 @@ collapsedMarker: "(+)"
 
 - Designing updates for Markmap <id:design> (+)
   - Wire fold state <id:todo-1> (+)
+    - Subtask
   - Child without id
 - Always open <id:open>
 `;
@@ -259,8 +260,12 @@ collapsedMarker: "(+)"
     expect(out).toMatch(/- Wire fold state <id:todo-1> \(\+\)/);
     expect(out).toMatch(/- Always open <id:open>/);
     expect(out).not.toMatch(/<id:design> Designing/);
+    // Output should not contain fold-: since we have inline (+) markers (Item 1)
+    expect(out).not.toContain('fold-:');
+    // Output should not contain default collapsedMarker (Item 1)
+    expect(out).not.toContain('collapsedMarker:');
     const doc2 = parse(out);
-    expect(doc2.fold).toEqual(doc.fold);
+    expect(doc2.fold.ids).toEqual(['design', 'todo-1']);
     expect(doc2.nodes[0].id).toBe('design');
     expect(doc2.nodes[0].children?.[0].id).toBe('todo-1');
     expect(doc2.nodes[0].children?.[1].title).toBe('Child without id');
@@ -274,6 +279,7 @@ fold-: secret
 collapsedMarker: "(+)"
 ---
 - <id:secret> <private> Payroll notes (+)
+  - Details
 `;
     const doc = parse(text);
     const out = serialize(doc);
@@ -637,7 +643,8 @@ noteUri: ${pattern}
 });
 
 describe('<t:N> / legacy <t: N> spelling round-trip', () => {
-  // Two-link note shape: one tag with a space, one without, folds in the layout block.
+  // Two-link note shape: one tag with a space, one without, folds in inline markers (no fold-: in layout per Item 1).
+  // Per Item 1: empty layout block (only defaults) is omitted from serialize output.
   const BODY = [
     '- 12 Mar - Agenda <id:1>',
     '  - [x] Minutes? <id:2>',
@@ -648,11 +655,6 @@ describe('<t:N> / legacy <t: N> spelling round-trip', () => {
     '  - Rain barrel <id:12>',
     '- Spring Show Rose Pruning <t:1003> <id:13> (+)',
     '  - Trellis <id:15>',
-    '',
-    '--- layout ---',
-    'fold-: 13, 9',
-    'collapsedMarker: "(+)"',
-    '---',
     '',
   ].join('\n');
 
@@ -676,10 +678,10 @@ describe('<t:N> / legacy <t: N> spelling round-trip', () => {
 
     it(`a fold toggle only changes the fold marker and layout (${name})`, () => {
       const folded = serialize(toggleFold(parse(body), '3'));
+      // Per Item 1: fold-: is never written when inline (+) markers exist.
+      // Toggle adds inline (+) marker, layout stays empty.
       expect(folded).toBe(
-        body
-          .replace('- Seed Swap <id:3>', '- Seed Swap <id:3> (+)')
-          .replace('fold-: 13, 9', 'fold-: 13, 9, 3'),
+        body.replace('- Seed Swap <id:3>', '- Seed Swap <id:3> (+)'),
       );
       const back = serialize(toggleFold(parse(folded), '3'));
       expect(back).toBe(body);

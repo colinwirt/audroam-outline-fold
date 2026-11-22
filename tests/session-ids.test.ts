@@ -75,7 +75,8 @@ describe('parse sessionIds', () => {
     const text = serialize(doc);
     expect(text.match(/<id:\d+>/g)).toEqual(['<id:3>']);
     expect(text).toContain('  - Recharge <id:3>\n');
-    expect(text).toMatch(/--- layout ---\nfold-: [\d, ]*\ncollapsedMarker: "\(\+\)"\n3:\n {2}w: 240\n---\n$/);
+    // Per Item 1: fold-: is not written when inline (+) markers exist
+    expect(text).toMatch(/--- layout ---\n3:\n {2}w: 240\n---\n$/);
     expect(node.autoId).toBeUndefined();
     expect(byTitle(parse(text), 'Recharge').layout).toEqual({ w: 240 });
   });
@@ -153,14 +154,19 @@ describe('parse sessionIds', () => {
     const doc = load('- a <id:3>\n  - b\n- c\n  - d\n');
     const both = toggleFold(toggleFold(doc, '3'), byTitle(doc, 'c').id!);
     const text = serialize(both);
+    // After toggling folds, both nodes have inline (+) markers
+    // 'a' has an authored id, 'c' has a session id which is NOT persisted in output
     expect(text).toMatch(/^- a <id:3> \(\+\)\n {2}- b\n- c \(\+\)\n {2}- d\n/);
-    expect(text).toContain('fold-: 3\n');
+    // Per Item 1: fold-: is NOT written when inline (+) markers exist
+    expect(text).not.toContain('fold-:');
   });
 
   it('fold+ writes the id of an expanded line: that entry is a persistent link', () => {
     const doc = load('- a\n  - b\n- c\n  - d\n\n--- layout ---\nfold+: \n---\n');
     const text = serialize(toggleFold(doc, byTitle(doc, 'c').id!));
+    // fold+ lists expanded lines. c is expanded, so it keeps an id and no marker.
+    // a stays collapsed, so it keeps (+). The fold+: list is not written.
     expect(text).toMatch(/^- a \(\+\)\n {2}- b\n- c <id:3>\n {2}- d\n/);
-    expect(text).toContain('fold+: 3\n');
+    expect(text).not.toContain('fold+:');
   });
 });

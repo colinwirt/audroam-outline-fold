@@ -59,7 +59,7 @@ describe('sealed / enc grammar (v0.2)', () => {
 fold-: n1
 collapsedMarker: "(+)"
 ---
-- Secret caption <encrypted> <id:n1> (+)
+- Secret caption <encrypted> <id:n1>
 
 --- payloads ---
 n1:
@@ -76,7 +76,9 @@ n1:
       alg: 'demo-aes-gcm',
     });
     const out = serialize(doc);
-    expect(out).toMatch(/- Secret caption <encrypted> <id:n1> \(\+\)/);
+    // Per Item 0: sealed node has no children, so no (+) even if input had it
+    expect(out).toMatch(/- Secret caption <encrypted> <id:n1>$/m);
+    expect(out).not.toContain(' (+)');
     expect(out).not.toMatch(/<enc:/);
     expect(out).toContain('--- payloads ---');
     expect(out).toContain('ct: c2FtcGxlQ1Q');

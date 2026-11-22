@@ -52,7 +52,7 @@ describe('template resolution order', () => {
   });
 
   it('serialize writes the keys in the layout block and they round-trip', () => {
-    const text = '- Row <t:41>\n\n--- layout ---\nfold-: \ncollapsedMarker: "(+)"\nnoteUri: /view/pnid/{id}\nnoteMapUri: /outline-view?id={id}&map=1\nnoteDetailsUri: none\n---\n';
+    const text = '- Row <t:41>\n\n--- layout ---\nnoteUri: /view/pnid/{id}\nnoteMapUri: /outline-view?id={id}&map=1\nnoteDetailsUri: none\n---\n';
     expect(serialize(parse(text))).toBe(text);
   });
 });

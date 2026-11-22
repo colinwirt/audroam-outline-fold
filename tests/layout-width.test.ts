@@ -45,9 +45,12 @@ c1:
     const text = serialize(doc);
     expect(text.startsWith('- Parent row <id:p1> (+)\n')).toBe(true);
     expect(text).not.toMatch(/^---\n/);
-    expect(text).toContain('--- layout ---\nfold-: p1\ncollapsedMarker: "(+)"\nfontSize: 18\nc1:\n  w: 280\n---');
+    // Per Item 1: when inline (+) markers exist, fold-: is NOT written to layout
+    expect(text).toContain('--- layout ---\nfontSize: 18\nc1:\n  w: 280\n---');
+    expect(text).not.toContain('fold-:');
+    expect(text).not.toContain('collapsedMarker:'); // default is omitted
     const again = parse(text);
-    expect(again.fold.ids).toEqual(['p1']);
+    expect(again.fold.ids).toEqual(['p1']); // still parsed from inline (+)
     expect(again.frontmatter?.fontSize).toBe(18);
     expect(again.nodes[0]?.children?.[0]?.layout?.w).toBe(280);
   });

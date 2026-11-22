@@ -18,11 +18,14 @@ it('a stale empty fold pair is replaced when a real fold id is written', () => {
   const norm = hostSerialize(parse(prev), prev);
   const next = hostSerialize(toggleFold(parse(prev), '12'), prev);
   const merged = mergeKeeping(prev, norm, next);
-  expect(merged.split('\n').filter((l) => /^fold-/.test(l))).toEqual(['fold-: 12']);
-  expect(merged.split('\n').filter((l) => /^collapsedMarker:/.test(l))).toHaveLength(1);
+  // Per Item 1: when inline (+) exists, fold-: is NOT written to layout
+  expect(merged.split('\n').filter((l) => /^fold-/.test(l))).toEqual([]);
+  expect(merged.split('\n').filter((l) => /^collapsedMarker:/.test(l))).toHaveLength(0); // default omitted
   expect(merged).toContain('textWidth: 59');
   expect(merged).toContain('kdf=pbkdf2-sha256&i=600000&salt=FsbqGP9XtDRj8_ea6JzJVA');
   expect(merged).not.toMatch(/\n---\n\n---\n/);
+  // Verify that the folded node has inline (+) marker
+  expect(merged).toContain('- Vault <id:12> (+)');
 });
 
 it('keeps an outline blank line, and a fold-shaped outline line, on a later edit', () => {

@@ -86,7 +86,9 @@ describe('glued <r:> tag does not insert a duplicate line', () => {
     const next = serialize(toggleFold(doc, node.id));
     const merged = mergeKeeping(prev, norm, next);
     expect(lineCount(merged, /3\.92/)).toBe(1);
-    expect(merged).toContain('  - 3.92<r:5> (+)\n');
+    // Glued line has no children, so no (+) per Item 0 (P1 leaf-node bug fix)
+    expect(merged).toContain('  - 3.92<r:5>\n');
+    expect(merged).not.toContain('3.92<r:5> (+)');
     expect(merged).not.toContain('3.92 <r:5>');
     expect(merged.split('\n').filter((l) => l.includes('4.16'))).toEqual(['  - 4.16 <r:15>']);
   });
@@ -98,11 +100,13 @@ describe('glued <r:> tag does not insert a duplicate line', () => {
     if (!node?.id) throw new Error('missing 3.92 node');
     const folded = toggleFold(view, node.id);
     fh.markView();
-    expect(fh.commitView(folded, 'map')).toBe(true);
+    // Glued node has no children, so fold toggle is a no-op; commitView returns false
+    expect(fh.commitView(folded, 'map')).toBe(false);
     const text = fh.getText();
     expect(lineCount(text, /3\.92/)).toBe(1);
-    expect(text).toContain('  - 3.92<r:5> (+)\n');
-    expect(text).not.toMatch(/3\.92 <r:5>/);
+    // No change to the glued line since it has no children
+    expect(text).toContain('  - 3.92<r:5>\n');
+    expect(text).not.toMatch(/3\.92<r:5> \(\+\)/);
   });
 
   it('even a spaced serialize of the glued line updates in place (node identity, not text)', () => {
@@ -144,7 +148,9 @@ describe('glued <r:> tag does not insert a duplicate line', () => {
     const folded = toggleFold(doc, kids[0]!.id!);
     const merged = mergeKeeping(text, serialize(parse(text, { sessionIds: true })), serialize(folded));
     expect(lineCount(merged, /3\.92/)).toBe(2);
-    expect(merged).toContain('  - 3.92 <r:5> (+)\n');
+    // Both nodes have no children, so no (+) per Item 0
+    expect(merged).toContain('  - 3.92 <r:5>\n');
     expect(merged).toContain('  - 3.92<r:5>\n');
+    expect(merged).not.toContain('(+)');
   });
 });

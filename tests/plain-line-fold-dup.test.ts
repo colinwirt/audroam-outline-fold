@@ -37,6 +37,8 @@ it('a minted id on a plain line still replaces that line on fold', () => {
   node.autoId = true;
   const norm = serialize(doc);
   const merged = mergeKeeping(prev, norm, serialize(toggleFold(doc, node.id)));
-  expect(merged.split('\n').filter((l) => l.includes('done'))).toEqual(['- done (+)']);
+  // A childless line has nothing to fold, so it stays as typed and does not gain (+).
+  expect(merged.split('\n').filter((l) => l.includes('done'))).toEqual(['done <id:5>']);
+  expect(merged).not.toContain('(+)');
   expect(merged).toContain('- follow in text\n');
 });

@@ -15,6 +15,8 @@ import type {
 /** Fence labels accepted for the trailer payload map (case-insensitive). */
 const PAYLOAD_FENCES = new Set(['payloads', 'sealed', 'enc']);
 
+const DEFAULT_COLLAPSED = '(+)';
+
 export type PayloadMap = Record<string, SealedPayload>;
 
 /** Layout trailer keyed by node id or, when the line has no id, by 1-based position. */
@@ -596,14 +598,9 @@ export function formatLayoutBlock(
 ): string {
   const lines: string[] = ['--- layout ---'];
   if (frontmatter) {
-    if (
-      frontmatter.foldMode ||
-      (frontmatter.foldIds && frontmatter.foldIds.length > 0)
-    ) {
-      const mode = frontmatter.foldMode === '+' ? '+' : '-';
-      lines.push(`fold${mode}: ${(frontmatter.foldIds ?? []).join(', ')}`);
-    }
-    if (frontmatter.collapsedMarker) {
+    // Single-source truth: don't write fold-:/fold+: to layout (inline (+) is the sole store).
+    // Strip legacy fold-: on save (migration to inline (+) on first save).
+    if (frontmatter.collapsedMarker && frontmatter.collapsedMarker !== DEFAULT_COLLAPSED) {
       lines.push(`collapsedMarker: "${frontmatter.collapsedMarker}"`);
     }
     if (frontmatter.expandedMarker) {

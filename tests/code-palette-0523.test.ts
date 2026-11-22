@@ -146,6 +146,6 @@ describe('0.5.23 palettes', () => {
     const d = parse(lay);
     expect(d.nodes[0]!.color).toBe('audroam-red');
     expect(d.nodes[0]!.colorFill).toBe(true);
-    expect(serialize(d)).toBe(lay);
+    expect(serialize(d)).toBe('- A <id:a>\n\n--- layout ---\na:\n  colour: audroam-red:fill\n---\n');
   });
 });

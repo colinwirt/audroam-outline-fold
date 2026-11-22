@@ -168,16 +168,16 @@ function serializeNode(
   const lead = (node.task ? taskMarker(node.task) : '') + (leadIcon(node) ? `${leadIcon(node)} ` : '');
   const inline = inlineLinks(node);
   let line = `${indent}- ${lead}${inline.title}${formatTrailingSpans(node, inline)}`;
-  // Under fold+ every line off the list is collapsed; a session-id leaf has no fold to mark.
-  const bareLeaf = node.autoId && doc.fold.mode === '+' && !node.children?.length;
-  if (node.id && isCollapsed(doc, node.id) && !bareLeaf) {
+  // Never write (+) on a node with no children.
+  const hasChildren = node.children && node.children.length > 0;
+  if (node.id && isCollapsed(doc, node.id) && hasChildren) {
     line += ` ${collapsedMarker}`;
-  } else if (node.id && expandedMarker) {
+  } else if (node.id && expandedMarker && hasChildren) {
     line += ` ${expandedMarker}`;
-  } else if (!node.id && node.foldMark === 'collapsed') {
+  } else if (!node.id && node.foldMark === 'collapsed' && hasChildren) {
     // Lazy ids: a fold on a line without an id is the inline marker, never an id.
     line += ` ${collapsedMarker}`;
-  } else if (!node.id && node.foldMark === 'expanded' && expandedMarker) {
+  } else if (!node.id && node.foldMark === 'expanded' && expandedMarker && hasChildren) {
     line += ` ${expandedMarker}`;
   }
   lines.push(line);
@@ -193,11 +193,16 @@ function serializeNode(
 function layoutFoldIds(doc: OutlineFoldDoc): string[] {
   const auto = new Map<string, OutlineNode>();
   const present = new Set<string>();
+  const leafIds = new Set<string>();
   const walk = (list: OutlineNode[]) => {
     for (const n of list) {
       if (n.id) {
         present.add(n.id);
         if (n.autoId) auto.set(n.id, n);
+        // Track leaf nodes (no children) so we can drop their fold ids.
+        if (!n.children?.length) {
+          leafIds.add(n.id);
+        }
       }
       if (n.children?.length) walk(n.children);
     }
@@ -205,7 +210,8 @@ function layoutFoldIds(doc: OutlineFoldDoc): string[] {
   walk(doc.nodes);
   // Drop ids whose node is gone (a Map delete left them in fold.ids). A stale
   // `__sid-` written into the layout block was then merged back as a body line.
-  const live = doc.fold.ids.filter((id) => present.has(id));
+  // Also drop ids for leaf nodes (nodes with no children should never be in fold.ids).
+  const live = doc.fold.ids.filter((id) => present.has(id) && !leafIds.has(id));
   if (live.length !== doc.fold.ids.length) {
     doc.fold.ids = live;
     if (doc.frontmatter) doc.frontmatter.foldIds = [...live];

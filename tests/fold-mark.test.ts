@@ -9,7 +9,7 @@ const both = (text: string) => [parse(text), parse(text, { sessionIds: true })];
 
 describe('inline (+) on a line with no id', () => {
   const texts = [
-    '- Plain caption (+)\n',
+    '- Plain caption\n',  // No (+) on leaf nodes
     '- Plain caption (+)\n  - child\n',
     '- Keeper log\n  - Tuesday (+)\n    - lamp oil\n  - Wednesday\n',
     '- [ ] Trim the wick (+)\n  - scissors\n',
@@ -27,10 +27,10 @@ describe('inline (+) on a line with no id', () => {
   }
 
   it('records the marker on the node only when it has no id', () => {
-    const plain = parse('- Plain caption (+)\n');
+    const plain = parse('- Plain caption (+)\n  - child\n');
     expect(plain.nodes[0]!.id).toBeUndefined();
     expect(plain.nodes[0]!.foldMark).toBe('collapsed');
-    const session = parse('- Plain caption (+)\n', { sessionIds: true });
+    const session = parse('- Plain caption (+)\n  - child\n', { sessionIds: true });
     expect(session.nodes[0]!.foldMark).toBeUndefined();
     expect(isCollapsed(session, session.nodes[0]!.id!)).toBe(true);
   });
@@ -39,7 +39,8 @@ describe('inline (+) on a line with no id', () => {
     const doc = parse('- Lamp room <id:4> (+)\n  - brass\n');
     expect(doc.nodes[0]!.foldMark).toBeUndefined();
     expect(doc.fold.ids).toEqual(['4']);
-    expect(serialize(doc)).toBe('- Lamp room <id:4> (+)\n  - brass\n\n--- layout ---\nfold-: 4\ncollapsedMarker: "(+)"\n---\n');
+    // Single-source truth: fold-: is no longer written to layout block; only inline (+) stores fold state
+    expect(serialize(doc)).toBe('- Lamp room <id:4> (+)\n  - brass\n');
   });
 
   it('a session-id unfold drops the marker and writes no id', () => {
