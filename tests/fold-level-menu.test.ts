@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 import {
   currentWholeMapLevel,
   foldLevelPicker,
+  isCollapsed,
   levelConfirmLabel,
   levelContextAction,
   levelHoldAt,
@@ -244,6 +245,68 @@ describe('applying a pick (L16) and whole-map levels (L8)', () => {
     expect(currentWholeMapLevel(toggleFold(one, 'mon'))).toBeNull();
     // Same as long-pressing the root handle and picking the level.
     expect(wholeMapLevelDoc(doc, 2).fold).toEqual(setExpandLevel(doc, 2, { under: 'root' }).fold);
+  });
+
+  it('level 2 folds siblings together when one node.depth is stale', () => {
+    const doc = parse('- Root <id:r>\n  - SQL demo <id:a>\n    - bring id <id:a1>\n      - detail <id:a2>\n  - Q1.1 <id:b> (+)\n    - discussion <id:b1>\n      - detail <id:b2>\n  - Q2.2 <id:c>\n    - Screenshot <id:c1>\n      - detail <id:c2>\n');
+    const kids = doc.nodes[0]!.children!;
+    kids[0]!.depth = 0;
+    kids[1]!.depth = 9;
+    kids[2]!.depth = 1;
+    const next = wholeMapLevelDoc(doc, 2);
+    expect(isCollapsed(next, 'a')).toBe(false);
+    expect(isCollapsed(next, 'b')).toBe(false);
+    expect(isCollapsed(next, 'c')).toBe(false);
+    expect(isCollapsed(next, 'a1')).toBe(true);
+    expect(isCollapsed(next, 'b1')).toBe(true);
+    expect(isCollapsed(next, 'c1')).toBe(true);
+  });
+
+  it('level 2 shuts every question when two siblings claim a shallower depth', () => {
+    // Same shape as the map: one root, two sections, questions one step further.
+    // Level 2 leaves the sections open and shuts every question. A stored depth
+    // of 0 used to keep SQL demo and Q2.2 open, so their children stayed on screen.
+    const doc = parse([
+      '- Course <id:course>',
+      '  - A3 <id:a3>',
+      '    - SQL demo <id:sql>',
+      '      - bring id <id:bring>',
+      '    - Q1.1 <id:q11> (+)',
+      '      - discussion <id:disc>',
+      '    - Lab notes <id:lab> (+)',
+      '      - see note <id:see>',
+      '  - Q2 <id:q2>',
+      '    - Q2.1 <id:q21> (+)',
+      '      - alert <id:alert>',
+      '    - Q2.2 <id:q22>',
+      '      - Screenshot <id:shot>',
+      '    - Q2.3 <id:q23> (+)',
+      '      - worm <id:worm>',
+    ].join('\n'));
+    const a3 = doc.nodes[0]!.children![0]!.children!;
+    const q2 = doc.nodes[0]!.children![1]!.children!;
+    a3[0]!.depth = 0;
+    a3[1]!.depth = 9;
+    q2[1]!.depth = 0;
+    const next = wholeMapLevelDoc(doc, 2);
+    expect(isCollapsed(next, 'course')).toBe(false);
+    expect(isCollapsed(next, 'a3')).toBe(false);
+    expect(isCollapsed(next, 'q2')).toBe(false);
+    for (const id of ['sql', 'q11', 'lab', 'q21', 'q22', 'q23']) {
+      expect(isCollapsed(next, id)).toBe(true);
+    }
+  });
+
+  it('level 2 shuts a foldable line that has no id', () => {
+    const doc = parse('- Course\n  - A3\n    - SQL demo\n      - bring id\n    - Q1.1\n      - discussion\n');
+    const next = wholeMapLevelDoc(doc, 2);
+    const questions = next.nodes[0]!.children![0]!.children!;
+    expect(questions[0]!.id).toBeTruthy();
+    expect(questions[1]!.id).toBeTruthy();
+    expect(questions[0]!.autoId).toBe(true);
+    expect(isCollapsed(next, questions[0]!.id!)).toBe(true);
+    expect(isCollapsed(next, questions[1]!.id!)).toBe(true);
+    expect(doc.nodes[0]!.children![0]!.children![0]!.id).toBeUndefined();
   });
 });
 

@@ -3186,6 +3186,15 @@ export function createMapView(
     pendingFollow = null;
     closeLevelMenu(false);
     setDoc(next);
+    // A cloud's inner doc is not the root doc. Its stored fold was left as it
+    // was, so Level 2 opened one branch and left the sibling shut. The region
+    // root is one step down from the anchor, so the button number is the
+    // setExpandLevel argument (the root doc uses level + 1).
+    for (const h of regionHosts()) {
+      if (regionLocked(h)) continue;
+      rfold.setRegionFolded(h.id, false);
+      rfold.setLevel(h.id, h.doc!, level === '*' ? '*' : level);
+    }
     onChange?.();
     announce(wholeMapAnnouncement(next, level));
   }

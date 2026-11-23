@@ -847,21 +847,21 @@ export function parse(text: string, opts?: ParseOptions): OutlineFoldDoc {
     for (const n of inlineCollapsedBare) inlineCollapsedIds.push(n.id!);
   }
 
-  const mode: FoldMode = fm.foldMode ?? '-';
+  let mode: FoldMode = fm.foldMode ?? '-';
   let ids = [...(fm.foldIds ?? [])];
 
-  // Single-source truth: if document has any inline (+) marker, ignore fold-:/fold+: on parse.
-  // Legacy fold-:-only documents (no inline markers) read once as fallback and strip on save.
+  // Inline (+) is the only fold store. A leftover fold-: or fold+: list is
+  // ignored as soon as any line carries (+), including fold+ (listed ids
+  // expanded). A list with no inline marker is still the legacy fallback.
   const hasInlineMarkers = inlineCollapsedIds.length > 0 || inlineCollapsedBare.length > 0;
 
-  if (mode === '-' && !hasInlineMarkers) {
-    // No inline markers: union legacy fold-: ids with inline markers (backward compatibility).
+  if (hasInlineMarkers) {
+    mode = '-';
+    ids = [...inlineCollapsedIds];
+  } else if (mode === '-') {
     for (const id of inlineCollapsedIds) {
       if (!ids.includes(id)) ids.push(id);
     }
-  } else if (mode === '-' && hasInlineMarkers) {
-    // Inline markers present: ignore fold-: entirely, use only inline (+).
-    ids = [...inlineCollapsedIds];
   }
 
   const frontmatter: OutlineFrontmatter = { ...fm };

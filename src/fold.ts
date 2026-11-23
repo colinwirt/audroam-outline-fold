@@ -1,3 +1,4 @@
+import { collectNodeIds, nextAutoId, SESSION_ID_PREFIX } from './nodeAddress.js';
 import type { OutlineFoldDoc, OutlineNode } from './types.js';
 
 function cloneDoc(doc: OutlineFoldDoc): OutlineFoldDoc {
@@ -61,16 +62,37 @@ export interface SetExpandLevelOptions {
   under?: string;
 }
 
+/**
+ * A foldable line with no id never enters fold.ids, so a level leaves it open
+ * while the sibling that has an id shuts. Mint a session id on the clone first.
+ * It is not written as `<id:>` (`autoId`); the line's `(+)` carries the fold.
+ */
+function ensureFoldableIds(nodes: OutlineNode[]): void {
+  const used = collectNodeIds(nodes);
+  const walk = (list: OutlineNode[] | undefined) => {
+    for (const n of list ?? []) {
+      if (!n.children?.length) continue;
+      if (!n.id) {
+        n.id = nextAutoId(used, SESSION_ID_PREFIX);
+        n.autoId = true;
+      }
+      walk(n.children);
+    }
+  };
+  walk(nodes);
+}
+
 function walkFoldable(
   nodes: OutlineNode[],
-  visit: (node: OutlineNode & { id: string }) => void,
+  visit: (node: OutlineNode & { id: string }, depth: number) => void,
+  depth = 0,
 ): void {
   for (const node of nodes) {
     if (node.children && node.children.length > 0) {
       if (node.id) {
-        visit(node as OutlineNode & { id: string });
+        visit(node as OutlineNode & { id: string }, depth);
       }
-      walkFoldable(node.children, visit);
+      walkFoldable(node.children, visit, depth + 1);
     }
   }
 }
@@ -121,8 +143,9 @@ function applyWantCollapsed(
 /**
  * Pure expand-level (iThoughts-style). Returns a new doc; fold mode unchanged.
  *
- * Depth uses **1-based aria-level** semantics (roots = 1). `node.depth` is
- * 0-based → aria-level = depth + 1.
+ * Depth uses **1-based aria-level** semantics (roots = 1). The level is the
+ * walk from the roots of this doc, not `node.depth`. A stale `node.depth` on
+ * one sibling was leaving that pill open while the one beside it shut.
  *
  * - `n` in 1..9: expand foldable nodes with level &lt; n; collapse foldable at level ≥ n
  * - `0`: top level only (collapse everything under roots; same as level `1`)
@@ -133,7 +156,8 @@ function applyWantCollapsed(
  * subtree; outside nodes are untouched. Absolute tree-wide behaviour is unchanged
  * when `under` is omitted (Outline / cold-start seed).
  *
- * Only nodes with both an `id` and children participate in fold.ids.
+ * Every node with children participates. A line with no id is given a session
+ * id on the returned doc so the level can name it.
  */
 export function setExpandLevel(
   doc: OutlineFoldDoc,
@@ -141,6 +165,7 @@ export function setExpandLevel(
   opts?: SetExpandLevelOptions,
 ): OutlineFoldDoc {
   const next = cloneDoc(doc);
+  ensureFoldableIds(next.nodes);
   const underId = opts?.under;
 
   let expandAll = false;
@@ -174,21 +199,21 @@ export function setExpandLevel(
     if (!anchor) {
       return next;
     }
-    const anchorDepth = anchor.depth;
-    walkFoldable([anchor], (node) => {
+    // Depth is the walk from this node, not node.depth. A stale depth on one
+    // sibling was folding it while the pill beside it stayed open.
+    walkFoldable([anchor], (node, depth) => {
       if (expandAll) {
         wantCollapsed.set(node.id, false);
         return;
       }
-      const relativeDepth = node.depth - anchorDepth;
-      wantCollapsed.set(node.id, relativeDepth >= showThroughRel);
+      wantCollapsed.set(node.id, depth >= showThroughRel);
     });
     applyWantCollapsed(next, wantCollapsed);
     return next;
   }
 
-  walkFoldable(next.nodes, (node) => {
-    const ariaLevel = node.depth + 1;
+  walkFoldable(next.nodes, (node, depth) => {
+    const ariaLevel = depth + 1;
     if (expandAll) {
       wantCollapsed.set(node.id, false);
     } else {

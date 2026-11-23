@@ -71,6 +71,37 @@ function mount(text = TEXT) {
   return { host, mv, fh, sources, node, pillX, getView: () => view };
 }
 
+const WITH_LAYOUT_LIST = [
+  '- Section <cloud> <id:s3>',
+  '  - Setup <id:setup>',
+  '    - Colab link',
+  '  - Q3.1 <id:q31> (+)',
+  '    - Evidence <id:34>',
+  '  - Q3.2 <id:q32> (+)',
+  '    - Screenshots <id:39>',
+  '  - Q3.3 <id:q33>',
+  '    - child',
+  '',
+  '--- layout ---',
+  'fold+: s3, q32',
+  '---',
+].join('\n');
+
+it('a fold+: list does not open a line that is marked (+)', () => {
+  const doc = parse(WITH_LAYOUT_LIST, { sessionIds: true });
+  expect(doc.fold.mode).toBe('-');
+  expect(doc.fold.ids).toEqual(['q31', 'q32']);
+  const { node } = mount(WITH_LAYOUT_LIST);
+  expect(node('Setup')?.getAttribute('aria-expanded')).toBe('true');
+  expect(node('Colab link')).toBeTruthy();
+  expect(node('Q3.1')?.getAttribute('aria-expanded')).toBe('false');
+  expect(node('Evidence')).toBeNull();
+  expect(node('Q3.2')?.getAttribute('aria-expanded')).toBe('false');
+  expect(node('Screenshots')).toBeNull();
+  expect(node('Q3.3')?.getAttribute('aria-expanded')).toBe('true');
+  expect(node('child')).toBeTruthy();
+});
+
 it('a fresh parse of the same text mints the same session ids and folds', () => {
   const a = parse(TEXT, { sessionIds: true });
   const b = parse(TEXT, { sessionIds: true });

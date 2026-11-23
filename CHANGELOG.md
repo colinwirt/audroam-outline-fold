@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.7.12 — 2026-11-23
+
+The map follows inline `(+)`, including when a layout `fold+:` list is still in the note.
+
+- A document with any inline `(+)` is read as fold- from those markers only. A leftover `fold-:` or `fold+:` list does not open or close a different set of branches. A note with no inline marker still opens from that list once.
+- Toolbar Levels count the walk from the roots. A stale `node.depth` on one sibling no longer leaves that branch open while the branch beside it shuts. A foldable line with no id takes a session id for that level, so it shuts with its siblings. A cloud region's stored fold is set to the same level.
+
 ## 0.7.11 — 2026-11-22
 
 Inline `(+)` is the only fold store, and a childless line never gets `(+)`.
