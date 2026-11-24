@@ -530,7 +530,10 @@ export interface MapViewOptions {
     rubberBand?: boolean;
     doubleTapZoom?: boolean;
     twoFingerTapZoomOut?: boolean;
-    /** Hand mode: false blocks label text selection and always treats drags as pan. */
+    /**
+     * Ignored. Map labels are not a text selection surface: a press pans,
+     * and a double-click zooms. Read or copy the line from the text view.
+     */
     labelTextSelect?: boolean | (() => boolean);
   };
   onCameraSettle?: (cam: { x: number; y: number; k: number }) => void;
@@ -1734,11 +1737,9 @@ export function mapNodeKeepsTextSelection(
 
 /**
  * What a pointer-down does to the browser Selection before a pan.
- * Label presses stay alone so drag-select and double-click word select work.
- * Any other press on empty canvas must preventDefault. Otherwise the browser
- * starts a drag-select and extends it on every pointermove, which repaints
- * the whole map and the pan never stays smooth. A node click only clears,
- * so the click still reaches the pill.
+ * A label press and an empty-canvas press preventDefault, so a double-click
+ * cannot start a text range. A node click only clears, so the click still
+ * reaches the pill. `labelTextSelect` is ignored: captions are not selectable.
  */
 export function mapBackgroundPanSelection(opts: {
   onLabel: boolean;
@@ -1747,8 +1748,10 @@ export function mapBackgroundPanSelection(opts: {
   selectionOutside: boolean;
   labelTextSelect: boolean;
 }): 'ignore' | 'clear' | 'prevent-and-clear' {
-  if (opts.onLabel) return opts.labelTextSelect ? 'ignore' : 'prevent-and-clear';
-  if (!opts.onNode) return 'prevent-and-clear';
+  void opts.labelTextSelect;
+  void opts.clickDetail;
+  void opts.selectionOutside;
+  if (opts.onLabel || !opts.onNode) return 'prevent-and-clear';
   return 'clear';
 }
 
@@ -2041,10 +2044,6 @@ export function createMapView(
   const rubberOn = gestureOpts.rubberBand !== false;
   const doubleTapOn = gestureOpts.doubleTapZoom !== false;
   const twoFingerZoomOut = gestureOpts.twoFingerTapZoomOut !== false;
-  const labelTextSelectOn = () =>
-    typeof gestureOpts.labelTextSelect === 'function'
-      ? gestureOpts.labelTextSelect()
-      : gestureOpts.labelTextSelect !== false;
 
   function recentreEnabled(): boolean {
     return typeof cameraRecentreOpt === 'function'
@@ -7484,6 +7483,15 @@ export function createMapView(
       { capture: true, signal },
     );
 
+    // A double-click on an SVG caption selects a text range after pointerup,
+    // sometimes on a label that was not under the pointer. selectstart is
+    // the event that range starts on. Editors and the link-preview URL stay selectable.
+    host.addEventListener('selectstart', (e) => {
+      const t = e.target as Element | null;
+      if (t?.closest?.('textarea, input, [contenteditable="true"], .map-link-preview')) return;
+      e.preventDefault();
+    }, { signal });
+
     host.addEventListener(
       'wheel',
       (e) => {
@@ -7578,14 +7586,6 @@ export function createMapView(
         return;
       }
       if (type === 'mouse' && performance.now() - lastFingerDown < 700) return;
-      if (
-        !finger &&
-        (type === 'mouse' || type === 'pen') &&
-        onLabel &&
-        labelTextSelectOn() &&
-        !barrel &&
-        e.button !== 1
-      ) return;
       const sel =
         typeof window !== 'undefined' && window.getSelection ? window.getSelection() : null;
       const anchor = sel?.anchorNode ?? null;
@@ -7596,7 +7596,7 @@ export function createMapView(
         onNode: !!target?.closest?.('.map-node'),
         clickDetail: e.detail || 0,
         selectionOutside,
-        labelTextSelect: labelTextSelectOn(),
+        labelTextSelect: false,
       });
       if (selAction === 'prevent-and-clear') e.preventDefault();
       if (selAction !== 'ignore') {
@@ -7694,25 +7694,6 @@ export function createMapView(
         clearLongPress();
       } else {
         mode = 'pending';
-        if (finger && onLabel && labelTextSelectOn()) {
-          const label = target!.closest('.map-label') as Element;
-          clearLongPress();
-          longPressTimer = window.setTimeout(() => {
-            const p = pointers.get(e.pointerId);
-            if (!p || mode !== 'pending') return;
-            if (committed(e.pointerId, p.type)) return;
-            labelTextHold = true;
-            window.setTimeout(() => {
-              const sel = window.getSelection?.();
-              if (sel && sel.toString()) return;
-              const node = label.querySelector('tspan') || label;
-              const range = document.createRange();
-              range.selectNodeContents(node);
-              sel?.removeAllRanges();
-              sel?.addRange(range);
-            }, 100);
-          }, 500);
-        }
       }
     }, { signal });
 
@@ -7969,7 +7950,6 @@ export function createMapView(
           !panned &&
           !wasPinch &&
           panIsClick(moved) &&
-          (!(e.target as Element | null)?.closest?.('.map-node') || !labelTextSelectOn()) &&
           isDoubleTap(now - lastTap.t, Math.hypot(had.x - lastTap.x, had.y - lastTap.y))
         ) {
           const rect = host.getBoundingClientRect();

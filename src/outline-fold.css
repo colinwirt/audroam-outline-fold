@@ -518,9 +518,9 @@
   font-family: var(--of-font);
   font-weight: 400;
   pointer-events: auto;
-  cursor: text;
-  -webkit-user-select: text;
-  user-select: text;
+  cursor: inherit;
+  -webkit-user-select: none;
+  user-select: none;
 }
 .map-note-link {
   fill: var(--map-accent);

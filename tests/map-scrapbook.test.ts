@@ -288,7 +288,7 @@ describe('mapNodeKeepsTextSelection (label copy)', () => {
 });
 
 describe('mapBackgroundPanSelection', () => {
-  it('leaves a label press alone so drag-select still works', () => {
+  it('blocks a label press, including a double-click, from selecting caption text', () => {
     expect(
       mapBackgroundPanSelection({
         onLabel: true,
@@ -297,7 +297,7 @@ describe('mapBackgroundPanSelection', () => {
         selectionOutside: true,
         labelTextSelect: true,
       }),
-    ).toBe('ignore');
+    ).toBe('prevent-and-clear');
   });
 
 

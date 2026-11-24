@@ -69,6 +69,8 @@ describe('0.5.25 wireframe default', () => {
     }
     expect(ratio(tok(lightBlock, 'map-node-text')!, '#e9dcd6')).toBeGreaterThanOrEqual(4.5); // ember 16% on light canvas, approx
     expect(rule('.map-label')).toMatch(/fill: var\(--map-node-text\)/);
+    expect(rule('.map-label')).toMatch(/user-select:\s*none/);
+    expect(rule('.map-label')).not.toMatch(/cursor:\s*text/);
     expect(rule('.map-node.time-leaf .map-label')).toMatch(/fill: var\(--time-text\)/);
     expect(css).toMatch(/\.map-node\.has-colour \.map-label \{ fill: var\(--map-node-text\); \}/);
   });
