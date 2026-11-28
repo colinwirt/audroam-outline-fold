@@ -1,43 +1,18 @@
 /**
- * Session index (0.6.6): every node in a visualisation session gets one session
- * id (`__sid-N`), including nodes with an authored `<id:N>`.
+ * Session index: every node has `sessionKey` (`__sid-N`), including nodes with
+ * a `writtenId`. The index carries that key across re-parses and looks nodes up.
  *
- * - All internal keying (Map paint, hit-test, layout, selection, focus, style and
- *   fold targets) uses that session id. No positional key is ever an identity.
- * - The view key lives in this index. It is stored on `node.id` with `autoId` only
- *   when a caller already needs a name for the line (`parse({ sessionIds: true })`,
- *   a region row, a zone row, or a fold). Sync does not write one onto a line that
- *   has none. An authored id (`<id:N>`) stays on `node.id` and is a separate fixed
- *   reference: serialize writes it, and deep links, `#id:N`, and `<r:…>` jumps use
- *   it. `resolve(ref)` turns an authored id into the session id; `fixedOf(key)` goes back.
- * - A duplicate authored id never shares a key: the first line in document order owns
- *   the reference, later lines keep their own view keys and are listed in `duplicates()`.
- * - Line numbers are derived data: `lineOf(key)` / `keyAtLine(line)` come from the
- *   last parse (see `parsedLineOf`) and are refreshed on every re-parse. A line is never
- *   used as a key. A later tree with no parse lines (a fold `structuredClone`) keeps
- *   the line last recorded for that view key, so Follow still lands.
- * - View keys are never written: the parser only accepts ids that start with a letter
- *   or digit, and serialize writes `node.id` (authored) only, so `__sid-` cannot leak.
- *
- * Carry-over: when the host hands over a re-parsed tree (new node objects) the index
- * keeps each node's session id by (1) its authored id, then (2) the line map between the
- * old and new text (unchanged lines above and below the edit; a same-size hunk line for
- * line, so typing on a line keeps its key; a hunk that is the same lines in a new order,
- * so Alt+Up / Alt+Down keeps the key on the words), then (3) caption + depth in
- * order for trees built without line information. Anything left gets a fresh key.
- * A session id already stored on `node.id` (`autoId`) is adopted as that key, so
- * fold state and Follow in text name one reference. Sync does not write a session
- * id onto a line that does not have one.
+ * Carry order: (1) `writtenId`, (2) the line map between the old and new text,
+ * (3) caption + depth. A carried key is written onto `sessionKey` only.
+ * `writtenId` is the authored `<id:>`. Serialize writes that and never the session key.
+ * A duplicate written id never shares a key: the first line in document order owns it.
+ * Line numbers come from the last parse. A lineless tree keeps the line last
+ * recorded for that session key.
  */
-import { SESSION_ID_PREFIX } from './nodeAddress.js';
+import { sessionKey as makeSessionKey, type SessionKey } from './ids.js';
 import type { OutlineNode } from './types.js';
 
-export const VIEW_KEY_PREFIX = SESSION_ID_PREFIX;
-
-/** True for a view key minted by a session index. */
-export function isViewKey(k: string | null | undefined): boolean {
-  return !!k && k.startsWith(VIEW_KEY_PREFIX);
-}
+const SESSION_PREFIX = '__sid-';
 
 const NODE_LINE = new WeakMap<OutlineNode, number>();
 const TREE_LINES = new WeakMap<OutlineNode[], string[]>();
@@ -78,11 +53,11 @@ export interface SessionIndex {
   nodeOf(keyOrRef: string | null | undefined): OutlineNode | null;
   /** View key for a view key or a fixed reference; null when unknown. */
   resolve(keyOrRef: string | null | undefined): string | null;
-  /** The node's `node.id` (authored or session), or null. */
+  /** The node's written id, or its session key when the line has none. */
   refOf(key: string): string | null;
-  /** Authored id only (never a session id), or null. */
+  /** Written id only, or null. */
   fixedOf(key: string): string | null;
-  /** Fixed reference when the node has one, else the view key. */
+  /** Written id when this node owns it, otherwise the session key. */
   publicId(key: string): string;
   /** Authored ids used on more than one line → every view key that carries it. */
   duplicates(): Map<string, string[]>;
@@ -160,7 +135,7 @@ function lineMap(a: string[], b: string[]): Map<number, number> {
 
 export function createSessionIndex(): SessionIndex {
   let seq = 0;
-  const keyByNode = new WeakMap<OutlineNode, string>();
+  const keyByNode = new WeakMap<OutlineNode, SessionKey>();
   let roots: OutlineNode[] | null = null;
   let nodeByKey = new Map<string, OutlineNode>();
   let keyByRef = new Map<string, string>();
@@ -170,26 +145,26 @@ export function createSessionIndex(): SessionIndex {
   /** Last source line seen for a view key. A lineless tree (fold clone) does not clear it. */
   let lineByKey = new Map<string, number>();
 
-  const mint = (): string => `${VIEW_KEY_PREFIX}${++seq}`;
+  const mint = (): SessionKey => makeSessionKey(++seq);
 
-  const claim = (id: string): void => {
-    if (!isViewKey(id)) return;
-    const n = Number(id.slice(VIEW_KEY_PREFIX.length));
+  const claim = (id: SessionKey): void => {
+    if (!id.startsWith(SESSION_PREFIX)) return;
+    const n = Number(id.slice(SESSION_PREFIX.length));
     if (Number.isFinite(n) && n > seq) seq = n;
   };
 
   const keyOf = (n: OutlineNode): string => {
     let k = keyByNode.get(n);
     if (!k) {
-      if (n.id && n.autoId && isViewKey(n.id) && !nodeByKey.has(n.id)) {
-        k = n.id;
+      if (n.sessionKey && !nodeByKey.has(n.sessionKey)) {
+        k = n.sessionKey;
         claim(k);
       } else {
         k = mint();
+        n.sessionKey = k;
       }
       keyByNode.set(n, k);
       nodeByKey.set(k, n);
-      if (n.id && !keyByRef.has(n.id)) keyByRef.set(n.id, k);
     }
     return k;
   };
@@ -202,7 +177,9 @@ export function createSessionIndex(): SessionIndex {
     ordered = [];
     keyByLine = new Map();
     for (const n of preorder(roots || [])) {
-      if (n.id && n.autoId && isViewKey(n.id)) claim(n.id);
+      const carried = keyByNode.get(n);
+      if (carried) claim(carried as SessionKey);
+      else if (n.sessionKey) claim(n.sessionKey);
     }
     for (const n of preorder(roots || [])) {
       const k = keyOf(n);
@@ -212,13 +189,13 @@ export function createSessionIndex(): SessionIndex {
       if (line !== null) lineByKey.set(k, line);
       const known = line !== null ? line : lineByKey.get(k);
       if (known !== undefined) keyByLine.set(known, k);
-      if (!n.id) continue;
-      const first = keyByRef.get(n.id);
-      if (first === undefined) keyByRef.set(n.id, k);
-      else if (!n.autoId) {
-        const list = dups.get(n.id) ?? [first];
+      if (!n.writtenId) continue;
+      const first = keyByRef.get(n.writtenId);
+      if (first === undefined) keyByRef.set(n.writtenId, k);
+      else if (first !== k) {
+        const list = dups.get(n.writtenId) ?? [first];
         list.push(k);
-        dups.set(n.id, list);
+        dups.set(n.writtenId, list);
       }
     }
     for (const k of [...lineByKey.keys()]) if (!nodeByKey.has(k)) lineByKey.delete(k);
@@ -236,20 +213,22 @@ export function createSessionIndex(): SessionIndex {
     }
     const adopt = (n: OutlineNode, k: string | undefined): boolean => {
       if (!k || taken.has(k) || keyByNode.has(n)) return false;
-      keyByNode.set(n, k);
+      const sk = k as SessionKey;
+      keyByNode.set(n, sk);
+      n.sessionKey = sk;
       taken.add(k);
       return true;
     };
-    // (1) Authored ids. A session id already on the node is adopted in keyOf.
+    // (1) Written ids. The carried key is written onto sessionKey only.
     const oldByFixed = new Map<string, string>();
     for (const o of oldNodes) {
-      if (o.id && !o.autoId && !oldByFixed.has(o.id)) oldByFixed.set(o.id, keyByNode.get(o)!);
+      if (o.writtenId && !oldByFixed.has(o.writtenId)) oldByFixed.set(o.writtenId, keyByNode.get(o)!);
     }
     const seenFixed = new Set<string>();
     for (const n of newNodes) {
-      if (!n.id || n.autoId || seenFixed.has(n.id)) continue;
-      seenFixed.add(n.id);
-      adopt(n, oldByFixed.get(n.id));
+      if (!n.writtenId || seenFixed.has(n.writtenId)) continue;
+      seenFixed.add(n.writtenId);
+      adopt(n, oldByFixed.get(n.writtenId));
     }
     // (2) Line map between the two parses.
     const a = parsedLinesOf(prev);
@@ -299,7 +278,7 @@ export function createSessionIndex(): SessionIndex {
     const hit = (): string | null => {
       if (nodeByKey.has(ref)) return ref;
       const k = keyByRef.get(ref);
-      if (k && nodeByKey.get(k)?.id === ref) return k;
+      if (k && nodeByKey.get(k)?.writtenId === ref) return k;
       return null;
     };
     const k = hit();
@@ -321,17 +300,17 @@ export function createSessionIndex(): SessionIndex {
     },
     refOf: (key) => {
       const n = nodeByKey.get(key) ?? (resolve(key) ? nodeByKey.get(resolve(key)!) : undefined);
-      return n?.id ?? null;
+      return n?.writtenId ?? n?.sessionKey ?? null;
     },
     fixedOf: (key) => {
       const n = nodeByKey.get(key);
-      return n?.id && !n.autoId ? n.id : null;
+      return n?.writtenId ?? null;
     },
     publicId: (key) => {
       const k = resolve(key);
       const n = k ? nodeByKey.get(k) : undefined;
-      // A later duplicate of an authored id is not that id's owner: it stays a view key.
-      return n?.id && keyByRef.get(n.id) === k ? n.id : (k ?? key);
+      // A later duplicate of a written id is not that id's owner: it stays a session key.
+      return n?.writtenId && keyByRef.get(n.writtenId) === k ? n.writtenId : (k ?? key);
     },
     duplicates: () => { rebuild(); return new Map(dups); },
     lineOf: (key) => {
@@ -351,7 +330,7 @@ const VIEW_CACHE = new WeakMap<object, { idx: SessionIndex; proxy: object }>();
 
 /**
  * View of a host layout keyed by view keys (0.6.6). Reads and writes by view key
- * land on the host's `nodes` under the node's fixed reference (`node.id`), so a
+ * land on the host's `nodes` under the node's written id, so a
  * saved sidecar, resume nudges and host code keep their ids. A node with no fixed
  * reference keeps its entry in a session-only store (never written into the host
  * object, so `__sid-` cannot reach a saved layout). Keys the index does not know

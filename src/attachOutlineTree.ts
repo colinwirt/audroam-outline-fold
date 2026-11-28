@@ -4,6 +4,7 @@ import {
   toggleFold,
   type ExpandLevel,
 } from './fold.js';
+import { sessionKeyFromAttribute, type SessionKey } from './ids.js';
 import { shouldFireAction, toggleTask } from './task.js';
 import { stripLinkTags } from './taskChrome.js';
 import type { OutlineFoldDoc, OutlineNode, TaskToggleEvent } from './types.js';
@@ -153,11 +154,11 @@ function syncRoving(
   let focusTarget: HTMLElement | null = null;
   if (focusId) {
     focusTarget =
-      items.find((li) => li.getAttribute('data-id') === focusId) ?? null;
+      items.find((li) => li.getAttribute('data-sid') === focusId || li.getAttribute('data-id') === focusId) ?? null;
     if (!focusTarget) {
       // Nearest visible ancestor: walk up from hidden node in full tree.
       const hidden = tree.querySelector<HTMLElement>(
-        `[data-id="${CSS.escape(focusId)}"]`,
+        `[data-sid="${CSS.escape(focusId)}"], [data-id="${CSS.escape(focusId)}"]`,
       );
       let p: HTMLElement | null = hidden?.parentElement ?? null;
       while (p && p !== tree) {
@@ -189,7 +190,7 @@ function findNodeById(
   id: string,
 ): OutlineNode | null {
   for (const n of nodes) {
-    if (n.id === id) return n;
+    if (n.sessionKey === id || n.writtenId === id) return n;
     if (n.children?.length) {
       const hit = findNodeById(n.children, id);
       if (hit) return hit;
@@ -265,12 +266,12 @@ export function attachOutlineTree(
     if (id) {
       const items = visibleTreeitems(tree, prefix);
       const target =
-        items.find((li) => li.getAttribute('data-id') === id) ??
+        items.find((li) => li.getAttribute('data-sid') === id || li.getAttribute('data-id') === id) ??
         items.find((li) => li.tabIndex === 0);
       if (target) {
         // Restore focus after re-paint without scrolling the page.
         target.focus({ preventScroll: true });
-        lastFocusId = target.getAttribute('data-id');
+        lastFocusId = target.getAttribute('data-sid') || target.getAttribute('data-id');
       }
     }
   };
@@ -289,8 +290,8 @@ export function attachOutlineTree(
   let following = false;
   const onFocusShare = (e: FocusEvent) => {
     if (following) return;
-    const li = (e.target as HTMLElement | null)?.closest?.<HTMLElement>('[role="treeitem"][data-id]');
-    const id = li?.getAttribute('data-id');
+    const li = (e.target as HTMLElement | null)?.closest?.<HTMLElement>('[role="treeitem"]');
+    const id = li?.getAttribute('data-sid') || li?.getAttribute('data-id');
     if (id && rootEl.contains(li!)) opts.onFocusChange?.(id);
   };
   rootEl.addEventListener('focusin', onFocusShare);
@@ -299,7 +300,7 @@ export function attachOutlineTree(
     try {
       lastFocusId = id;
       refresh(id);
-      const li = findTree(rootEl, prefix)?.querySelector<HTMLElement>(`[data-id="${CSS.escape(id)}"]`);
+      const li = findTree(rootEl, prefix)?.querySelector<HTMLElement>(`[data-sid="${CSS.escape(id)}"], [data-id="${CSS.escape(id)}"]`);
       li?.scrollIntoView?.({ block: 'nearest' });
     } finally {
       following = false;
@@ -315,12 +316,13 @@ export function attachOutlineTree(
       e.preventDefault();
       const id = foldBtn.getAttribute('data-toggle-fold');
       if (!id) return;
+      const key: SessionKey = sessionKeyFromAttribute(id);
       const doc = opts.getDoc();
-      const wasCollapsed = isCollapsed(doc, id);
-      const next = toggleFold(doc, id);
+      const wasCollapsed = isCollapsed(doc, key);
+      const next = toggleFold(doc, key);
       const tree = findTree(rootEl, prefix);
       const li = tree?.querySelector<HTMLElement>(
-        `[data-id="${CSS.escape(id)}"]`,
+        `[data-sid="${CSS.escape(id)}"], [data-id="${CSS.escape(id)}"]`,
       );
       const title = li ? nodeTitle(li, prefix) : id;
       commit(
@@ -341,7 +343,7 @@ export function attachOutlineTree(
       }
       const id = taskBtn.getAttribute('data-toggle-task');
       if (!id) return;
-      const result = toggleTask(opts.getDoc(), id);
+      const result = toggleTask(opts.getDoc(), sessionKeyFromAttribute(id));
       if (!result) return;
       const ev: TaskToggleEvent = {
         id,
@@ -453,10 +455,10 @@ export function attachOutlineTree(
     const fromId = link.closest('[role="treeitem"]')?.getAttribute('data-id') ?? null;
     const from = fromId ? findNodeById(doc.nodes, fromId) : null;
     for (const a of ancestorsOf(doc.nodes, node)) {
-      if (a.id && isCollapsed(doc, a.id)) doc = toggleFold(doc, a.id);
+      if (a.children?.length && isCollapsed(doc, a.sessionKey)) doc = toggleFold(doc, a.sessionKey);
     }
     commit(doc, id);
-    const li = findTree(rootEl, prefix)?.querySelector<HTMLElement>(`[data-id="${CSS.escape(id)}"]`);
+    const li = findTree(rootEl, prefix)?.querySelector<HTMLElement>(`[data-sid="${CSS.escape(id)}"], [data-id="${CSS.escape(id)}"]`);
     li?.scrollIntoView?.({ block: 'nearest' });
     opts.onHop?.(id, node, from);
   };
@@ -497,7 +499,9 @@ export function attachOutlineTree(
       current = items[0];
     }
     const idx = items.indexOf(current);
-    const id = current.getAttribute('data-id');
+    const sidAttr = current.getAttribute('data-sid');
+    const id = sidAttr || current.getAttribute('data-id');
+    const nodeKey = sidAttr ? sessionKeyFromAttribute(sidAttr) : null;
     const doc = opts.getDoc();
     const key = e.key;
 
@@ -508,7 +512,7 @@ export function attachOutlineTree(
       for (const li of items) li.tabIndex = -1;
       next.tabIndex = 0;
       next.focus();
-      lastFocusId = next.getAttribute('data-id');
+      lastFocusId = next.getAttribute('data-sid') || next.getAttribute('data-id');
     };
 
     if (key === 'ArrowDown') {
@@ -532,9 +536,9 @@ export function attachOutlineTree(
 
     if (key === 'ArrowRight') {
       e.preventDefault();
-      if (!id || !hasChildren(current)) return;
-      if (isCollapsed(doc, id)) {
-        const next = toggleFold(doc, id);
+      if (!nodeKey || !hasChildren(current)) return;
+      if (isCollapsed(doc, nodeKey)) {
+        const next = toggleFold(doc, nodeKey);
         commit(
           next,
           id,
@@ -555,8 +559,8 @@ export function attachOutlineTree(
 
     if (key === 'ArrowLeft') {
       e.preventDefault();
-      if (id && hasChildren(current) && !isCollapsed(doc, id)) {
-        const next = toggleFold(doc, id);
+      if (nodeKey && hasChildren(current) && !isCollapsed(doc, nodeKey)) {
+        const next = toggleFold(doc, nodeKey);
         commit(
           next,
           id,
@@ -577,10 +581,10 @@ export function attachOutlineTree(
     }
 
     if (key === 'Enter' || key === ' ' || key === '.') {
-      if (!id || !hasChildren(current)) return;
+      if (!nodeKey || !hasChildren(current)) return;
       e.preventDefault();
-      const wasCollapsed = isCollapsed(doc, id);
-      const next = toggleFold(doc, id);
+      const wasCollapsed = isCollapsed(doc, nodeKey);
+      const next = toggleFold(doc, nodeKey);
       commit(
         next,
         id,
@@ -609,7 +613,7 @@ export function attachOutlineTree(
     const t = e.target as HTMLElement | null;
     const li = t?.closest?.('[role="treeitem"]') as HTMLElement | null;
     if (li && rootEl.contains(li)) {
-      lastFocusId = li.getAttribute('data-id');
+      lastFocusId = li.getAttribute('data-sid') || li.getAttribute('data-id');
     }
   };
 

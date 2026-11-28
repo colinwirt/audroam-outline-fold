@@ -199,7 +199,7 @@ export function resolveJumps(node: OutlineNode): string[] {
 /** Node with this id anywhere in the tree, or null. */
 export function findNodeById(nodes: readonly OutlineNode[], id: string): OutlineNode | null {
   for (const n of nodes) {
-    if (n.id === id) return n;
+    if (n.sessionKey === id || n.writtenId === id) return n;
     if (n.children?.length) {
       const hit = findNodeById(n.children, id);
       if (hit) return hit;

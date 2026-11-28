@@ -29,7 +29,8 @@ export function resolveMapRef(text: string, ref: MapNodeRef): MapRefResult {
   const walk = (list?: OutlineNode[]): void => {
     for (const n of list ?? []) {
       order.push(n);
-      if (n.id && !byId.has(String(n.id))) byId.set(String(n.id), n);
+      if (n.writtenId && !byId.has(n.writtenId)) byId.set(n.writtenId, n);
+      if (!byId.has(n.sessionKey)) byId.set(n.sessionKey, n);
       walk(n.children);
     }
   };
@@ -70,9 +71,9 @@ export function mapRefOf(shown: { nodes: OutlineNode[] }, node: OutlineNode): Ma
       const s = root ? [...steps, i] : [];
       if (n === node) {
         out = {
-          id: String(n.id ?? ''),
+          id: n.writtenId ?? n.sessionKey,
           title: n.title,
-          path: { ...(r.id ? { rootId: String(r.id) } : {}), rootIndex: ti, steps: s },
+          path: { rootId: r.writtenId ?? r.sessionKey, rootIndex: ti, steps: s },
           ordinal: ord,
         };
         return;

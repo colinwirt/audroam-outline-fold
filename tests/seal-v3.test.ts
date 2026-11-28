@@ -30,7 +30,7 @@ const SRC = `- Root <id:r>
 
 function find(doc: OutlineFoldDoc, id: string): OutlineNode {
   let hit: OutlineNode | undefined;
-  const walk = (l: OutlineNode[]) => l.forEach((n) => { if (n.id === id) hit = n; if (n.children) walk(n.children); });
+  const walk = (l: OutlineNode[]) => l.forEach((n) => { if (n.writtenId === id || n.sessionKey === id) hit = n; if (n.children) walk(n.children); });
   walk(doc.nodes);
   return hit!;
 }

@@ -125,7 +125,7 @@ describe('example payloads', () => {
       const text = readFileSync(file, 'utf8');
       if (/^--- (keyring|keys) ---$/m.test(text)) bad.push(`${rel(file)}: keyring`);
       if (/^\s*ct:\s*\S/m.test(text) || /BEGIN OUTLINE-FOLD SEAL/.test(text)) bad.push(`${rel(file)}: ciphertext`);
-      for (const n of allNodes(parse(text).nodes)) if (n.sealed?.ciphertext) bad.push(`${rel(file)}: ${n.id}`);
+      for (const n of allNodes(parse(text).nodes)) if (n.sealed?.ciphertext) bad.push(`${rel(file)}: ${n.writtenId ?? n.title}`);
     }
     expect(bad).toEqual([]);
   });
@@ -140,7 +140,7 @@ describe('example payloads', () => {
     for (const file of mdFiles) {
       for (const n of allNodes(parse(readFileSync(file, 'utf8')).nodes)) {
         const locked = n.flags?.includes('private') || n.flags?.includes('encrypted');
-        if (locked && !hasSealed(n)) bare.push(`${rel(file)}: ${n.id}`);
+        if (locked && !hasSealed(n)) bare.push(`${rel(file)}: ${n.writtenId ?? n.title}`);
       }
     }
     expect(bare).toEqual([]);
@@ -199,7 +199,8 @@ describe('example outlines', () => {
     });
     const nodes = allNodes(doc.nodes);
     const tuesday = nodes.find((n) => n.title === 'Tuesday');
-    expect(doc.fold.ids).toEqual([tuesday?.id]);
+    expect(tuesday?.collapsed).toBe(true);
+    expect(tuesday?.writtenId).toBeNull();
     const tasks = nodes.map((n) => n.task).filter(Boolean);
     expect(tasks.filter((t) => t === 'done').length).toBeGreaterThan(0);
     expect(tasks.filter((t) => t === 'open').length).toBeGreaterThan(0);
@@ -253,7 +254,7 @@ describe('DEV-ONLY demo-sealed fixtures (tests/fixtures/demo-sealed)', () => {
   for (const [path, rows] of Object.entries(plaintexts.examples)) {
     it(`${path}: opens to its plaintexts with the internal demo fixture`, async () => {
       const doc = parse(readFileSync(join(devDir, path), 'utf8'));
-      const byId = new Map(allNodes(doc.nodes).map((n) => [n.id, n]));
+      const byId = new Map(allNodes(doc.nodes).flatMap((n) => (n.writtenId ? [[n.writtenId, n] as const] : [])));
       for (const row of rows) {
         const node = byId.get(row.id);
         expect(node?.sealed, row.id).toBeTruthy();
@@ -266,7 +267,7 @@ describe('DEV-ONLY demo-sealed fixtures (tests/fixtures/demo-sealed)', () => {
     for (const path of Object.keys(plaintexts.examples)) {
       const ex = join(examplesDir, path);
       if (!existsSync(ex)) continue;
-      const titles = (t: string) => allNodes(parse(t).nodes).map((n) => n.id);
+      const titles = (t: string) => allNodes(parse(t).nodes).map((n) => n.writtenId);
       expect(titles(readFileSync(ex, 'utf8')), path).toEqual(titles(readFileSync(join(devDir, path), 'utf8')));
     }
   });

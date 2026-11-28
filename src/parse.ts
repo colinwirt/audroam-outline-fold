@@ -1,5 +1,5 @@
 import { findSealedOrphans, syncSealedLabels, isEncRef, KID_RE } from './sealedState.js';
-import { SESSION_ID_PREFIX } from './nodeAddress.js';
+import { sessionKey, writtenId } from './ids.js';
 import { recordParsedLine, recordParsedLines } from './sessionIndex.js';
 
 /** `<enc:KEYID>` (of-seal-v2): the line names a key id only. */
@@ -13,7 +13,6 @@ import {
   mergeFrontmatter,
   peelTrailingSections,
 } from './payloads.js';
-import { collectNodeIds, nextAutoId } from './nodeAddress.js';
 import { parseEncBody } from './sealed.js';
 import { parseLeadingTask } from './taskChrome.js';
 import { parseLeadingIcon } from './emoji/icons.js';
@@ -22,7 +21,6 @@ import { NODE_COLOURS, COLOUR_ALIASES, resolveColour } from './nodeColour.js';
 import { markdownLinkSpans, parseHopTarget, parseNoteTarget } from './captionRich.js';
 import type {
   NodeLink,
-  FoldMode,
   NodeFlag,
   NodeKind,
   OutlineFoldDoc,
@@ -134,24 +132,7 @@ function parseFrontmatter(text: string): {
     const line = rawLine.trim();
     if (!line || line.startsWith('#')) continue;
 
-    const foldMinus = line.match(/^fold-\s*:\s*(.*)$/i);
-    if (foldMinus) {
-      if (fm.foldMode === '+') {
-        throw new Error('Document cannot have both fold- and fold+');
-      }
-      fm.foldMode = '-';
-      fm.foldIds = splitIds(foldMinus[1]);
-      continue;
-    }
-    const foldPlus = line.match(/^fold\+\s*:\s*(.*)$/i);
-    if (foldPlus) {
-      if (fm.foldMode === '-') {
-        throw new Error('Document cannot have both fold- and fold+');
-      }
-      fm.foldMode = '+';
-      fm.foldIds = splitIds(foldPlus[1]);
-      continue;
-    }
+    if (/^fold[+-]\s*:/i.test(line)) continue;
     const cm = line.match(/^collapsedMarker\s*:\s*(.+)$/i);
     if (cm) {
       fm.collapsedMarker = unquote(cm[1].trim());
@@ -707,10 +688,8 @@ function keptSpellings(
 
 export interface ParseOptions {
   /**
-   * Give every line without `<id:…>` a session id (`autoId: true`, `__sid-N`)
-   * from `nextAutoId`. The same series is used in an open secure zone and a
-   * nested submap. A `(+)` on such a line folds it. Serialize does not write
-   * session ids. Pass `{ prefix }` to mint a different series.
+   * Ignored. Every node gets a `sessionKey`. Serialize never writes it.
+   * `(+)` sets `collapsed` on a node that has children.
    */
   sessionIds?: boolean | { prefix?: string };
 }
@@ -734,8 +713,7 @@ export function parse(text: string, opts?: ParseOptions): OutlineFoldDoc {
   const roots: OutlineNode[] = [];
   const stack: OutlineNode[] = [];
   const indentToDepth: number[] = [];
-  const inlineCollapsedIds: string[] = [];
-  const inlineCollapsedBare: OutlineNode[] = [];
+  const collapsedLines = new Set<OutlineNode>();
 
   for (const raw of lines) {
     lineNo += 1;
@@ -774,9 +752,11 @@ export function parse(text: string, opts?: ParseOptions): OutlineFoldDoc {
     const node: OutlineNode = {
       title: meta.title,
       depth,
+      writtenId: meta.id ? writtenId(meta.id) : null,
+      sessionKey: sessionKey(0),
+      collapsed: false,
     };
     recordParsedLine(node, lineNo);
-    if (meta.id) node.id = meta.id;
     if (meta.kind) node.kind = meta.kind;
     if (meta.flags) node.flags = meta.flags;
     if (meta.dbRef) node.dbRef = meta.dbRef;
@@ -794,15 +774,7 @@ export function parse(text: string, opts?: ParseOptions): OutlineFoldDoc {
     if (meta.noteLinkTags) node.noteLinkTags = meta.noteLinkTags;
     if (meta.links) node.links = meta.links;
     if (meta.tagSpellings) node.tagSpellings = meta.tagSpellings;
-    if (meta.inlineCollapsed && meta.id) {
-      inlineCollapsedIds.push(meta.id);
-    } else if (meta.inlineCollapsed) {
-      inlineCollapsedBare.push(node);
-    }
-    if (!meta.id && (meta.inlineCollapsed || meta.inlineExpanded)) {
-      // Dropped again below if session ids give the node an id.
-      node.foldMark = meta.inlineCollapsed ? 'collapsed' : 'expanded';
-    }
+    if (meta.inlineCollapsed) collapsedLines.add(node);
 
     while (stack.length && stack[stack.length - 1].depth >= depth) {
       stack.pop();
@@ -824,52 +796,21 @@ export function parse(text: string, opts?: ParseOptions): OutlineFoldDoc {
   attachLayouts(roots, peeled.layouts);
   applyLayoutStyle(roots);
 
-  if (opts?.sessionIds) {
-    const prefix = typeof opts.sessionIds === 'object' ? (opts.sessionIds.prefix ?? SESSION_ID_PREFIX) : SESSION_ID_PREFIX;
-    const used = collectNodeIds(roots);
-    for (const id of Object.keys(peeled.payloads)) used.add(id);
-    for (const id of Object.keys(peeled.layouts)) used.add(id);
-    // A jump names an id: a session id must never take it, or the jump would
-    // land on an unrelated line.
-    for (const id of collectJumpTargets(roots)) used.add(id);
-    const walk = (list: OutlineNode[]) => {
-      for (const n of list) {
-        if (!n.id) {
-          n.id = nextAutoId(used, prefix);
-          n.autoId = true;
-          // The session id carries the fold state from here (doc.fold).
-          delete n.foldMark;
-        }
-        if (n.children?.length) walk(n.children);
-      }
-    };
-    walk(roots);
-    for (const n of inlineCollapsedBare) inlineCollapsedIds.push(n.id!);
-  }
-
-  let mode: FoldMode = fm.foldMode ?? '-';
-  let ids = [...(fm.foldIds ?? [])];
-
-  // Inline (+) is the only fold store. A leftover fold-: or fold+: list is
-  // ignored as soon as any line carries (+), including fold+ (listed ids
-  // expanded). A list with no inline marker is still the legacy fallback.
-  const hasInlineMarkers = inlineCollapsedIds.length > 0 || inlineCollapsedBare.length > 0;
-
-  if (hasInlineMarkers) {
-    mode = '-';
-    ids = [...inlineCollapsedIds];
-  } else if (mode === '-') {
-    for (const id of inlineCollapsedIds) {
-      if (!ids.includes(id)) ids.push(id);
+  let seq = 0;
+  const assign = (list: OutlineNode[]) => {
+    for (const n of list) {
+      seq += 1;
+      n.sessionKey = sessionKey(seq);
+      n.collapsed = collapsedLines.has(n) && !!n.children?.length;
+      if (n.children?.length) assign(n.children);
     }
-  }
+  };
+  assign(roots);
 
   const frontmatter: OutlineFrontmatter = { ...fm };
   if (!frontmatter.collapsedMarker) {
     frontmatter.collapsedMarker = collapsedMarker;
   }
-  frontmatter.foldMode = mode;
-  frontmatter.foldIds = ids;
   // Sealed-branch payloads whose line lost its id are kept (never dropped):
   // serialize() refuses to save until the id is restored or discarded explicitly.
   syncSealedLabels(roots);
@@ -878,7 +819,6 @@ export function parse(text: string, opts?: ParseOptions): OutlineFoldDoc {
   return {
     frontmatter,
     nodes: roots,
-    fold: { mode, ids: [...ids] },
     ...(peeled.keys.length ? { keys: peeled.keys } : {}),
     ...(peeled.keyring.length ? { keyring: peeled.keyring } : {}),
     ...(peeled.assets.length ? { assets: peeled.assets } : {}),

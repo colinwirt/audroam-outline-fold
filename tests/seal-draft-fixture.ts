@@ -14,7 +14,7 @@ const SECRET = new Uint8Array(32).map((_, i) => i + 1) as Uint8Array<ArrayBuffer
 export const RING = { kid: 'k1', kdf: 'kdf=argon2id&m=65536&t=3&p=1&salt=AAAAAAAAAAAAAAAAAAAAAA', wrap: 'a256gcm.AAAAAAAAAAAAAAAA.' + 'A'.repeat(64) };
 
 export function find(nodes: OutlineNode[] | undefined, id: string): OutlineNode | undefined {
-  for (const n of nodes ?? []) { if (n.id === id) return n; const h = find(n.children, id); if (h) return h; }
+  for (const n of nodes ?? []) { if (n.writtenId === id || n.sessionKey === id) return n; const h = find(n.children, id); if (h) return h; }
   return undefined;
 }
 

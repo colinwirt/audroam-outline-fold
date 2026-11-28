@@ -46,7 +46,7 @@ afterAll(() => installDefaultArgon2Provider());
 beforeEach(() => { clearKeys(); setSealCipher('a256gcm'); });
 
 function find(nodes: OutlineNode[] | undefined, id: string): OutlineNode | undefined {
-  for (const n of nodes ?? []) { if (n.id === id) return n; const h = find(n.children, id); if (h) return h; }
+  for (const n of nodes ?? []) { if (n.writtenId === id || n.sessionKey === id) return n; const h = find(n.children, id); if (h) return h; }
   return undefined;
 }
 

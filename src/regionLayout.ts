@@ -9,7 +9,6 @@ import type { RegionId } from './hostApi.js';
 import type { OutlineFoldDoc, OutlineNode } from './types.js';
 import type { RegionBox } from './mapRegion.js';
 import { scopeId } from './scopedId.js';
-import { isCollapsed } from './fold.js';
 import { resolveTask, type TaskState } from './taskChrome.js';
 
 function countAll(nodes: OutlineNode[] | undefined): number {
@@ -180,7 +179,7 @@ function layoutLocal(host: RegionHostSpec, all: RegionHostSpec[], deps: RegionLa
     };
   }
   const doc = host.doc;
-  const collapsedIn = (id: string) => (deps.nodeCollapsed ? deps.nodeCollapsed(host.id, doc, id) : isCollapsed(doc, id));
+  const collapsedIn = (id: string, node: OutlineNode) => (deps.nodeCollapsed ? deps.nodeCollapsed(host.id, doc, id) : node.collapsed);
   const pts = deps.pack(doc, host.id);
   const vis = deps.visible(doc, host.id);
   const boxes = new Map<string, RegionBox>();
@@ -202,9 +201,9 @@ function layoutLocal(host: RegionHostSpec, all: RegionHostSpec[], deps: RegionLa
   const out: Local = {
     boxes: [...boxes].map(([k, b]) => {
       const mt = meta.get(k)!;
-      const id = mt.n.id ?? k;
+      const id = mt.n.writtenId ?? mt.n.sessionKey;
       const foldable = !!mt.n.children?.length;
-      const collapsed = foldable && !!mt.n.id && collapsedIn(mt.n.id);
+      const collapsed = foldable && collapsedIn(id, mt.n);
       return {
         ...b,
         key: scopeId(host.id, id),
@@ -216,7 +215,7 @@ function layoutLocal(host: RegionHostSpec, all: RegionHostSpec[], deps: RegionLa
         foldable,
         collapsed,
         hidden: collapsed ? mt.n.children!.length : 0,
-        ...(mt.parentKey !== null && meta.has(mt.parentKey) ? { parent: scopeId(host.id, meta.get(mt.parentKey)!.n.id ?? mt.parentKey) } : {}),
+        ...(mt.parentKey !== null && meta.has(mt.parentKey) ? { parent: scopeId(host.id, meta.get(mt.parentKey)!.n.writtenId ?? meta.get(mt.parentKey)!.n.sessionKey) } : {}),
       };
     }),
     regions: nested,

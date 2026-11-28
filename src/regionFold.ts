@@ -1,17 +1,18 @@
 /**
  * Region fold store (spec 20261101 §R1). One store per instance, shared by Map and Outline.
  * Keys are scoped ids: `regionId:nodeId` for a node inside a region, `regionId` for the
- * region root (the cloud). Root-doc fold state keeps living in `doc.fold`; this store only
- * holds region entries, so it can never clash with root ids. A sealed submap's branch fold
- * is also written onto the child document (`(+)`, same as the main map) by the doc owner;
- * this store is still what Map and Outline paint, and the cloud pill itself is not a line.
+ * region root (the cloud). A node's fold is `node.collapsed`. This store only holds the
+ * cloud pill and in-region overrides, keyed so they cannot clash with root nodes. A sealed
+ * submap's branch fold is written onto the child nodes by the doc owner. The cloud pill
+ * itself is not a line.
  *
  * - `record` regions (`n:` ids) persist through the map resume path (`regionFold`).
  * - `sealed` regions (`s:` ids, or any region nested inside one) are memory-only and are
  *   wiped together with the doc when the region locks (see {@link bindRegionFoldToSessions}).
  * - A locked sealed region is always folded to its root pill (callers pass `locked`).
  */
-import { isCollapsed, setExpandLevel, type ExpandLevel } from './fold.js';
+import { isCollapsed, setExpandLevel, toggleFold, type ExpandLevel } from './fold.js';
+import { sessionKeyFromAttribute } from './ids.js';
 import type { RegionId, ScopedId } from './hostApi.js';
 import { scopeId } from './scopedId.js';
 import type { OutlineFoldDoc, OutlineNode } from './types.js';
@@ -34,9 +35,8 @@ export interface RegionFoldStore {
   setNodeCollapsed(region: RegionId, id: string, collapsed: boolean): void;
   toggleNode(region: RegionId, doc: OutlineFoldDoc, id: string): boolean;
   /**
-   * A shallow view of `doc` whose `fold` reflects this store (mode `-`). Feed it to the
-   * normal fold helpers (`isCollapsed`, `toggleFold`, `setExpandLevel`, `foldLevelPicker`)
-   * and hand the result to {@link commitView}. The child doc itself is never touched.
+   * A clone of `doc` whose `collapsed` flags reflect this store. Feed it to the
+   * normal fold helpers and hand the result to {@link commitView}. The child doc itself is never touched.
    */
   viewDoc(region: RegionId, doc: OutlineFoldDoc): OutlineFoldDoc;
   /** Write a view doc's fold back into the store (one entry per foldable node). */
@@ -79,21 +79,25 @@ export function countNodes(doc: OutlineFoldDoc | null | undefined): number {
   return c;
 }
 
+function addressOf(n: OutlineNode): string {
+  return n.writtenId ?? n.sessionKey;
+}
+
 function findById(nodes: OutlineNode[] | undefined, id: string): OutlineNode | null {
   for (const n of nodes ?? []) {
-    if (n.id === id) return n;
+    if (n.sessionKey === id || n.writtenId === id) return n;
     const h = findById(n.children, id);
     if (h) return h;
   }
   return null;
 }
 
-/** Ids of the ancestors of `id` (outermost first), or null when not found. */
+/** Addresses of the ancestors of `id` (outermost first), or null when not found. */
 export function ancestorIds(nodes: OutlineNode[] | undefined, id: string): string[] | null {
   for (const n of nodes ?? []) {
-    if (n.id === id) return [];
+    if (n.sessionKey === id || n.writtenId === id) return [];
     const sub = ancestorIds(n.children, id);
-    if (sub) return n.id ? [n.id, ...sub] : sub;
+    if (sub) return [addressOf(n), ...sub];
   }
   return null;
 }
@@ -126,7 +130,9 @@ export function createRegionFoldStore(opts: RegionFoldStoreOptions = {}): Region
     },
     isNodeCollapsed(region, doc, id) {
       const v = m.get(scopeId(region, id));
-      return v === undefined ? isCollapsed(doc, id) : v;
+      if (v !== undefined) return v;
+      const n = findById(doc.nodes, id);
+      return !!n?.children?.length && n.collapsed;
     },
     setNodeCollapsed(region, id, collapsed) {
       if (put(scopeId(region, id), collapsed)) changed(!isMemoryOnlyRegion(region));
@@ -137,21 +143,29 @@ export function createRegionFoldStore(opts: RegionFoldStoreOptions = {}): Region
       return next;
     },
     viewDoc(region, doc) {
-      const ids: string[] = [];
-      walk(doc.nodes, (n) => {
-        if (n.id && n.children?.length && self.isNodeCollapsed(region, doc, n.id)) ids.push(n.id);
+      const next = structuredClone(doc);
+      walk(next.nodes, (n) => {
+        if (!n.children?.length) {
+          n.collapsed = false;
+          return;
+        }
+        const v = m.get(scopeId(region, addressOf(n)));
+        if (v !== undefined) n.collapsed = v;
       });
-      return { ...doc, fold: { mode: '-', ids } };
+      return next;
     },
     commitView(region, view) {
       let any = false;
       walk(view.nodes, (n) => {
-        if (n.id && n.children?.length) any = put(scopeId(region, n.id), isCollapsed(view, n.id)) || any;
+        if (!n.children?.length) return;
+        any = put(scopeId(region, addressOf(n)), n.collapsed) || any;
       });
       if (any) changed(!isMemoryOnlyRegion(region));
     },
     setLevel(region, doc, level, under) {
-      self.commitView(region, setExpandLevel(self.viewDoc(region, doc), level, under ? { under } : {}));
+      const view = self.viewDoc(region, doc);
+      const node = under ? findById(view.nodes, under) : null;
+      self.commitView(region, setExpandLevel(view, level, node ? { under: node.sessionKey } : {}));
     },
     wipe(region) {
       let any = false;
@@ -252,7 +266,8 @@ export function revealInRegions(
     if (includeSelf && findById(doc.nodes, local)?.children?.length) path.push(local);
     for (const a of path) {
       if (r === '') {
-        if (isCollapsed(doc, a)) rootUnfold.push(a);
+        const node = findById(doc.nodes, a);
+        if (node?.collapsed) rootUnfold.push(node.sessionKey);
       } else store.setNodeCollapsed(r, a, false);
     }
   };
@@ -297,7 +312,7 @@ export interface OutlineRegionHost {
 function scopeNodes(region: RegionId, nodes: OutlineNode[] | undefined): OutlineNode[] {
   return (nodes ?? []).map((n) => ({
     ...n,
-    ...(n.id ? { id: scopeId(region, n.id) } : {}),
+    sessionKey: sessionKeyFromAttribute(scopeId(region, n.sessionKey)),
     ...(n.children ? { children: scopeNodes(region, n.children) } : {}),
   }));
 }
@@ -312,52 +327,76 @@ function regionDepth(r: RegionId): number {
 
 /**
  * Compose the doc Outline renders: the root doc with every readable region nested under its
- * anchor as a region-root node (id = region id) whose children carry scoped ids. Locked
- * regions add nothing (the anchor keeps its sealed chrome). The fold is read from the root
- * doc (plain ids) and the store (scoped ids), so `toHtml` + `attachOutlineTree` fold,
- * expand-level keys and announcements work unchanged. Never serialize the result.
+ * anchor as a region-root node whose children carry scoped session keys. Locked
+ * regions add nothing (the anchor keeps its sealed chrome). Collapsed flags are read
+ * from the root nodes and the store. Never serialize the result.
  */
 export function composeOutlineDoc(root: OutlineFoldDoc, hosts: readonly OutlineRegionHost[], store: RegionFoldStore): OutlineFoldDoc {
   const nodes = cloneTree(root.nodes);
-  const mode = root.fold.mode;
-  const ids = [...root.fold.ids];
-  const want = (key: string, collapsed: boolean) => {
-    if (mode === '-' ? collapsed : !collapsed) ids.push(key);
-  };
   const byId = new Map<string, OutlineNode>();
-  const index = (l: OutlineNode[]) => l.forEach((n) => { if (n.id) byId.set(n.id, n); if (n.children) index(n.children); });
+  const index = (l: OutlineNode[]) => l.forEach((n) => {
+    if (n.writtenId) byId.set(n.writtenId, n);
+    byId.set(n.sessionKey, n);
+    if (n.children) index(n.children);
+  });
   index(nodes);
   for (const h of [...hosts].sort((a, b) => regionDepth(a.id) - regionDepth(b.id))) {
     if (!h.doc) continue;
     const anchor = byId.get(scopeId(h.parent ?? '', h.anchor));
     if (!anchor) continue;
     const kids = scopeNodes(h.id, h.doc.nodes);
+    const apply = (cloned: OutlineNode[] | undefined, src: OutlineNode[] | undefined) => {
+      (src ?? []).forEach((n, i) => {
+        const c = cloned?.[i];
+        if (!c) return;
+        c.collapsed = !!n.children?.length && store.isNodeCollapsed(h.id, h.doc!, addressOf(n));
+        apply(c.children, n.children);
+      });
+    };
+    apply(kids, h.doc.nodes);
     const rootNode: OutlineNode = {
-      id: h.id,
+      writtenId: null,
+      sessionKey: sessionKeyFromAttribute(h.id),
+      collapsed: store.isRegionFolded(h.id),
       title: h.label || (h.kind === 'sealed' ? 'Sealed branch' : 'Record'),
+      depth: anchor.depth + 1,
       children: kids,
       regionRoot: h.kind,
-    } as OutlineNode;
+    };
     // The anchor is a clone: mark it open so `toHtml` drops the locked chrome and the
     // Decrypt chip while the region is readable (the ciphertext stays on the root doc).
     if (h.kind === 'sealed') anchor.regionState = 'open';
     anchor.children = [...(anchor.children ?? []), rootNode];
     byId.set(h.id, rootNode);
-    index(kids);
-    want(h.id, store.isRegionFolded(h.id));
-    const walkF = (l: OutlineNode[] | undefined) =>
-      l?.forEach((n) => {
-        if (n.id && n.children?.length) want(scopeId(h.id, n.id), store.isNodeCollapsed(h.id, h.doc!, n.id));
-        walkF(n.children);
-      });
-    walkF(h.doc.nodes);
+    const indexScoped = (l: OutlineNode[]) => l.forEach((n) => {
+      if (n.writtenId) byId.set(scopeId(h.id, n.writtenId), n);
+      byId.set(n.sessionKey, n);
+      if (n.children) indexScoped(n.children);
+    });
+    indexScoped(kids);
   }
-  return { ...root, nodes, fold: { mode, ids } };
+  return { ...root, nodes };
+}
+
+function copyCollapsed(from: OutlineNode[] | undefined, to: OutlineNode[] | undefined): boolean {
+  let changed = false;
+  const byKey = new Map((to ?? []).map((n) => [n.sessionKey, n]));
+  for (const a of from ?? []) {
+    if (a.regionRoot) continue;
+    const b = byKey.get(a.sessionKey);
+    if (!b) continue;
+    if (b.children?.length && a.collapsed !== b.collapsed) {
+      b.collapsed = a.collapsed;
+      changed = true;
+    }
+    if (copyCollapsed(a.children, b.children)) changed = true;
+  }
+  return changed;
 }
 
 /**
- * Split a composed doc's fold back: scoped / region ids go to the store, plain ids stay in
- * the root doc. Returns the root doc (the same object when its fold did not change).
+ * Split a composed doc's collapsed flags: region nodes go to the store, root nodes stay
+ * on the root doc. Returns the root doc (the same object when its nodes did not change).
  */
 export function commitOutlineFold(
   composed: OutlineFoldDoc,
@@ -365,31 +404,22 @@ export function commitOutlineFold(
   hosts: readonly OutlineRegionHost[],
   store: RegionFoldStore,
 ): OutlineFoldDoc {
-  const regionKeys = new Set<string>();
   for (const h of hosts) {
     if (!h.doc) continue;
-    regionKeys.add(h.id);
-    store.setRegionFolded(h.id, isCollapsed(composed, h.id));
-    const walkF = (l: OutlineNode[] | undefined) =>
-      l?.forEach((n) => {
-        if (n.id) {
-          const k = scopeId(h.id, n.id);
-          regionKeys.add(k);
-          if (n.children?.length) store.setNodeCollapsed(h.id, n.id, isCollapsed(composed, k));
-        }
-        walkF(n.children);
+    const regionNode = findById(composed.nodes, h.id);
+    if (regionNode) store.setRegionFolded(h.id, regionNode.collapsed);
+    const walkF = (src: OutlineNode[] | undefined, cloned: OutlineNode[] | undefined) => {
+      (src ?? []).forEach((n, i) => {
+        const c = cloned?.[i];
+        if (n.children?.length && c) store.setNodeCollapsed(h.id, addressOf(n), c.collapsed);
+        walkF(n.children, c?.children);
       });
-    walkF(h.doc.nodes);
+    };
+    walkF(h.doc.nodes, regionNode?.children);
   }
-  const mode = composed.fold.mode;
-  const ids = composed.fold.ids.filter((k) => !regionKeys.has(k));
-  const same = mode === root.fold.mode && ids.length === root.fold.ids.length && ids.every((k, i) => k === root.fold.ids[i]);
-  if (same) return root;
-  return {
-    ...root,
-    fold: { mode, ids },
-    ...(root.frontmatter ? { frontmatter: { ...root.frontmatter, foldIds: [...ids], foldMode: mode } } : {}),
-  };
+  const draft = structuredClone(root);
+  if (!copyCollapsed(composed.nodes, draft.nodes)) return root;
+  return draft;
 }
 
 /**
@@ -445,8 +475,8 @@ export function revealScopedId(
   if (res.rootUnfold.length) {
     let d = root;
     for (const a of res.rootUnfold) {
-      const ids = d.fold.mode === '-' ? d.fold.ids.filter((k) => k !== a) : [...d.fold.ids, a];
-      d = { ...d, fold: { mode: d.fold.mode, ids }, ...(d.frontmatter ? { frontmatter: { ...d.frontmatter, foldIds: [...ids], foldMode: d.fold.mode } } : {}) };
+      const key = sessionKeyFromAttribute(a);
+      if (isCollapsed(d, key)) d = toggleFold(d, key);
     }
     o.setRootDoc(d);
   }

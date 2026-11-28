@@ -1,3 +1,4 @@
+import { writtenId } from './ids.js';
 import type { OutlineFoldDoc, OutlineNode, SealedPayload } from './types.js';
 import { kidFromSealArmor } from './sealEnvelope.js';
 
@@ -65,7 +66,7 @@ export function findSealedOrphans(
   payloads: Record<string, SealedPayload>,
 ): Record<string, SealedPayload> | undefined {
   const ids = new Set<string>();
-  walk(nodes, (n) => n.id && ids.add(n.id));
+  walk(nodes, (n) => n.writtenId && ids.add(n.writtenId));
   let out: Record<string, SealedPayload> | undefined;
   for (const [id, p] of Object.entries(payloads)) {
     if (isSealedBranchPayload(p) && !ids.has(id)) (out ??= {})[id] = { ...p };
@@ -84,9 +85,9 @@ export function sealedSaveProblems(doc: OutlineFoldDoc): string[] {
   walk(doc.nodes, (n) => {
     if (!isSealedBranchPayload(n.sealed)) return;
     const label = n.sealed!.pub ?? SEALED_PLACEHOLDER;
-    const who = n.id ?? `"${label}"`;
-    if (!n.id || n.autoId) errs.push(`${who}: sealed line has no persistent id`);
-    else seen.set(n.id, (seen.get(n.id) ?? 0) + 1);
+    const who = n.writtenId ?? `"${label}"`;
+    if (!n.writtenId) errs.push(`${who}: sealed line has no persistent id`);
+    else seen.set(n.writtenId, (seen.get(n.writtenId) ?? 0) + 1);
     if (n.children?.length) errs.push(`${who}: sealed line has children (would be saved in clear)`);
     if (!n.sealed!.ciphertext || !n.sealed!.kid) errs.push(`${who}: sealed line has no ciphertext or kid`);
   });
@@ -94,7 +95,7 @@ export function sealedSaveProblems(doc: OutlineFoldDoc): string[] {
   for (const id of Object.keys(doc.sealedOrphans ?? {})) {
     let back = false;
     walk(doc.nodes, (n) => {
-      if (n.id === id && isSealedBranchPayload(n.sealed)) back = true;
+      if (n.writtenId === id && isSealedBranchPayload(n.sealed)) back = true;
     });
     if (!back) errs.push(`${id}: sealed payload has no line (id removed or broken); restore <id:${id}> or discard it explicitly`);
   }
@@ -118,8 +119,7 @@ export function discardSealedOrphan(doc: OutlineFoldDoc, id: string): boolean {
 export function reattachSealedOrphan(doc: OutlineFoldDoc, id: string, node: OutlineNode): void {
   const p = doc.sealedOrphans?.[id];
   if (!p) throw new Error(`no orphaned sealed payload ${id}`);
-  node.id = id;
-  delete node.autoId;
+  node.writtenId = writtenId(id);
   const tagKid = node.sealed?.kid;
   node.sealed = { ...p };
   if (isLineSealAlg(p.alg) && !node.sealed.kid) {

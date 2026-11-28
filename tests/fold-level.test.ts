@@ -30,6 +30,20 @@ const LOG = `- Harbour log <id:root>
 const byKey = (p: NonNullable<ReturnType<typeof foldLevelPicker>>) =>
   Object.fromEntries(p.items.map((i) => [String(i.key), i]));
 
+function sessionOf(doc: { nodes: { writtenId?: string | null; sessionKey: string; children?: { writtenId?: string | null; sessionKey: string; children?: never[] }[] }[] }, written: string): string {
+  const walk = (nodes: typeof doc.nodes | undefined): string | undefined => {
+    for (const n of nodes ?? []) {
+      if (n.writtenId === written) return n.sessionKey;
+      const hit = walk(n.children as typeof doc.nodes | undefined);
+      if (hit) return hit;
+    }
+    return undefined;
+  };
+  const key = walk(doc.nodes);
+  if (!key) throw new Error(written);
+  return key;
+}
+
 describe('foldLevelPicker items (L3)', () => {
   it('lists Fold, 1, 2, 3, All with their key hints', () => {
     const p = foldLevelPicker(parse(LOG), 'root')!;
@@ -65,7 +79,7 @@ describe('foldLevelPicker items (L3)', () => {
   it('each item matches setExpandLevel(doc, n, { under }) (the 0 1 2 3 * keys)', () => {
     const doc = parse(LOG);
     for (const it of foldLevelPicker(doc, 'root')!.items) {
-      const applied = setExpandLevel(doc, it.key, { under: 'root' });
+      const applied = setExpandLevel(doc, it.key, { under: sessionOf(doc, 'root') as never });
       expect(foldLevelPicker(applied, 'root')!.items.find((i) => i.checked)!.shown).toBe(it.shown);
     }
   });
@@ -79,20 +93,23 @@ describe('current level (L2)', () => {
 
   it('marks the level just applied, from either handle state', () => {
     const doc = parse(LOG);
-    expect(currentFoldLevel(setExpandLevel(doc, 1, { under: 'root' }), 'root')).toBe(1);
-    expect(currentFoldLevel(setExpandLevel(doc, 0, { under: 'root' }), 'root')).toBe(0);
-    expect(currentFoldLevel(setExpandLevel(doc, 2, { under: 'root' }), 'root')).toBe(2);
+    const root = sessionOf(doc, 'root') as never;
+    expect(currentFoldLevel(setExpandLevel(doc, 1, { under: root }), 'root')).toBe(1);
+    expect(currentFoldLevel(setExpandLevel(doc, 0, { under: root }), 'root')).toBe(0);
+    expect(currentFoldLevel(setExpandLevel(doc, 2, { under: root }), 'root')).toBe(2);
   });
 
   it('marks nothing when the subtree matches no level', () => {
-    const mixed = toggleFold(setExpandLevel(parse(LOG), 1, { under: 'root' }), 'mon');
+    const open = parse(LOG);
+    const mixed = toggleFold(setExpandLevel(open, 1, { under: sessionOf(open, 'root') as never }), sessionOf(open, 'mon') as never);
     expect(currentFoldLevel(mixed, 'root')).toBeNull();
     expect(foldLevelPicker(mixed, 'root')!.items.some((i) => i.checked)).toBe(false);
   });
 
   it('ignores remembered states hidden under a fold (only what shows counts)', () => {
     // Root folded; Monday stays open underneath. Still reads as Fold.
-    const doc = toggleFold(parse(LOG), 'root');
+    const open = parse(LOG);
+    const doc = toggleFold(open, sessionOf(open, 'root') as never);
     expect(currentFoldLevel(doc, 'root')).toBe(0);
   });
 });
@@ -111,13 +128,13 @@ describe('guard rails (L14)', () => {
 
   it('counts fold changes and skips the animation above the limit', () => {
     const doc = parse(LOG);
-    const folded = setExpandLevel(doc, 0, { under: 'root' });
+    const folded = setExpandLevel(doc, 0, { under: sessionOf(doc, 'root') as never });
     expect(foldChangeCount(doc, folded)).toBe(4); // root, mon, tide, tue
     expect(foldLevelSkipsAnimation(doc, folded)).toBe(false);
     const lines = ['- Shelf <id:s>'];
     for (let i = 0; i <= LEVEL_NO_FLIP_CHANGES; i++) lines.push(`  - Box ${i} <id:b${i}>`, `    - Item <id:i${i}>`);
     const big = parse(lines.join('\n') + '\n');
-    expect(foldLevelSkipsAnimation(big, setExpandLevel(big, 1, { under: 's' }))).toBe(true);
+    expect(foldLevelSkipsAnimation(big, setExpandLevel(big, 1, { under: sessionOf(big, 's') as never }))).toBe(true);
   });
 });
 

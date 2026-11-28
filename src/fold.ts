@@ -1,163 +1,67 @@
-import { collectNodeIds, nextAutoId, SESSION_ID_PREFIX } from './nodeAddress.js';
+import type { SessionKey } from './ids.js';
 import type { OutlineFoldDoc, OutlineNode } from './types.js';
 
 function cloneDoc(doc: OutlineFoldDoc): OutlineFoldDoc {
+  const frontmatter = doc.frontmatter ? { ...doc.frontmatter } : undefined;
   return {
-    frontmatter: doc.frontmatter
-      ? {
-          ...doc.frontmatter,
-          foldIds: doc.frontmatter.foldIds
-            ? [...doc.frontmatter.foldIds]
-            : undefined,
-        }
-      : undefined,
+    frontmatter,
     nodes: structuredClone(doc.nodes),
-    fold: { mode: doc.fold.mode, ids: [...doc.fold.ids] },
     ...(doc.keys ? { keys: doc.keys } : {}),
     ...(doc.keyring ? { keyring: doc.keyring } : {}),
+    ...(doc.assets ? { assets: doc.assets } : {}),
     ...(doc.sealedOrphans ? { sealedOrphans: { ...doc.sealedOrphans } } : {}),
   };
 }
 
-/**
- * Whether the node with `id` is collapsed, respecting fold- vs fold+.
- * Unknown ids: fold- → expanded (false); fold+ → collapsed (true).
- */
-export function isCollapsed(doc: OutlineFoldDoc, id: string): boolean {
-  const inList = doc.fold.ids.includes(id);
-  return doc.fold.mode === '-' ? inList : !inList;
+export function findBySessionKey(nodes: OutlineNode[] | undefined, key: SessionKey): OutlineNode | null {
+  for (const n of nodes ?? []) {
+    if (n.sessionKey === key) return n;
+    const hit = findBySessionKey(n.children, key);
+    if (hit) return hit;
+  }
+  return null;
 }
 
-/**
- * Pure toggle: returns a new doc. Under fold-, toggling adds/removes from
- * collapsed list; under fold+, adds/removes from expanded list.
- */
-export function toggleFold(doc: OutlineFoldDoc, id: string): OutlineFoldDoc {
+/** True when the node with this session key is collapsed. Any other argument is not a fold. */
+export function isCollapsed(doc: OutlineFoldDoc, key: SessionKey): boolean {
+  return findBySessionKey(doc.nodes, key)?.collapsed === true;
+}
+
+/** Flip `node.collapsed`. A leaf stays open. */
+export function toggleFold(doc: OutlineFoldDoc, key: SessionKey): OutlineFoldDoc {
   const next = cloneDoc(doc);
-  const idx = next.fold.ids.indexOf(id);
-  if (idx >= 0) {
-    next.fold.ids.splice(idx, 1);
-  } else {
-    next.fold.ids.push(id);
-  }
-  if (next.frontmatter) {
-    next.frontmatter.foldIds = [...next.fold.ids];
-    next.frontmatter.foldMode = next.fold.mode;
-  }
+  const node = findBySessionKey(next.nodes, key);
+  if (!node?.children?.length) return next;
+  node.collapsed = !node.collapsed;
   return next;
 }
 
 /** Expand-level argument: digit 0–9, or expand-all. */
 export type ExpandLevel = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | '*' | 'all';
 
-/** Options for {@link setExpandLevel}. */
 export interface SetExpandLevelOptions {
-  /**
-   * When set, apply expand/collapse only within this node's subtree
-   * (including the node). Depth is **relative to the anchor**: digit `1`
-   * expands the anchor (shows its children) and collapses deeper foldables;
-   * `0` collapses the whole subtree under the anchor; `*` expands all
-   * foldables in the subtree. Nodes outside the subtree are left unchanged.
-   */
-  under?: string;
-}
-
-/**
- * A foldable line with no id never enters fold.ids, so a level leaves it open
- * while the sibling that has an id shuts. Mint a session id on the clone first.
- * It is not written as `<id:>` (`autoId`); the line's `(+)` carries the fold.
- */
-function ensureFoldableIds(nodes: OutlineNode[]): void {
-  const used = collectNodeIds(nodes);
-  const walk = (list: OutlineNode[] | undefined) => {
-    for (const n of list ?? []) {
-      if (!n.children?.length) continue;
-      if (!n.id) {
-        n.id = nextAutoId(used, SESSION_ID_PREFIX);
-        n.autoId = true;
-      }
-      walk(n.children);
-    }
-  };
-  walk(nodes);
+  /** Session key of the node whose subtree is leveled. Depth is relative to that node. */
+  under?: SessionKey;
 }
 
 function walkFoldable(
   nodes: OutlineNode[],
-  visit: (node: OutlineNode & { id: string }, depth: number) => void,
+  visit: (node: OutlineNode, depth: number) => void,
   depth = 0,
 ): void {
   for (const node of nodes) {
     if (node.children && node.children.length > 0) {
-      if (node.id) {
-        visit(node as OutlineNode & { id: string }, depth);
-      }
+      visit(node, depth);
       walkFoldable(node.children, visit, depth + 1);
     }
   }
 }
 
-function findNode(
-  nodes: OutlineNode[],
-  id: string,
-): OutlineNode | null {
-  for (const n of nodes) {
-    if (n.id === id) return n;
-    if (n.children?.length) {
-      const hit = findNode(n.children, id);
-      if (hit) return hit;
-    }
-  }
-  return null;
-}
-
 /**
- * Merge per-id collapsed desires into fold.ids (mode-aware). Ids not in
- * `wantCollapsed` keep their prior state.
- */
-function applyWantCollapsed(
-  next: OutlineFoldDoc,
-  wantCollapsed: Map<string, boolean>,
-): void {
-  const set = new Set(next.fold.ids);
-  if (next.fold.mode === '-') {
-    // ids = collapsed
-    for (const [id, collapsed] of wantCollapsed) {
-      if (collapsed) set.add(id);
-      else set.delete(id);
-    }
-  } else {
-    // ids = expanded
-    for (const [id, collapsed] of wantCollapsed) {
-      if (collapsed) set.delete(id);
-      else set.add(id);
-    }
-  }
-  next.fold.ids = [...set];
-  if (next.frontmatter) {
-    next.frontmatter.foldIds = [...next.fold.ids];
-    next.frontmatter.foldMode = next.fold.mode;
-  }
-}
-
-/**
- * Pure expand-level (iThoughts-style). Returns a new doc; fold mode unchanged.
- *
- * Depth uses **1-based aria-level** semantics (roots = 1). The level is the
- * walk from the roots of this doc, not `node.depth`. A stale `node.depth` on
- * one sibling was leaving that pill open while the one beside it shut.
- *
- * - `n` in 1..9: expand foldable nodes with level &lt; n; collapse foldable at level ≥ n
- * - `0`: top level only (collapse everything under roots; same as level `1`)
- * - `'*'` / `'all'`: expand all foldable nodes
- *
- * With `{ under: id }`, depth is **relative to that node** (Map digits-when-selected):
- * digit `1` expands the selected node (shows its children); `0` collapses the
- * subtree; outside nodes are untouched. Absolute tree-wide behaviour is unchanged
- * when `under` is omitted (Outline / cold-start seed).
- *
- * Every node with children participates. A line with no id is given a session
- * id on the returned doc so the level can name it.
+ * Set `collapsed` from the walk depth. Roots are level 1.
+ * `n` in 1..9 collapses foldable nodes at level >= n.
+ * `0` matches level 1. `*` / `all` expands every foldable node.
+ * Leaves are left open.
  */
 export function setExpandLevel(
   doc: OutlineFoldDoc,
@@ -165,13 +69,10 @@ export function setExpandLevel(
   opts?: SetExpandLevelOptions,
 ): OutlineFoldDoc {
   const next = cloneDoc(doc);
-  ensureFoldableIds(next.nodes);
   const underId = opts?.under;
 
   let expandAll = false;
-  /** Absolute: expand foldable when ariaLevel < this; collapse when ≥. For 0/1 → 1. */
   let showThrough = 1;
-  /** Relative under-anchor: digit 0 → showThroughRel 0 (collapse whole subtree). */
   let showThroughRel = 1;
 
   if (level === '*' || level === 'all') {
@@ -183,57 +84,92 @@ export function setExpandLevel(
         `setExpandLevel: level must be 0–9 or '*'/'all', got ${JSON.stringify(level)}`,
       );
     }
-    if (underId) {
-      // Relative: 0 collapses the subtree; 1..9 = show that many levels under anchor.
-      showThroughRel = n;
-    } else {
-      // 0 = explicit “fold under roots” alias; same visible result as level 1.
-      showThrough = n === 0 ? 1 : n;
-    }
+    if (underId) showThroughRel = n;
+    else showThrough = n === 0 ? 1 : n;
   }
 
-  const wantCollapsed = new Map<string, boolean>();
+  const apply = (node: OutlineNode, depth: number, through: number) => {
+    node.collapsed = expandAll ? false : depth >= through;
+  };
 
   if (underId) {
-    const anchor = findNode(next.nodes, underId);
-    if (!anchor) {
-      return next;
-    }
-    // Depth is the walk from this node, not node.depth. A stale depth on one
-    // sibling was folding it while the pill beside it stayed open.
-    walkFoldable([anchor], (node, depth) => {
-      if (expandAll) {
-        wantCollapsed.set(node.id, false);
-        return;
-      }
-      wantCollapsed.set(node.id, depth >= showThroughRel);
-    });
-    applyWantCollapsed(next, wantCollapsed);
+    const anchor = findBySessionKey(next.nodes, underId);
+    if (!anchor) return next;
+    walkFoldable([anchor], (node, depth) => apply(node, depth, showThroughRel));
     return next;
   }
 
-  walkFoldable(next.nodes, (node, depth) => {
-    const ariaLevel = depth + 1;
-    if (expandAll) {
-      wantCollapsed.set(node.id, false);
-    } else {
-      wantCollapsed.set(node.id, ariaLevel >= showThrough);
-    }
-  });
-
-  if (next.fold.mode === '-') {
-    next.fold.ids = [...wantCollapsed.entries()]
-      .filter(([, collapsed]) => collapsed)
-      .map(([id]) => id);
-  } else {
-    next.fold.ids = [...wantCollapsed.entries()]
-      .filter(([, collapsed]) => !collapsed)
-      .map(([id]) => id);
-  }
-
-  if (next.frontmatter) {
-    next.frontmatter.foldIds = [...next.fold.ids];
-    next.frontmatter.foldMode = next.fold.mode;
-  }
+  walkFoldable(next.nodes, (node, depth) => apply(node, depth + 1, showThrough));
   return next;
+}
+
+/** The marker sits at the end of the line, outside an open code span. */
+function markerAtEnd(line: string, marker: string): boolean {
+  if (!marker || line.length < marker.length || !line.endsWith(marker)) return false;
+  const head = line.slice(0, -marker.length);
+  return (head.match(/`/g) ?? []).length % 2 === 0;
+}
+
+/**
+ * Put the collapsed marker on `line`, or take it off.
+ * Returns null when the line already says that.
+ * An expanded marker, when the note has one, replaces the collapsed marker on open.
+ */
+export function setCollapsedMarker(
+  line: string,
+  collapsed: boolean,
+  collapsedMarker = '(+)',
+  expandedMarker?: string,
+): string | null {
+  let rest = line;
+  if (collapsedMarker && markerAtEnd(rest, collapsedMarker)) {
+    rest = rest.slice(0, -collapsedMarker.length).trimEnd();
+  } else if (expandedMarker && markerAtEnd(rest, expandedMarker)) {
+    rest = rest.slice(0, -expandedMarker.length).trimEnd();
+  }
+  const next = collapsed
+    ? `${rest} ${collapsedMarker}`
+    : expandedMarker
+      ? `${rest} ${expandedMarker}`
+      : rest;
+  return next === line ? null : next;
+}
+
+/**
+ * Set the collapsed marker on the given 0-based text lines.
+ * One pass, so a level change is a single text edit.
+ * Null when no line changed.
+ */
+export function setCollapsedAtLines(
+  text: string,
+  edits: ReadonlyMap<number, boolean>,
+  collapsedMarker = '(+)',
+  expandedMarker?: string,
+): string | null {
+  if (edits.size === 0) return null;
+  const parts: string[] = [];
+  let at = 0;
+  let n = 0;
+  let changed = false;
+  for (;;) {
+    const nl = text.indexOf('\n', at);
+    const end = nl < 0 ? text.length : nl;
+    const raw = text.slice(at, end);
+    const cr = raw.endsWith('\r');
+    const line = cr ? raw.slice(0, -1) : raw;
+    const want = edits.get(n);
+    let next = line;
+    if (want !== undefined) {
+      const edited = setCollapsedMarker(line, want, collapsedMarker, expandedMarker);
+      if (edited != null) {
+        next = edited;
+        changed = true;
+      }
+    }
+    parts.push(next + (cr ? '\r' : ''));
+    if (nl < 0) break;
+    at = nl + 1;
+    n += 1;
+  }
+  return changed ? parts.join('\n') : null;
 }

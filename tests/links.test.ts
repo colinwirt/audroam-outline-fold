@@ -31,8 +31,8 @@ describe('<r:x> jump tag', () => {
       expect(n.links).toEqual([{ kind: 'jump', target: 'plants', form: 'tag', source: tag }]);
       expect(n.noteLinks).toBeUndefined();
       same(body);
-      // A fold keeps it too.
-      expect(serialize(toggleFold(parse(body), 'a'))).toContain(`See the list ${tag} <id:a>`);
+      const foldDoc = parse(`- See the list ${tag} <id:a>\n  - Seed row\n`);
+      expect(serialize(toggleFold(foldDoc, foldDoc.nodes[0]!.sessionKey))).toContain(`See the list ${tag} <id:a> (+)`);
     });
   }
 
@@ -138,19 +138,19 @@ describe('ids: lazy, never written by the parser', () => {
 
   it('session ids never take a jump target', () => {
     const doc = parse('- A <r:2>\n- B\n- C [x](#id:3)\n', { sessionIds: true });
-    const ids = doc.nodes.map((n) => n.id);
-    expect(ids).not.toContain('2');
-    expect(ids).not.toContain('3');
+    expect(doc.nodes.map((n) => n.writtenId)).toEqual([null, null, null]);
+    expect(doc.nodes.map((n) => n.sessionKey)).not.toContain('2');
+    expect(doc.nodes.map((n) => n.sessionKey)).not.toContain('3');
     expect(serialize(doc)).toBe('- A <r:2>\n- B\n- C [x](#id:3)\n');
   });
 
   it('linking to a session-id node makes serialize write its id', () => {
     const doc = parse('- A\n- B\n', { sessionIds: true });
     const b = doc.nodes[1]!;
-    doc.nodes[0]!.links = [{ kind: 'jump', target: b.id!, form: 'tag' }];
+    doc.nodes[0]!.links = [{ kind: 'jump', target: b.sessionKey, form: 'tag' }];
     const text = serialize(doc);
-    expect(b.id).toMatch(/^[A-Za-z0-9]/);
-    expect(text).toBe(`- A <r:${b.id}>\n- B <id:${b.id}>\n`);
+    expect(b.writtenId).toMatch(/^[A-Za-z0-9]/);
+    expect(text).toBe(`- A <r:${b.writtenId}>\n- B <id:${b.writtenId}>\n`);
     expect(text).not.toMatch(/__tmp-|__sid-/);
   });
 

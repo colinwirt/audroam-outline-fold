@@ -68,7 +68,7 @@ describe('parse: time and session are kinds (TL8)', () => {
   it('sits with the other trailing tags (note link, id) in any order the parser reads', () => {
     const n = first('- Fri 9 Oct · 3:05 <t:7> <kind:session> <id:s2>\n');
     expect(n.kind).toBe('session');
-    expect(n.id).toBe('s2');
+    expect(n.writtenId).toBe('s2');
     expect(n.title).toBe('Fri 9 Oct · 3:05');
     expect(serialize(parse('- Fri 9 Oct · 3:05 <t:7> <kind:session> <id:s2>\n'))).toBe(
       '- Fri 9 Oct · 3:05 <t:7> <kind:session> <id:s2>\n',
@@ -108,7 +108,8 @@ describe('round trip and spacing (TL8)', () => {
     const md = '- Thu 8 Oct · 1:25 <kind : time> <id : t1>\n';
     expect(serialize(parse(md))).toBe(md);
     const folded = '- Glaze class <id:g>\n  - Thu 8 Oct · 1:25 < kind: session > <id:t1>\n';
-    const doc = toggleFold(parse(folded), 'g');
+    const parsed = parse(folded);
+    const doc = toggleFold(parsed, parsed.nodes[0]!.sessionKey);
     expect(serialize(doc)).toContain('Thu 8 Oct · 1:25 < kind: session > <id:t1>');
   });
 
@@ -207,7 +208,7 @@ describe('Map classes, size and layout (TL1, TL4, TL5)', () => {
     const { nodes } = autoPackPositions(doc, { fontSize: 16 });
     const kids = doc.nodes[0]!.children!;
     // 0.6.6: standalone pack keys are the line's id (never a place number).
-    const pos = kids.map((k) => nodes[k.id!]!);
+    const pos = kids.map((k) => nodes[k.writtenId!]!);
     const tlH = pillSize('Thu 8 Oct · 1:25', { timeLeaf: 'time', fontSize: 13.5 }).h;
     const gap = (i: number, hA: number, hB: number) => pos[i + 1]!.y - hB / 2 - (pos[i]!.y + hA / 2);
     expect(gap(0, tlH, tlH)).toBeCloseTo(TIME_LEAF_GAP_Y, 5);

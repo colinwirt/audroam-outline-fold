@@ -1,34 +1,25 @@
 /**
  * Task checkbox helpers — toggle state, strip markers, action fire policy.
  */
+import type { SessionKey } from './ids.js';
 import type { OutlineFoldDoc, OutlineNode, TaskState } from './types.js';
 
 function cloneDoc(doc: OutlineFoldDoc): OutlineFoldDoc {
   return {
-    frontmatter: doc.frontmatter
-      ? {
-          ...doc.frontmatter,
-          foldIds: doc.frontmatter.foldIds
-            ? [...doc.frontmatter.foldIds]
-            : undefined,
-        }
-      : undefined,
+    frontmatter: doc.frontmatter ? { ...doc.frontmatter } : undefined,
     nodes: structuredClone(doc.nodes),
-    fold: { mode: doc.fold.mode, ids: [...doc.fold.ids] },
     ...(doc.keys ? { keys: doc.keys } : {}),
     ...(doc.keyring ? { keyring: doc.keyring } : {}),
+    ...(doc.assets ? { assets: doc.assets } : {}),
     ...(doc.sealedOrphans ? { sealedOrphans: { ...doc.sealedOrphans } } : {}),
   };
 }
 
-function findMutable(
-  nodes: OutlineNode[],
-  id: string,
-): OutlineNode | null {
+function findMutable(nodes: OutlineNode[], key: SessionKey): OutlineNode | null {
   for (const n of nodes) {
-    if (n.id === id) return n;
+    if (n.sessionKey === key) return n;
     if (n.children?.length) {
-      const hit = findMutable(n.children, id);
+      const hit = findMutable(n.children, key);
       if (hit) return hit;
     }
   }
@@ -68,7 +59,7 @@ export function nextTaskCycle(
  */
 export function toggleTask(
   doc: OutlineFoldDoc,
-  id: string,
+  id: SessionKey,
 ): {
   doc: OutlineFoldDoc;
   from: TaskState;
@@ -90,7 +81,7 @@ export function toggleTask(
  */
 export function setTask(
   doc: OutlineFoldDoc,
-  id: string,
+  id: SessionKey,
   to: TaskState | null,
 ): {
   doc: OutlineFoldDoc;

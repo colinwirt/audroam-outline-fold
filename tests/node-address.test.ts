@@ -19,16 +19,20 @@ describe('nextAutoId', () => {
 describe('assignPersistentId', () => {
   it('keeps a free position so a layout key does not move', () => {
     const doc: OutlineFoldDoc = {
-      nodes: [{ title: 'kept', id: '4' }, { title: 'blank' }],
-      fold: { mode: '-', ids: [] },
+      nodes: [
+        { title: 'kept', writtenId: '4' as never, sessionKey: '__sid-1' as never, collapsed: false, depth: 0 },
+        { title: 'blank', writtenId: null, sessionKey: '__sid-2' as never, collapsed: false, depth: 0 },
+      ],
     };
     expect(assignPersistentId(doc, doc.nodes[1]!)).toBe('2');
   });
 
   it('continues after the highest id when the position number is taken', () => {
     const doc: OutlineFoldDoc = {
-      nodes: [{ title: 'kept', id: '2' }, { title: 'blank' }],
-      fold: { mode: '-', ids: [] },
+      nodes: [
+        { title: 'kept', writtenId: '2' as never, sessionKey: '__sid-1' as never, collapsed: false, depth: 0 },
+        { title: 'blank', writtenId: null, sessionKey: '__sid-2' as never, collapsed: false, depth: 0 },
+      ],
     };
     expect(assignPersistentId(doc, doc.nodes[1]!)).toBe('3');
   });

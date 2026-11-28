@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.7.13 — 2026-11-28
+
+Fold is `node.collapsed`, set from that line's `(+)`. A list of folded ids is not part of the document.
+
+- Each node has `writtenId` (the `<id:>` on the line, or null) and `sessionKey` (runtime only, never written).
+- A fold handle toggles that node and does not move focus. Mounted from `createOutlineDoc`, the toggle is a text edit, same as a tick.
+- A leaf never gets `(+)`. A level command writes `collapsed` by walk depth.
+
 ## 0.7.12 — 2026-11-23
 
 The map follows inline `(+)`, including when a layout `fold+:` list is still in the note.

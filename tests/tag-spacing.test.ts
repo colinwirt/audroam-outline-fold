@@ -31,10 +31,10 @@ describe('spaced tags are recognised', () => {
   const ids = ['<id : craft-lab>', '<id: craft-lab>', '<id :craft-lab>', '<id:craft-lab >', '< id:craft-lab>', '< id : craft-lab >'];
   for (const tag of ids) {
     it(`${tag} is the id, trailing or leading, and round-trips unchanged`, () => {
-      expect(first(`- Row ${tag}\n`).id).toBe('craft-lab');
+      expect(first(`- Row ${tag}\n`).writtenId).toBe('craft-lab');
       expect(first(`- Row ${tag}\n`).title).toBe('Row');
       expect(serialize(parse(`- Row ${tag}\n`))).toBe(`- Row ${tag}\n`);
-      expect(first(`- ${tag} Row\n`).id).toBe('craft-lab');
+      expect(first(`- ${tag} Row\n`).writtenId).toBe('craft-lab');
     });
   }
 
@@ -76,23 +76,25 @@ describe('writers emit no spaces; edits keep a spelling', () => {
   it('a new note link is <t:N>; a host-set id is <id:x>', () => {
     const doc = parse('- Row\n');
     doc.nodes[0]!.noteLinks = ['41609'];
-    doc.nodes[0]!.id = 'craft-lab';
+    doc.nodes[0]!.writtenId = 'craft-lab' as never;
     expect(serialize(doc)).toBe('- Row <t:41609> <id:craft-lab>\n');
   });
 
   it('a kept spelling is dropped once the value changes', () => {
     const doc = parse('- Row <kind : doc> <id : a>\n');
-    doc.nodes[0]!.id = 'b';
+    doc.nodes[0]!.writtenId = 'b' as never;
     doc.nodes[0]!.kind = 'bug';
     expect(serialize(doc)).toBe('- Row <kind:bug> <id:b>\n');
   });
 
   it('fold and task tick keep spaced tags as written', () => {
     const body = '- [ ] Top <t: 5 > <kind : doc> <id : 1>\n  - Child <id: 2>\n';
-    const folded = serialize(toggleFold(parse(body), '1'));
-    expect(folded).toContain('Top <t: 5 > <kind : doc> <id : 1>');
+    const parsed = parse(body);
+    const folded = serialize(toggleFold(parsed, parsed.nodes[0]!.sessionKey));
+    expect(folded).toContain('Top <t: 5 > <kind : doc> <id : 1> (+)');
     expect(folded).toContain('Child <id: 2>');
-    const ticked = toggleTask(parse(body), '1')!;
+    const tickDoc = parse(body);
+    const ticked = toggleTask(tickDoc, tickDoc.nodes[0]!.sessionKey)!;
     const box = ticked.to === 'done' ? '[x]' : ticked.to === 'pending' ? '[-]' : '[ ]';
     expect(serialize(ticked.doc)).toBe(body.replace('[ ]', box));
   });

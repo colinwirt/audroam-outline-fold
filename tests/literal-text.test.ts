@@ -27,7 +27,8 @@ describe('a bare <word> is text, not a tag', () => {
       const doc = load(`${line}\n`);
       const node = doc.nodes[0]!;
       expect(node.title).toBe(line.slice(2));
-      expect(node.autoId).toBe(true); // only a session id, never written
+      expect(node.writtenId).toBeNull();
+      expect(node.sessionKey).toMatch(/^__sid-/);
       expect(roundTrip(line)).toBe(`${line}\n`);
       expect(serialize(doc)).not.toContain('<id:');
     });
@@ -35,21 +36,21 @@ describe('a bare <word> is text, not a tag', () => {
 
   it('parses <script> as text even without session ids', () => {
     const doc = parse('- inject <script> here\n');
-    expect(doc.nodes[0]!.id).toBeUndefined();
+    expect(doc.nodes[0]!.writtenId).toBeNull();
+    expect(doc.nodes[0]!.sessionKey).toMatch(/^__sid-/);
     expect(doc.nodes[0]!.title).toBe('inject <script> here');
   });
 
   it('never lets <script> replace a real <id:…>', () => {
     const doc = load('- Week 3 lab: inject <script> <id:lab3>\n');
-    expect(doc.nodes[0]!.id).toBe('lab3');
-    expect(doc.nodes[0]!.autoId).toBeUndefined();
+    expect(doc.nodes[0]!.writtenId).toBe('lab3');
     expect(doc.nodes[0]!.title).toBe('Week 3 lab: inject <script>');
     expect(serialize(doc)).toBe('- Week 3 lab: inject <script> <id:lab3>\n');
   });
 
   it('a session id minted after <script> stays the id (outline-view mints <id:N> at line end)', () => {
     const doc = parse('- Week 3 lab: inject <script> <id:9>\n');
-    expect(doc.nodes[0]!.id).toBe('9');
+    expect(doc.nodes[0]!.writtenId).toBe('9');
     expect(doc.nodes[0]!.title).toBe('Week 3 lab: inject <script>');
   });
 
@@ -59,7 +60,7 @@ describe('a bare <word> is text, not a tag', () => {
     // save wrote `- inject <id:script>`, or dropped a leading <script> from the text.
     for (const line of ['- <script> is the oldest payload', '- inject <script>']) {
       const doc = parse(`${line} <id:9>\n`);
-      expect(doc.nodes[0]!.id).toBe('9');
+      expect(doc.nodes[0]!.writtenId).toBe('9');
       expect(doc.nodes[0]!.title).toBe(line.slice(2));
       expect(serialize(doc)).toBe(`${line} <id:9>\n`);
     }
@@ -68,10 +69,10 @@ describe('a bare <word> is text, not a tag', () => {
   it('a fold or a tick does not add an id because of <script>', () => {
     const text = '- [ ] Read the <script> chapter\n  - inline handlers\n';
     let doc = load(text);
-    const id = doc.nodes[0]!.id!;
-    doc = toggleTask(doc, id).doc;
-    doc = toggleFold(doc, id);
-    doc = toggleFold(doc, id);
+    const key = doc.nodes[0]!.sessionKey;
+    doc = toggleTask(doc, key).doc;
+    doc = toggleFold(doc, key);
+    doc = toggleFold(doc, key);
     const out = serialize(doc);
     expect(out).toBe('- [-] Read the <script> chapter\n  - inline handlers\n');
     expect(out).not.toContain('<id:');
@@ -80,7 +81,7 @@ describe('a bare <word> is text, not a tag', () => {
   it('still reads the known tags', () => {
     const doc = parse('- Alarm notes <private> <kind:doc> <t: 12> <id:alarm> (+)\n');
     const n = doc.nodes[0]!;
-    expect(n.id).toBe('alarm');
+    expect(n.writtenId).toBe('alarm');
     expect(n.flags).toEqual(['private']);
     expect(n.kind).toBe('doc');
     expect(n.noteLinks).toEqual(['12']);
@@ -89,7 +90,7 @@ describe('a bare <word> is text, not a tag', () => {
 
   it('still peels a typed suffix after a known tag (<id:n>3)', () => {
     const doc = parse('- Draft <id:n1>3\n');
-    expect(doc.nodes[0]!.id).toBe('n1');
+    expect(doc.nodes[0]!.writtenId).toBe('n1');
     expect(doc.nodes[0]!.title).toBe('Draft 3');
   });
 
@@ -115,17 +116,17 @@ describe('inline code (backticks) is always literal', () => {
       const doc = load(`${line}\n`);
       const node = doc.nodes[0]!;
       expect(node.title).toBe(line.slice(2));
-      expect(node.autoId).toBe(true);
+      expect(node.writtenId).toBeNull();
+      expect(node.collapsed).toBe(false);
       expect(node.flags).toBeUndefined();
       expect(node.noteLinks).toBeUndefined();
-      expect(doc.fold.ids).toEqual([]);
       expect(roundTrip(line)).toBe(`${line}\n`);
     });
   }
 
   it('still reads a real tag after a code span', () => {
     const doc = load('- Payload `<script>` <id:xss1>\n');
-    expect(doc.nodes[0]!.id).toBe('xss1');
+    expect(doc.nodes[0]!.writtenId).toBe('xss1');
     expect(doc.nodes[0]!.title).toBe('Payload `<script>`');
     expect(serialize(doc)).toBe('- Payload `<script>` <id:xss1>\n');
   });

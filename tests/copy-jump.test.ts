@@ -19,7 +19,6 @@ import {
   previewPersistentId,
   resolveJumps,
   serialize,
-  writtenId,
 } from '../src/index.js';
 import type { OutlineNode } from '../src/types.js';
 
@@ -58,7 +57,7 @@ describe('jump tag', () => {
     const desk = byTitle(doc.nodes, 'Front desk');
     const pasted = parse(`- Ask about firing times ${jumpTagFor('glaze')}\n`);
     expect(resolveJumps(pasted.nodes[0]!)).toEqual(['glaze']);
-    expect(desk.id).toBe('desk');
+    expect(desk.writtenId).toBe('desk');
   });
 });
 
@@ -66,7 +65,7 @@ describe('minting an id (mintNodeId)', () => {
   it('writes a short id on a line without one, through the same rules as widths', () => {
     const doc = parse(FIXTURE);
     const kiln = byTitle(doc.nodes, 'Kiln corner');
-    expect(writtenId(kiln)).toBeNull();
+    expect(kiln.writtenId).toBeNull();
     const preview = previewPersistentId(doc, kiln);
     const r = mintNodeId(doc, kiln, { canMint: true });
     expect(r).toEqual({ id: preview, minted: true });
@@ -78,7 +77,7 @@ describe('minting an id (mintNodeId)', () => {
     // The copied jump resolves to the new id after a save and re-parse.
     const again = parse(out + `- Back to the kiln ${jumpTagFor(r.id!)}\n`);
     expect(resolveJumps(again.nodes[1]!)).toEqual(['5']);
-    expect(byTitle(again.nodes, 'Kiln corner').id).toBe('5');
+    expect(byTitle(again.nodes, 'Kiln corner').writtenId).toBe('5');
   });
 
   it('takes the next number when the position is taken', () => {
@@ -92,15 +91,15 @@ describe('minting an id (mintNodeId)', () => {
   it('replaces a session id with a normal id (parse with sessionIds)', () => {
     const doc = parse(FIXTURE, { sessionIds: true });
     const kiln = byTitle(doc.nodes, 'Kiln corner');
-    const session = kiln.id!;
+    const session = kiln.sessionKey;
     expect(session.startsWith('__sid-')).toBe(true);
-    expect(kiln.autoId).toBe(true);
-    expect(writtenId(kiln)).toBeNull();
+    expect(kiln.writtenId).toBeNull();
     const minted = mintNodeId(doc, kiln, { canMint: true });
     expect(minted.minted).toBe(true);
     expect(minted.id).toMatch(/^[A-Za-z0-9][A-Za-z0-9_-]*$/);
     expect(minted.id).not.toBe(session);
-    expect(kiln.autoId).toBeUndefined();
+    expect(kiln.writtenId).toBe(minted.id);
+    expect(kiln.sessionKey).toBe(session);
     expect(serialize(doc)).toContain(`  - Kiln corner <id:${minted.id}>\n`);
     expect(serialize(doc)).not.toContain('__sid-');
   });
@@ -120,7 +119,7 @@ describe('minting an id (mintNodeId)', () => {
     const before = serialize(doc);
     for (const n of doc.nodes) expect(mintNodeId(doc, n, { canMint: true }).minted).toBe(false);
     expect(serialize(doc)).toBe(before);
-    expect(doc.nodes.map((n) => n.id)).toEqual(['bench', 'slip']);
+    expect(doc.nodes.map((n) => n.writtenId)).toEqual(['bench', 'slip']);
   });
 
   it('keeps user-typed tags, their spelling and their spaces', () => {
@@ -146,13 +145,13 @@ describe('minting an id (mintNodeId)', () => {
     const before = serialize(doc);
     const kiln = byTitle(doc.nodes, 'Kiln corner');
     expect(mintNodeId(doc, kiln, { canMint: false })).toEqual({ id: null, minted: false });
-    expect(kiln.id).toBeUndefined();
+    expect(kiln.writtenId).toBeNull();
     expect(serialize(doc)).toBe(before);
-    // A session id that is not written yet counts as no id.
     const s = parse(FIXTURE, { sessionIds: true });
     const k2 = byTitle(s.nodes, 'Kiln corner');
     expect(mintNodeId(s, k2, { canMint: false })).toEqual({ id: null, minted: false });
-    expect(k2.autoId).toBe(true);
+    expect(k2.writtenId).toBeNull();
+    expect(k2.sessionKey).toMatch(/^__sid-/);
   });
 });
 

@@ -36,72 +36,80 @@ function byTitle(doc: OutlineFoldDoc, title: string): OutlineNode {
   return hit;
 }
 
-const load = (text: string) => parse(text, { sessionIds: true });
-
-describe('parse sessionIds', () => {
-  it('gives id-less lines session ids in document order and round-trips byte for byte', () => {
-    const doc = load(NOTE);
-    expect(byTitle(doc, 'Food').id).toBe('__sid-6');
-    expect(byTitle(doc, 'Food').autoId).toBe(true);
+describe('session keys', () => {
+  it('gives every line a session key in document order and does not write it', () => {
+    const doc = parse(NOTE);
+    expect(byTitle(doc, 'Food').sessionKey).toBe('__sid-6');
+    expect(byTitle(doc, 'Food').writtenId).toBeNull();
     expect(serialize(doc)).toBe(NOTE);
   });
 
-  it('folds a (+) line that has no id', () => {
-    const doc = load(NOTE);
-    expect(doc.fold.ids).toEqual([byTitle(doc, 'Work').id]);
+  it('folds a (+) line that has no written id', () => {
+    const doc = parse(NOTE);
+    const work = byTitle(doc, 'Work');
+    expect(work.collapsed).toBe(true);
+    expect(work.writtenId).toBeNull();
   });
 
-  it('leaves parse without the option as before', () => {
+  it('assigns session keys when the old sessionIds option is omitted', () => {
     const doc = parse(NOTE);
-    expect(byTitle(doc, 'Food').id).toBeUndefined();
-    expect(doc.fold.ids).toEqual([]);
+    expect(byTitle(doc, 'Food').sessionKey).toBe('__sid-6');
+    expect(byTitle(doc, 'Work').collapsed).toBe(true);
+    expect(byTitle(doc, 'Food').collapsed).toBe(false);
   });
 
   it('fold and unfold change only the (+) marker', () => {
-    const doc = load(NOTE);
-    const folded = serialize(toggleFold(doc, byTitle(doc, 'Food').id!));
+    const doc = parse(NOTE);
+    const food = byTitle(doc, 'Food');
+    const folded = serialize(toggleFold(doc, food.sessionKey));
     expect(folded).toBe(NOTE.replace('\n- Food\n', '\n- Food (+)\n'));
-    const again = load(folded);
-    expect(serialize(toggleFold(again, byTitle(again, 'Food').id!))).toBe(NOTE);
-    expect(serialize(toggleFold(doc, byTitle(doc, 'Work').id!))).toBe(NOTE.replace('  - Work (+)', '  - Work'));
+    const again = parse(folded);
+    expect(serialize(toggleFold(again, byTitle(again, 'Food').sessionKey))).toBe(NOTE);
+    expect(serialize(toggleFold(doc, byTitle(doc, 'Work').sessionKey))).toBe(NOTE.replace('  - Work (+)', '  - Work'));
     expect(serialize(setExpandLevel(doc, 1))).not.toMatch(/<id:|--- layout ---/);
   });
 
-  it('a width writes one id (its session id) and one layout entry', () => {
-    const doc = load(NOTE);
+  it('a width writes one written id and one layout entry, and leaves the session key', () => {
+    const doc = parse(NOTE);
     const node = byTitle(doc, 'Recharge');
+    const key = node.sessionKey;
     expect(assignPersistentId(doc, node)).toBe('3');
+    expect(node.sessionKey).toBe(key);
     node.layout = { w: 240 };
     const text = serialize(doc);
     expect(text.match(/<id:\d+>/g)).toEqual(['<id:3>']);
     expect(text).toContain('  - Recharge <id:3>\n');
-    // Per Item 1: fold-: is not written when inline (+) markers exist
     expect(text).toMatch(/--- layout ---\n3:\n {2}w: 240\n---\n$/);
-    expect(node.autoId).toBeUndefined();
+    expect(text).not.toContain(key);
     expect(byTitle(parse(text), 'Recharge').layout).toEqual({ w: 240 });
   });
 
-  it('a width set without assignPersistentId still gets its id on serialize', () => {
-    const doc = load(NOTE);
+  it('a width set without assignPersistentId still gets its written id on serialize', () => {
+    const doc = parse(NOTE);
     byTitle(doc, 'buy').layout = { w: 180 };
     const text = serialize(doc);
     expect(text.match(/<id:\d+>/g)).toEqual(['<id:7>']);
     expect(text).toContain('\n7:\n  w: 180\n');
   });
 
-  it('a payload writes one id', () => {
-    const doc = load(NOTE);
+  it('a payload writes one written id', () => {
+    const doc = parse(NOTE);
     byTitle(doc, 'Invoice').sealed = { kid: 'k1', ciphertext: 'QUJD' };
     const text = serialize(doc);
     expect(text.match(/<id:\d+>/g)).toEqual(['<id:5>']);
     expect(text).toMatch(/--- payloads ---\n5:\n/);
   });
 
-  it('sparse ids: session ids skip 2 and 5, never collide, and the written id is one of them', () => {
-    const doc = load(SPARSE);
-    expect(['a', 'b', 'c', 'd', 'e', 'f'].map((t) => byTitle(doc, t).id)).toEqual(['__sid-1', '2', '__sid-2', '__sid-3', '5', '__sid-4']);
+  it('session keys stay on their own series beside written ids', () => {
+    const doc = parse(SPARSE);
+    expect(['a', 'b', 'c', 'd', 'e', 'f'].map((t) => byTitle(doc, t).sessionKey)).toEqual([
+      '__sid-1', '__sid-2', '__sid-3', '__sid-4', '__sid-5', '__sid-6',
+    ]);
+    expect(byTitle(doc, 'b').writtenId).toBe('2');
+    expect(byTitle(doc, 'e').writtenId).toBe('5');
+    expect(byTitle(doc, 'a').writtenId).toBeNull();
     expect(serialize(doc)).toBe(SPARSE);
-    const folded = serialize(toggleFold(doc, '__sid-3'));
+    const folded = serialize(toggleFold(doc, byTitle(doc, 'd').sessionKey));
     expect(folded).toBe(SPARSE.replace('- d\n', '- d (+)\n'));
     const node = byTitle(doc, 'c');
     expect(assignPersistentId(doc, node)).toBe('3');
@@ -109,64 +117,65 @@ describe('parse sessionIds', () => {
     expect(serialize(doc).match(/<id:\d+>/g)).toEqual(['<id:2>', '<id:3>', '<id:5>']);
   });
 
-  it('skips ids keyed in the payloads and layout blocks', () => {
-    const text = '- a\n- b <id:3>\n\n--- layout ---\nfold-: \n9:\n  w: 120\n---\n';
-    const doc = load(text);
-    expect(byTitle(doc, 'a').id).toBe('__sid-1');
+  it('does not treat a layout key as a written id', () => {
+    const text = '- a\n- b <id:3>\n\n--- layout ---\n9:\n  w: 120\n---\n';
+    const doc = parse(text);
+    expect(byTitle(doc, 'a').writtenId).toBeNull();
+    expect(byTitle(doc, 'a').sessionKey).toBe('__sid-1');
+    expect(byTitle(doc, 'b').writtenId).toBe('3');
   });
 
-  it('the session index adopts the parsed session id as the view key', () => {
-    const doc = load(SPARSE);
+  it('the session index uses the session key as the view key', () => {
+    const doc = parse(SPARSE);
     const idx = createSessionIndex();
     idx.sync(doc);
     const c = byTitle(doc, 'c');
-    expect(c.autoId).toBe(true);
-    expect(idx.keyOf(c)).toBe(c.id);
+    expect(c.writtenId).toBeNull();
+    expect(idx.keyOf(c)).toBe(c.sessionKey);
   });
 
-  it('a reparse keeps the view key and does not write it onto an id-less line', () => {
+  it('a reparse keeps the session key and does not write it', () => {
     const idx = createSessionIndex();
     const first = parse('- a\n  - b\n');
     idx.sync(first);
     const key = idx.keyOf(first.nodes[0]!);
-    expect(key).toMatch(/^__sid-/);
-    expect(first.nodes[0]!.id).toBeUndefined();
+    expect(key).toBe(first.nodes[0]!.sessionKey);
+    expect(first.nodes[0]!.writtenId).toBeNull();
     const second = parse('- a\n  - b\n');
     idx.sync(second);
     expect(idx.keyOf(second.nodes[0]!)).toBe(key);
-    expect(second.nodes[0]!.id).toBeUndefined();
+    expect(second.nodes[0]!.writtenId).toBeNull();
+    expect(serialize(second)).not.toContain(key);
   });
 
-  it('promoting a folded session id moves the fold onto the authored id', () => {
-    const doc = load('- a\n  - b\n- c\n  - d\n');
-    const id = byTitle(doc, 'c').id!;
-    const folded = toggleFold(doc, id);
-    expect(folded.fold.ids).toContain(id);
-    const node = byTitle(folded, 'c');
-    const authored = assignPersistentId(folded, node);
+  it('a written id does not take the fold off the node', () => {
+    const doc = parse('- a\n  - b\n- c\n  - d\n');
+    const node = byTitle(doc, 'c');
+    const key = node.sessionKey;
+    const folded = toggleFold(doc, key);
+    expect(byTitle(folded, 'c').collapsed).toBe(true);
+    const authored = assignPersistentId(folded, byTitle(folded, 'c'));
     expect(authored).toBe('3');
-    expect(folded.fold.ids).toContain('3');
-    expect(folded.fold.ids).not.toContain(id);
+    expect(byTitle(folded, 'c').collapsed).toBe(true);
+    expect(byTitle(folded, 'c').sessionKey).toBe(key);
     expect(serialize(folded)).toMatch(/^- a\n {2}- b\n- c <id:3> \(\+\)\n {2}- d\n/);
   });
 
-  it('a real fold- id stays listed; a session id stays off the list', () => {
-    const doc = load('- a <id:3>\n  - b\n- c\n  - d\n');
-    const both = toggleFold(toggleFold(doc, '3'), byTitle(doc, 'c').id!);
+  it('(+) is written for a folded node with or without a written id', () => {
+    const doc = parse('- a <id:3>\n  - b\n- c\n  - d\n');
+    const both = toggleFold(toggleFold(doc, byTitle(doc, 'a').sessionKey), byTitle(doc, 'c').sessionKey);
     const text = serialize(both);
-    // After toggling folds, both nodes have inline (+) markers
-    // 'a' has an authored id, 'c' has a session id which is NOT persisted in output
     expect(text).toMatch(/^- a <id:3> \(\+\)\n {2}- b\n- c \(\+\)\n {2}- d\n/);
-    // Per Item 1: fold-: is NOT written when inline (+) markers exist
     expect(text).not.toContain('fold-:');
+    expect(text).not.toContain(byTitle(doc, 'c').sessionKey);
   });
 
-  it('fold+ writes the id of an expanded line: that entry is a persistent link', () => {
-    const doc = load('- a\n  - b\n- c\n  - d\n\n--- layout ---\nfold+: \n---\n');
-    const text = serialize(toggleFold(doc, byTitle(doc, 'c').id!));
-    // fold+ lists expanded lines. c is expanded, so it keeps an id and no marker.
-    // a stays collapsed, so it keeps (+). The fold+: list is not written.
-    expect(text).toMatch(/^- a \(\+\)\n {2}- b\n- c <id:3>\n {2}- d\n/);
+  it('a fold+: line is not a fold store', () => {
+    const doc = parse('- a\n  - b\n- c\n  - d\n\n--- layout ---\nfold+: \n---\n');
+    expect(byTitle(doc, 'a').collapsed).toBe(false);
+    const text = serialize(toggleFold(doc, byTitle(doc, 'c').sessionKey));
+    expect(text).toMatch(/^- a\n {2}- b\n- c \(\+\)\n {2}- d\n/);
+    expect(text).not.toContain('<id:');
     expect(text).not.toContain('fold+:');
   });
 });

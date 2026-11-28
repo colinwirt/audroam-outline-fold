@@ -40,7 +40,33 @@ function shown(doc: OutlineFoldDoc): string[] {
   const walk = (nodes: OutlineNode[]) => {
     for (const n of nodes) {
       out.push(n.title);
-      if (n.children?.length && !(n.id && isCollapsed(doc, n.id))) walk(n.children);
+      if (n.children?.length && !n.collapsed) walk(n.children);
+    }
+  };
+  walk(doc.nodes);
+  return out;
+}
+
+function keyOf(doc: OutlineFoldDoc, written: string) {
+  const walk = (nodes: OutlineNode[] | undefined): OutlineNode | undefined => {
+    for (const n of nodes ?? []) {
+      if (n.writtenId === written) return n;
+      const hit = walk(n.children);
+      if (hit) return hit;
+    }
+    return undefined;
+  };
+  const n = walk(doc.nodes);
+  if (!n) throw new Error(written);
+  return n.sessionKey;
+}
+
+function foldedWritten(doc: OutlineFoldDoc): string[] {
+  const out: string[] = [];
+  const walk = (nodes: OutlineNode[] | undefined) => {
+    for (const n of nodes ?? []) {
+      if (n.children?.length && n.collapsed && n.writtenId) out.push(n.writtenId);
+      walk(n.children);
     }
   };
   walk(doc.nodes);
@@ -58,10 +84,10 @@ describe('hasSavedFold', () => {
     expect(hasSavedFold(parse(NO_IDS.replace('- Tuesday', '- Tuesday (+)'), { sessionIds: true }))).toBe(true);
   });
 
-  it('is true for a fold- or fold+ id list, and for fold+ mode', () => {
-    expect(hasSavedFold(parse('---\nfold-: tue\n---\n' + PLAIN))).toBe(true);
-    expect(hasSavedFold(parse('---\nfold+: mon\n---\n' + PLAIN))).toBe(true);
-    expect(hasSavedFold(parse('---\nfold+:\n---\n' + PLAIN))).toBe(true);
+  it('ignores a fold- or fold+ list', () => {
+    expect(hasSavedFold(parse('---\nfold-: tue\n---\n' + PLAIN))).toBe(false);
+    expect(hasSavedFold(parse('---\nfold+: mon\n---\n' + PLAIN))).toBe(false);
+    expect(hasSavedFold(parse('---\nfold+:\n---\n' + PLAIN))).toBe(false);
   });
 
   it('treats an empty fold- line as no saved state (it parses like none)', () => {
@@ -73,7 +99,7 @@ describe('seedDefaultFold (L11 default: level 1)', () => {
   it('opens each root and its children, nothing deeper', () => {
     const seeded = seedDefaultFold(parse(PLAIN));
     expect(shown(seeded)).toEqual(['Harbour log', 'Monday', 'Tuesday', 'Notes']);
-    expect([...seeded.fold.ids].sort()).toEqual(['hw', 'mon', 'storm', 'tide', 'tue'].sort());
+    expect(foldedWritten(seeded).sort()).toEqual(['hw', 'mon', 'storm', 'tide', 'tue'].sort());
     expect(seeded).toEqual(setExpandLevel(parse(PLAIN), 2));
   });
 
@@ -89,14 +115,9 @@ describe('seedDefaultFold (L11 default: level 1)', () => {
     expect(shown(seedDefaultFold(doc))).toEqual(['Harbour log', 'Monday', 'Tuesday']);
   });
 
-  it('leaves a doc with saved fold state untouched (same object)', () => {
-    for (const text of [
-      PLAIN.replace('Tuesday <id:tue>', 'Tuesday <id:tue> (+)'),
-      '---\nfold+: mon\n---\n' + PLAIN,
-    ]) {
-      const doc = parse(text);
-      expect(seedDefaultFold(doc)).toBe(doc);
-    }
+  it('leaves a doc with a (+) untouched (same object)', () => {
+    const doc = parse(PLAIN.replace('Tuesday <id:tue>', 'Tuesday <id:tue> (+)'));
+    expect(seedDefaultFold(doc)).toBe(doc);
   });
 
   it('keeps the older lock rule and all-expanded as alternatives', () => {
@@ -126,47 +147,52 @@ describe('L16: picking a level resets the whole subtree', () => {
   it('after 1 on a node with a remembered 3-deep expansion, + on a child shows only its children', () => {
     let doc = parse(PLAIN); // everything open: a remembered deep expansion
     expect(shown(doc)).toContain('Spring tide');
-    doc = setExpandLevel(doc, 1, { under: 'mon' });
+    doc = setExpandLevel(doc, 1, { under: keyOf(doc, 'mon') });
     expect(shown(doc)).toEqual(['Harbour log', 'Monday', 'Tide tables', 'Lamp check', 'Tuesday', 'Storm shutters', 'North window', 'Notes']);
-    doc = toggleFold(doc, 'tide');
+    doc = toggleFold(doc, keyOf(doc, 'tide'));
     expect(shown(doc)).toEqual([
       'Harbour log', 'Monday', 'Tide tables', 'High water', 'Low water', 'Lamp check',
       'Tuesday', 'Storm shutters', 'North window', 'Notes',
     ]);
     // High water stays folded: its old open state was cleared, not hidden.
-    expect(isCollapsed(doc, 'hw')).toBe(true);
+    expect(isCollapsed(doc, keyOf(doc, 'hw'))).toBe(true);
   });
 
   it('Fold (0) folds the node and every node below it', () => {
-    const doc = setExpandLevel(parse(PLAIN), 0, { under: 'mon' });
-    for (const id of ['mon', 'tide', 'hw']) expect(isCollapsed(doc, id)).toBe(true);
+    const open = parse(PLAIN);
+    const doc = setExpandLevel(open, 0, { under: keyOf(open, 'mon') });
+    for (const id of ['mon', 'tide', 'hw']) expect(isCollapsed(doc, keyOf(doc, id))).toBe(true);
     // Outside the subtree is untouched.
-    expect(isCollapsed(doc, 'tue')).toBe(false);
-    const reopened = toggleFold(doc, 'mon');
+    expect(isCollapsed(doc, keyOf(doc, 'tue'))).toBe(false);
+    const reopened = toggleFold(doc, keyOf(doc, 'mon'));
     expect(shown(reopened)).toContain('Tide tables');
     expect(shown(reopened)).not.toContain('High water');
   });
 
   it('2 opens two levels and folds everything at depth 2 and below', () => {
-    const doc = setExpandLevel(parse(PLAIN), 2, { under: 'root' });
-    expect(isCollapsed(doc, 'root')).toBe(false);
-    expect(isCollapsed(doc, 'mon')).toBe(false);
-    for (const id of ['tide', 'hw', 'storm']) expect(isCollapsed(doc, id)).toBe(true);
+    const open = parse(PLAIN);
+    const doc = setExpandLevel(open, 2, { under: keyOf(open, 'root') });
+    expect(isCollapsed(doc, keyOf(doc, 'root'))).toBe(false);
+    expect(isCollapsed(doc, keyOf(doc, 'mon'))).toBe(false);
+    for (const id of ['tide', 'hw', 'storm']) expect(isCollapsed(doc, keyOf(doc, id))).toBe(true);
   });
 
   it('All opens every node below', () => {
-    const folded = setExpandLevel(parse(PLAIN), 0, { under: 'root' });
-    const all = setExpandLevel(folded, '*', { under: 'root' });
-    for (const id of ['root', 'mon', 'tide', 'hw', 'tue', 'storm']) expect(isCollapsed(all, id)).toBe(false);
+    const open = parse(PLAIN);
+    const folded = setExpandLevel(open, 0, { under: keyOf(open, 'root') });
+    const all = setExpandLevel(folded, '*', { under: keyOf(folded, 'root') });
+    for (const id of ['root', 'mon', 'tide', 'hw', 'tue', 'storm']) expect(isCollapsed(all, keyOf(all, id))).toBe(false);
   });
 
-  it('the same rule holds with no selection (whole doc) and under fold+', () => {
-    const doc = setExpandLevel(parse(PLAIN), 2);
-    expect(isCollapsed(toggleFold(doc, 'tide'), 'hw')).toBe(true);
-    const plus = setExpandLevel(parse('---\nfold+: root, mon, tide, hw\n---\n' + PLAIN), 1, { under: 'mon' });
-    expect(plus.fold.mode).toBe('+');
-    expect(isCollapsed(plus, 'mon')).toBe(false);
-    expect(isCollapsed(plus, 'tide')).toBe(true);
-    expect(isCollapsed(toggleFold(plus, 'tide'), 'hw')).toBe(true);
+  it('the same rule holds with no selection, and a fold list is not a mode', () => {
+    const open = parse(PLAIN);
+    const doc = setExpandLevel(open, 2);
+    expect(isCollapsed(toggleFold(doc, keyOf(doc, 'tide')), keyOf(doc, 'hw'))).toBe(true);
+    const listed = parse('---\nfold+: root, mon, tide, hw\n---\n' + PLAIN);
+    const plus = setExpandLevel(listed, 1, { under: keyOf(listed, 'mon') });
+    expect(plus).not.toHaveProperty('fold');
+    expect(isCollapsed(plus, keyOf(plus, 'mon'))).toBe(false);
+    expect(isCollapsed(plus, keyOf(plus, 'tide'))).toBe(true);
+    expect(isCollapsed(toggleFold(plus, keyOf(plus, 'tide')), keyOf(plus, 'hw'))).toBe(true);
   });
 });

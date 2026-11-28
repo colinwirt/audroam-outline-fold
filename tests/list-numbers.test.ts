@@ -52,7 +52,7 @@ describe('parse keeps a leading number in the caption', () => {
   it('tags around a numbered caption are still read', () => {
     const n = one('- 1. Check the boiler <t:42> <kind:doc> <id:boiler> (+)');
     expect(n.title).toBe('1. Check the boiler');
-    expect(n.id).toBe('boiler');
+    expect(n.writtenId).toBe('boiler');
     expect(n.kind).toBe('doc');
     expect(n.noteLinks).toEqual(['42']);
   });
@@ -113,8 +113,8 @@ describe('serialize round trip', () => {
 
   it('fold and task toggles keep the number', () => {
     let doc = parse('- 1. Rake leaves <id:rake>\n  - [ ] 2. Bag them <id:bag>\n');
-    doc = toggleFold(doc, 'rake');
-    doc = toggleTask(doc, 'bag')!.doc;
+    doc = toggleFold(doc, doc.nodes[0]!.sessionKey);
+    doc = toggleTask(doc, doc.nodes[0]!.children![0]!.sessionKey)!.doc;
     const out = serialize(doc);
     expect(out).toContain('- 1. Rake leaves <id:rake> (+)');
     expect(out).toContain('- [-] 2. Bag them <id:bag>'); // open → pending

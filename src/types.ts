@@ -1,5 +1,4 @@
-/** Fold mode: '-' = default expanded (ids = collapsed); '+' = default collapsed (ids = expanded). */
-export type FoldMode = '-' | '+';
+import type { SessionKey, WrittenId } from './ids.js';
 
 export type NodeFlag = 'private' | 'encrypted' | 'db';
 
@@ -72,13 +71,15 @@ export interface SealedDiscardedSlot {
 }
 
 export interface OutlineNode {
-  id?: string;
+  /** `<id:…>` on the line, or null when the line has none. */
+  writtenId: WrittenId | null;
+  /** Runtime identity. Parse assigns it. Serialize never writes it. */
+  sessionKey: SessionKey;
   /**
-   * `id` is a session id (`__sid-N`) from `parse(text, { sessionIds: true })`: fold,
-   * focus and keys work, but serialize does not write `<id:…>` for it. A width, a
-   * payload or a fold+ entry mints a normal id (see `assignPersistentId`).
+   * Fold state. True when the line's collapsed marker (`(+)`) was parsed and
+   * the node has children. The only fold store.
    */
-  autoId?: boolean;
+  collapsed: boolean;
   title: string;
   children?: OutlineNode[];
   depth: number;
@@ -164,13 +165,6 @@ export interface OutlineNode {
    */
   tagSpellings?: TagSpellings;
   /**
-   * The fold marker as written on a line that has no id (`(+)`, or the
-   * document's expanded marker). Parse sets it only when the node ends up with
-   * no id (no session ids); serialize writes it back so the line round-trips.
-   * Fold state for a node with an id lives in `doc.fold`, not here.
-   */
-  foldMark?: 'collapsed' | 'expanded';
-  /**
    * Layout stored in the outline text (`--- layout ---`), keyed by this node's id.
    * `w` is the caption column width in px. Absent until a custom width (or other
    * payload) needs a persistent id on the outline line.
@@ -220,8 +214,6 @@ export interface NodeLayout {
 }
 
 export interface OutlineFrontmatter {
-  foldMode?: FoldMode;
-  foldIds?: string[];
   collapsedMarker?: string;
   expandedMarker?: string;
   /** Map label size in px. Overridden by the layout file and by a node fontSize. */
@@ -259,11 +251,6 @@ export interface OutlineFrontmatter {
   followText?: boolean;
 }
 
-export interface FoldState {
-  mode: FoldMode;
-  ids: string[];
-}
-
 /**
  * Key-list entry for sealed branches (`--- keys ---` trailer). Public data only:
  * kid (random 128-bit), KDF header (params + salt) and an explicitly public label.
@@ -294,7 +281,6 @@ export interface SealKeyringEntry {
 export interface OutlineFoldDoc {
   frontmatter?: OutlineFrontmatter;
   nodes: OutlineNode[];
-  fold: FoldState;
   /** Sealed-branch key list (public entries only). */
   keys?: SealKeyEntry[];
   /** of-seal-v2 keyring (wrapped entries only). */

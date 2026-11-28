@@ -40,7 +40,7 @@ const SECRET = /Vault|Secret|secret|deeper|Other vault/;
 
 function find(doc: OutlineFoldDoc, id: string): OutlineNode | undefined {
   let hit: OutlineNode | undefined;
-  const walk = (l: OutlineNode[]) => l.forEach((n) => { if (n.id === id) hit = n; if (n.children) walk(n.children); });
+  const walk = (l: OutlineNode[]) => l.forEach((n) => { if (n.writtenId === id || n.sessionKey === id) hit = n; if (n.children) walk(n.children); });
   walk(doc.nodes);
   return hit;
 }
@@ -96,7 +96,7 @@ describe('Q2 id or marker removed from the sealed line', () => {
   it('restoring the id (reattach) round-trips byte-identical', async () => {
     const { text } = await sealed();
     const doc = parse(text.replace('<id:v>', ''));
-    const line = doc.nodes[0]!.children!.find((n) => n.title === SEALED_PLACEHOLDER && !n.id)!;
+    const line = doc.nodes[0]!.children!.find((n) => n.title === SEALED_PLACEHOLDER && !n.writtenId)!;
     reattachSealedOrphan(doc, 'v', line);
     expect(serialize(doc)).toBe(text);
   });
@@ -112,7 +112,7 @@ describe('Q2 id or marker removed from the sealed line', () => {
 
   it('model edit deletes the id on the sealed node: save refuses (no auto id rebinding the blob)', async () => {
     const { doc } = await sealed();
-    delete find(doc, 'v')!.id;
+    find(doc, 'v')!.writtenId = null;
     expect(() => serialize(doc)).toThrow(/no persistent id/);
   });
 
@@ -178,7 +178,7 @@ describe('Q3 leak attempts', () => {
     const { doc, text } = await sealed();
     const view = await openSealedBranch(doc, 'v', CTX);
     view.doc.nodes[0]!.title = 'Vault edited';
-    const folded = toggleFold(doc, 'r');
+    const folded = toggleFold(doc, find(doc, 'r')!.sessionKey);
     const out = serialize(folded);
     expect(out).not.toMatch(SECRET);
     expect(out).toContain('--- keyring ---');
@@ -189,7 +189,7 @@ describe('Q3 leak attempts', () => {
     const { doc, text } = await sealed();
     const view = await openSealedBranch(doc, 'v', CTX);
     view.doc.nodes[0]!.title = 'changed';
-    doc.nodes[0]!.children = doc.nodes[0]!.children!.filter((n) => n.id !== 'v');
+    doc.nodes[0]!.children = doc.nodes[0]!.children!.filter((n) => n.writtenId !== 'v');
     await expect(view.save()).rejects.toThrow(/no longer in the host/);
     expect(serialize(doc)).not.toMatch(SECRET);
     expect(text).toContain('<id:v>');

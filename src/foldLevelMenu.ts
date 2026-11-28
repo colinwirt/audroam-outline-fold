@@ -258,7 +258,7 @@ export function levelPickNeedsConfirm(picker: FoldLevelPicker, key: FoldLevelKey
 export function shownBelow(doc: OutlineFoldDoc, id: string): number {
   const find = (nodes: OutlineNode[] | undefined): OutlineNode | null => {
     for (const n of nodes || []) {
-      if (n.id === id) return n;
+      if (n.sessionKey === id || n.writtenId === id) return n;
       const hit = find(n.children);
       if (hit) return hit;
     }
@@ -268,7 +268,7 @@ export function shownBelow(doc: OutlineFoldDoc, id: string): number {
   if (!anchor) return 0;
   let c = 0;
   const walk = (n: OutlineNode) => {
-    if (n.id && isCollapsed(doc, n.id)) return;
+    if (isCollapsed(doc, n.sessionKey)) return;
     for (const k of n.children || []) {
       c++;
       walk(k);
@@ -291,9 +291,9 @@ function visibleSig(doc: OutlineFoldDoc): string {
   const out: string[] = [];
   const walk = (nodes: OutlineNode[] | undefined, path: string) => {
     (nodes || []).forEach((n, i) => {
-      const key = n.id ?? `${path}.${i}`;
+      const key = n.sessionKey || `${path}.${i}`;
       out.push(key);
-      if (!(n.id && isCollapsed(doc, n.id))) walk(n.children, key);
+      if (!isCollapsed(doc, n.sessionKey)) walk(n.children, key);
     });
   };
   walk(doc.nodes, '');

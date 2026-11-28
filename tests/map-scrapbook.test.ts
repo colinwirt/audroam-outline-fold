@@ -141,9 +141,10 @@ describe('scrapbook wrap (~30 + more/less)', () => {
     expect(packedExp.viewBox.h).toBeGreaterThan(packedSkim.viewBox.h);
 
     // Expanding body does not change fold state
-    const folded = toggleFold(doc, 'c1');
-    expect(isCollapsed(folded, 'c1')).toBe(true);
-    expect(isCollapsed(doc, 'c1')).toBe(false);
+    const c1 = doc.nodes[0]!.children![0]!;
+    const folded = toggleFold(doc, c1.sessionKey);
+    expect(isCollapsed(folded, c1.sessionKey)).toBe(true);
+    expect(c1.collapsed).toBe(false);
   });
 });
 
@@ -210,7 +211,7 @@ describe('resume helpers', () => {
       camera: { x: 1, y: 2, k: 1.5 },
       nudges: { gone1: { x: 0, y: 0, bodyExpanded: true } },
     };
-    expect(isResumeStale(resume, ['root', 'a']).stale).toBe(true);
+    expect(isResumeStale(resume, ['root', 'a']).stale).toBe(false);
     const soft = softResetResume(resume);
     expect(soft.fold).toBeUndefined();
     expect(soft.nudges).toBeUndefined();
@@ -233,10 +234,10 @@ describe('task toggle', () => {
     expect(nextTaskState('open')).toBe('pending');
     expect(nextTaskState('pending')).toBe('done');
     expect(nextTaskState('done')).toBe('open');
-    const r = toggleTask(doc, 't1');
+    const r = toggleTask(doc, doc.nodes[0]!.sessionKey);
     expect(r?.to).toBe('pending');
     expect(shouldFireAction(r!.from, r!.to)).toBe(false);
-    const done = toggleTask(r!.doc, 't1');
+    const done = toggleTask(r!.doc, r!.doc.nodes[0]!.sessionKey);
     expect(done?.to).toBe('done');
     expect(shouldFireAction(done!.from, done!.to)).toBe(true);
     const mid = parse('- See [ ] later <id:x>\n');

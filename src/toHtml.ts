@@ -3,7 +3,6 @@ import { nodeIconHtml } from './emoji/icons.js';
 import { resolveColour, colourVar } from './nodeColour.js';
 import { timeLeafKind } from './timeLeaf.js';
 import { isBlankNode } from './sessionIndex.js';
-import { isCollapsed } from './fold.js';
 import { captionToHtml, showsAsCode } from './captionRich.js';
 import { iconForNode, iconForTask } from './icons.js';
 import { jumpChipLabel, noteLinkHref, resolveJumps, stripLinkTags } from './taskChrome.js';
@@ -32,7 +31,6 @@ function renderNode(
   if (isBlankNode(node)) {
     return `<li class="${p}-spacer" role="none" aria-hidden="true" data-blank="true" data-testid="of-spacer"></li>`;
   }
-  const collapsed = node.id ? isCollapsed(doc, node.id) : false;
   const flags = node.flags ?? [];
   const open = node.regionState === 'open';
   const locked =
@@ -42,6 +40,8 @@ function renderNode(
   const icon = iconForNode(node.kind, flags);
   const sealed = hasSealed(node);
   const hasKids = !!(node.children && node.children.length > 0);
+  const collapsed = hasKids && node.collapsed;
+  const domId = node.writtenId ?? node.sessionKey;
   const ariaLevel = node.depth + 1;
   const interactiveTasks = opts.interactiveTasks !== false;
 
@@ -55,7 +55,8 @@ function renderNode(
   const cloudColour = node.cloud ? resolveColour(node.cloud) ?? bc?.c ?? null : null;
   // data-kid only — never put raw ciphertext in the DOM / accessible name.
   const dataAttrs = [
-    node.id ? `data-id="${esc(node.id)}"` : '',
+    node.writtenId ? `data-id="${esc(node.writtenId)}"` : '',
+    `data-sid="${esc(node.sessionKey)}"`,
     `data-collapsed="${collapsed}"`,
     flags.length ? `data-flags="${esc(flags.join(','))}"` : '',
     node.dbRef ? `data-db-ref="${esc(node.dbRef)}"` : '',
@@ -75,7 +76,7 @@ function renderNode(
     node.task ? `data-task="${esc(node.task)}"` : '',
     node.action ? `data-action="${esc(node.action)}"` : '',
     node.thread ? `data-thread="${esc(node.thread)}"` : '',
-    node.id ? `data-testid="of-node-${esc(node.id)}"` : '',
+    domId ? `data-testid="of-node-${esc(domId)}"` : '',
   ]
     .filter(Boolean)
     .join(' ');
@@ -85,31 +86,31 @@ function renderNode(
   // Chevron (not grammar "(+)") — collapsed points right, expanded rotates down.
   const chevron = `<svg class="${p}-chevron" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false"><path d="M9 6l6 6-6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
   const foldBtn =
-    node.id && hasKids
-      ? `<button type="button" class="${p}-fold${collapsed ? '' : ` ${p}-fold-expanded`}" data-toggle-fold="${esc(node.id)}" data-testid="of-fold-${esc(node.id)}" tabindex="-1" aria-hidden="true">${chevron}</button>`
+    domId && hasKids
+      ? `<button type="button" class="${p}-fold${collapsed ? '' : ` ${p}-fold-expanded`}" data-toggle-fold="${esc(node.sessionKey)}" data-testid="of-fold-${esc(domId)}" tabindex="-1" aria-hidden="true">${chevron}</button>`
       : `<span class="${p}-fold ${p}-fold-leaf" aria-hidden="true"></span>`;
 
   const unlockBtn = locked
     ? flags.includes('encrypted') || isSealedBranchPayload(node.sealed)
-      ? `<button type="button" class="${p}-unlock" data-decrypt="${esc(node.id ?? '')}" data-testid="of-decrypt-${esc(node.id ?? '')}">Decrypt</button>`
-      : `<button type="button" class="${p}-unlock" data-unlock="${esc(node.id ?? '')}" data-testid="of-unlock-${esc(node.id ?? '')}">Unlock (MFA)</button>`
+      ? `<button type="button" class="${p}-unlock" data-decrypt="${esc(domId ?? '')}" data-testid="of-decrypt-${esc(domId ?? '')}">Decrypt</button>`
+      : `<button type="button" class="${p}-unlock" data-unlock="${esc(domId ?? '')}" data-testid="of-unlock-${esc(domId ?? '')}">Unlock (MFA)</button>`
     : '';
 
   // Key-name pill on a sealed anchor: blue while locked, green "🔓 k1" while open.
   const kid = isSealedBranchPayload(node.sealed) ? node.sealed?.kid : undefined;
   const kidChip = kid
-    ? `<span class="${p}-chip ${p}-chip-${open ? 'g' : 'k'} ${p}-kid-chip" data-testid="of-kid-${esc(node.id ?? '')}">${open ? '🔓 ' : ''}${esc(kid)}</span>`
+    ? `<span class="${p}-chip ${p}-chip-${open ? 'g' : 'k'} ${p}-kid-chip" data-testid="of-kid-${esc(domId ?? '')}">${open ? '🔓 ' : ''}${esc(kid)}</span>`
     : '';
 
   // 0.4.3 (QA C): an open sealed zone gets one small 🔒 Lock now button and More ▾ (Remove
   // seal…) in its header row. The host wires them (data-seal-lock / data-seal-more).
-  const zoneTools = kid && open && node.id
-    ? `<span class="${p}-zone-tools"><button type="button" class="${p}-zone-tool ${p}-zone-lock" data-seal-lock="${esc(node.id)}" data-testid="of-zone-lock-${esc(node.id)}" aria-label="Lock now" title="Lock now">🔒</button><button type="button" class="${p}-zone-tool ${p}-zone-more" data-seal-more="${esc(node.id)}" data-testid="of-zone-more-${esc(node.id)}" aria-haspopup="menu" aria-label="More secure zone actions" title="More">More ▾</button></span>`
+  const zoneTools = kid && open && domId
+    ? `<span class="${p}-zone-tools"><button type="button" class="${p}-zone-tool ${p}-zone-lock" data-seal-lock="${esc(domId)}" data-testid="of-zone-lock-${esc(domId)}" aria-label="Lock now" title="Lock now">🔒</button><button type="button" class="${p}-zone-tool ${p}-zone-more" data-seal-more="${esc(domId)}" data-testid="of-zone-more-${esc(domId)}" aria-haspopup="menu" aria-label="More secure zone actions" title="More">More ▾</button></span>`
     : '';
 
   // Task SVG lead — ASCII `[ ]`/`[x]` stripped from title at parse time.
   let taskChrome = '';
-  if (node.task && node.id) {
+  if (node.task && domId) {
     const checked =
       node.task === 'done' ? 'true' : node.task === 'pending' ? 'mixed' : 'false';
     const taskLabel =
@@ -120,22 +121,22 @@ function renderNode(
           : 'Mark in progress';
     const svg = iconForTask(node.task);
     if (interactiveTasks) {
-      taskChrome = `<button type="button" class="${p}-task ${p}-task-${node.task}" data-toggle-task="${esc(node.id)}" data-testid="of-task-${esc(node.id)}" role="checkbox" aria-checked="${checked}" aria-label="${taskLabel}" tabindex="-1">${svg}</button>`;
+      taskChrome = `<button type="button" class="${p}-task ${p}-task-${node.task}" data-toggle-task="${esc(node.sessionKey)}" data-testid="of-task-${esc(domId)}" role="checkbox" aria-checked="${checked}" aria-label="${taskLabel}" tabindex="-1">${svg}</button>`;
     } else {
-      taskChrome = `<span class="${p}-task ${p}-task-${node.task}" data-testid="of-task-${esc(node.id)}" role="checkbox" aria-checked="${checked}" aria-disabled="true">${svg}</span>`;
+      taskChrome = `<span class="${p}-task ${p}-task-${node.task}" data-testid="of-task-${esc(domId)}" role="checkbox" aria-checked="${checked}" aria-disabled="true">${svg}</span>`;
     }
   }
 
   const threadChip =
-    node.thread && node.id
-      ? `<button type="button" class="${p}-thread" data-thread="${esc(node.thread)}" data-thread-node="${esc(node.id)}" data-testid="of-thread-${esc(node.id)}" tabindex="-1">Thread</button>`
+    node.thread && domId
+      ? `<button type="button" class="${p}-thread" data-thread="${esc(node.thread)}" data-thread-node="${esc(domId)}" data-testid="of-thread-${esc(domId)}" tabindex="-1">Thread</button>`
       : '';
 
   const notePattern = doc.frontmatter?.noteUri || opts.noteUri;
   const noteChips = (node.noteLinks || [])
     .map((pnid) => {
       const href = noteLinkHref(notePattern, pnid);
-      const attrs = `class="${p}-note-link" data-note-link="${esc(pnid)}" data-note-node="${esc(node.id ?? '')}" data-testid="of-note-link-${esc(pnid)}"`;
+      const attrs = `class="${p}-note-link" data-note-link="${esc(pnid)}" data-note-node="${esc(domId ?? '')}" data-testid="of-note-link-${esc(pnid)}"`;
       if (!href) {
         return `<button type="button" ${attrs} tabindex="-1">#${esc(pnid)}</button>`;
       }
@@ -160,7 +161,7 @@ function renderNode(
       : captionToHtml(stripLinkTags(node.title), {
           hasNode: (id) => opts.ids.has(id),
           noteHref: (pnid) => noteLinkHref(notePattern, pnid),
-          nodeId: node.id,
+          nodeId: domId,
         });
 
   const body = locked
@@ -184,7 +185,7 @@ function renderNode(
 
 function collectIds(nodes: OutlineNode[], out = new Set<string>()): Set<string> {
   for (const n of nodes) {
-    if (n.id) out.add(n.id);
+    if (n.writtenId) out.add(n.writtenId);
     if (n.children?.length) collectIds(n.children, out);
   }
   return out;
@@ -209,5 +210,5 @@ export function toHtml(doc: OutlineFoldDoc, options: ToHtmlOptions = {}): string
   const p = opts.classPrefix;
   const label = esc(opts.ariaLabel ?? 'Outline');
   const items = doc.nodes.map((n) => renderNode(n, doc, opts)).join('');
-  return `<ul role="tree" aria-label="${label}" class="${p}-outline" data-testid="of-tree" data-fold-mode="${doc.fold.mode}">${items}</ul>`;
+  return `<ul role="tree" aria-label="${label}" class="${p}-outline" data-testid="of-tree">${items}</ul>`;
 }

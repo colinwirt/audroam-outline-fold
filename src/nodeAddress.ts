@@ -1,3 +1,4 @@
+import { sessionKey, writtenId, type SessionKey, type WrittenId } from './ids.js';
 import type { OutlineFoldDoc, OutlineNode } from './types.js';
 
 /** Document order, 1-based. Position is the address until a line has an id. */
@@ -19,7 +20,7 @@ export function collectNodeIds(nodes: OutlineNode[]): Set<string> {
   const ids = new Set<string>();
   const walk = (list: OutlineNode[]) => {
     for (const n of list) {
-      if (n.id) ids.add(n.id);
+      if (n.writtenId) ids.add(n.writtenId);
       if (n.children?.length) walk(n.children);
     }
   };
@@ -27,25 +28,10 @@ export function collectNodeIds(nodes: OutlineNode[]): Set<string> {
   return ids;
 }
 
-/**
- * Session ids (`__sid-7`). One series for the renderer, the main outline, an open
- * secure zone, and any nested submap. This is the same id Follow in text and the
- * Map use as a view key. Never a saved `<id:>`: the parser only accepts an id
- * that starts with a letter or a digit, so this spelling cannot be written and
- * read back as a persistent id. A width, a payload, or a fold that must survive
- * a reload mints a normal id instead (`assignPersistentId`). Style
- * (colour / icon / fill:none) mints the same way width and payload do.
- */
-export const SESSION_ID_PREFIX = '__sid-';
-
-/** True for a tab-local session id (`__sid-N`). */
-export function isSessionId(id: string | null | undefined): boolean {
-  return !!id && id.startsWith(SESSION_ID_PREFIX);
-}
-
 /** Next `__sid-N` not already in `used`. The id is added to `used`. */
-export function nextSessionId(used: Set<string>): string {
-  return nextAutoId(used, SESSION_ID_PREFIX);
+export function nextSessionId(used: Set<string>): SessionKey {
+  const raw = nextAutoId(used, '__sid-');
+  return sessionKey(Number(raw.slice('__sid-'.length)));
 }
 
 /** `prefix` is written in front of the number. The default is no prefix. */
@@ -85,32 +71,17 @@ export function assignPersistentId(
   doc: OutlineFoldDoc,
   node: OutlineNode,
   opts?: AutoIdOptions,
-): string {
-  // A real id is already safe to write. A session id is not: mint a normal one.
-  const previous = node.id && isSessionId(node.id) ? node.id : undefined;
-  if (node.id && !isSessionId(node.id)) {
-    delete node.autoId;
-    return node.id;
-  }
+): WrittenId {
+  if (node.writtenId) return node.writtenId;
   const prefix = opts?.prefix ?? '';
   const used = collectNodeIds(doc.nodes);
-  if (node.id) used.delete(node.id);
   let id: string | undefined;
   if (!prefix) {
     const pos = indexOutline(doc.nodes).get(node);
     if (pos && !used.has(String(pos))) id = String(pos);
   }
-  node.id = id ?? nextAutoId(used, prefix);
-  delete node.autoId;
-  if (previous && previous !== node.id && doc.fold?.ids) {
-    const at = doc.fold.ids.indexOf(previous);
-    if (at >= 0) {
-      doc.fold.ids[at] = node.id;
-      if (doc.frontmatter?.foldIds) doc.frontmatter.foldIds = [...doc.fold.ids];
-    }
-  }
-  moveFoldMarkToDoc(doc, node);
-  return node.id;
+  node.writtenId = writtenId(id ?? nextAutoId(used, prefix));
+  return node.writtenId;
 }
 
 /**
@@ -122,10 +93,9 @@ export function previewPersistentId(
   node: OutlineNode,
   opts?: AutoIdOptions,
 ): string {
-  if (node.id && !isSessionId(node.id)) return node.id;
+  if (node.writtenId) return node.writtenId;
   const prefix = opts?.prefix ?? '';
   const used = collectNodeIds(doc.nodes);
-  if (node.id) used.delete(node.id);
   if (!prefix) {
     const pos = indexOutline(doc.nodes).get(node);
     if (pos && !used.has(String(pos))) return String(pos);
@@ -133,45 +103,23 @@ export function previewPersistentId(
   return nextAutoId(used, prefix);
 }
 
-/** The id written on the line (`<id:…>`), or null. A session id not yet written is null. */
-export function writtenId(node: OutlineNode | null | undefined): string | null {
-  return node?.id && !node.autoId ? node.id : null;
-}
-
 /**
- * Copy jump / Copy link (0.2.39): the line's written id, or a new one when
- * `canMint`. A new id comes from `assignPersistentId` (a `__sid-` session id
- * is replaced by a normal id; otherwise the free position or the next number).
- * Only `node.id` changes: the caption, its tags and their spelling and spacing
- * are untouched. Read-only (`canMint: false`) and no written id: nothing is
- * written and `id` is null. The caller writes the doc back (setDoc + onChange)
- * when `minted`.
+ * Copy jump / Copy link: the line's written id, or a new one when `canMint`.
+ * A new id is written onto `writtenId` only. `sessionKey` stays. Read-only
+ * and no written id: nothing is written and `id` is null.
  */
 export function mintNodeId(
   doc: OutlineFoldDoc,
   node: OutlineNode,
   opts: AutoIdOptions & { canMint: boolean },
 ): { id: string | null; minted: boolean } {
-  const have = writtenId(node);
-  if (have) return { id: have, minted: false };
+  if (node.writtenId) return { id: node.writtenId, minted: false };
   if (!opts.canMint) return { id: null, minted: false };
   return { id: assignPersistentId(doc, node, opts.prefix ? { prefix: opts.prefix } : undefined), minted: true };
 }
 
-/** A line's own `(+)` (no id) becomes fold state on `doc.fold` once it has an id. */
-function moveFoldMarkToDoc(doc: OutlineFoldDoc, node: OutlineNode): void {
-  if (!node.foldMark || !node.id) return;
-  const collapsed = node.foldMark === 'collapsed';
-  delete node.foldMark;
-  const listed = doc.fold.mode === '-' ? collapsed : !collapsed;
-  if (listed && !doc.fold.ids.includes(node.id)) {
-    doc.fold.ids.push(node.id);
-    if (doc.frontmatter) doc.frontmatter.foldIds = [...doc.fold.ids];
-  }
-}
-
 function needsPersistentId(node: OutlineNode): boolean {
-  if (node.id && !node.autoId) return false;
+  if (node.writtenId) return false;
   // 0.6.2: any layout entry that serialize would write (w / colour / icon / fill:none)
   // needs a real id — not only width. Otherwise `__sid-N:` leaks into the layout block.
   const L = node.layout;

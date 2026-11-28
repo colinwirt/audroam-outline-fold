@@ -1,6 +1,4 @@
 export type {
-  FoldMode,
-  FoldState,
   NodeFlag,
   NodeKind,
   NodeLayout,
@@ -14,6 +12,8 @@ export type {
   TaskToggleEvent,
   ToHtmlOptions,
 } from './types.js';
+export type { SessionKey, WrittenId } from './ids.js';
+export { sessionKey, sessionKeyFromAttribute, writtenId as asWrittenId } from './ids.js';
 
 export { parse, type ParseOptions } from './parse.js';
 export { serialize, portableCopy, cleanCopy } from './serialize.js';
@@ -66,23 +66,18 @@ export {
   assignPersistentId,
   previewPersistentId,
   mintNodeId,
-  writtenId,
   indexOutline,
   linkPayloadNodes,
   nextAutoId,
   nextSessionId,
-  isSessionId,
-  SESSION_ID_PREFIX,
   type AutoIdOptions,
 } from './nodeAddress.js';
 
 export {
   createSessionIndex,
-  isViewKey,
   isBlankNode,
   parsedLineOf,
   parsedLinesOf,
-  VIEW_KEY_PREFIX,
   type SessionIndex,
 } from './sessionIndex.js';
 

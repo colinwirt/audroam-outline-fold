@@ -4,7 +4,6 @@
  * Store ids + numbers only — never sealed body.
  */
 
-import type { FoldState } from './types.js';
 import { isMemoryOnlyRegion } from './regionFold.js';
 
 export interface MapCameraState {
@@ -26,7 +25,6 @@ export interface MapNodeNudge {
 
 export interface MapResumeState {
   version: 1;
-  fold?: FoldState;
   /**
    * Region fold state keyed by scoped id (`regionId:nodeId`, `regionId` for the root), §R1 c.
    * Record regions only: sealed (memory-only) entries are dropped on save.
@@ -149,9 +147,6 @@ export function loadMapResume(key: string): MapResumeState | null {
 export function saveMapResume(key: string, state: MapResumeState): void {
   const payload: MapResumeState = {
     version: 1,
-    fold: state.fold
-      ? { mode: state.fold.mode, ids: [...state.fold.ids] }
-      : undefined,
     regionFold: state.regionFold ? persistableRegionFold(state.regionFold) : undefined,
     camera: state.camera
       ? { x: state.camera.x, y: state.camera.y, k: state.camera.k }
@@ -183,33 +178,25 @@ export interface StaleCheckResult {
   missingRatio: number;
 }
 
-/** Soft-stale when many fold ids no longer exist in the outline. */
+/** Resume no longer stores a fold list, so a saved camera is not stale for that reason. */
 export function isResumeStale(
-  resume: MapResumeState,
-  docIds: Set<string> | string[],
-  opts: { missingThreshold?: number } = {},
+  _resume: MapResumeState,
+  _docIds: Set<string> | string[],
+  _opts: { missingThreshold?: number } = {},
 ): StaleCheckResult {
-  const threshold = opts.missingThreshold ?? 0.4;
-  const ids = resume.fold?.ids || [];
-  if (!ids.length) return { stale: false, missingRatio: 0 };
-  const set = docIds instanceof Set ? docIds : new Set(docIds);
-  let missing = 0;
-  for (const id of ids) {
-    if (!set.has(id)) missing++;
-  }
-  const missingRatio = missing / ids.length;
-  return { stale: missingRatio > threshold, missingRatio };
+  return { stale: false, missingRatio: 0 };
 }
 
 export function collectNodeIds(
-  nodes: { id?: string; children?: unknown[] }[],
+  nodes: { id?: string; writtenId?: string | null; sessionKey?: string; children?: unknown[] }[],
   out: string[] = [],
 ): string[] {
   for (const n of nodes || []) {
-    if (n?.id) out.push(n.id);
+    const id = n?.writtenId || n?.sessionKey || n?.id;
+    if (id) out.push(id);
     if (Array.isArray(n.children) && n.children.length) {
       collectNodeIds(
-        n.children as { id?: string; children?: unknown[] }[],
+        n.children as { id?: string; writtenId?: string | null; sessionKey?: string; children?: unknown[] }[],
         out,
       );
     }

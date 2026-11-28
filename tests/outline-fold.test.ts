@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import {
-  isCollapsed,
   parse,
   serialize,
   toggleFold,
@@ -10,6 +9,24 @@ import {
   noteLinkHref,
   ICONS,
 } from '../src/index.js';
+import type { OutlineFoldDoc, OutlineNode } from '../src/index.js';
+
+function byWritten(doc: OutlineFoldDoc, id: string): OutlineNode {
+  let hit: OutlineNode | undefined;
+  const walk = (nodes: OutlineNode[] | undefined) => {
+    for (const n of nodes ?? []) {
+      if (n.writtenId === id) hit = n;
+      walk(n.children);
+    }
+  };
+  walk(doc.nodes);
+  if (!hit) throw new Error(`missing ${id}`);
+  return hit;
+}
+
+function folded(doc: OutlineFoldDoc, id: string): boolean {
+  return byWritten(doc, id).collapsed === true;
+}
 
 const SAMPLE_LINE_LEADING = `<id:design> Designing updates for Markmap (+)`;
 const SAMPLE_LINE_TRAILING = `Designing updates for Markmap <id:design> (+)`;
@@ -18,19 +35,16 @@ describe('parse sample line', () => {
   it('parses leading id with inline (+) (backward compatible)', () => {
     const doc = parse(`- ${SAMPLE_LINE_LEADING}\n`);
     expect(doc.nodes).toHaveLength(1);
-    expect(doc.nodes[0].id).toBe('design');
+    expect(doc.nodes[0].writtenId).toBe('design');
     expect(doc.nodes[0].title).toBe('Designing updates for Markmap');
-    expect(doc.fold.mode).toBe('-');
-    expect(doc.fold.ids).toContain('design');
-    expect(isCollapsed(doc, 'design')).toBe(true);
+    expect(doc.nodes[0].collapsed).toBe(false);
   });
 
   it('parses trailing id with inline (+)', () => {
     const doc = parse(`- ${SAMPLE_LINE_TRAILING}\n`);
-    expect(doc.nodes[0].id).toBe('design');
+    expect(doc.nodes[0].writtenId).toBe('design');
     expect(doc.nodes[0].title).toBe('Designing updates for Markmap');
-    expect(doc.fold.ids).toContain('design');
-    expect(isCollapsed(doc, 'design')).toBe(true);
+    expect(doc.nodes[0].collapsed).toBe(false);
   });
 
   // 0.2.31: the short `<design>` id form is removed. Ids are `<id:N>` only; a bare
@@ -51,7 +65,7 @@ describe('parse sample line', () => {
           for (const doc of [parse(text), parse(text, { sessionIds: true })]) {
             const n = doc.nodes[0];
             expect(n.title).toContain(w);
-            expect(n.id === undefined || n.id === '7' || n.autoId).toBe(true);
+            expect(n.writtenId == null || n.writtenId === '7').toBe(true);
             expect(serialize(doc)).toBe(text);
           }
         });
@@ -60,20 +74,20 @@ describe('parse sample line', () => {
 
     it('reads <design> as text, not id "design"', () => {
       const doc = parse(`- Designing updates for Markmap <design> (+)\n`);
-      expect(doc.nodes[0].id).toBeUndefined();
+      expect(doc.nodes[0].writtenId).toBeNull();
       expect(doc.nodes[0].title).toBe('Designing updates for Markmap <design>');
     });
 
     it('has no shortIds parse option', () => {
       const doc = parse(`- Designing updates <design>\n`, { shortIds: true } as never);
-      expect(doc.nodes[0].id).toBeUndefined();
+      expect(doc.nodes[0].writtenId).toBeNull();
       expect(doc.nodes[0].title).toBe('Designing updates <design>');
     });
   });
 
   it('parses caption with priority/vote then trailing id', () => {
     const doc = parse(`- [ ] Ship fold docs · P1 · 👍 <id:a1>\n`);
-    expect(doc.nodes[0].id).toBe('a1');
+    expect(doc.nodes[0].writtenId).toBe('a1');
     expect(doc.nodes[0].title).toBe('Ship fold docs · P1 · 👍');
     expect(doc.nodes[0].task).toBe('open');
   });
@@ -114,73 +128,76 @@ describe('parse sample line', () => {
 
   it('parses trailing flag then id with (+)', () => {
     const doc = parse(`- Payroll notes <private> <id:secret> (+)\n`);
-    expect(doc.nodes[0].id).toBe('secret');
+    expect(doc.nodes[0].writtenId).toBe('secret');
     expect(doc.nodes[0].title).toBe('Payroll notes');
     expect(doc.nodes[0].flags).toContain('private');
-    expect(doc.fold.ids).toContain('secret');
+    expect(doc.nodes[0].collapsed).toBe(false);
   });
 
   it('trailing id overrides leading id', () => {
     const doc = parse(`- <id:old> Title text <id:new>\n`);
-    expect(doc.nodes[0].id).toBe('new');
+    expect(doc.nodes[0].writtenId).toBe('new');
     expect(doc.nodes[0].title).toBe('Title text');
   });
 
   it('keeps a trailing id when a character is typed after the tag', () => {
     const doc = parse('- Remodel the courtyard <id:courtyard>3\n');
-    expect(doc.nodes[0].id).toBe('courtyard');
+    expect(doc.nodes[0].writtenId).toBe('courtyard');
     expect(doc.nodes[0].title).toBe('Remodel the courtyard 3');
-    expect(doc.fold.ids).not.toContain('courtyard');
+    expect(doc.nodes[0].collapsed).toBe(false);
   });
 
   it('keeps the id and inline (+) when a character is typed after the marker', () => {
     const doc = parse('- Order notes <private> <id:sup-private> (+)3\n');
-    expect(doc.nodes[0].id).toBe('sup-private');
+    expect(doc.nodes[0].writtenId).toBe('sup-private');
     expect(doc.nodes[0].title).toBe('Order notes 3');
     expect(doc.nodes[0].flags).toContain('private');
-    expect(doc.fold.ids).toContain('sup-private');
-    expect(isCollapsed(doc, 'sup-private')).toBe(true);
+    expect(doc.nodes[0].collapsed).toBe(false);
   });
 });
 
-describe('fold- / fold+', () => {
-  it('fold-: listed ids collapsed; others expanded', () => {
-    const text = `---
+describe('fold lists are not state', () => {
+  it('a fold-: line does not collapse a node', () => {
+    const doc = parse(`---
 fold-: design
 ---
 - Designing updates <id:design>
   - Todo hyphen <id:todo-1>
 - Other <id:other>
-`;
-    const doc = parse(text);
-    expect(doc.fold.mode).toBe('-');
-    expect(isCollapsed(doc, 'design')).toBe(true);
-    expect(isCollapsed(doc, 'todo-1')).toBe(false);
-    expect(isCollapsed(doc, 'other')).toBe(false);
+  - x
+`);
+    expect(folded(doc, 'design')).toBe(false);
+    expect(folded(doc, 'todo-1')).toBe(false);
+    expect(folded(doc, 'other')).toBe(false);
+    expect(serialize(doc)).not.toContain('fold-:');
   });
 
-  it('fold+: listed ids expanded; others collapsed', () => {
-    const text = `---
+  it('a fold+: line does not collapse unlisted nodes', () => {
+    const doc = parse(`---
 fold+: design
 ---
 - Design <id:design>
+  - a
 - Other <id:other>
-`;
-    const doc = parse(text);
-    expect(doc.fold.mode).toBe('+');
-    expect(isCollapsed(doc, 'design')).toBe(false);
-    expect(isCollapsed(doc, 'other')).toBe(true);
+  - b
+`);
+    expect(folded(doc, 'design')).toBe(false);
+    expect(folded(doc, 'other')).toBe(false);
+    expect(serialize(doc)).not.toContain('fold+:');
   });
 
-  it('rejects both fold- and fold+', () => {
-    expect(() =>
-      parse(`---
+  it('parses both fold- and fold+ lines and applies neither', () => {
+    const doc = parse(`---
 fold-: a
 fold+: b
 ---
 - A <id:a>
-`),
-    ).toThrow(/both fold/);
+  - x
+- B <id:b>
+  - y
+`);
+    expect(folded(doc, 'a')).toBe(false);
+    expect(folded(doc, 'b')).toBe(false);
   });
 });
 
@@ -190,37 +207,39 @@ describe('hyphen ids', () => {
 fold-: todo-1
 ---
 - Wire fold <id:todo-1>
+  - child
 `);
-    expect(doc.nodes[0].id).toBe('todo-1');
-    expect(isCollapsed(doc, 'todo-1')).toBe(true);
+    expect(doc.nodes[0].writtenId).toBe('todo-1');
+    expect(folded(doc, 'todo-1')).toBe(false);
   });
 });
 
 describe('toggleFold', () => {
-  it('is pure and flips membership', () => {
-    const doc = parse(`---
-fold-: design
----
-- Design <id:design>
+  it('is pure and flips collapsed on the node', () => {
+    const doc = parse(`- Design <id:design> (+)
+  - note
 `);
-    const next = toggleFold(doc, 'design');
-    expect(isCollapsed(doc, 'design')).toBe(true);
-    expect(isCollapsed(next, 'design')).toBe(false);
-    const again = toggleFold(next, 'design');
-    expect(isCollapsed(again, 'design')).toBe(true);
+    const key = byWritten(doc, 'design').sessionKey;
+    expect(folded(doc, 'design')).toBe(true);
+    const next = toggleFold(doc, key);
+    expect(folded(doc, 'design')).toBe(true);
+    expect(folded(next, 'design')).toBe(false);
+    const again = toggleFold(next, byWritten(next, 'design').sessionKey);
+    expect(folded(again, 'design')).toBe(true);
   });
 
-  it('toggle under fold+ flips expanded list', () => {
-    const doc = parse(`---
-fold+: design
----
-- Design <id:design>
-- Other <id:other>
+  it('flips a node that has children and no written id', () => {
+    const doc = parse(`- Design <id:design>
+  - a
+- Other
+  - b
 `);
-    expect(isCollapsed(doc, 'other')).toBe(true);
-    const next = toggleFold(doc, 'other');
-    expect(isCollapsed(next, 'other')).toBe(false);
-    expect(next.fold.ids).toContain('other');
+    expect(folded(doc, 'design')).toBe(false);
+    const other = doc.nodes[1]!;
+    expect(other.writtenId).toBeNull();
+    const next = toggleFold(doc, other.sessionKey);
+    expect(next.nodes[1]!.collapsed).toBe(true);
+    expect(serialize(next)).toContain('- Other (+)');
   });
 });
 
@@ -231,6 +250,7 @@ fold-: x
 collapsedMarker: "[+]"
 ---
 - X <id:x> [+]
+  - y
 `;
     const doc = parse(text);
     expect(doc.frontmatter?.collapsedMarker).toBe('[+]');
@@ -265,12 +285,13 @@ collapsedMarker: "(+)"
     // Output should not contain default collapsedMarker (Item 1)
     expect(out).not.toContain('collapsedMarker:');
     const doc2 = parse(out);
-    expect(doc2.fold.ids).toEqual(['design', 'todo-1']);
-    expect(doc2.nodes[0].id).toBe('design');
-    expect(doc2.nodes[0].children?.[0].id).toBe('todo-1');
+    expect(folded(doc2, 'design')).toBe(true);
+    expect(folded(doc2, 'todo-1')).toBe(true);
+    expect(doc2.nodes[0].writtenId).toBe('design');
+    expect(doc2.nodes[0].children?.[0].writtenId).toBe('todo-1');
     expect(doc2.nodes[0].children?.[1].title).toBe('Child without id');
-    expect(isCollapsed(doc2, 'design')).toBe(true);
-    expect(isCollapsed(doc2, 'open')).toBe(false);
+    expect(folded(doc2, 'design')).toBe(true);
+    expect(folded(doc2, 'open')).toBe(false);
   });
 
   it('round-trips leading-id input to caption-first output', () => {
@@ -285,7 +306,7 @@ collapsedMarker: "(+)"
     const out = serialize(doc);
     expect(out).toContain('- Payroll notes <private> <id:secret> (+)');
     const doc2 = parse(out);
-    expect(doc2.nodes[0].id).toBe('secret');
+    expect(doc2.nodes[0].writtenId).toBe('secret');
     expect(doc2.nodes[0].flags).toContain('private');
     expect(doc2.nodes[0].title).toBe('Payroll notes');
   });
@@ -388,12 +409,10 @@ fold-:
 `);
     for (const level of [0, 1] as const) {
       const next = setExpandLevel(withGrandKids, level);
-      expect(isCollapsed(next, 'root')).toBe(true);
-      expect(isCollapsed(next, 'child')).toBe(true);
-      expect(isCollapsed(next, 'grand')).toBe(true);
-      expect(isCollapsed(next, 'other')).toBe(true);
-      // leaves / non-foldable not required in ids
-      expect(next.fold.mode).toBe('-');
+      expect(folded(next, 'root')).toBe(true);
+      expect(folded(next, 'child')).toBe(true);
+      expect(folded(next, 'grand')).toBe(true);
+      expect(folded(next, 'other')).toBe(true);
     }
   });
 
@@ -410,10 +429,10 @@ fold-:
   - Other child <id:ochild>
 `);
     const next = setExpandLevel(doc, 2);
-    expect(isCollapsed(next, 'root')).toBe(false); // level 1
-    expect(isCollapsed(next, 'other')).toBe(false);
-    expect(isCollapsed(next, 'child')).toBe(true); // level 2 foldable
-    expect(isCollapsed(next, 'grand')).toBe(true); // level 3
+    expect(folded(next, 'root')).toBe(false); // level 1
+    expect(folded(next, 'other')).toBe(false);
+    expect(folded(next, 'child')).toBe(true); // level 2 foldable
+    expect(folded(next, 'grand')).toBe(true); // level 3
   });
 
   it('level 3 expands through level 2', () => {
@@ -426,9 +445,9 @@ fold-:
       - Deep <id:deep>
 `);
     const next = setExpandLevel(doc, 3);
-    expect(isCollapsed(next, 'root')).toBe(false);
-    expect(isCollapsed(next, 'child')).toBe(false);
-    expect(isCollapsed(next, 'grand')).toBe(true);
+    expect(folded(next, 'root')).toBe(false);
+    expect(folded(next, 'child')).toBe(false);
+    expect(folded(next, 'grand')).toBe(true);
   });
 
   it('* / all expands every foldable node', () => {
@@ -442,14 +461,13 @@ fold-: root, child, grand
 `);
     for (const level of ['*', 'all'] as const) {
       const next = setExpandLevel(doc, level);
-      expect(isCollapsed(next, 'root')).toBe(false);
-      expect(isCollapsed(next, 'child')).toBe(false);
-      expect(isCollapsed(next, 'grand')).toBe(false);
-      expect(next.fold.ids).toEqual([]);
+      expect(folded(next, 'root')).toBe(false);
+      expect(folded(next, 'child')).toBe(false);
+      expect(folded(next, 'grand')).toBe(false);
     }
   });
 
-  it('works under fold+ (ids = expanded list)', () => {
+  it('level 2 collapses from depth, and a fold+: line changes nothing', () => {
     const doc = parse(`---
 fold+:
 ---
@@ -458,30 +476,24 @@ fold+:
     - Grand <id:grand>
       - Deep <id:deep>
 `);
-    expect(isCollapsed(doc, 'root')).toBe(true);
+    expect(folded(doc, 'root')).toBe(false);
     const next = setExpandLevel(doc, 2);
-    expect(next.fold.mode).toBe('+');
-    expect(isCollapsed(next, 'root')).toBe(false);
-    expect(next.fold.ids).toContain('root');
-    expect(isCollapsed(next, 'child')).toBe(true);
-    expect(next.fold.ids).not.toContain('child');
+    expect(folded(next, 'root')).toBe(false);
+    expect(folded(next, 'child')).toBe(true);
     const all = setExpandLevel(doc, '*');
-    expect(isCollapsed(all, 'root')).toBe(false);
-    expect(isCollapsed(all, 'child')).toBe(false);
-    expect(isCollapsed(all, 'grand')).toBe(false);
+    expect(folded(all, 'root')).toBe(false);
+    expect(folded(all, 'child')).toBe(false);
+    expect(folded(all, 'grand')).toBe(false);
   });
 
-  it('is pure and syncs frontmatter foldIds', () => {
-    const doc = parse(`---
-fold-: root
----
-- Root <id:root>
+  it('is pure and does not write a fold list', () => {
+    const doc = parse(`- Root <id:root> (+)
   - Child <id:child>
 `);
     const next = setExpandLevel(doc, '*');
-    expect(isCollapsed(doc, 'root')).toBe(true);
-    expect(isCollapsed(next, 'root')).toBe(false);
-    expect(next.frontmatter?.foldIds).toEqual([]);
+    expect(folded(doc, 'root')).toBe(true);
+    expect(folded(next, 'root')).toBe(false);
+    expect(next.frontmatter?.foldIds).toBeUndefined();
   });
 
 
@@ -499,13 +511,13 @@ fold-:
 `);
     // Select child: digit 1 → expand child, collapse grand; leave root/other alone
     const collapsed = setExpandLevel(doc, 1); // absolute: everything collapsed first
-    expect(isCollapsed(collapsed, 'root')).toBe(true);
-    const next = setExpandLevel(collapsed, 1, { under: 'child' });
-    expect(isCollapsed(next, 'child')).toBe(false);
-    expect(isCollapsed(next, 'grand')).toBe(true);
+    expect(folded(collapsed, 'root')).toBe(true);
+    const next = setExpandLevel(collapsed, 1, { under: byWritten(collapsed, 'child').sessionKey });
+    expect(folded(next, 'child')).toBe(false);
+    expect(folded(next, 'grand')).toBe(true);
     // Outside subtree unchanged
-    expect(isCollapsed(next, 'root')).toBe(true);
-    expect(isCollapsed(next, 'other')).toBe(true);
+    expect(folded(next, 'root')).toBe(true);
+    expect(folded(next, 'other')).toBe(true);
   });
 
   it('under: digit 2 shows grandchildren; digit 0 collapses subtree', () => {
@@ -517,65 +529,53 @@ fold-:
     - Grand <id:grand>
       - Deep <id:deep>
 `);
-    const at2 = setExpandLevel(doc, 2, { under: 'root' });
-    expect(isCollapsed(at2, 'root')).toBe(false);
-    expect(isCollapsed(at2, 'child')).toBe(false);
-    expect(isCollapsed(at2, 'grand')).toBe(true);
+    const at2 = setExpandLevel(doc, 2, { under: byWritten(doc, 'root').sessionKey });
+    expect(folded(at2, 'root')).toBe(false);
+    expect(folded(at2, 'child')).toBe(false);
+    expect(folded(at2, 'grand')).toBe(true);
 
-    const at0 = setExpandLevel(at2, 0, { under: 'root' });
-    expect(isCollapsed(at0, 'root')).toBe(true);
-    expect(isCollapsed(at0, 'child')).toBe(true);
-    expect(isCollapsed(at0, 'grand')).toBe(true);
+    const at0 = setExpandLevel(at2, 0, { under: byWritten(at2, 'root').sessionKey });
+    expect(folded(at0, 'root')).toBe(true);
+    expect(folded(at0, 'child')).toBe(true);
+    expect(folded(at0, 'grand')).toBe(true);
   });
 
   it('under: * expands only the selected subtree', () => {
-    const doc = parse(`---
-fold-: root, child, grand, other
----
-- Root <id:root>
-  - Child <id:child>
-    - Grand <id:grand>
+    const doc = parse(`- Root <id:root> (+)
+  - Child <id:child> (+)
+    - Grand <id:grand> (+)
       - Deep <id:deep>
-- Other root <id:other>
+- Other root <id:other> (+)
   - Other child <id:ochild>
 `);
-    expect(isCollapsed(doc, 'root')).toBe(true);
-    expect(isCollapsed(doc, 'other')).toBe(true);
-    const next = setExpandLevel(doc, '*', { under: 'root' });
-    expect(isCollapsed(next, 'root')).toBe(false);
-    expect(isCollapsed(next, 'child')).toBe(false);
-    expect(isCollapsed(next, 'grand')).toBe(false);
+    expect(folded(doc, 'root')).toBe(true);
+    expect(folded(doc, 'other')).toBe(true);
+    const next = setExpandLevel(doc, '*', { under: byWritten(doc, 'root').sessionKey });
+    expect(folded(next, 'root')).toBe(false);
+    expect(folded(next, 'child')).toBe(false);
+    expect(folded(next, 'grand')).toBe(false);
     // Sibling forest root unchanged
-    expect(isCollapsed(next, 'other')).toBe(true);
+    expect(folded(next, 'other')).toBe(true);
   });
 
   it('under: unknown id is a no-op', () => {
-    const doc = parse(`---
-fold-: root
----
-- Root <id:root>
+    const doc = parse(`- Root <id:root> (+)
   - Child <id:child>
 `);
-    const next = setExpandLevel(doc, 1, { under: 'missing' });
-    expect(isCollapsed(next, 'root')).toBe(true);
-    expect(next.fold.ids).toEqual(doc.fold.ids);
+    const next = setExpandLevel(doc, 1, { under: 'missing' as never });
+    expect(folded(next, 'root')).toBe(true);
+    expect(folded(doc, 'root')).toBe(true);
   });
 
-  it('under: works under fold+', () => {
-    const doc = parse(`---
-fold+:
----
-- Root <id:root>
+  it('under: digit 1 collapses the subtree below the selected node', () => {
+    const doc = parse(`- Root <id:root>
   - Child <id:child>
     - Grand <id:grand>
       - Deep <id:deep>
 `);
-    const next = setExpandLevel(doc, 1, { under: 'root' });
-    expect(next.fold.mode).toBe('+');
-    expect(isCollapsed(next, 'root')).toBe(false);
-    expect(next.fold.ids).toContain('root');
-    expect(isCollapsed(next, 'child')).toBe(true);
-    expect(next.fold.ids).not.toContain('child');
+    const next = setExpandLevel(doc, 1, { under: byWritten(doc, 'root').sessionKey });
+    expect(folded(next, 'root')).toBe(false);
+    expect(folded(next, 'child')).toBe(true);
   });
 
   it('rejects invalid level', () => {
@@ -591,7 +591,7 @@ describe('<t: pnid> note links', () => {
     const doc = parse(text);
     expect(doc.nodes[0].title).toBe('Parent row');
     expect(doc.nodes[0].noteLinks).toEqual(['101', '102']);
-    expect(doc.nodes[0].id).toBe('aud-ov-1');
+    expect(doc.nodes[0].writtenId).toBe('aud-ov-1');
     expect(doc.nodes[0].children?.[0].title).toBe('Child row');
     expect(doc.nodes[0].children?.[0].noteLinks).toEqual(['202']);
     const out = serialize(doc);
@@ -677,18 +677,19 @@ describe('<t:N> / legacy <t: N> spelling round-trip', () => {
     });
 
     it(`a fold toggle only changes the fold marker and layout (${name})`, () => {
-      const folded = serialize(toggleFold(parse(body), '3'));
-      // Per Item 1: fold-: is never written when inline (+) markers exist.
-      // Toggle adds inline (+) marker, layout stays empty.
-      expect(folded).toBe(
+      const doc = parse(body);
+      const foldedText = serialize(toggleFold(doc, byWritten(doc, '3').sessionKey));
+      expect(foldedText).toBe(
         body.replace('- Seed Swap <id:3>', '- Seed Swap <id:3> (+)'),
       );
-      const back = serialize(toggleFold(parse(folded), '3'));
+      const again = parse(foldedText);
+      const back = serialize(toggleFold(again, byWritten(again, '3').sessionKey));
       expect(back).toBe(body);
     });
 
     it(`a checkbox tick only changes the task marker (${name})`, () => {
-      const result = toggleTask(parse(body), '4');
+      const doc = parse(body);
+      const result = toggleTask(doc, byWritten(doc, '4').sessionKey);
       expect(result?.to).toBe('done');
       const ticked = serialize(result!.doc);
       const line = body.split('\n')[3];

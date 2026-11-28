@@ -9,6 +9,7 @@
  */
 
 import { isCollapsed, setExpandLevel, toggleFold } from './fold.js';
+import { sessionKeyFromAttribute } from './ids.js';
 import type { OutlineFoldDoc, OutlineNode } from './types.js';
 
 export const DEFAULT_LINEAGE_HEIGHT_CAP = 10;
@@ -23,12 +24,12 @@ function hasKids(n: OutlineNode): boolean {
  */
 export function measureLineageHeight(
   doc: OutlineFoldDoc,
-  isNodeCollapsed: (id: string) => boolean = (id) => isCollapsed(doc, id),
+  isNodeCollapsed: (id: string) => boolean = (id) => isCollapsed(doc, sessionKeyFromAttribute(id)),
 ): number {
   function rows(n: OutlineNode): number {
-    if (!n?.id) return 0;
-    if (!hasKids(n) || isNodeCollapsed(n.id)) return 1;
-    const kids = (n.children || []).filter((c) => c?.id);
+    if (!n) return 0;
+    if (!hasKids(n) || isNodeCollapsed(n.sessionKey)) return 1;
+    const kids = n.children || [];
     if (!kids.length) return 1;
     let sum = 0;
     for (const c of kids) sum += rows(c);
@@ -36,7 +37,7 @@ export function measureLineageHeight(
   }
   let total = 0;
   for (const r of doc.nodes || []) {
-    if (!r?.id) continue;
+    if (!r) continue;
     total += rows(r);
   }
   return total;
@@ -59,40 +60,36 @@ export function seedColdStartFold(
   if (h <= maxH) return next;
 
   // Collapse excess root children from the bottom until height ≤ maxH.
-  const roots = (next.nodes || []).filter((r) => r?.id);
+  const roots = (next.nodes || []).filter((r) => r);
   for (let i = roots.length - 1; i >= 0 && h > maxH; i--) {
-    const r = roots[i];
-    if (!r.id || !hasKids(r) || isCollapsed(next, r.id)) continue;
-    const kids = (r.children || []).filter((c) => c?.id);
+    const r = roots[i]!;
+    if (!hasKids(r) || isCollapsed(next, r.sessionKey)) continue;
+    const kids = r.children || [];
     for (let k = kids.length - 1; k >= 0 && h > maxH; k--) {
-      const kid = kids[k];
-      if (!kid.id) continue;
-      if (hasKids(kid) && !isCollapsed(next, kid.id)) {
-        next = toggleFold(next, kid.id);
+      const kid = kids[k]!;
+      if (hasKids(kid) && !isCollapsed(next, kid.sessionKey)) {
+        next = toggleFold(next, kid.sessionKey);
         h = measureLineageHeight(next);
       }
     }
-    if (h > maxH && !isCollapsed(next, r.id)) {
-      next = toggleFold(next, r.id);
+    if (h > maxH && !isCollapsed(next, r.sessionKey)) {
+      next = toggleFold(next, r.sessionKey);
       h = measureLineageHeight(next);
     }
   }
   return next;
 }
 
-/**
- * Whether the doc carries saved fold state: a `(+)` marker on a line with an
- * id (or a session id), a non-empty `fold-` / `fold+` id list, or `fold+`
- * mode. With no saved state a host seeds the first view (seedDefaultFold).
- *
- * Not detectable from a parsed doc: an empty `fold-:` line. It parses the same
- * as no frontmatter, so it counts as no saved state.
- */
+/** True when any parent was parsed collapsed. A host then skips the level-1 seed. */
 export function hasSavedFold(doc: OutlineFoldDoc): boolean {
-  if (doc.fold?.mode === '+') return true;
-  if ((doc.fold?.ids?.length ?? 0) > 0) return true;
-  if ((doc.frontmatter?.foldIds?.length ?? 0) > 0) return true;
-  return false;
+  const walk = (nodes: OutlineNode[] | undefined): boolean => {
+    for (const n of nodes ?? []) {
+      if (n.children?.length && n.collapsed) return true;
+      if (walk(n.children)) return true;
+    }
+    return false;
+  };
+  return walk(doc.nodes);
 }
 
 /**
@@ -111,13 +108,10 @@ export type SeedDefaultFoldOptions = {
 
 /**
  * Seed the first view of a doc with no saved fold state. Returns the doc
- * itself, untouched, when it has saved state (hasSavedFold), so `(+)` markers
- * and `fold-` / `fold+` lists always win.
+ * itself, untouched, when a parent was parsed collapsed (`(+)`).
  *
- * Load order for a host (L12): per-user resume if present, else the body's
- * saved fold, else this seed. Call it once on load, not on every re-parse,
- * and only on nodes that have ids (parse with `sessionIds`, or mint ids first):
- * a node with no id cannot be folded.
+ * Load order for a host: per-user resume if present, else the body's `(+)`,
+ * else this seed. Call it once on load, not on every re-parse.
  */
 export function seedDefaultFold(
   doc: OutlineFoldDoc,

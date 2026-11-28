@@ -129,10 +129,10 @@ function walkNodes(
 function collectNodeIds(nodes: OutlineNode[]): Map<string, OutlineNode[]> {
   const map = new Map<string, OutlineNode[]>();
   walkNodes(nodes, (n) => {
-    if (!n.id) return;
-    const list = map.get(n.id) ?? [];
+    if (!n.writtenId) return;
+    const list = map.get(n.writtenId) ?? [];
     list.push(n);
-    map.set(n.id, list);
+    map.set(n.writtenId, list);
   });
   return map;
 }
@@ -343,12 +343,12 @@ function validateDocTree(
     if (!n.title.trim()) {
       issues.push(
         issue('warning', 'empty_title', 'Blank caption after strip', {
-          nodeId: n.id,
+          nodeId: n.writtenId ?? undefined,
         }),
       );
     }
     if (n.sealed) {
-      if (!n.id) {
+      if (!n.writtenId) {
         issues.push(
           issue(
             'error',
@@ -365,13 +365,13 @@ function validateDocTree(
             'error',
             'payload_missing_ct_uri',
             'Sealed entry needs exactly one of ct or uri',
-            { nodeId: n.id, path: n.id ? `payloads.${n.id}` : undefined },
+            { nodeId: n.writtenId ?? undefined, path: n.writtenId ? `payloads.${n.writtenId}` : undefined },
           ),
         );
       }
       sealedRefs.push({
-        nodeId: n.id,
-        path: n.id ? `payloads.${n.id}` : undefined,
+        nodeId: n.writtenId ?? undefined,
+        path: n.writtenId ? `payloads.${n.writtenId}` : undefined,
         kid: n.sealed.kid,
         alg: n.sealed.alg,
         hasXor: hasCt !== hasUri,
@@ -447,10 +447,10 @@ function validateDocTree(
       issues.push(...draftIssues(entry.draft, Boolean(entry.ct), Boolean(entry.uri), { nodeId: entry.id, path: `payloads.${entry.id}`, line: entry.line }));
   // Structured path: docs passed in without trailer text.
   walkNodes(doc.nodes, (n) => {
-    if (!n.sealed || (n.id && seenRawIds.has(n.id))) return;
+    if (!n.sealed || (n.writtenId && seenRawIds.has(n.writtenId))) return;
     const d = sealedDraftFields(n.sealed);
     if (Object.keys(d).length)
-      issues.push(...draftIssues(d, Boolean(n.sealed.ciphertext), Boolean(n.sealed.uri), { nodeId: n.id, path: n.id ? `payloads.${n.id}` : undefined }));
+      issues.push(...draftIssues(d, Boolean(n.sealed.ciphertext), Boolean(n.sealed.uri), { nodeId: n.writtenId ?? undefined, path: n.writtenId ? `payloads.${n.writtenId}` : undefined }));
   });
   void seenRawIds;
 
@@ -571,19 +571,7 @@ export function validateDocument(
     doc = parse(source, options?.sessionIds ? { sessionIds: options.sessionIds } : undefined);
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
-    if (/both fold-/i.test(msg) || /fold-\s+and\s+fold\+/i.test(msg)) {
-      issues.push(
-        issue(
-          'error',
-          'fold_mode_conflict',
-          'Document cannot have both fold- and fold+',
-        ),
-      );
-    } else {
-      issues.push(
-        issue('error', 'parse_error', msg || 'Fatal parse failure'),
-      );
-    }
+    issues.push(issue('error', 'parse_error', msg || 'Fatal parse failure'));
     return { ok: false, issues };
   }
 

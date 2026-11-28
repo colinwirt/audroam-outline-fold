@@ -8,20 +8,32 @@ import {
   resolveMapFocus,
   autoPackPositions,
 } from '../src/index.js';
+import type { OutlineNode } from '../src/types.js';
 
 const md = readFileSync(
   join(__dirname, '../examples/aust-gov-cyber/aust-gov-cyber.md'),
   'utf8',
 );
 
+function findWritten(nodes: OutlineNode[], id: string): OutlineNode | null {
+  for (const n of nodes) {
+    if (n.writtenId === id) return n;
+    const hit = n.children ? findWritten(n.children, id) : null;
+    if (hit) return hit;
+  }
+  return null;
+}
+
 describe('resolveMapFocus (Map L→R orientation)', () => {
   const doc = parse(md);
+  const keyOf = (n: OutlineNode) => n.writtenId ?? n.sessionKey;
   const packed = autoPackPositions(doc, {
     isNodeCollapsed: (id) => isCollapsed(doc, id),
   });
   const opts = {
     isNodeCollapsed: (id: string) => isCollapsed(doc, id),
     positions: packed.nodes,
+    keyOf,
   };
 
   it('↓/↑ move among siblings only — never enter children on Down', () => {
@@ -44,11 +56,13 @@ describe('resolveMapFocus (Map L→R orientation)', () => {
     expect(resolveMapFocus(doc, 'e8', 'right', opts)).toBe('e8-1');
     expect(resolveMapFocus(doc, 'e8-1', 'right', opts)).toBeNull(); // leaf
 
-    const collapsed = toggleFold(doc, 'e8');
-    expect(isCollapsed(collapsed, 'e8')).toBe(true);
+    const e8 = findWritten(doc.nodes, 'e8')!;
+    const collapsed = toggleFold(doc, e8.sessionKey);
+    expect(isCollapsed(collapsed, e8.sessionKey)).toBe(true);
     expect(
       resolveMapFocus(collapsed, 'e8', 'right', {
         isNodeCollapsed: (id) => isCollapsed(collapsed, id),
+        keyOf,
       }),
     ).toBeNull();
   });

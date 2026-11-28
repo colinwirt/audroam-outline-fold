@@ -70,7 +70,7 @@ function proportional(run: { text: string; code?: boolean; bold?: boolean }, fon
 afterEach(() => setRunMeasurer(null));
 
 describe('wrap keeps spaces between words at every width', () => {
-  it('reproduces the reported pill: no `interfacenames` at any px width', () => {
+  it('a hash caption never glues neighbouring words at any px width', () => {
     for (let w = 96; w <= 320; w++) {
       const lines = measurePill('ip addr # interface names', { widthPx: w }).lines;
       for (const line of lines) expect(line, `widthPx ${w}`).not.toMatch(/interfacenames|addr#|#interface/);
@@ -147,7 +147,7 @@ describe('wrap keeps spaces between words at every width', () => {
     }
   });
 
-  it("Colin's repro: inline-code caption, layout `textWidth: 75` and `19:` w 200", () => {
+  it('an inline-code caption at textWidth 75 and a 200px column keeps its spaces', () => {
     const doc = parse(
       '- `ip addr # interface names` <id:19>\n\n--- layout ---\ntextWidth: 75\n19:\n  w: 200\n---\n',
     );

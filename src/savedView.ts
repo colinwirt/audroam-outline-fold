@@ -13,7 +13,7 @@ import type { CamState, ViewportSize, WorldRect } from './mapCamera.js';
 import { DEFAULT_CAM_PADDING_PX, visibleFractionOfRect } from './mapCamera.js';
 import type { MapNodeNudge, MapResumeState } from './mapResume.js';
 import { isCollapsed } from './fold.js';
-import type { FoldState, OutlineFoldDoc, OutlineNode } from './types.js';
+import type { OutlineFoldDoc, OutlineNode } from './types.js';
 
 /** Same zoom range as createMapView. */
 export const VIEW_K_MIN = 0.35;
@@ -53,10 +53,9 @@ export interface SavedView {
 
 export type ViewSlot = 'wide' | 'narrow';
 
-/** Personal record v2 (V2). The v1 camera is dropped; v1 folds are kept. */
+/** Personal record v2. The camera and the view slots. Fold is not stored. */
 export interface MapResumeStateV2 {
   version: 2;
-  fold?: FoldState;
   views?: Partial<Record<ViewSlot, SavedView>>;
   nudges?: Record<string, MapNodeNudge>;
   savedAt?: number;
@@ -225,7 +224,7 @@ export function chooseViewFocus(
 
 function ancestorsOf(nodes: OutlineNode[], id: string, trail: OutlineNode[] = []): OutlineNode[] | null {
   for (const n of nodes) {
-    if (n.id === id) return trail;
+    if (n.sessionKey === id || n.writtenId === id) return trail;
     if (n.children?.length) {
       const hit = ancestorsOf(n.children, id, [...trail, n]);
       if (hit) return hit;
@@ -251,13 +250,13 @@ export function resolveViewAnchor(doc: OutlineFoldDoc, view: Pick<SavedView, 'fo
     if (!trail) return null;
     // The first collapsed ancestor from the root hides everything below it.
     for (const a of trail) {
-      if (a.id && isCollapsed(doc, a.id)) return { id: a.id, folded: true };
+      if (isCollapsed(doc, a.sessionKey)) return { id: a.sessionKey, folded: true };
     }
     return { id, folded: false };
   };
   const trail = ancestorsOf(doc.nodes, view.focus);
   const pathMatches =
-    !!trail && (view.path.length === 0 || trail.map((a) => a.id ?? '').join('/') === view.path.join('/'));
+    !!trail && (view.path.length === 0 || trail.map((a) => a.sessionKey).join('/') === view.path.join('/'));
   if (trail && pathMatches) {
     const v = visibleAncestor(view.focus)!;
     return v.folded ? { kind: 'hidden', id: v.id, hiddenId: view.focus } : { kind: 'focus', id: view.focus };
@@ -292,10 +291,9 @@ export function viewRestoreAnnouncement(
   return `${title} is hidden. Showing ${shownTitle ?? ''}.`;
 }
 
-/** v1 → v2: keep folds and nudges, drop the camera (it has no viewport). */
+/** v1 → v2: keep nudges, drop the camera. A stored fold list is not copied. */
 export function migrateResumeToV2(v1: MapResumeState): MapResumeStateV2 {
   const out: MapResumeStateV2 = { version: 2 };
-  if (v1.fold) out.fold = { mode: v1.fold.mode, ids: [...v1.fold.ids] };
   if (v1.nudges) out.nudges = { ...v1.nudges };
   if (v1.savedAt) out.savedAt = v1.savedAt;
   return out;
@@ -343,7 +341,7 @@ export function saveSavedView(
   key: string,
   slot: ViewSlot,
   view: SavedView,
-  opts: { fold?: FoldState; storage?: Storage | null; now?: number } = {},
+  opts: { storage?: Storage | null; now?: number } = {},
 ): MapResumeStateV2 {
   const storage = opts.storage === undefined ? store() : opts.storage;
   const prev = loadSavedViews(key, storage) ?? { version: 2 as const };
@@ -353,7 +351,6 @@ export function saveSavedView(
     views: { ...(prev.views || {}), [slot]: cleanView(view) },
     savedAt: opts.now ?? Date.now(),
   };
-  if (opts.fold) next.fold = { mode: opts.fold.mode, ids: [...opts.fold.ids] };
   try {
     storage?.setItem(key, JSON.stringify(next));
   } catch {

@@ -6,7 +6,7 @@ import { measurePill } from '../src/mapLabel.js';
 describe('layout width in the outline text', () => {
   it('parses an integer id without putting it in the caption', () => {
     const doc = parse('- Staff roster <id:12>\n');
-    expect(doc.nodes[0]?.id).toBe('12');
+    expect(doc.nodes[0]?.writtenId).toBe('12');
     expect(doc.nodes[0]?.title).toBe('Staff roster');
   });
 
@@ -20,8 +20,8 @@ describe('layout width in the outline text', () => {
   w: 280
 ---
 `);
-    expect(doc.nodes[0]?.id).toBeUndefined();
-    expect(doc.nodes[0]?.children?.[0]?.id).toBeUndefined();
+    expect(doc.nodes[0]?.writtenId).toBeNull();
+    expect(doc.nodes[0]?.children?.[0]?.writtenId).toBeNull();
     expect(doc.nodes[0]?.children?.[0]?.layout?.w).toBe(280);
     expect(doc.nodes[0]?.children?.[0]?.title).toBe('Beta');
   });
@@ -38,7 +38,8 @@ c1:
   w: 280
 ---
 `);
-    expect(doc.fold.ids).toEqual(['p1']);
+    expect(doc.nodes[0]?.collapsed).toBe(true);
+    expect(doc.nodes[0]?.writtenId).toBe('p1');
     expect(doc.frontmatter?.fontSize).toBe(18);
     expect(doc.nodes[0]?.children?.[0]?.layout?.w).toBe(280);
     expect(doc.nodes[0]?.title).toBe('Parent row');
@@ -50,7 +51,7 @@ c1:
     expect(text).not.toContain('fold-:');
     expect(text).not.toContain('collapsedMarker:'); // default is omitted
     const again = parse(text);
-    expect(again.fold.ids).toEqual(['p1']); // still parsed from inline (+)
+    expect(again.nodes[0]?.collapsed).toBe(true); // still parsed from inline (+)
     expect(again.frontmatter?.fontSize).toBe(18);
     expect(again.nodes[0]?.children?.[0]?.layout?.w).toBe(280);
   });
@@ -68,7 +69,8 @@ fold-: b
 fontSize: 20
 ---
 `);
-    expect(doc.fold.ids).toEqual(['b']);
+    expect(doc.nodes[0]?.collapsed).toBe(false);
+    expect(doc.nodes[1]?.collapsed).toBe(false);
     expect(doc.frontmatter?.fontSize).toBe(20);
     expect(doc.nodes[0]?.title).toBe('Alpha');
   });
@@ -83,7 +85,7 @@ fontSize: 20
     expect(text).toContain('--- layout ---');
     expect(text).toContain('2:\n  w: 280');
     const again = parse(text);
-    expect(again.nodes[0]?.children?.[0]?.id).toBe('2');
+    expect(again.nodes[0]?.children?.[0]?.writtenId).toBe('2');
     expect(again.nodes[0]?.children?.[0]?.layout?.w).toBe(280);
     expect(again.nodes[0]?.children?.[0]?.title).toBe('Beta');
   });

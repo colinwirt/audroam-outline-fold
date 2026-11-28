@@ -5,14 +5,14 @@
  *   or above the root's indent (malformed indentation, a pasted line, a stray Tab on the root)
  *   becomes a child of the nearest shallower line, which is the root, as the main editor reads
  *   it. A zone with no outline line gets an empty root, never zero roots.
- * - Every row gets an id: the root keeps the anchor id; rows without `<id:N>` get a session id
- *   (`autoId`, never serialised or sealed). Session ids are carried over by preorder position
- *   from the previous doc, so Map keys, focus and folds stay put while typing. Without this the
- *   Map keyed id-less rows by position, and position 4 collided with anchor id 4.
+ * - The root keeps the anchor's written id when the line has none. Every row already has a
+ *   session key from parse. Those keys are carried over by preorder position from the previous
+ *   doc, so Map focus stays put while typing. Session keys are never serialised.
  */
-import { nextSessionId } from './nodeAddress.js';
+import { sessionKey, writtenId } from './ids.js';
 import { parse } from './parse.js';
 import type { OutlineFoldDoc, OutlineNode } from './types.js';
+import type { SessionKey } from './ids.js';
 
 function walk(nodes: OutlineNode[] | undefined, fn: (n: OutlineNode) => void): void {
   for (const n of nodes ?? []) { if (!n) continue; fn(n); walk(n.children, fn); }
@@ -21,7 +21,9 @@ const reDepth = (list: OutlineNode[], d: number): void => list.forEach((c) => { 
 
 /** Fold extra roots under the first one (or make an empty root). Mutates and returns `doc`. */
 export function oneZoneRoot(doc: OutlineFoldDoc): OutlineFoldDoc {
-  if (!doc.nodes.length) doc.nodes = [{ title: '', depth: 0 }];
+  if (!doc.nodes.length) {
+    doc.nodes = [{ title: '', depth: 0, writtenId: null, sessionKey: sessionKey(0), collapsed: false }];
+  }
   if (doc.nodes.length > 1) {
     const [root, ...rest] = doc.nodes as [OutlineNode, ...OutlineNode[]];
     root.children = [...(root.children ?? []), ...rest];
@@ -31,28 +33,30 @@ export function oneZoneRoot(doc: OutlineFoldDoc): OutlineFoldDoc {
   return doc;
 }
 
-/** Session ids for id-less rows: previous ids by preorder position first, then fresh `__sid-N`. */
+/** Carry session keys by preorder position so a re-parse keeps the same runtime identity. */
 export function pinZoneIds(doc: OutlineFoldDoc, prev: OutlineFoldDoc | null, reserved: Iterable<string> = []): void {
   const used = new Set<string>([...reserved].map(String));
-  walk(doc.nodes, (n) => { if (n.id) used.add(String(n.id)); });
-  const carried: (string | undefined)[] = [];
-  walk(prev?.nodes, (n) => { carried.push(n.autoId ? n.id : undefined); });
+  walk(doc.nodes, (n) => {
+    if (n.writtenId) used.add(n.writtenId);
+    used.add(n.sessionKey);
+  });
+  const carried: SessionKey[] = [];
+  walk(prev?.nodes, (n) => { carried.push(n.sessionKey); });
   let i = 0;
   walk(doc.nodes, (n) => {
     const old = carried[i++];
-    if (n.id) return;
-    if (old && !used.has(old)) n.id = old;
-    else n.id = nextSessionId(used);
-    n.autoId = true;
-    used.add(n.id);
+    if (!old || used.has(old) || old === n.sessionKey) return;
+    used.delete(n.sessionKey);
+    n.sessionKey = old;
+    used.add(old);
   });
 }
 
-/** Parse a zone's text into its child doc: one root carrying `anchorId`, every row keyed. */
+/** Parse a zone's text into its child doc: one root carrying `anchorId`, session keys carried. */
 export function parseZoneText(text: string, anchorId: string, prev: OutlineFoldDoc | null = null): OutlineFoldDoc {
   const doc = oneZoneRoot(parse(text));
   const root = doc.nodes[0]!;
-  if (!root.id || root.autoId) { root.id = anchorId; delete root.autoId; }
+  if (!root.writtenId) root.writtenId = writtenId(anchorId);
   pinZoneIds(doc, prev, [anchorId]);
   return doc;
 }

@@ -21,6 +21,7 @@ import {
   createArgon2Provider,
   type KdfProfile,
 } from './kdf.js';
+import { sessionKey, writtenId } from './ids.js';
 import { parse } from './parse.js';
 import { serialize } from './serialize.js';
 import { normalizeTaskMarkers } from './taskChrome.js';
@@ -882,7 +883,7 @@ export async function deriveShareKeyBits(kid: string, salt: Uint8Array<ArrayBuff
  * 0.4.10 (Colin): the anchor's `<id:N>` belongs to the host line only. A payload (caption or any
  * row) must never carry it; legacy payloads that do are cleaned on load and on the next re-seal.
  */
-export function stripAnchorId<T extends { id?: string; children?: T[] }>(caption: string, nodes: T[], anchorId: string): { caption: string; nodes: T[] } {
+export function stripAnchorId<T extends { id?: string; writtenId?: string | null; children?: T[] }>(caption: string, nodes: T[], anchorId: string): { caption: string; nodes: T[] } {
   const esc = anchorId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const tag = new RegExp(`\\s*<\\s*id\\s*:\\s*${esc}\\s*>`, 'gi');
   const walk = (list: T[]): T[] =>
@@ -890,6 +891,7 @@ export function stripAnchorId<T extends { id?: string; children?: T[] }>(caption
       const { id, ...rest } = c as T & { id?: string };
       const out = (id === anchorId ? rest : { ...rest, id }) as T;
       if (id === undefined) delete (out as { id?: string }).id;
+      if (out.writtenId === anchorId) out.writtenId = null;
       if (c.children) out.children = walk(c.children);
       return out;
     });
@@ -904,8 +906,8 @@ function innerText(node: OutlineNode): string {
   if (legacyInnerTextForTest) return legacyInnerTextForTest(node);
   const shift = (list: OutlineNode[], d: number): OutlineNode[] =>
     list.map((c) => ({ ...c, depth: d, children: c.children ? shift(c.children, d + 1) : undefined }));
-  const clean = node.id ? stripAnchorId(node.title, shift(node.children ?? [], 0), node.id) : { caption: node.title, nodes: shift(node.children ?? [], 0) };
-  return innerJson(clean.caption, serialize({ nodes: clean.nodes, fold: { mode: '-', ids: [] } }));
+  const clean = node.writtenId ? stripAnchorId(node.title, shift(node.children ?? [], 0), node.writtenId) : { caption: node.title, nodes: shift(node.children ?? [], 0) };
+  return innerJson(clean.caption, serialize({ nodes: clean.nodes }));
 }
 
 function sealedDepth(ctx: SealContext, _doc?: OutlineFoldDoc): number {
@@ -920,7 +922,7 @@ export interface SealResult {
  * Seal a node and its subtree (of-seal-v3) under an unlocked keyring kid. The caption is
  * encrypted; the line shows the public label (opts.pub, else the node's title) or "Sealed branch" plus
  * `<enc:KEYID>`. The cipher comes from opts.cipher, else setSealCipher(), else 'a256gcm'.
- * Requires node.id. Inner sealed branches stay sealed inside. `ctx` only carries nesting
+ * Requires a written id. Inner sealed branches stay sealed inside. `ctx` only carries nesting
  * (parentId, depth); v3 binds no host ids.
  */
 export async function sealBranch(
@@ -931,7 +933,7 @@ export async function sealBranch(
   opts: { pub?: string; cipher?: SealCipher } = {},
   __fixed?: SealV3Fixed,
 ): Promise<SealResult> {
-  if (!node.id || node.autoId) throw new Error('sealBranch: node needs a persistent id');
+  if (!node.writtenId) throw new Error('sealBranch: node needs a persistent id');
   const cipher = opts.cipher ?? configuredCipher;
   if (!SEAL_CIPHERS.includes(cipher)) throw new SealError();
   if (!findRing(doc, kid)) throw new SealError();
@@ -941,7 +943,7 @@ export async function sealBranch(
   if (ctx.parentId) {
     let parentKid: string | undefined;
     walkAll(doc.nodes, (n) => {
-      if (n.id === ctx.parentId) parentKid = branchPayload(n)?.kid;
+      if (n.writtenId === ctx.parentId) parentKid = branchPayload(n)?.kid;
     });
     if (!parentKid)
       for (const v of liveViewers) if (v.doc === doc && v.branchId === ctx.parentId) parentKid = v.mode.kid;
@@ -982,7 +984,7 @@ function innerJson(caption: string, body: string): string {
 /** Decrypt one branch. Returns plaintext caption and body; never touches the doc. */
 async function decryptBranch(doc: OutlineFoldDoc, node: OutlineNode, ctx: SealContext, ctOverride?: string): Promise<{ caption: string; body: string }> {
   const p = node.sealed && ctOverride ? { ...node.sealed, ciphertext: ctOverride } : node.sealed;
-  if (!node.id || !p || !isSealedBranchPayload(p) || !p.ciphertext) throw new SealError();
+  if (!node.writtenId || !p || !isSealedBranchPayload(p) || !p.ciphertext) throw new SealError();
   if (p.alg === SEAL_ALG_V1 && !p.kid) throw new SealError();
   if (sealedDepth(ctx, doc) >= MAX_SEAL_DEPTH) throw new SealError();
   let text: string;
@@ -993,8 +995,8 @@ async function decryptBranch(doc: OutlineFoldDoc, node: OutlineNode, ctx: SealCo
       sealed.alg === SEAL_ALG_V3 || isV3Ciphertext(ct)
         ? await decryptV3(sealed)
         : sealed.alg === SEAL_ALG
-          ? await decryptV2(sealed, node.id, ctx)
-          : await decryptV1(doc, sealed, node.id, ctx);
+          ? await decryptV2(sealed, node.writtenId, ctx)
+          : await decryptV1(doc, sealed, node.writtenId, ctx);
     text = dec.decode(pt);
   } catch (err) {
     if (err instanceof DamagedSealError) throw err;
@@ -1094,7 +1096,7 @@ export function closeAllViewers(): void {
 function findById(nodes: OutlineNode[], id: string): OutlineNode | undefined {
   let hit: OutlineNode | undefined;
   walkAll(nodes, (n) => {
-    if (!hit && n.id === id) hit = n;
+    if (!hit && (n.writtenId === id || n.sessionKey === id)) hit = n;
   });
   return hit;
 }
@@ -1159,15 +1161,12 @@ export async function openSealedBranch(
   const cleaned = stripAnchorId(shown.caption, sub.nodes, branchId);
   sub.nodes = cleaned.nodes;
   normalizeTaskMarkers(sub.nodes); // 0.4.12: glyph markers from old payloads load as [x] / [ ]
-  const root: OutlineNode = { id: branchId, title: cleaned.caption, depth: 0, children: sub.nodes } as OutlineNode;
+  const root: OutlineNode = { writtenId: writtenId(branchId), sessionKey: sessionKey(0), collapsed: false, title: cleaned.caption, depth: 0, children: sub.nodes };
   const reDepth = (list: OutlineNode[], d: number) => list.forEach((c) => { c.depth = d; if (c.children) reDepth(c.children, d + 1); });
   reDepth(sub.nodes, 1);
   // The viewer shares the key list read-only (frozen copies) so nested branches can open.
   const doc: OutlineFoldDoc = {
     nodes: [root],
-    // Keep the inner body's fold. A later snapshot writes `(+)` from it; dropping it here
-    // made every unlock open expanded and every re-seal erase a saved fold.
-    fold: { mode: sub.fold?.mode ?? '-', ids: [...(sub.fold?.ids ?? [])] },
     keys: Object.freeze((host.keys ?? []).map((k) => Object.freeze({ ...k }))) as SealKeyEntry[],
     keyring: Object.freeze((host.keyring ?? []).map((k) => Object.freeze({ ...k }))) as SealKeyringEntry[],
     ...(sub.sealedOrphans ? { sealedOrphans: sub.sealedOrphans } : {}),
@@ -1179,16 +1178,7 @@ export async function openSealedBranch(
     const shift = (list: OutlineNode[], d: number): OutlineNode[] =>
       list.map((c) => ({ ...c, depth: d, children: c.children ? shift(c.children, d + 1) : undefined }));
     const clean = stripAnchorId(r.title, shift(kids, 0), branchId);
-    const have = new Set<string>();
-    const mark = (list?: OutlineNode[]) => {
-      for (const n of list ?? []) {
-        if (n.id) have.add(n.id);
-        if (n.children) mark(n.children);
-      }
-    };
-    mark(clean.nodes);
-    const fold = { mode: doc.fold?.mode ?? '-', ids: (doc.fold?.ids ?? []).filter((id) => have.has(id)) };
-    return innerJson(clean.caption, serialize({ nodes: clean.nodes, fold, ...(doc.sealedOrphans ? { sealedOrphans: doc.sealedOrphans } : {}) }));
+    return innerJson(clean.caption, serialize({ nodes: clean.nodes, ...(doc.sealedOrphans ? { sealedOrphans: doc.sealedOrphans } : {}) }));
   };
   let original = innerJson(caption, body);
   let lastAuto: string | undefined = autoText;
@@ -1203,7 +1193,6 @@ export async function openSealedBranch(
     reDepth(next.nodes, 1);
     r.title = inner.caption;
     r.children = next.nodes;
-    doc.fold = { mode: next.fold?.mode ?? '-', ids: [...(next.fold?.ids ?? [])] };
     if (next.sealedOrphans) doc.sealedOrphans = next.sealedOrphans;
     else delete doc.sealedOrphans;
   };
@@ -1383,23 +1372,23 @@ export function validateSealedBranches(doc: OutlineFoldDoc): string[] {
     if (!isSealedBranchPayload(n.sealed)) return;
     const p = n.sealed!;
     const lineKid = isLineSealAlg(p.alg);
-    if (!p.kid || !(lineKid ? ringKids : kids).has(p.kid)) errs.push(`${n.id}: unknown kid`);
-    if (!p.ciphertext) errs.push(`${n.id}: missing ct`);
+    if (!p.kid || !(lineKid ? ringKids : kids).has(p.kid)) errs.push(`${n.writtenId}: unknown kid`);
+    if (!p.ciphertext) errs.push(`${n.writtenId}: missing ct`);
     else
       try {
         if (p.alg === SEAL_ALG_V3 || isV3Ciphertext(p.ciphertext)) {
           const b = inspectSealV3(p.ciphertext);
-          if (p.kid && b.kid !== p.kid) errs.push(`${n.id}: <enc:${p.kid}> does not match the payload header`);
+          if (p.kid && b.kid !== p.kid) errs.push(`${n.writtenId}: <enc:${p.kid}> does not match the payload header`);
         } else {
           const b = parseBranchCt(p.ciphertext, p.alg);
           if (p.alg === SEAL_ALG && p.kid && (b as BranchBlobV2).kid !== p.kid)
-            errs.push(`${n.id}: <enc:${p.kid}> does not match the payload header`);
+            errs.push(`${n.writtenId}: <enc:${p.kid}> does not match the payload header`);
         }
       } catch (err) {
-        errs.push(`${n.id}: ${err instanceof DamagedSealError ? 'damaged ct' : 'bad ct'}`);
+        errs.push(`${n.writtenId}: ${err instanceof DamagedSealError ? 'damaged ct' : 'bad ct'}`);
       }
-    if (p.alg === SEAL_ALG_V1) errs.push(`${n.id}: legacy of-seal-v1 (decrypt-only; migrate)`);
-    if (n.children?.length) errs.push(`${n.id}: locked sealed branch has plaintext children`);
+    if (p.alg === SEAL_ALG_V1) errs.push(`${n.writtenId}: legacy of-seal-v1 (decrypt-only; migrate)`);
+    if (n.children?.length) errs.push(`${n.writtenId}: locked sealed branch has plaintext children`);
   });
   return errs;
 }
@@ -1439,12 +1428,12 @@ export async function migrateSealedV1(
   const walkList = async (nodes: OutlineNode[], parentId: string | undefined, depth: number): Promise<void> => {
     for (const n of nodes) {
       const p = n.sealed;
-      if (p?.alg === SEAL_ALG_V1 && n.id) {
+      if (p?.alg === SEAL_ALG_V1 && n.writtenId) {
         const c: SealContext = { noteId: ctx.noteId, ownerId: ctx.ownerId, parentId, depth };
         const { caption, body } = await decryptBranch(doc, n, c);
         const sub = parse(body);
-        await walkList(sub.nodes, n.id, depth + 1);
-        const inner = innerJson(caption, serialize({ nodes: sub.nodes, fold: { mode: '-', ids: [] }, ...(sub.sealedOrphans ? { sealedOrphans: sub.sealedOrphans } : {}) }));
+        await walkList(sub.nodes, n.writtenId, depth + 1);
+        const inner = innerJson(caption, serialize({ nodes: sub.nodes, ...(sub.sealedOrphans ? { sealedOrphans: sub.sealedOrphans } : {}) }));
         const kid = await target(p.kid!);
         const ct = await encryptV3(kid, opts.cipher, inner, SEAL_V3_ROLES.body);
         n.sealed = { kid, alg: SEAL_ALG_V3, ciphertext: ct, ...(p.pub ? { pub: p.pub } : {}) };

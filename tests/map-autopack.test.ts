@@ -40,7 +40,7 @@ function findNodeById(
   id: string,
 ): (typeof nodes)[number] | null {
   for (const n of nodes) {
-    if (n.id === id) return n;
+    if (n.writtenId === id || n.sessionKey === id) return n;
     const hit = findNodeById(n.children || [], id);
     if (hit) return hit;
   }
@@ -49,7 +49,7 @@ function findNodeById(
 
 function childIds(d: ReturnType<typeof parse>, id: string): string[] {
   const n = findNodeById(d.nodes, id);
-  return (n?.children || []).filter((c) => c.id).map((c) => c.id!);
+  return (n?.children || []).filter((c) => c.writtenId).map((c) => c.writtenId!);
 }
 
 describe('autoPackPositions', () => {
@@ -136,14 +136,15 @@ describe('autoPackPositions', () => {
 
   it('collapses omit kids and shrink height; re-expand restores (M10)', () => {
     const expanded = pack(doc);
-    const collapsedDoc = toggleFold(doc, 'e8');
-    expect(isCollapsed(collapsedDoc, 'e8')).toBe(true);
+    const e8 = findNodeById(doc.nodes, 'e8')!;
+    const collapsedDoc = toggleFold(doc, e8.sessionKey);
+    expect(isCollapsed(collapsedDoc, e8.sessionKey)).toBe(true);
     const collapsed = pack(collapsedDoc);
     expect(collapsed.viewBox.h).toBeLessThan(expanded.viewBox.h - 100);
     expect(collapsed.nodes['e8-1']).toBeUndefined();
     expect(collapsed.nodes.e8).toBeTruthy();
 
-    const reexpanded = pack(toggleFold(collapsedDoc, 'e8'));
+    const reexpanded = pack(toggleFold(collapsedDoc, e8.sessionKey));
     expect(Math.abs(reexpanded.viewBox.h - expanded.viewBox.h)).toBeLessThan(1);
     expect(Math.abs(reexpanded.nodes.e8.y - expanded.nodes.e8.y)).toBeLessThan(1);
   });
@@ -180,7 +181,7 @@ describe('autoPackPositions', () => {
     expect(expandedW).toBe(pillSize(label).w + FOLD_SLOT);
 
     const expanded = pack(doc);
-    const collapsedDoc = toggleFold(doc, 'e8');
+    const collapsedDoc = toggleFold(doc, findNodeById(doc.nodes, 'e8')!.sessionKey);
     const collapsed = pack(collapsedDoc);
     // Same label → same reserved width; centres may shift with reflow but w measure is stable
     const wExp = pillSize(label, { reserveFold: !!(n.children?.length) }).w;
@@ -210,9 +211,9 @@ describe('autoPackPositions', () => {
     let groups = 0;
     function walk(nodes: typeof doc.nodes) {
       for (const n of nodes) {
-        if (!n?.id) continue;
-        if (n.children?.length && !isCollapsed(doc, n.id)) {
-          const kids = childIds(doc, n.id).filter((id) => expanded.nodes[id]);
+        if (!n?.writtenId) continue;
+        if (n.children?.length && !n.collapsed) {
+          const kids = childIds(doc, n.writtenId).filter((id) => expanded.nodes[id]);
           if (kids.length >= 2) {
             const ref = leftEdge(kids[0]);
             for (const id of kids) {

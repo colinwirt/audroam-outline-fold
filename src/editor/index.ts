@@ -75,17 +75,17 @@ export function zoneShowRoot(body: string, anchorId: string): string {
   const tag = new RegExp(`\\s*<id:${anchorId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}>`);
   return first.replace(tag, '') + (nl < 0 ? '' : body.slice(nl));
 }
-/** The parsed zone keeps exactly the anchor id on its root row. */
-export function zoneRootId(doc: { nodes: { id?: string }[] }, anchorId: string): void {
+/** The parsed zone keeps the anchor's written id on its root row when the line has none. */
+export function zoneRootId(doc: { nodes: { writtenId?: string | null; id?: string }[] }, anchorId: string): void {
   const r = doc.nodes[0];
-  if (doc.nodes.length === 1 && r && !r.id) r.id = anchorId;
+  if (doc.nodes.length === 1 && r && !r.writtenId && !r.id) r.writtenId = anchorId;
 }
 
-type ZoneNode = { id?: string; children?: ZoneNode[] };
+type ZoneNode = { writtenId?: string | null; sessionKey?: string; id?: string; children?: ZoneNode[] };
 
 /**
  * 1-based preorder place of `local` in a zone doc. Serialize writes one line per node,
- * and a session id (`autoId`) is not written as `<id:>`, so the zone row is this place.
+ * and a session key is not written as `<id:>`, so the zone row is this place.
  */
 export function zoneLineForLocal(doc: { nodes?: ZoneNode[] } | null | undefined, local: string): number | null {
   if (!doc || !local) return null;
@@ -95,7 +95,7 @@ export function zoneLineForLocal(doc: { nodes?: ZoneNode[] } | null | undefined,
     for (const node of list ?? []) {
       if (found != null) return;
       n += 1;
-      if (node.id === local) { found = n; return; }
+      if (node.sessionKey === local || node.writtenId === local || node.id === local) { found = n; return; }
       walk(node.children);
     }
   };

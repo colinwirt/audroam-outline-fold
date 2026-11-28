@@ -181,13 +181,27 @@ describe('focus gone or folded away (V9)', () => {
       - Week 1 <id:w1>
   - Rooms <id:rooms>
 `;
+  function sk(doc: ReturnType<typeof parse>, written: string): string {
+    const walk = (nodes: typeof doc.nodes | undefined): string | undefined => {
+      for (const n of nodes ?? []) {
+        if (n.writtenId === written) return n.sessionKey;
+        const hit = walk(n.children);
+        if (hit) return hit;
+      }
+      return undefined;
+    };
+    return walk(doc.nodes)!;
+  }
   it('anchors the focus itself when it shows', () => {
-    expect(resolveViewAnchor(parse(DOC), { focus: 'code', path: ['root', 'prog'] })).toEqual({ kind: 'focus', id: 'code' });
+    const doc = parse(DOC);
+    expect(resolveViewAnchor(doc, { focus: 'code', path: [sk(doc, 'root'), sk(doc, 'prog')] })).toEqual({ kind: 'focus', id: 'code' });
   });
   it('anchors the nearest visible ancestor when folded away, without opening folds', () => {
-    const doc = toggleFold(parse(DOC), 'prog');
-    expect(resolveViewAnchor(doc, { focus: 'code', path: ['root', 'prog'] })).toEqual({ kind: 'hidden', id: 'prog', hiddenId: 'code' });
-    expect(resolveViewAnchor(toggleFold(doc, 'root'), { focus: 'w1', path: ['root', 'prog', 'code'] })).toEqual({ kind: 'hidden', id: 'root', hiddenId: 'w1' });
+    const open = parse(DOC);
+    const doc = toggleFold(open, sk(open, 'prog'));
+    expect(resolveViewAnchor(doc, { focus: 'code', path: [sk(doc, 'root'), sk(doc, 'prog')] })).toEqual({ kind: 'hidden', id: sk(doc, 'prog'), hiddenId: 'code' });
+    const rooted = toggleFold(doc, sk(doc, 'root'));
+    expect(resolveViewAnchor(rooted, { focus: 'w1', path: [sk(rooted, 'root'), sk(rooted, 'prog'), sk(rooted, 'code')] })).toEqual({ kind: 'hidden', id: sk(rooted, 'root'), hiddenId: 'w1' });
   });
   it('walks path when the focus was deleted, or now sits under different ancestors', () => {
     const gone = DOC.replace('    - Code club <id:code>\n      - Week 1 <id:w1>\n', '');
@@ -237,20 +251,20 @@ describe('the v2 record in localStorage (V2, V7, V10, V11, V13)', () => {
     expect(Object.keys(loadSavedViews(key, s)!.views!.wide!).sort()).toEqual(['at', 'focus', 'fx', 'fy', 'k', 'path', 'vh', 'vw']);
   });
 
-  it('reads a v1 record as v2: folds kept, camera dropped', () => {
+  it('reads a v1 record as v2 and drops the fold list and the camera', () => {
     const s = mem();
     s.setItem(key, JSON.stringify({ version: 1, fold: { mode: '-', ids: ['prog'] }, camera: { x: 1, y: 2, k: 3 }, savedAt: 9 }));
-    expect(loadSavedViews(key, s)).toEqual({ version: 2, fold: { mode: '-', ids: ['prog'] }, savedAt: 9 });
+    expect(loadSavedViews(key, s)).toEqual({ version: 2, savedAt: 9 });
     expect(migrateResumeToV2({ version: 1, camera: { x: 1, y: 2, k: 3 } })).toEqual({ version: 2 });
   });
 
-  it('Forget my views drops both slots and keeps folds', () => {
+  it('Forget my views drops both slots', () => {
     const s = mem();
-    saveSavedView(key, 'wide', view, { storage: s, fold: { mode: '-', ids: ['prog'] } });
+    saveSavedView(key, 'wide', view, { storage: s });
     forgetSavedViews(key, s);
     const rec = loadSavedViews(key, s)!;
     expect(rec.views).toBeUndefined();
-    expect(rec.fold).toEqual({ mode: '-', ids: ['prog'] });
+    expect(rec).not.toHaveProperty('fold');
   });
 
   it('sign-out clears of-map:u{userId}:* and nothing else', () => {

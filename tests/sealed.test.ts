@@ -31,7 +31,7 @@ const demoPassword = (
 
 function findById(nodes: OutlineNode[], id: string): OutlineNode | undefined {
   for (const n of nodes) {
-    if (n.id === id) return n;
+    if (n.writtenId === id || n.sessionKey === id) return n;
     if (n.children) {
       const hit = findById(n.children, id);
       if (hit) return hit;
@@ -115,8 +115,7 @@ collapsedMarker: "(+)"
 ---
 `;
     const doc = parse(text);
-    expect(doc.fold.mode).toBe('-');
-    expect(doc.fold.ids).toContain('b');
+    expect(doc.nodes.find((n) => n.writtenId === 'b')!.collapsed).toBe(false);
     expect(doc.frontmatter?.collapsedMarker).toBe('(+)');
   });
 
@@ -134,7 +133,7 @@ collapsedMarker: "(+)"
 ---
 `;
     const doc = parse(text);
-    expect(doc.fold.ids).toEqual(['b']);
+    expect(doc.nodes.every((n) => n.collapsed === false)).toBe(true);
     expect(doc.frontmatter?.collapsedMarker).toBe('(+)');
   });
 
@@ -156,8 +155,8 @@ todo-1:
 ---
 `,
     );
-    expect(doc.nodes[0].id).toBe('todo-1');
-    expect(doc.fold.ids).toContain('todo-1');
+    expect(doc.nodes[0].writtenId).toBe('todo-1');
+    expect(doc.nodes[0].collapsed).toBe(false);
     expect(doc.nodes[0].sealed?.kid).toBe('k-hy');
   });
 });

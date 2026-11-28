@@ -20,7 +20,7 @@ describe('validateDocument', () => {
     const r = validateDocument(HAPPY);
     expect(r.ok).toBe(true);
     expect(r.issues).toEqual([]);
-    expect(r.doc?.nodes[0]?.id).toBe('n1');
+    expect(r.doc?.nodes[0]?.writtenId).toBe('n1');
   });
 
   it('accepts OutlineFoldDoc for re-validate', () => {
@@ -30,17 +30,16 @@ describe('validateDocument', () => {
     expect(r.doc).toBe(doc);
   });
 
-  it('fold_mode_conflict → ok:false, no doc', () => {
+  it('fold- and fold+ lines are ignored and the outline still validates', () => {
     const r = validateDocument(`---
 fold-: a
 fold+: b
 ---
 - A <id:a>
 `);
-    expect(r.ok).toBe(false);
-    expect(r.doc).toBeUndefined();
-    expect(r.issues.some((i) => i.code === 'fold_mode_conflict')).toBe(true);
-    expect(r.issues[0]?.severity).toBe('error');
+    expect(r.ok).toBe(true);
+    expect(r.doc?.nodes[0]?.writtenId).toBe('a');
+    expect(r.doc?.nodes[0]?.collapsed).toBe(false);
   });
 
   it('payload_missing_ct_uri when neither ct nor uri', () => {

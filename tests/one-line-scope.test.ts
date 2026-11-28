@@ -28,10 +28,10 @@ describe('oneLineEntry for a scope pick', () => {
 
 describe('levelScope: same depth across the whole outline', () => {
   const doc = parse(['- R <id:r>', '  - A <id:a>', '    - A1 <id:a1>', '    - A2 <id:a2>', '  - B <id:b>', '    - B1 <id:b1>', '      - B1x <id:b1x>', '- S <id:s>', '  - C <id:c>', '    - C1 <id:c1>', ''].join('\n'));
-  const ids = (list: { id?: string }[]) => list.map((n) => n.id);
+  const ids = (list: { writtenId?: string | null }[]) => list.map((n) => n.writtenId);
   const find = (id: string) => {
     let hit: any = null;
-    const walk = (l: any[]) => l.forEach((n) => { if (n.id === id) hit = n; if (n.children) walk(n.children); });
+    const walk = (l: any[]) => l.forEach((n) => { if (n.writtenId === id || n.sessionKey === id) hit = n; if (n.children) walk(n.children); });
     walk(doc.nodes);
     return hit;
   };

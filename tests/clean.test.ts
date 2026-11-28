@@ -38,19 +38,21 @@ describe('cleanIds', () => {
     expect(out.text).toBe(text.replace('- Top <id:1>', '- Top').replace('(#id:3) <id:2>', '(#id:3)'));
   });
 
-  it('a fold- entry on a line with (+) is redundant: id and entry go, the (+) stays', () => {
+  it('a (+) and a fold list do not keep an id', () => {
     const text = '- a <id:1> (+)\n  - b <id:2>\n- c <id:3>\n  - d <id:4>\n\n--- layout ---\nfold-: 1, 3\ncollapsedMarker: "(+)"\n---\n';
     const out = cleanIds(text);
-    expect(out.text).toBe('- a (+)\n  - b\n- c <id:3>\n  - d\n\n--- layout ---\nfold-: 3\ncollapsedMarker: "(+)"\n---\n');
-    expect(out.kept).toEqual(['3']);
+    expect(out.text).toBe('- a (+)\n  - b\n- c\n  - d\n\n--- layout ---\nfold-: 1, 3\ncollapsedMarker: "(+)"\n---\n');
+    expect(out.kept).toEqual([]);
+    expect(out.removed.sort()).toEqual(['1', '2', '3', '4']);
     const both = cleanIds('- a <id:1> (+)\n  - b\n\n--- layout ---\nfold-: 1\ncollapsedMarker: "(+)"\n---\n');
-    expect(both.text).toBe('- a (+)\n  - b\n');
-    expect(parse(both.text).nodes[0]!.title).toBe('a');
+    expect(both.text).toBe('- a (+)\n  - b\n\n--- layout ---\nfold-: 1\ncollapsedMarker: "(+)"\n---\n');
+    expect(parse(both.text).nodes[0]!.collapsed).toBe(true);
+    expect(parse(both.text).nodes[0]!.writtenId).toBeNull();
   });
 
-  it('keeps fold+ entries', () => {
+  it('a fold+ line does not keep an id', () => {
     const text = '- a <id:1>\n  - b <id:2>\n\n--- layout ---\nfold+: 1\n---\n';
-    expect(cleanIds(text).text).toBe('- a <id:1>\n  - b\n\n--- layout ---\nfold+: 1\n---\n');
+    expect(cleanIds(text).text).toBe('- a\n  - b\n\n--- layout ---\nfold+: 1\n---\n');
   });
 
   it('sparse ids: only the referenced one stays', () => {

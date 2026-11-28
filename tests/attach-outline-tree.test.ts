@@ -32,11 +32,8 @@ describe('foldToggleAnnouncement', () => {
 
 describe('toHtml ARIA tree', () => {
   it('emits tree / treeitem / group roles with aria-level and aria-expanded', () => {
-    const doc = parse(`---
-fold-: child
----
-- Root <id:root>
-  - Child <id:child>
+    const doc = parse(`- Root <id:root>
+  - Child <id:child> (+)
     - Leaf <id:leaf>
 `);
     const html = toHtml(doc, { ariaLabel: 'Demo outline' });

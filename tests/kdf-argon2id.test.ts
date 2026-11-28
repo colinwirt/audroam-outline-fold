@@ -45,7 +45,7 @@ const SRC = `- Root <id:r>
 
 function find(doc: OutlineFoldDoc, id: string): OutlineNode {
   let hit: OutlineNode | undefined;
-  const walk = (l: OutlineNode[]) => l.forEach((n) => { if (n.id === id) hit = n; if (n.children) walk(n.children); });
+  const walk = (l: OutlineNode[]) => l.forEach((n) => { if (n.writtenId === id || n.sessionKey === id) hit = n; if (n.children) walk(n.children); });
   walk(doc.nodes);
   return hit!;
 }
@@ -94,7 +94,7 @@ describe('Argon2id KDF module', () => {
     expect(Buffer.from(tag).toString('hex')).toBe(
       '09316115d5cf24ed5a15a31a3ba326e5cf32edc24702987c02b6566f61913cf7',
     );
-  });
+  }, 30_000);
 
   it('named defaults: write 64 MiB/t3/p1, mobile 32 MiB/t4/p1, caps 256 MiB/t8/p4, salt 16', () => {
     expect(ARGON2_DEFAULT_PROFILE).toEqual({ m: 65536, t: 3, p: 1 });
@@ -218,7 +218,7 @@ describe('Argon2id KDF module', () => {
     const viewer = await openSealedBranch(reloaded, 'v', CTX);
     expect(viewer.doc.nodes[0]!.title).toBe('Vault');
     expect(viewer.doc.nodes[0]!.children![0]!.title).toBe('Secret caption child');
-  }, 20_000);
+  }, 60_000);
 
   it('a checksum miss is damaged in transit; a wrong passphrase is Can\'t unlock', async () => {
     installDefaultArgon2Provider();

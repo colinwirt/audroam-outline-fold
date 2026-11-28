@@ -40,12 +40,12 @@ describe('Style menu Code writes font: code into the layout block', () => {
     const key = mv.viewKey(doc().nodes[0]!.children![0]!) as string;
     mv.setNodeFont(key, 'code');
     const child = doc().nodes[0]!.children![0]!;
-    expect(child.id).toMatch(/^[A-Za-z0-9]/);
+    expect(child.writtenId).toMatch(/^[A-Za-z0-9]/);
     expect(child.font).toBe('code');
     const out = serialize(doc());
     expect(out).toContain('- Parent <font:code> <id:a>');
-    expect(out).toContain(`${child.id}:\n  font: code`);
-    expect(out).not.toContain(`<font:code> <id:${child.id}>`);
+    expect(out).toContain(`${child.writtenId}:\n  font: code`);
+    expect(out).not.toContain(`<font:code> <id:${child.writtenId}>`);
     expect(serialize(parse(out))).toBe(out);
     mv.destroy?.();
   });

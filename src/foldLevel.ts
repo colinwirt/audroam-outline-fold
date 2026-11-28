@@ -50,7 +50,7 @@ export interface FoldLevelPicker {
 
 function findNode(nodes: OutlineNode[] | undefined, id: string): OutlineNode | null {
   for (const n of nodes || []) {
-    if (n.id === id) return n;
+    if (n.sessionKey === id || n.writtenId === id) return n;
     const hit = findNode(n.children, id);
     if (hit) return hit;
   }
@@ -73,14 +73,14 @@ function heightBelow(n: OutlineNode): number {
 function visibleBelow(doc: OutlineFoldDoc, anchor: OutlineNode): string[] {
   const out: string[] = [];
   const walk = (n: OutlineNode, path: string) => {
-    if (n.id && isCollapsed(doc, n.id)) return;
+    if (isCollapsed(doc, n.sessionKey)) return;
     (n.children || []).forEach((k, i) => {
-      const key = k.id ?? `${path}.${i}`;
+      const key = k.sessionKey || `${path}.${i}`;
       out.push(key);
       walk(k, key);
     });
   };
-  walk(anchor, anchor.id ?? '');
+  walk(anchor, anchor.sessionKey);
   return out;
 }
 
@@ -96,7 +96,7 @@ export function foldLevelPicker(doc: OutlineFoldDoc, id: string): FoldLevelPicke
   const now = visibleBelow(doc, anchor).join('\n');
 
   const items: FoldLevelItem[] = FOLD_LEVEL_KEYS.map((key) => {
-    const next = setExpandLevel(doc, key, { under: id });
+    const next = setExpandLevel(doc, key, { under: anchor.sessionKey });
     const nextAnchor = findNode(next.nodes, id)!;
     const shownIds = visibleBelow(next, nextAnchor);
     const n = key === '*' ? Infinity : key;
@@ -139,7 +139,7 @@ export function foldChangeCount(before: OutlineFoldDoc, after: OutlineFoldDoc): 
   let c = 0;
   const walk = (nodes: OutlineNode[] | undefined) => {
     for (const n of nodes || []) {
-      if (n.id && n.children?.length && isCollapsed(before, n.id) !== isCollapsed(after, n.id)) c++;
+      if (n.children?.length && isCollapsed(before, n.sessionKey) !== isCollapsed(after, n.sessionKey)) c++;
       walk(n.children);
     }
   };
@@ -175,7 +175,7 @@ export function wholeMapAnnouncement(doc: OutlineFoldDoc, level: number | '*'): 
     for (const n of nodes || []) {
       total++;
       if (visible) shown++;
-      walk(n.children, visible && !(n.id && isCollapsed(doc, n.id)));
+      walk(n.children, visible && !isCollapsed(doc, n.sessionKey));
     }
   };
   walk(doc.nodes, true);

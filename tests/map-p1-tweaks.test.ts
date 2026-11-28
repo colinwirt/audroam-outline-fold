@@ -276,27 +276,21 @@ describe('K3: ↗ on rows that open a new window', () => {
 describe('authored (+) on a line with no id', () => {
   const MD = ['- Allotment <id:day>', '  - Reference shelf (+)', '    - Frost dates', '    - Soil notes', ''].join('\n');
 
-  it('validateDocument(md).doc keeps the mark on the line but has no id to fold (unchanged)', () => {
-    const { doc } = validateDocument(MD);
-    const shelf = byTitle(doc!.nodes, 'Reference shelf');
-    expect(shelf.id).toBeUndefined();
-    expect(shelf.foldMark).toBe('collapsed');
-    expect(doc!.fold.ids).toEqual([]);
-  });
-
-  it('validateDocument(md, { sessionIds: true }).doc folds it, like parse(md, { sessionIds: true })', () => {
-    const { ok, doc } = validateDocument(MD, { sessionIds: true });
+  it('a (+) on a line with no written id still folds that parent', () => {
+    const { ok, doc } = validateDocument(MD);
     expect(ok).toBe(true);
     const shelf = byTitle(doc!.nodes, 'Reference shelf');
-    expect(shelf.id).toBeTruthy();
-    expect(shelf.autoId).toBe(true);
-    expect(doc!.fold.ids).toEqual([shelf.id]);
-    expect(doc).toEqual(parse(MD, { sessionIds: true }));
+    expect(shelf.writtenId).toBeNull();
+    expect(shelf.sessionKey).toMatch(/^__sid-/);
+    expect(shelf.collapsed).toBe(true);
+    expect(doc).toEqual(parse(MD));
   });
 
-  it('sessionIds takes a prefix and is ignored for a doc source', () => {
+  it('a session key is minted even when a prefix option is passed, and a doc source is returned as is', () => {
     const { doc } = validateDocument(MD, { sessionIds: { prefix: 's' } });
-    expect(byTitle(doc!.nodes, 'Reference shelf').id).toMatch(/^s\d+$/);
+    const shelf = byTitle(doc!.nodes, 'Reference shelf');
+    expect(shelf.sessionKey).toMatch(/^__sid-\d+$/);
+    expect(shelf.writtenId).toBeNull();
     const given = parse(MD);
     expect(validateDocument(given, { sessionIds: true }).doc).toBe(given);
   });

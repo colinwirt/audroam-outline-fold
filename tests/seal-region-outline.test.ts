@@ -1,18 +1,37 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { composeOutlineDoc, createRegionFoldStore, toHtml } from '../src/index.js';
+import { sessionKey, writtenId } from '../src/ids.js';
 import { SEAL_ALG } from '../src/sealedState.js';
 import type { OutlineFoldDoc, OutlineNode } from '../src/types.js';
 
 const sealedNode = (): OutlineNode => ({
-  id: '4', title: 'Sealed branch', depth: 0, children: [],
+  writtenId: writtenId('4'),
+  sessionKey: sessionKey(4),
+  collapsed: false,
+  title: 'Sealed branch',
+  depth: 0,
+  children: [],
   sealed: { alg: SEAL_ALG, kid: 'k1', ciphertext: 'CT' },
-} as unknown as OutlineNode);
-const rootDoc = (): OutlineFoldDoc => ({ nodes: [sealedNode()], fold: { mode: '-', ids: [] } } as OutlineFoldDoc);
+});
+const rootDoc = (): OutlineFoldDoc => ({ nodes: [sealedNode()] });
 const regionDoc = (): OutlineFoldDoc => ({
-  nodes: [{ id: '1', title: 'note 3 for test sealing', depth: 0, children: [{ id: '2', title: 'child A', depth: 1, children: [] }] }],
-  fold: { mode: '-', ids: [] },
-} as unknown as OutlineFoldDoc);
+  nodes: [{
+    writtenId: writtenId('1'),
+    sessionKey: sessionKey(1),
+    collapsed: false,
+    title: 'note 3 for test sealing',
+    depth: 0,
+    children: [{
+      writtenId: writtenId('2'),
+      sessionKey: sessionKey(2),
+      collapsed: false,
+      title: 'child A',
+      depth: 1,
+      children: [],
+    }],
+  }],
+});
 
 describe('Outline sealed regions (0.4.2)', () => {
   it('locked: no plaintext, locked chrome, Decrypt chip and key pill', () => {

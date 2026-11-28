@@ -55,7 +55,7 @@ it('keeps a position key for an id-less line', () => {
   ].join('\n');
   expect(dropUnattachedLayoutEntries(text)).toBe(text);
   const doc = parse(text);
-  expect(doc.nodes[0]!.children![0]!.id).toBeUndefined();
+  expect(doc.nodes[0]!.children![0]!.writtenId).toBeNull();
   expect(doc.nodes[0]!.children![0]!.icon).toBe('🔋');
 });
 

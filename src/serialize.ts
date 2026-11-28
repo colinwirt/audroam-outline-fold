@@ -1,6 +1,6 @@
 import { formatAssetsBlock } from './thumbnails.js';
 import { assertSealedSafe, syncSealedLabels, isEncRef } from './sealedState.js';
-import { assignPersistentId, isSessionId, linkPayloadNodes } from './nodeAddress.js';
+import { assignPersistentId, linkPayloadNodes } from './nodeAddress.js';
 import { collectLayouts, collectPayloads, formatLayoutBlock, formatPayloadsBlock, formatKeysBlock, formatKeyringBlock } from './payloads.js';
 import { isSealedBranchPayload } from './sealedState.js';
 import { canonTag, spelledTag } from './tagSpelling.js';
@@ -8,13 +8,6 @@ import { markdownLinkSpans, parseHopTarget } from './captionRich.js';
 import type { OutlineFoldDoc, OutlineNode, TaskState } from './types.js';
 
 const DEFAULT_COLLAPSED = '(+)';
-
-function isCollapsed(doc: OutlineFoldDoc, id: string | undefined): boolean {
-  if (!id) return false;
-  const { mode, ids } = doc.fold;
-  const inList = ids.includes(id);
-  return mode === '-' ? inList : !inList;
-}
 
 function taskMarker(task: TaskState): string {
   if (task === 'done') return '[x] ';
@@ -152,7 +145,7 @@ function formatTrailingSpans(
   }
   if (node.cloud) parts.push(node.cloud === 'default' ? '<cloud>' : `<cloud:${node.cloud}>`);
   if (node.img) parts.push(`<img:${node.img}>`);
-  if (node.id && !node.autoId) parts.push(spelledTag(kept?.id, `<id:${node.id}>`));
+  if (node.writtenId) parts.push(spelledTag(kept?.id, `<id:${node.writtenId}>`));
   return parts.length ? ' ' + parts.join(' ') : '';
 }
 
@@ -170,14 +163,9 @@ function serializeNode(
   let line = `${indent}- ${lead}${inline.title}${formatTrailingSpans(node, inline)}`;
   // Never write (+) on a node with no children.
   const hasChildren = node.children && node.children.length > 0;
-  if (node.id && isCollapsed(doc, node.id) && hasChildren) {
+  if (node.collapsed && hasChildren) {
     line += ` ${collapsedMarker}`;
-  } else if (node.id && expandedMarker && hasChildren) {
-    line += ` ${expandedMarker}`;
-  } else if (!node.id && node.foldMark === 'collapsed' && hasChildren) {
-    // Lazy ids: a fold on a line without an id is the inline marker, never an id.
-    line += ` ${collapsedMarker}`;
-  } else if (!node.id && node.foldMark === 'expanded' && expandedMarker && hasChildren) {
+  } else if (expandedMarker && hasChildren) {
     line += ` ${expandedMarker}`;
   }
   lines.push(line);
@@ -187,86 +175,41 @@ function serializeNode(
 }
 
 /**
- * Fold ids for the layout block. Under fold- a session id is left out: the line's
- * `(+)` carries it. Under fold+ the entry is a persistent link, so the id is written.
- */
-function layoutFoldIds(doc: OutlineFoldDoc): string[] {
-  const auto = new Map<string, OutlineNode>();
-  const present = new Set<string>();
-  const leafIds = new Set<string>();
-  const walk = (list: OutlineNode[]) => {
-    for (const n of list) {
-      if (n.id) {
-        present.add(n.id);
-        if (n.autoId) auto.set(n.id, n);
-        // Track leaf nodes (no children) so we can drop their fold ids.
-        if (!n.children?.length) {
-          leafIds.add(n.id);
-        }
-      }
-      if (n.children?.length) walk(n.children);
-    }
-  };
-  walk(doc.nodes);
-  // Drop ids whose node is gone (a Map delete left them in fold.ids). A stale
-  // `__sid-` written into the layout block was then merged back as a body line.
-  // Also drop ids for leaf nodes (nodes with no children should never be in fold.ids).
-  const live = doc.fold.ids.filter((id) => present.has(id) && !leafIds.has(id));
-  if (live.length !== doc.fold.ids.length) {
-    doc.fold.ids = live;
-    if (doc.frontmatter) doc.frontmatter.foldIds = [...live];
-  }
-  if (doc.fold.mode === '+') {
-    // fold+ stores the expanded ids in the note, so a session id has to become a real one.
-    const ids = live.map((id) => {
-      const n = auto.get(id);
-      if (!n || !isSessionId(id)) {
-        if (n) delete n.autoId;
-        return id;
-      }
-      return assignPersistentId(doc, n);
-    });
-    doc.fold.ids = ids;
-    if (doc.frontmatter) doc.frontmatter.foldIds = [...ids];
-    return ids;
-  }
-  return live.filter((id) => !auto.has(id));
-}
-
-/**
- * Lazy ids: a session id that a jump names becomes a written id, so the jump
- * still lands after a reload. Parse never gives a session id a jump's target.
+ * A jump whose target is this node's session key gets a written id, so the
+ * jump still lands after a reload. The session key itself is never written.
  */
 function linkJumpTargets(doc: OutlineFoldDoc): void {
   const targets = new Set<string>();
-  const auto: OutlineNode[] = [];
   const walk = (list: OutlineNode[]) => {
     for (const n of list) {
       for (const l of n.links ?? []) if (l.kind === 'jump' && l.form === 'tag') targets.add(l.target);
-      // Markdown hops are read from the caption as it is now.
       for (const md of markdownLinkSpans(n.title)) {
         const hop = parseHopTarget(md.url);
         if (hop) targets.add(hop);
       }
-      if (n.id && n.autoId) auto.push(n);
       if (n.children?.length) walk(n.children);
     }
   };
   walk(doc.nodes);
-  for (const n of auto) {
-    if (!n.id || !targets.has(n.id)) continue;
-    // A `__sid-` id cannot be written. A jump that names one gets a normal id.
-    if (!isSessionId(n.id)) { delete n.autoId; continue; }
-    const old = n.id;
-    const neu = assignPersistentId(doc, n);
-    const retarget = (list?: OutlineNode[]) => {
-      for (const x of list ?? []) {
-        for (const l of x.links ?? []) if (l.kind === 'jump' && l.form === 'tag' && l.target === old) l.target = neu;
-        retarget(x.children);
+  const mint = (list: OutlineNode[]) => {
+    for (const n of list) {
+      if (!n.writtenId && targets.has(n.sessionKey)) {
+        const old = n.sessionKey;
+        const neu = assignPersistentId(doc, n);
+        const retarget = (nodes?: OutlineNode[]) => {
+          for (const x of nodes ?? []) {
+            for (const l of x.links ?? []) {
+              if (l.kind === 'jump' && l.form === 'tag' && l.target === old) l.target = neu;
+            }
+            retarget(x.children);
+          }
+        };
+        retarget(doc.nodes);
       }
-    };
-    retarget(doc.nodes);
-  }
+      if (n.children?.length) mint(n.children);
+    }
+  };
+  mint(doc.nodes);
 }
 
 /**
@@ -311,7 +254,6 @@ export function serialize(doc: OutlineFoldDoc): string {
   assertSealedSafe(doc);
   linkPayloadNodes(doc);
   linkJumpTargets(doc);
-  const foldIds = layoutFoldIds(doc);
   const lines: string[] = [];
   for (const n of doc.nodes) serializeNode(n, doc, lines);
   const payloads = collectPayloads(doc.nodes);
@@ -339,11 +281,9 @@ export function serialize(doc: OutlineFoldDoc): string {
   // first outline line, not a leading `---` fence.
   const layouts = collectLayouts(doc.nodes);
   const fm = doc.frontmatter;
-  // Nothing but defaults (fold- with no ids, "(+)") says nothing: leave the block out.
+  // Nothing but the default collapsed marker says nothing: leave the block out.
   const onlyDefaults =
     !Object.keys(layouts).length &&
-    doc.fold.mode === '-' &&
-    !foldIds.length &&
     (fm?.collapsedMarker ?? DEFAULT_COLLAPSED) === DEFAULT_COLLAPSED &&
     !fm?.expandedMarker &&
     fm?.fontSize == null &&
@@ -354,8 +294,6 @@ export function serialize(doc: OutlineFoldDoc): string {
     !fm?.noteMapUri &&
     !fm?.noteDetailsUri;
   const layoutBlock = onlyDefaults ? '' : formatLayoutBlock(layouts, {
-    foldMode: doc.fold.mode,
-    foldIds,
     collapsedMarker: fm?.collapsedMarker ?? DEFAULT_COLLAPSED,
     expandedMarker: fm?.expandedMarker,
     fontSize: fm?.fontSize,

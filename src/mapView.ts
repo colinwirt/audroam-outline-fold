@@ -167,8 +167,9 @@ import {
   type CamState,
   type WorldRect,
 } from './mapCamera.js';
-import { assignPersistentId, mintNodeId, previewPersistentId, writtenId } from './nodeAddress.js';
-import { createSessionIndex, isBlankNode, isViewKey, viewLayout, type SessionIndex } from './sessionIndex.js';
+import { assignPersistentId, mintNodeId, nextSessionId, previewPersistentId } from './nodeAddress.js';
+import { sessionKeyFromAttribute } from './ids.js';
+import { createSessionIndex, isBlankNode, viewLayout, type SessionIndex } from './sessionIndex.js';
 import {
   COPIED_TOAST_MS,
   NODE_HOLD_SLOP,
@@ -324,7 +325,7 @@ function publicPackKeys(nodes: OutlineNode[]): (n: OutlineNode) => string {
   const idx = createSessionIndex();
   idx.sync(nodes);
   const dup = idx.duplicates();
-  return (n) => (n.id && !dup.has(n.id) && !(n.autoId && false) ? n.id : idx.keyOf(n));
+  return (n) => (n.writtenId && !dup.has(n.writtenId) ? n.writtenId : idx.keyOf(n));
 }
 
 export interface AutoPackResult {
@@ -442,6 +443,17 @@ export interface MapViewOptions {
   /** 0.5.15: `ref` names the row for certain (id, path from the shown top row, title), so the
    *  text side resolves it against the whole note. A number is the 0.5.14 ordinal. */
   onMainTaskToggle?: (id: string, ref?: MapNodeRef | number, to?: TaskState | null) => { from: TaskState | null; to: TaskState | null } | null;
+  /**
+   * Flip one node's collapsed marker in the note text. The id is a session key.
+   * When this is set, a fold does not call `setDoc`: the host's tree copy can
+   * drop the marker. Null means the line was not edited.
+   */
+  onMainFoldToggle?: (id: string) => { collapsed: boolean } | null;
+  /**
+   * Write a level command into the note text. `under` is a session key.
+   * When this is set, the level does not call `setDoc`. False means no line changed.
+   */
+  onMainFoldLevel?: (level: number | string, under?: string) => boolean;
   /**
    * When false, Map task clicks and the `t` shortcut are ignored (announce
    * "Task toggle is read-only"). Default true. Same idea as Outline `allowTaskToggle`.
@@ -847,7 +859,7 @@ function walkNodes(
 
 function findNode(nodes: OutlineNode[], id: string): OutlineNode | null {
   for (const n of nodes) {
-    if (n.id === id) return n;
+    if (n.sessionKey === id || n.writtenId === id) return n;
     if (n.children?.length) {
       const hit = findNode(n.children, id);
       if (hit) return hit;
@@ -862,7 +874,7 @@ function parentOf(
   parent: OutlineNode | null = null,
 ): OutlineNode | null | undefined {
   for (const n of nodes) {
-    if (n.id === id) return parent;
+    if (n.sessionKey === id || n.writtenId === id) return parent;
     if (n.children?.length) {
       const hit = parentOf(n.children, id, n);
       if (hit !== undefined) return hit;
@@ -877,7 +889,7 @@ function hasKids(n: OutlineNode): boolean {
 
 function isCue(n: OutlineNode | null | undefined): boolean {
   if (!n) return false;
-  if (n.id && /^cue/i.test(n.id)) return true;
+  if (n.writtenId && /^cue/i.test(n.writtenId)) return true;
   return /^\s*cue\s*:/i.test(n.title || '');
 }
 
@@ -1225,7 +1237,8 @@ function nodePillOpts(
 ): PillSizeOptions {
   const lay =
     (key && nodeLayout ? nodeLayout[key] : undefined) ||
-    (n.id && nodeLayout ? nodeLayout[n.id] : undefined);
+    (n.writtenId && nodeLayout ? nodeLayout[n.writtenId] : undefined) ||
+    (nodeLayout ? nodeLayout[n.sessionKey] : undefined);
   const maxLines =
     lay?.maxLines !== undefined
       ? lay.maxLines
@@ -1484,7 +1497,7 @@ export function autoPackPositions(
   function walkVis(n: OutlineNode, depth: number): void {
     if (!n || isBlankNode(n)) return;
     visible.push({ n, depth });
-    if (hasKids(n) && !(n.id && isNodeCollapsed(n.id))) {
+    if (hasKids(n) && !(isNodeCollapsed(n.sessionKey))) {
       for (const c of n.children!) walkVis(c, depth + 1);
     }
   }
@@ -1496,7 +1509,7 @@ export function autoPackPositions(
   // How far a visible cloud outline sticks out past this subtree's pills.
   function cloudOutset(n: OutlineNode, depth: number): number {
     let p = n.cloud ? cloudPad(depth) : 0;
-    if (hasKids(n) && !(n.id && isNodeCollapsed(n.id))) {
+    if (hasKids(n) && !(isNodeCollapsed(n.sessionKey))) {
       const childDepth = n.cloud ? depth + 1 : depth;
       for (const c of n.children || []) {
         if (isBlankNode(c)) continue;
@@ -1522,7 +1535,7 @@ export function autoPackPositions(
     const x = groupLeft + painted.w / 2;
     // A blank `- ` line is not drawn on the Map until it has content (0.6.6).
     const kids =
-      hasKids(n) && !(n.id && isNodeCollapsed(n.id))
+      hasKids(n) && !(isNodeCollapsed(n.sessionKey))
         ? (n.children || []).filter((c) => !isBlankNode(c))
         : [];
 
@@ -1624,7 +1637,7 @@ export function resolveMapFocus(
 ): string | null {
   const isNodeCollapsed = opts.isNodeCollapsed || (() => false);
   const positions = opts.positions;
-  const keyOf = opts.keyOf ?? ((n: OutlineNode) => n.id);
+  const keyOf = opts.keyOf ?? ((n: OutlineNode) => n.sessionKey);
   const usable = (n: OutlineNode | undefined): n is OutlineNode => !!n && !!keyOf(n) && !isBlankNode(n);
   let focused: OutlineNode | null = null;
   let parent: OutlineNode | null = null;
@@ -1678,7 +1691,7 @@ export function resolveMapFocus(
   }
 
   if (direction === 'right') {
-    if (!hasKids(f) || (f.id && isNodeCollapsed(f.id))) return null;
+    if (!hasKids(f) || (isNodeCollapsed(f.sessionKey))) return null;
     const first = (f.children || []).find(usable);
     return k(first);
   }
@@ -1697,7 +1710,7 @@ function patchNodeTitle(
   title: string,
 ): boolean {
   for (const n of nodes) {
-    if (n.id === id) {
+    if (n.sessionKey === id || n.writtenId === id) {
       n.title = title;
       return true;
     }
@@ -1958,42 +1971,19 @@ export function createMapView(
       const direct = findNodeById(nodes, id);
       if (direct) return direct;
     }
-    return findNodeById(nodes, toRef(id));
+    return findNodeById(nodes, id);
   };
   const parentOf = (nodes: OutlineNode[], id: string, parent: OutlineNode | null = null) =>
-    parentOfId(nodes, toRef(id), parent);
-  const patchNodeTitle = (nodes: OutlineNode[], id: string, title: string) => patchNodeTitleById(nodes, toRef(id), title);
-  const isCollapsed = (doc: OutlineFoldDoc, id: string) => isCollapsedById(doc, toRef(id));
-  /**
-   * Fold by one session id. An authored id is used as written. A line with no
-   * authored id uses the view key Follow in text holds (`__sid-N`). A session id
-   * already on the node that is not that key is renamed to it, including its
-   * `doc.fold` entry. Serialize keeps the fold as the line's `(+)` and does not
-   * write the session id.
-   */
-  const foldRef = (doc: OutlineFoldDoc, id: string): string => {
-    const n = findNode(nodes0(doc) || [], id);
-    if (n?.id && !n.autoId) return n.id;
-    if (!n) return toRef(id);
-    const key = vkey(n);
-    if (n.id && n.id !== key && doc.fold?.ids) {
-      const at = doc.fold.ids.indexOf(n.id);
-      if (at >= 0) {
-        doc.fold.ids[at] = key;
-        if (doc.frontmatter?.foldIds) doc.frontmatter.foldIds = [...doc.fold.ids];
-      }
-    }
-    if (n.id !== key || !n.autoId) {
-      n.id = key;
-      n.autoId = true;
-    }
-    return key;
-  };
-  const nodes0 = (doc: OutlineFoldDoc) => doc.nodes;
-  const toggleFold = (doc: OutlineFoldDoc, id: string) => toggleFoldById(doc, foldRef(doc, id));
-  const toggleTask = (doc: OutlineFoldDoc, id: string) => toggleTaskById(doc, toRef(id));
+    parentOfId(nodes, id, parent);
+  const patchNodeTitle = (nodes: OutlineNode[], id: string, title: string) => patchNodeTitleById(nodes, id, title);
+  /** Find the node, then read its collapsed flag. The key is the session key. */
+  const isCollapsed = (doc: OutlineFoldDoc, id: string) =>
+    isCollapsedById(doc, sessionKeyFromAttribute(toKey(id)));
+  const asSession = (id: string) => sessionKeyFromAttribute(toKey(id));
+  const toggleFold = (doc: OutlineFoldDoc, id: string) => toggleFoldById(doc, asSession(id));
+  const toggleTask = (doc: OutlineFoldDoc, id: string) => toggleTaskById(doc, asSession(id));
   const setExpandLevel = (doc: OutlineFoldDoc, level: Parameters<typeof setExpandLevelById>[1], o?: Parameters<typeof setExpandLevelById>[2]) =>
-    setExpandLevelById(doc, level, o?.under ? { ...o, under: foldRef(doc, o.under) } : o);
+    setExpandLevelById(doc, level, o?.under ? { ...o, under: asSession(o.under) } : o);
   const {
     getDoc: getDocRaw,
     setDoc,
@@ -2139,7 +2129,7 @@ export function createMapView(
       const r = pillWorldRect(pos.x, pos.y, size.w, size.h);
       rects.push(r);
       byId.set(key, r);
-      if (foldable && !(n.id && isCollapsed(doc, n.id))) {
+      if (foldable && !(isCollapsed(doc, n.sessionKey))) {
         for (const c of n.children || []) walk(c);
       }
     }
@@ -2542,14 +2532,20 @@ export function createMapView(
       return false;
     };
     walk(doc.nodes);
-    let unfolded = false;
-    for (const a of path) {
-      if (a.id && isCollapsed(doc, a.id)) {
-        doc = toggleFold(doc, a.id);
-        unfolded = true;
+    if (opts.onMainFoldToggle) {
+      for (const a of path) {
+        if (isCollapsed(getDoc(), a.sessionKey)) commitFoldToggle(a.sessionKey);
       }
+    } else {
+      let unfolded = false;
+      for (const a of path) {
+        if (isCollapsed(doc, a.sessionKey)) {
+          doc = toggleFold(doc, a.sessionKey);
+          unfolded = true;
+        }
+      }
+      if (unfolded) setDoc(doc);
     }
-    if (unfolded) setDoc(doc);
     setFocusId(target);
     focusMapForKeys();
     userCamGesture = false;
@@ -3019,7 +3015,7 @@ export function createMapView(
     const fc = foldCtx(id);
     if (!fc) return null;
     if (fc.region) return { fc, local: fc.local };
-    const local = mint ? foldRef(fc.doc, fc.local) : toRef(fc.local);
+    const local = asSession(fc.local);
     return { fc, local };
   }
 
@@ -3135,14 +3131,16 @@ export function createMapView(
       // Same picker and helper, region fold store instead of the root doc (§R1 a).
       const rit = picker.items.find((it) => it.key === level);
       if (!rit || rit.disabled) return;
-      rfold.commitView(fc.region, setExpandLevel(fc.doc, level, { under: local }));
+      const regionUnder = findNode(fc.doc.nodes, local)?.sessionKey;
+      rfold.commitView(fc.region, setExpandLevel(fc.doc, level, regionUnder ? { under: regionUnder } : {}));
       announce(foldLevelAnnouncement(picker, level));
       return;
     }
     const doc = fc.doc;
     const item = picker.items.find((it) => it.key === level);
     if (!item || item.disabled) return;
-    const next = setExpandLevel(doc, level, { under: local });
+    const rootUnder = findNode(doc.nodes, local)?.sessionKey;
+    const next = setExpandLevel(doc, level, rootUnder ? { under: rootUnder } : {});
     const r = handleRect(id);
     pendingLevelAnchor = r
       ? {
@@ -3155,10 +3153,17 @@ export function createMapView(
       : null;
     stopMotion();
     cancelFollowAnim();
-    if (getFocusId() !== id) setFocusId(id);
     userCamGesture = true;
     pendingFollow = null;
-    setDoc(next);
+    if (opts.onMainFoldLevel) {
+      // The text gains the markers before focus. A focus write-back then
+      // copies the folded note, not the note from before the pick.
+      if (!commitFoldLevel(doc, level, rootUnder)) return;
+      if (getFocusId() !== id) setFocusId(id);
+    } else {
+      if (getFocusId() !== id) setFocusId(id);
+      setDoc(next);
+    }
     onChange?.();
     announce(foldLevelAnnouncement(picker, level));
   }
@@ -3167,12 +3172,12 @@ export function createMapView(
   function setWholeMapLevel(level: WholeMapLevel): void {
     const doc = getDoc();
     const next = wholeMapLevelDoc(doc, level);
-    const root = (doc.nodes || []).find((n) => n.id && hasKids(n));
-    const r = root?.id ? handleRect(root.id) : null;
+    const root = (doc.nodes || []).find((n) => hasKids(n));
+    const r = root ? handleRect(root.sessionKey) : null;
     pendingLevelAnchor =
-      root?.id && r
+      root && r
         ? {
-            id: root.id,
+            id: root.sessionKey,
             sx: r.x + r.w / 2,
             sy: r.y + r.h / 2,
             expand: false,
@@ -3184,7 +3189,8 @@ export function createMapView(
     userCamGesture = true;
     pendingFollow = null;
     closeLevelMenu(false);
-    setDoc(next);
+    const levelArg = level === '*' ? '*' : level + 1;
+    if (!commitFoldLevel(doc, levelArg)) setDoc(next);
     // A cloud's inner doc is not the root doc. Its stored fold was left as it
     // was, so Level 2 opened one branch and left the sibling shut. The region
     // root is one step down from the anchor, so the button number is the
@@ -3227,11 +3233,11 @@ export function createMapView(
     const node = nodeByKey(key);
     if (!node) return [];
     const canMint = idsMintable();
-    const id = writtenId(node);
+    const id = node.writtenId;
     return nodeCopyItemsFor({
       id,
       canMint,
-      previewId: id ? null : node.id || previewPersistentId(getDoc(), node),
+      previewId: id ? null : node.writtenId || previewPersistentId(getDoc(), node),
       href: (x) => focusHref(x, node),
     });
   }
@@ -3298,8 +3304,8 @@ export function createMapView(
     if (!node) return Promise.resolve(done({ kind, key, id: null, text: null, minted: false, ok: false, reason: 'missing' }));
     const item = copyItemsFor(key).find((it) => it.kind === kind);
     if (!item || item.hidden) {
-      const reason = writtenId(node) || idsMintable() ? 'no-link' : 'read-only';
-      return Promise.resolve(done({ kind, key, id: writtenId(node), text: null, minted: false, ok: false, reason }));
+      const reason = node.writtenId || idsMintable() ? 'no-link' : 'read-only';
+      return Promise.resolve(done({ kind, key, id: node.writtenId, text: null, minted: false, ok: false, reason }));
     }
     const { id, minted } = ensureNodeId(key);
     const text = id ? (kind === 'jump' ? jumpTagFor(id) : focusHref(id, node)) : null;
@@ -3736,7 +3742,7 @@ export function createMapView(
     while (cur) {
       const own = resolveColour(cur.color);
       if (own) return own;
-      const p = parentOf(roots, cur.id || '');
+      const p = parentOf(roots, cur.sessionKey);
       cur = p === undefined ? null : p;
     }
     return undefined;
@@ -3835,7 +3841,23 @@ export function createMapView(
     const h = Math.max(0, Math.round(Number(res.h) || 0));
     assets.push({ key: assetKey, src, ...(w ? { w } : {}), ...(h ? { h } : {}), ...(res.alt ? { alt: res.alt } : {}) });
     const title = (file.name || 'Image').replace(/\.[A-Za-z0-9]+$/, '').trim() || 'Image';
-    const child: OutlineNode = { title, depth: parent.depth + 1, img: assetKey };
+    const used = new Set<string>();
+    const gather = (list?: OutlineNode[]) => {
+      for (const n of list ?? []) {
+        used.add(n.sessionKey);
+        if (n.writtenId) used.add(n.writtenId);
+        gather(n.children);
+      }
+    };
+    gather(doc.nodes);
+    const child: OutlineNode = {
+      title,
+      depth: parent.depth + 1,
+      img: assetKey,
+      writtenId: null,
+      sessionKey: nextSessionId(used),
+      collapsed: false,
+    };
     (parent.children ??= []).push(child);
     setDoc(doc);
     const childKey = keyOfNode(child);
@@ -4158,14 +4180,20 @@ export function createMapView(
       return false;
     };
     walk(doc.nodes);
-    let unfolded = false;
-    for (const a of path) {
-      if (a.id && isCollapsed(doc, a.id)) {
-        doc = toggleFold(doc, a.id);
-        unfolded = true;
+    if (opts.onMainFoldToggle) {
+      for (const a of path) {
+        if (isCollapsed(getDoc(), a.sessionKey)) commitFoldToggle(a.sessionKey);
       }
+    } else {
+      let unfolded = false;
+      for (const a of path) {
+        if (isCollapsed(doc, a.sessionKey)) {
+          doc = toggleFold(doc, a.sessionKey);
+          unfolded = true;
+        }
+      }
+      if (unfolded) setDoc(doc);
     }
-    if (unfolded) setDoc(doc);
     setFocusId(id);
     userCamGesture = false;
     pendingFollow = { kind: 'focus' };
@@ -4185,7 +4213,7 @@ export function createMapView(
 
   type WidthIdState = 'none' | 'session' | 'kept';
   function idStateOf(n: OutlineNode | null | undefined): WidthIdState {
-    return !n?.id ? 'none' : n.autoId ? 'session' : 'kept';
+    return !n ? 'none' : n.writtenId ? 'kept' : 'session';
   }
   type WidthStepEntry = {
     key: string;
@@ -4433,7 +4461,7 @@ export function createMapView(
       for (const e of rec.entries) {
         if (!e.node) continue;
         writeNodeLayout(e.node, e[side]);
-        if (e.node.id) opts.onRegionWidth?.(scopeId(rec.region, e.node.id), e[side].w, e[side].wAuto);
+        if (e.node.writtenId) opts.onRegionWidth?.(scopeId(rec.region, e.node.writtenId), e[side].w, e[side].wAuto);
       }
       return;
     }
@@ -4447,22 +4475,18 @@ export function createMapView(
       if (side === 'before' && rec.persist && e.idState !== 'kept' && e.before.w == null) {
         // Undo takes back an id this step minted when nothing else needs it (F8).
         const n = nodeByKey(e.key);
-        if (n?.id && !n.layout?.w && !n.sealed && !doc.fold.ids.includes(n.id)) {
-          if (e.idState === 'session') {
-            n.autoId = true;
-          } else {
-            const id = n.id;
-            delete n.id;
-            const key = keyOfNode(n);
-            const layout = getLayout();
-            if (key !== id && layout.nodes?.[id]) {
-              layout.nodes[key] = layout.nodes[id]!;
-              delete layout.nodes[id];
-            }
-            if (getFocusId() === id) setFocusId(key);
-            if (rec.anchorKey === e.key) rec.anchorKey = key;
-            e.key = key;
+        if (n?.writtenId && !n.layout?.w && !n.sealed) {
+          const id = n.writtenId;
+          n.writtenId = null;
+          const key = keyOfNode(n);
+          const layout = getLayout();
+          if (key !== id && layout.nodes?.[id]) {
+            layout.nodes[key] = layout.nodes[id]!;
+            delete layout.nodes[id];
           }
+          if (getFocusId() === id) setFocusId(key);
+          if (rec.anchorKey === e.key) rec.anchorKey = key;
+          e.key = key;
         }
       }
     }
@@ -4677,7 +4701,7 @@ export function createMapView(
     // current width state (w / wAuto, Auto included) onto the scope.
     const copyFrom = isCopyScopeKind(kind) ? copyWidthEntry(readWidth(key, n)) : null;
     const entries: WidthStepEntry[] = scope.map((node) => {
-      const k = hit ? (node.id ? scopeId(hit.region, node.id) : key) : keyOfNode(node);
+      const k = hit ? scopeId(hit.region, node.writtenId ?? node.sessionKey) : keyOfNode(node);
       const before = readWidth(k, node);
       const m = fitMeasure(node, k);
       let after: WidthEntry;
@@ -5085,9 +5109,8 @@ export function createMapView(
     const view = rfold.viewDoc(h.id, h.doc);
     const walkO = (l: OutlineNode[] | undefined) =>
       l?.forEach((n) => {
-        if (!n.id) return;
-        out.push(`${h.id}:${n.id}`);
-        if (hasKids(n) && !isCollapsed(view, n.id)) walkO(n.children);
+        out.push(`${h.id}:${n.writtenId ?? n.sessionKey}`);
+        if (hasKids(n) && !isCollapsed(view, n.sessionKey)) walkO(n.children);
       });
     walkO(h.doc.nodes);
     return out.filter((k) => k === h.id || !!regionBox(k));
@@ -5097,9 +5120,9 @@ export function createMapView(
     const path: string[] = [];
     const find = (l: OutlineNode[] | undefined): boolean =>
       !!l?.some((n) => {
-        if (n.id === local) return true;
+        if (n.sessionKey === local || n.writtenId === local) return true;
         if (find(n.children)) {
-          if (n.id) path.unshift(n.id);
+          path.unshift(n.writtenId ?? n.sessionKey);
           return true;
         }
         return false;
@@ -5252,7 +5275,7 @@ export function createMapView(
   }
   /** Key of a row inside a region doc: its local id (rows get session ids there). */
   function regionKey(n: OutlineNode): string {
-    return n.id ?? vkey(n);
+    return n.writtenId ?? vkey(n);
   }
   function visibleKeyed(d0: OutlineFoldDoc, region?: string): { n: OutlineNode; key: string; parentKey: string | null }[] {
     const d = region ? rfold.viewDoc(region, d0) : d0;
@@ -5263,7 +5286,7 @@ export function createMapView(
       // local id is the key, as the region's scoped ids are built from it.
       const key = region ? regionKey(n) : vkey(n);
       out.push({ n, key, parentKey });
-      if (hasKids(n) && !(n.id && isCollapsed(d, n.id))) n.children!.forEach((c) => walkV(c, key));
+      if (hasKids(n) && !(isCollapsed(d, n.sessionKey))) n.children!.forEach((c) => walkV(c, key));
     };
     (d.nodes || []).forEach((n) => walkV(n, null));
     return out;
@@ -5365,15 +5388,15 @@ export function createMapView(
           const walkZ = (list: OutlineNode[] | undefined, depth: number) => {
             for (const n of list ?? []) {
               let d = depth;
-              if (n.cloud && n.id && keys.has(n.id)) {
+              if (n.cloud && keys.has(n.writtenId ?? n.sessionKey)) {
                 const ids = new Set<string>();
-                const walkI = (m: OutlineNode) => { if (m.id) ids.add(m.id); m.children?.forEach(walkI); };
+                const walkI = (m: OutlineNode) => { ids.add(m.writtenId ?? m.sessionKey); m.children?.forEach(walkI); };
                 walkI(n);
                 const pts = cloudHull(
                   [...keys.entries()].filter(([id]) => ids.has(id)).map(([, b]) => ({ x: b.x, y: b.y, w: b.w, h: b.h })),
                   cloudPad(depth),
                 );
-                if (pts) zoneClouds.push({ svg: cloudSvg({ rootId: scopeId(r.host.id, n.id), color: resolveColour(n.cloud) ?? n.cloud, depth }, pts), depth });
+                if (pts) zoneClouds.push({ svg: cloudSvg({ rootId: scopeId(r.host.id, n.writtenId ?? n.sessionKey), color: resolveColour(n.cloud) ?? n.cloud, depth }, pts), depth });
                 d = depth + 1;
               }
               walkZ(n.children, d);
@@ -5518,7 +5541,7 @@ export function createMapView(
     const roots = nodes ?? doc.nodes;
     for (const n of roots) {
       out.push(n);
-      if (hasKids(n) && n.id && !isCollapsed(doc, n.id)) {
+      if (hasKids(n) && !isCollapsed(doc, n.sessionKey)) {
         visibleList(n.children, out);
       }
     }
@@ -5608,17 +5631,42 @@ export function createMapView(
     const walk = (list?: OutlineNode[]) => {
       for (const n of list ?? []) {
         if (!n.children?.length) continue;
-        if (!n.id) {
-          walk(n.children);
-          continue;
-        }
-        const col = isCollapsed(doc, n.id);
-        parts.push(`${n.id}${col ? '-' : '+'}`);
+        const col = isCollapsed(doc, n.sessionKey);
+        parts.push(`${n.sessionKey}${col ? '-' : '+'}`);
         if (!col) walk(n.children);
       }
     };
     walk(doc.nodes);
     return parts.join(',');
+  }
+
+  /** Copy `collapsed` onto the host's tree. A text commit does not replace that object. */
+  function copyCollapsed(live: OutlineFoldDoc, desired: OutlineFoldDoc): void {
+    const walk = (list?: OutlineNode[]) => {
+      for (const n of list ?? []) {
+        const src = findNodeById(desired.nodes, n.sessionKey);
+        if (src) n.collapsed = src.collapsed === true;
+        if (n.children?.length) walk(n.children);
+      }
+    };
+    walk(live.nodes);
+  }
+
+  function commitFoldToggle(key: string): { collapsed: boolean } | null {
+    if (!opts.onMainFoldToggle) return null;
+    const via = opts.onMainFoldToggle(key);
+    if (!via) return null;
+    const live = findNode(getDoc().nodes, key);
+    if (live) live.collapsed = via.collapsed;
+    return via;
+  }
+
+  function commitFoldLevel(base: OutlineFoldDoc, level: number | string, under?: string): boolean {
+    if (!opts.onMainFoldLevel) return false;
+    const desired = setExpandLevel(base, level, under ? { under: asSession(under) } : {});
+    if (!opts.onMainFoldLevel(level, under)) return false;
+    copyCollapsed(getDoc(), desired);
+    return true;
   }
 
   function applyTaskToggle(id: string): void {
@@ -5676,19 +5724,12 @@ export function createMapView(
     const to = nextTaskState(from);
     const nextTitle = toggleTaskMarker(n.title, to);
     const nextDoc: OutlineFoldDoc = {
-      frontmatter: doc.frontmatter
-        ? {
-            ...doc.frontmatter,
-            foldIds: doc.frontmatter.foldIds
-              ? [...doc.frontmatter.foldIds]
-              : undefined,
-          }
-        : undefined,
+      frontmatter: doc.frontmatter ? { ...doc.frontmatter } : undefined,
       nodes: structuredClone(doc.nodes),
-      fold: { mode: doc.fold.mode, ids: [...doc.fold.ids] },
-    ...(doc.keys ? { keys: doc.keys } : {}),
-    ...(doc.keyring ? { keyring: doc.keyring } : {}),
-    ...(doc.sealedOrphans ? { sealedOrphans: { ...doc.sealedOrphans } } : {}),
+      ...(doc.keys ? { keys: doc.keys } : {}),
+      ...(doc.keyring ? { keyring: doc.keyring } : {}),
+      ...(doc.assets ? { assets: doc.assets } : {}),
+      ...(doc.sealedOrphans ? { sealedOrphans: { ...doc.sealedOrphans } } : {}),
     };
     patchNodeTitle(nextDoc.nodes, id, nextTitle);
     const nextNode = findNode(nextDoc.nodes, id)!;
@@ -5738,7 +5779,7 @@ export function createMapView(
       return true;
     }
     if (n.task || from == null) {
-      const result = setTask(doc, toRef(id), to);
+      const result = setTask(doc, asSession(id), to);
       if (!result) return false;
       setDoc(result.doc);
       if (result.from && result.to) {
@@ -5761,19 +5802,12 @@ export function createMapView(
       ? (parseLeadingTask(n.title)?.label ?? n.title)
       : toggleTaskMarker(n.title, to);
     const nextDoc: OutlineFoldDoc = {
-      frontmatter: doc.frontmatter
-        ? {
-            ...doc.frontmatter,
-            foldIds: doc.frontmatter.foldIds
-              ? [...doc.frontmatter.foldIds]
-              : undefined,
-          }
-        : undefined,
+      frontmatter: doc.frontmatter ? { ...doc.frontmatter } : undefined,
       nodes: structuredClone(doc.nodes),
-      fold: { mode: doc.fold.mode, ids: [...doc.fold.ids] },
-    ...(doc.keys ? { keys: doc.keys } : {}),
-    ...(doc.keyring ? { keyring: doc.keyring } : {}),
-    ...(doc.sealedOrphans ? { sealedOrphans: { ...doc.sealedOrphans } } : {}),
+      ...(doc.keys ? { keys: doc.keys } : {}),
+      ...(doc.keyring ? { keyring: doc.keyring } : {}),
+      ...(doc.assets ? { assets: doc.assets } : {}),
+      ...(doc.sealedOrphans ? { sealedOrphans: { ...doc.sealedOrphans } } : {}),
     };
     patchNodeTitle(nextDoc.nodes, id, nextTitle);
     const nextNode = findNode(nextDoc.nodes, id)!;
@@ -5822,25 +5856,24 @@ export function createMapView(
     if (t?.closest?.('.map-fold-hit') || t?.closest?.('.map-fold-indicator')) {
       // Right-click and other buttons open the level menu at most.
       // Keyboard events have no button and still fold.
+      // The handle only toggles fold. It does not select the node or move
+      // DOM focus: a focus change writes the editor text back and drops the fold.
       const button = (e as MouseEvent).button;
       if (typeof button === 'number' && button !== 0) return;
       if (ignoreNextFoldClick) {
         ignoreNextFoldClick = false;
         return;
       }
-      setFocusId(id);
-      // Focus host/pill BEFORE paint so Map keys work (0.2.13).
-      focusMapForKeys();
       const n = findNode(getDoc().nodes, id);
       userCamGesture = false;
       if (n && hasKids(n)) {
-        const wasCollapsed = isCollapsed(getDoc(), id);
-        setDoc(toggleFold(getDoc(), id));
-        pendingFollow = wasCollapsed
-          ? { kind: 'expand', focusId: id }
-          : { kind: 'focus' };
-      } else {
-        pendingFollow = { kind: 'focus' };
+        const wasCollapsed = isCollapsed(getDoc(), n.sessionKey);
+        if (opts.onMainFoldToggle) {
+          if (!commitFoldToggle(n.sessionKey)) return;
+        } else {
+          setDoc(toggleFold(getDoc(), n.sessionKey));
+        }
+        pendingFollow = wasCollapsed ? { kind: 'expand', focusId: n.sessionKey } : null;
       }
       onChange?.();
       return;
@@ -6006,7 +6039,7 @@ export function createMapView(
       const shown = displayCaption(n.title);
       const label = anchorCaption(key, withNodeIcon(n, code ? shown : captionWithoutLinks(shown)), anchors);
       const foldable = hasKids(n);
-      const col = foldable && !!n.id && isCollapsed(doc, n.id);
+      const col = foldable && !!isCollapsed(doc, n.sessionKey);
       const taskParsed = resolveTask(n);
       const timeLeaf = timeLeafKind(n);
       const size = pillSize(label, timeLeafPaintOpts(n, pos, layout.fontSize, doc.frontmatter?.fontSize, doc, code) ?? {
@@ -6359,7 +6392,7 @@ export function createMapView(
           const below = new Set<string>();
           const anchorNode = findNode(doc.nodes, la.id);
           const walkBelow = (n: OutlineNode) => {
-            if (n.id && isCollapsed(doc, n.id)) return;
+            if (isCollapsed(doc, n.sessionKey)) return;
             for (const c of n.children || []) {
               below.add(vkey(c));
               walkBelow(c);
@@ -8273,7 +8306,7 @@ export function createMapView(
         return;
       }
       const n = focusId ? findNode(doc.nodes, focusId) : null;
-      const selected = !!(n && n.id);
+      const selected = !!n;
 
       // ContextMenu / Shift+F10 belong to the host's node menu (L9 amended,
       // node menu M1, 2026-10-08): no preventDefault, so the platform
@@ -8336,10 +8369,11 @@ export function createMapView(
       } else if (e.key === 'Enter' || e.key === ' ' || e.key === '.') {
         // Space on the focused host would scroll the page — always swallow.
         if (e.key === ' ') e.preventDefault();
-        if (selected && hasKids(n!) && n!.id) {
+        if (selected && hasKids(n!)) {
           e.preventDefault();
-          const wasCollapsed = isCollapsed(doc, n!.id);
-          setDoc(toggleFold(doc, n!.id));
+          const wasCollapsed = isCollapsed(doc, n!.sessionKey);
+          if (opts.onMainFoldToggle) commitFoldToggle(n!.sessionKey);
+          else setDoc(toggleFold(doc, n!.sessionKey));
           // Keep the selection (and newly shown kids) in view, like circle-+.
           userCamGesture = false;
           pendingFollow = wasCollapsed
@@ -8351,7 +8385,9 @@ export function createMapView(
         if (!selected) return;
         e.preventDefault();
         // Expand-all relative to selection (subtree), not whole forest.
-        setDoc(setExpandLevel(doc, '*', { under: n!.id! }));
+        if (!commitFoldLevel(doc, '*', n!.sessionKey)) {
+          setDoc(setExpandLevel(doc, '*', { under: n!.sessionKey }));
+        }
         userCamGesture = false;
         pendingFollow = { kind: 'expand', focusId };
         onChange?.();
@@ -8359,7 +8395,9 @@ export function createMapView(
         if (!selected) return;
         e.preventDefault();
         // Digit N = depth under the selected node (1 = show its children).
-        setDoc(setExpandLevel(doc, Number(e.key), { under: n!.id! }));
+        if (!commitFoldLevel(doc, Number(e.key), n!.sessionKey)) {
+          setDoc(setExpandLevel(doc, Number(e.key), { under: n!.sessionKey }));
+        }
         userCamGesture = false;
         pendingFollow =
           e.key === '0' ? { kind: 'focus' } : { kind: 'expand', focusId };

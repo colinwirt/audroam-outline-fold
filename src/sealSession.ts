@@ -22,6 +22,7 @@ import { headerKid, isSealedBranchPayload } from './sealedState.js';
 import { serialize } from './serialize.js';
 import { DEFAULT_AUTO_LOCK_MS } from './payloads.js';
 import { createHostApi, type HostApi, type OFErrorCode, type RegionId } from './hostApi.js';
+import { writtenId } from './ids.js';
 import type { OutlineFoldDoc, OutlineNode } from './types.js';
 import type { RegionHostSpec } from './regionLayout.js';
 import type { RegionResolver } from './scopedId.js';
@@ -134,7 +135,7 @@ interface Impl {
 
 function findNode(nodes: OutlineNode[] | undefined, id: string): OutlineNode | undefined {
   for (const n of nodes ?? []) {
-    if (n.id === id) return n;
+    if (n.writtenId === id || n.sessionKey === id) return n;
     const h = findNode(n.children, id);
     if (h) return h;
   }
@@ -420,14 +421,18 @@ export function createSealSessions(opts: SealSessionsOptions): SealSessions {
         return fail(s, 'aad-mismatch');
       }
       const taken = new Set<string>();
-      const collect = (l: OutlineNode[] | undefined) => l?.forEach((n) => { if (n.id) taken.add(n.id); collect(n.children); });
+      const collect = (l: OutlineNode[] | undefined) => l?.forEach((n) => { if (n.writtenId) taken.add(n.writtenId); collect(n.children); });
       collect(pdoc.nodes);
       let seq = 1;
       const fresh = () => { while (taken.has(`u${seq}`)) seq++; taken.add(`u${seq}`); return `u${seq}`; };
       const clone = (l: OutlineNode[] | undefined, d: number): OutlineNode[] =>
         (l ?? []).map((n) => {
           const c: OutlineNode = { ...n, depth: d, children: clone(n.children, d + 1) };
-          if (c.id && !c.autoId) c.id = taken.has(c.id) ? fresh() : (taken.add(c.id), c.id);
+          if (c.writtenId) {
+            const next = taken.has(c.writtenId) ? fresh() : c.writtenId;
+            taken.add(next);
+            c.writtenId = writtenId(next);
+          }
           return c;
         });
       const children = clone(root.children, node.depth + 1);
@@ -501,10 +506,10 @@ export function regionHostsFromSessions(
   const scan = (doc: OutlineFoldDoc, parent: RegionId, depth: number) => {
     const visit = (l: OutlineNode[] | undefined) =>
       l?.forEach((n) => {
-        if (n.id && isSealedBranchPayload(n.sealed)) {
-          const region = sessions.regionFor(n.id, parent);
+        if (n.writtenId && isSealedBranchPayload(n.sealed)) {
+          const region = sessions.regionFor(n.writtenId, parent);
           const s = sessions.get(region);
-          out.push({ id: region, kind: 'sealed', parent, anchor: n.id, doc: s.doc, folded: s.locked || folded(region), label: n.sealed?.pub, kid: s.kid });
+          out.push({ id: region, kind: 'sealed', parent, anchor: n.writtenId, doc: s.doc, folded: s.locked || folded(region), label: n.sealed?.pub, kid: s.kid });
           if (s.doc && depth < MAX_SEAL_DEPTH) scan(s.doc, region, depth + 1);
         } else visit(n.children);
       });

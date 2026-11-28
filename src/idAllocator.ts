@@ -1,3 +1,4 @@
+import { writtenId } from './ids.js';
 import type { OutlineFoldDoc, OutlineNode } from './types.js';
 
 /**
@@ -53,13 +54,13 @@ export function linksTo(text: string, id: string): boolean {
   return new RegExp(`<r:(?:[^>\\s]*:)?${e}>|#${e}(?![\\w-])`).test(text);
 }
 
-/** Ids a scope really owns: real (not session autoId) ids, minus the region root mirror. */
+/** Written ids a scope really owns, minus the region root mirror. */
 function owned(scope: IdScope): { id: string; node: OutlineNode }[] {
   const out: { id: string; node: OutlineNode }[] = [];
   const roots = scope.doc?.nodes ?? [];
   walk(roots, (n) => {
-    if (!n.id || n.autoId) return;
-    const id = String(n.id);
+    if (!n.writtenId) return;
+    const id = String(n.writtenId);
     if (scope.region && scope.anchorId != null && roots.length === 1 && n === roots[0] && id === scope.anchorId) return;
     out.push({ id, node: n });
   });
@@ -116,7 +117,7 @@ export function createIdAllocator(): IdAllocator {
         const base = { kind: 'duplicate-id' as const, id, keptIn: losers.length < list.length ? winner.region : 'locked', region: l.region, title: l.node.title ?? '' };
         if (linksTo(linkText, id)) { diagnostics.push({ ...base, action: 'flagged' }); continue; }
         const to = mint(scopes);
-        l.node.id = to;
+        l.node.writtenId = writtenId(to);
         keep.set(to, { region: l.region, title: l.node.title ?? '' });
         changed.add(l.region);
         diagnostics.push({ ...base, action: 'renumbered', to });

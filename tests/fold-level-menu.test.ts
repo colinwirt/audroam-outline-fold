@@ -29,8 +29,8 @@ import {
   LEVEL_RING_MS,
   WHOLE_MAP_LEVELS,
 } from '../src/index.js';
-import { isCollapsed } from '../src/fold.js';
 import { shownBelow, levelPickNeedsConfirm } from '../src/foldLevelMenu.js';
+import type { OutlineFoldDoc, OutlineNode } from '../src/types.js';
 
 // Fold-to-level menu: gesture, placement, keys (Design UX 2026-10-06). Fiction only.
 
@@ -44,6 +44,20 @@ const LOG = `- Harbour log <id:root>
     - Storm shutters <id:storm>
   - Notes <id:notes>
 `;
+
+function findWritten(doc: OutlineFoldDoc, written: string): OutlineNode {
+  const walk = (nodes: OutlineNode[] | undefined): OutlineNode | undefined => {
+    for (const n of nodes ?? []) {
+      if (n.writtenId === written) return n;
+      const hit = walk(n.children);
+      if (hit) return hit;
+    }
+    return undefined;
+  };
+  const n = walk(doc.nodes);
+  if (!n) throw new Error(written);
+  return n;
+}
 
 const src = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '../src/mapView.ts'), 'utf8');
 
@@ -218,11 +232,12 @@ describe('labels and counts (L3, Colin: labels only)', () => {
 
 describe('applying a pick (L16) and whole-map levels (L8)', () => {
   it('after 1 on a node with a remembered 3-deep expansion, + on a child shows only its children', () => {
-    const doc = setExpandLevel(parse(LOG), '*', { under: 'root' });
-    const one = setExpandLevel(doc, 1, { under: 'root' });
-    expect(isCollapsed(one, 'mon')).toBe(true);
-    expect(isCollapsed(one, 'tide')).toBe(true);
-    const plus = toggleFold(one, 'mon');
+    const open = parse(LOG);
+    const doc = setExpandLevel(open, '*', { under: findWritten(open, 'root').sessionKey });
+    const one = setExpandLevel(doc, 1, { under: findWritten(doc, 'root').sessionKey });
+    expect(isCollapsed(one, findWritten(one, 'mon').sessionKey)).toBe(true);
+    expect(isCollapsed(one, findWritten(one, 'tide').sessionKey)).toBe(true);
+    const plus = toggleFold(one, findWritten(one, 'mon').sessionKey);
     // Tide tables and Lamp check; Tide tables stays folded.
     expect(shownBelow(plus, 'mon')).toBe(2);
   });
@@ -230,7 +245,8 @@ describe('applying a pick (L16) and whole-map levels (L8)', () => {
   it('shownBelow counts visible nodes under a node', () => {
     const doc = parse(LOG);
     expect(shownBelow(doc, 'root')).toBe(8);
-    expect(shownBelow(setExpandLevel(doc, 1, { under: 'root' }), 'root')).toBe(3);
+    const leveled = setExpandLevel(doc, 1, { under: findWritten(doc, 'root').sessionKey });
+    expect(shownBelow(leveled, 'root')).toBe(3);
     expect(shownBelow(doc, 'missing')).toBe(0);
   });
 
@@ -242,9 +258,10 @@ describe('applying a pick (L16) and whole-map levels (L8)', () => {
     expect(shownBelow(one, 'root')).toBe(3);
     expect(currentWholeMapLevel(one)).toBe(1);
     expect(currentWholeMapLevel(wholeMapLevelDoc(doc, 2))).toBe(2);
-    expect(currentWholeMapLevel(toggleFold(one, 'mon'))).toBeNull();
-    // Same as long-pressing the root handle and picking the level.
-    expect(wholeMapLevelDoc(doc, 2).fold).toEqual(setExpandLevel(doc, 2, { under: 'root' }).fold);
+    expect(currentWholeMapLevel(toggleFold(one, findWritten(one, 'mon').sessionKey))).toBeNull();
+    // Same shape as long-pressing the root and picking level 2.
+    const rootKey = findWritten(doc, 'root').sessionKey;
+    expect(wholeMapLevelDoc(doc, 2).nodes).toEqual(setExpandLevel(doc, 2, { under: rootKey }).nodes);
   });
 
   it('level 2 folds siblings together when one node.depth is stale', () => {
@@ -254,12 +271,8 @@ describe('applying a pick (L16) and whole-map levels (L8)', () => {
     kids[1]!.depth = 9;
     kids[2]!.depth = 1;
     const next = wholeMapLevelDoc(doc, 2);
-    expect(isCollapsed(next, 'a')).toBe(false);
-    expect(isCollapsed(next, 'b')).toBe(false);
-    expect(isCollapsed(next, 'c')).toBe(false);
-    expect(isCollapsed(next, 'a1')).toBe(true);
-    expect(isCollapsed(next, 'b1')).toBe(true);
-    expect(isCollapsed(next, 'c1')).toBe(true);
+    for (const id of ['a', 'b', 'c']) expect(findWritten(next, id).collapsed).toBe(false);
+    for (const id of ['a1', 'b1', 'c1']) expect(findWritten(next, id).collapsed).toBe(true);
   });
 
   it('level 2 shuts every question when two siblings claim a shallower depth', () => {
@@ -289,24 +302,21 @@ describe('applying a pick (L16) and whole-map levels (L8)', () => {
     a3[1]!.depth = 9;
     q2[1]!.depth = 0;
     const next = wholeMapLevelDoc(doc, 2);
-    expect(isCollapsed(next, 'course')).toBe(false);
-    expect(isCollapsed(next, 'a3')).toBe(false);
-    expect(isCollapsed(next, 'q2')).toBe(false);
+    for (const id of ['course', 'a3', 'q2']) expect(findWritten(next, id).collapsed).toBe(false);
     for (const id of ['sql', 'q11', 'lab', 'q21', 'q22', 'q23']) {
-      expect(isCollapsed(next, id)).toBe(true);
+      expect(findWritten(next, id).collapsed).toBe(true);
     }
   });
 
-  it('level 2 shuts a foldable line that has no id', () => {
+  it('level 2 shuts a foldable line that has no written id', () => {
     const doc = parse('- Course\n  - A3\n    - SQL demo\n      - bring id\n    - Q1.1\n      - discussion\n');
     const next = wholeMapLevelDoc(doc, 2);
     const questions = next.nodes[0]!.children![0]!.children!;
-    expect(questions[0]!.id).toBeTruthy();
-    expect(questions[1]!.id).toBeTruthy();
-    expect(questions[0]!.autoId).toBe(true);
-    expect(isCollapsed(next, questions[0]!.id!)).toBe(true);
-    expect(isCollapsed(next, questions[1]!.id!)).toBe(true);
-    expect(doc.nodes[0]!.children![0]!.children![0]!.id).toBeUndefined();
+    expect(questions[0]!.writtenId).toBeNull();
+    expect(questions[1]!.writtenId).toBeNull();
+    expect(questions[0]!.sessionKey).toMatch(/^__sid-/);
+    expect(questions[0]!.collapsed).toBe(true);
+    expect(questions[1]!.collapsed).toBe(true);
   });
 });
 
@@ -349,7 +359,8 @@ describe('mapView wiring (source checks)', () => {
   it('label hold and width grip keep their own paths', () => {
     // The hold arms only on the fold handle, never on the label or the grip.
     expect(src).toContain("control?.matches('.map-fold-hit, .map-fold-indicator')");
-    expect(src).toContain('labelTextHold = true;');
+    expect(src).toContain("!control.matches('.map-width-hit')");
+    expect(src).toContain('beginLevelHold(e, id)');
   });
 
   it('contextmenu: capture phase on the host, handle-only hit, the kept event never reaches the host', () => {
@@ -406,7 +417,8 @@ describe('mapView wiring (source checks)', () => {
 
   it('a pick goes through setExpandLevel under the node and never mints ids', () => {
     const apply = src.slice(src.indexOf('function applyFoldLevel('), src.indexOf('function setWholeMapLevel('));
-    expect(apply).toContain('setExpandLevel(doc, level, { under: local })');
+    expect(apply).toContain('const rootUnder = findNode(doc.nodes, local)?.sessionKey');
+    expect(apply).toContain('setExpandLevel(doc, level, rootUnder ? { under: rootUnder } : {})');
     expect(apply).not.toContain('assignPersistentId');
     expect(apply.match(/setDoc\(/g)?.length).toBe(1);
   });

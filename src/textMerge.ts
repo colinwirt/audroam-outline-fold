@@ -77,7 +77,7 @@ function nodeRows(text: string): NodeRow[] | null {
           out.push({
             line,
             sig: `${n.depth}\0${captionKey(n.title)}\0${n.task ?? ''}\0${links}`,
-            authored: n.id && !n.autoId ? n.id : undefined,
+            authored: n.writtenId ?? undefined,
           });
         }
         walk(n.children);
@@ -160,7 +160,7 @@ function liveLayoutKeys(nodes: OutlineNode[]): Set<string> {
   const ordered: OutlineNode[] = [];
   const walk = (list: OutlineNode[] | undefined) => {
     for (const n of list ?? []) {
-      if (n.id) ids.add(n.id);
+      if (n.writtenId) ids.add(n.writtenId);
       ordered.push(n);
       if (n.children?.length) walk(n.children);
     }
@@ -168,7 +168,7 @@ function liveLayoutKeys(nodes: OutlineNode[]): Set<string> {
   walk(nodes);
   const live = new Set<string>(ids);
   for (let i = 0; i < ordered.length; i++) {
-    if (ordered[i]!.id) continue;
+    if (ordered[i]!.writtenId) continue;
     const key = String(i + 1);
     if (!ids.has(key)) live.add(key);
   }

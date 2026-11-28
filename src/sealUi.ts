@@ -600,7 +600,7 @@ function findPayload(viewer: SealedViewer) {
   const walk = (ns: import('./types.js').OutlineNode[] | undefined) => {
     for (const n of ns ?? []) {
       if (hit) return;
-      if (n.id === viewer.branchId && n.sealed) hit = n.sealed;
+      if (n.writtenId === viewer.branchId && n.sealed) hit = n.sealed;
       walk(n.children);
     }
   };

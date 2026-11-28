@@ -1,15 +1,14 @@
 /**
- * 0.2.31: a `(+)` on a line without an id round-trips with or without session
- * ids. Folding is the inline marker; it never writes an id. Fiction text only.
+ * A `(+)` on a line sets `node.collapsed`. It never writes an id. Fiction text only.
  */
 import { describe, expect, it } from 'vitest';
 import { assignPersistentId, isCollapsed, parse, serialize, toggleFold } from '../src/index.js';
 
 const both = (text: string) => [parse(text), parse(text, { sessionIds: true })];
 
-describe('inline (+) on a line with no id', () => {
+describe('inline (+) on a line', () => {
   const texts = [
-    '- Plain caption\n',  // No (+) on leaf nodes
+    '- Plain caption\n',
     '- Plain caption (+)\n  - child\n',
     '- Keeper log\n  - Tuesday (+)\n    - lamp oil\n  - Wednesday\n',
     '- [ ] Trim the wick (+)\n  - scissors\n',
@@ -26,51 +25,55 @@ describe('inline (+) on a line with no id', () => {
     });
   }
 
-  it('records the marker on the node only when it has no id', () => {
-    const plain = parse('- Plain caption (+)\n  - child\n');
-    expect(plain.nodes[0]!.id).toBeUndefined();
-    expect(plain.nodes[0]!.foldMark).toBe('collapsed');
-    const session = parse('- Plain caption (+)\n  - child\n', { sessionIds: true });
-    expect(session.nodes[0]!.foldMark).toBeUndefined();
-    expect(isCollapsed(session, session.nodes[0]!.id!)).toBe(true);
+  it('sets collapsed from (+) and keeps the written id null', () => {
+    for (const doc of both('- Plain caption (+)\n  - child\n')) {
+      const node = doc.nodes[0]!;
+      expect(node.writtenId).toBeNull();
+      expect(node.collapsed).toBe(true);
+      expect(node.sessionKey).toMatch(/^__sid-/);
+      expect(isCollapsed(doc, node.sessionKey)).toBe(true);
+    }
   });
 
-  it('a line with a written id still keeps its fold in doc.fold', () => {
+  it('folds a line that already has a written id', () => {
     const doc = parse('- Lamp room <id:4> (+)\n  - brass\n');
-    expect(doc.nodes[0]!.foldMark).toBeUndefined();
-    expect(doc.fold.ids).toEqual(['4']);
-    // Single-source truth: fold-: is no longer written to layout block; only inline (+) stores fold state
+    const node = doc.nodes[0]!;
+    expect(node.writtenId).toBe('4');
+    expect(node.collapsed).toBe(true);
+    expect(isCollapsed(doc, node.sessionKey)).toBe(true);
+    expect(isCollapsed(doc, '4' as never)).toBe(false);
     expect(serialize(doc)).toBe('- Lamp room <id:4> (+)\n  - brass\n');
   });
 
-  it('a session-id unfold drops the marker and writes no id', () => {
-    const doc = parse('- Plain caption (+)\n  - child\n', { sessionIds: true });
-    const open = toggleFold(doc, doc.nodes[0]!.id!);
+  it('an unfold drops the marker and writes no id', () => {
+    const doc = parse('- Plain caption (+)\n  - child\n');
+    const open = toggleFold(doc, doc.nodes[0]!.sessionKey);
     expect(serialize(open)).toBe('- Plain caption\n  - child\n');
   });
 
   it('keeps a custom collapsed marker and the expanded marker', () => {
-    const text = '- Shelf [more]\n  - tins\n- Pantry [less]\n  - jars\n\n--- layout ---\nfold-: \ncollapsedMarker: "[more]"\nexpandedMarker: "[less]"\n---\n';
+    const text = '- Shelf [more]\n  - tins\n- Pantry [less]\n  - jars\n\n--- layout ---\ncollapsedMarker: "[more]"\nexpandedMarker: "[less]"\n---\n';
     const doc = parse(text);
-    expect(doc.nodes[0]!.foldMark).toBe('collapsed');
-    expect(doc.nodes[1]!.foldMark).toBe('expanded');
+    expect(doc.nodes[0]!.collapsed).toBe(true);
+    expect(doc.nodes[1]!.collapsed).toBe(false);
     const out = serialize(doc);
     expect(out.split('\n').slice(0, 4).join('\n')).toBe('- Shelf [more]\n  - tins\n- Pantry [less]\n  - jars');
   });
 
-  it('under fold+ an id-less (+) also round-trips', () => {
+  it('an old fold+: line does not mint an id', () => {
     const text = '- Harbour (+)\n  - boats\n\n--- layout ---\nfold+: \ncollapsedMarker: "(+)"\n---\n';
     const out = serialize(parse(text));
     expect(out.startsWith('- Harbour (+)\n  - boats\n')).toBe(true);
     expect(out).not.toContain('<id:');
   });
 
-  it('assignPersistentId moves the inline fold into doc.fold', () => {
+  it('assignPersistentId keeps the fold on the node', () => {
     const doc = parse('- Plain caption (+)\n  - child\n');
     const node = doc.nodes[0]!;
     const id = assignPersistentId(doc, node);
-    expect(node.foldMark).toBeUndefined();
-    expect(isCollapsed(doc, id)).toBe(true);
+    expect(node.collapsed).toBe(true);
+    expect(isCollapsed(doc, node.sessionKey)).toBe(true);
+    expect(isCollapsed(doc, id as never)).toBe(false);
     expect(serialize(doc)).toContain(`- Plain caption <id:${id}> (+)`);
   });
 });

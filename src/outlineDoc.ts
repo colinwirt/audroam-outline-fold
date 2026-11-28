@@ -11,6 +11,8 @@
  * the doc dirty, keeps the auto-ct slot in the text, and schedules a retry `save-needed`.
  */
 import { parse } from './parse.js';
+import { findBySessionKey, setCollapsedAtLines, setExpandLevel as applyExpandLevel, type ExpandLevel } from './fold.js';
+import { sessionKeyFromAttribute, type SessionKey } from './ids.js';
 import { nextTaskState, setTaskAtLine, toggleTaskAtLine } from './task.js';
 import { resolveMapRef, type MapNodeRef } from './mapRef.js';
 import type { TaskState } from './types.js';
@@ -33,7 +35,6 @@ import { createFocusLink, type FocusLink } from './focusLink.js';
 import { mountUnlockPrompt } from './sealUi.js';
 import { sealBranch } from './sealedBranch.js';
 import { parseScopedId } from './scopedId.js';
-import { nextSessionId } from './nodeAddress.js';
 
 export type { IdDiagnostic } from './idAllocator.js';
 export type SaveReason = 'text' | 'map' | 'zone' | 'seal' | 'host' | 'retry';
@@ -151,6 +152,16 @@ export interface OutlineDocHandle {
   toggleRegionTask(id: string, to?: TaskState | null): boolean;
   /** 0.4.15: cycle a main-doc task marker as a one-line text edit (never re-serialises). Pass `to` to set or remove (`null`) the marker. */
   toggleTask(id: string, ref?: MapNodeRef | number, to?: TaskState | null): { from: TaskState | null; to: TaskState | null } | null;
+  /**
+   * Flip one node's collapsed marker as a text edit. The key is a session key.
+   * A leaf is left alone. Null when the line was not edited.
+   */
+  toggleFold(id: string): { collapsed: boolean } | null;
+  /**
+   * Write `collapsed` for a level command into the text. `under` is a session key.
+   * False when no line changed.
+   */
+  setFoldLevel(level: ExpandLevel | number | string, under?: string): boolean;
   mapOptions(onUnlock?: (region: RegionId) => void, onMore?: (branchId: string, rect: DOMRect) => void): {
     sessionIndex: SessionIndex;
     getRegionHosts: () => RegionHostSpec[];
@@ -163,6 +174,8 @@ export interface OutlineDocHandle {
     onRegionStyle: (id: string) => void;
     onRegionFoldSync: (region: string) => void;
     onMainTaskToggle: (id: string, ref?: MapNodeRef | number, to?: TaskState | null) => { from: TaskState | null; to: TaskState | null } | null;
+    onMainFoldToggle: (id: string) => { collapsed: boolean } | null;
+    onMainFoldLevel: (level: ExpandLevel | number | string, under?: string) => boolean;
   };
   unlock(branchId: string, anchorEl?: HTMLElement | null, o?: { label?: string; container?: HTMLElement; inline?: boolean }): Promise<boolean>;
   lock(branchId: string | 'all', reason?: LockReason): Promise<void>;
@@ -180,7 +193,7 @@ function walk(nodes: OutlineNode[] | undefined, fn: (n: OutlineNode) => void): v
 }
 function find(nodes: OutlineNode[] | undefined, id: string): OutlineNode | null {
   let hit: OutlineNode | null = null;
-  walk(nodes, (n) => { if (!hit && n.id === id) hit = n; });
+  walk(nodes, (n) => { if (!hit && (n.sessionKey === id || n.writtenId === id)) hit = n; });
   return hit;
 }
 function replace(nodes: OutlineNode[] | undefined, from: OutlineNode, to: OutlineNode): boolean {
@@ -189,39 +202,6 @@ function replace(nodes: OutlineNode[] | undefined, from: OutlineNode, to: Outlin
   if (i >= 0) { nodes[i] = to; return true; }
   return nodes.some((n) => n && replace(n.children, from, to));
 }
-/** Region rows with no stored id get a session id (`__sid-N`: never serialized, never sealed). */
-function pinIds(doc: OutlineFoldDoc | null): void {
-  const used = new Set<string>();
-  walk(doc?.nodes, (n) => { if (n.id) used.add(String(n.id)); });
-  walk(doc?.nodes, (n) => {
-    if (n.id) return;
-    n.id = nextSessionId(used); n.autoId = true;
-    // A `(+)` on a line with no id is foldMark. The session id carries it, as on the main map.
-    if (doc && n.foldMark === 'collapsed') {
-      if (!doc.fold) doc.fold = { mode: '-', ids: [] };
-      if (!doc.fold.ids.includes(n.id)) doc.fold.ids.push(n.id);
-      delete n.foldMark;
-    } else if (n.foldMark === 'expanded') delete n.foldMark;
-  });
-}
-
-/** Put a collapsed/expanded flag onto `doc.fold`. Returns true when the list changed. */
-function setCollapsed(doc: OutlineFoldDoc, id: string, collapsed: boolean): boolean {
-  const mode = doc.fold?.mode ?? '-';
-  if (!doc.fold) doc.fold = { mode, ids: [] };
-  const ids = doc.fold.ids;
-  const has = ids.includes(id);
-  const want = mode === '+' ? !collapsed : collapsed;
-  if (want === has) return false;
-  if (want) ids.push(id);
-  else ids.splice(ids.indexOf(id), 1);
-  if (doc.frontmatter) {
-    doc.frontmatter.foldIds = [...ids];
-    doc.frontmatter.foldMode = mode;
-  }
-  return true;
-}
-
 const defaultTimers: Timers = {
   set: (fn, ms) => setTimeout(fn, ms),
   clear: (t) => clearTimeout(t as ReturnType<typeof setTimeout>),
@@ -259,7 +239,7 @@ export function createOutlineDoc(o: OutlineDocOptions): OutlineDocHandle {
   const pinned = new Map<RegionId, OutlineNode>();
   const rootNow = (): OutlineFoldDoc => {
     if (parsedText !== text || !parsed) {
-      try { parsed = parseText(text); } catch { parsed = { nodes: [], fold: { mode: '-', ids: [] } } as unknown as OutlineFoldDoc; }
+      try { parsed = parseText(text); } catch { parsed = { nodes: [] }; }
       parsedText = text;
       // Every re-parse: carry view keys onto the new nodes (id, then line map), refresh lines.
       index.sync(parsed);
@@ -383,7 +363,6 @@ export function createOutlineDoc(o: OutlineDocOptions): OutlineDocHandle {
   offs.push(sessions.api.on('unlock', (e) => {
     const s = sessions.get(e.region);
     if (!s.parent) { const n = find(rootNow().nodes, s.branchId); if (n) pinned.set(e.region, n); }
-    pinIds(s.doc);
     checkIds();
     emit('seal', e as Events['seal']);
   }));
@@ -428,16 +407,28 @@ export function createOutlineDoc(o: OutlineDocOptions): OutlineDocHandle {
     const s = sessions.get(region);
     const inner = s.doc;
     if (!inner) return;
-    const top = inner.nodes.length === 1 && inner.nodes[0]?.id === s.branchId ? inner.nodes[0].children : inner.nodes;
+    const top = inner.nodes.length === 1 && inner.nodes[0]?.writtenId === s.branchId ? inner.nodes[0].children : inner.nodes;
     let changed = false;
     const walkFold = (list?: OutlineNode[]) => {
       for (const n of list ?? []) {
-        if (n.id && n.children?.length && setCollapsed(inner, n.id, store.isNodeCollapsed(region, inner, n.id))) changed = true;
-        if (n.children?.length) walkFold(n.children);
+        if (n.children?.length) {
+          const want = store.isNodeCollapsed(region, inner, n.writtenId ?? n.sessionKey);
+          if (n.collapsed !== want) { n.collapsed = want; changed = true; }
+          walkFold(n.children);
+        } else if (n.collapsed) {
+          n.collapsed = false;
+          changed = true;
+        }
       }
     };
     walkFold(top);
     if (changed) sessions.markChanged(region);
+  }
+
+  /** One text edit: collapsed markers on the given lines, nothing else. */
+  function writeCollapsed(current: OutlineFoldDoc, edits: ReadonlyMap<number, boolean>): string | null {
+    const marker = current.frontmatter?.collapsedMarker ?? '(+)';
+    return setCollapsedAtLines(text, edits, marker, current.frontmatter?.expandedMarker);
   }
 
   const handle: OutlineDocHandle = {
@@ -600,6 +591,47 @@ export function createOutlineDoc(o: OutlineDocOptions): OutlineDocHandle {
       handle.setText(r.text, { source: 'map', reason: 'text' });
       return { from: r.from, to: r.to };
     },
+    toggleFold(id) {
+      const current = rootNow();
+      const node = findBySessionKey(current.nodes, sessionKeyFromAttribute(id));
+      if (!node?.children?.length) return null;
+      const line = index.lineOf(node.sessionKey);
+      if (line == null) return null;
+      const collapsed = !node.collapsed;
+      const next = writeCollapsed(current, new Map([[line, collapsed]]));
+      if (next == null) return null;
+      // Same gate as a tick: source 'map' is one text edit. A host that
+      // re-reads the text still sees the marker on this line.
+      handle.setText(next, { source: 'map', reason: 'text' });
+      return { collapsed };
+    },
+    setFoldLevel(level, under) {
+      const current = rootNow();
+      let underKey: SessionKey | undefined;
+      if (under) {
+        const anchor = findBySessionKey(current.nodes, sessionKeyFromAttribute(under));
+        if (!anchor) return false;
+        underKey = anchor.sessionKey;
+      }
+      const desired = applyExpandLevel(current, level, underKey ? { under: underKey } : {});
+      const edits = new Map<number, boolean>();
+      const walk = (list?: OutlineNode[]) => {
+        for (const n of list ?? []) {
+          if (!n.children?.length) continue;
+          const want = findBySessionKey(desired.nodes, n.sessionKey);
+          if (want && want.collapsed !== n.collapsed) {
+            const line = index.lineOf(n.sessionKey);
+            if (line != null) edits.set(line, want.collapsed);
+          }
+          walk(n.children);
+        }
+      };
+      walk(current.nodes);
+      const next = writeCollapsed(current, edits);
+      if (next == null) return false;
+      handle.setText(next, { source: 'map', reason: 'text' });
+      return true;
+    },
     sessionIndex: () => { rootNow(); return index; },
     lineOf: (k) => { rootNow(); const key = index.resolve(k); return key ? index.lineOf(key) : null; },
     keyAtLine: (line) => { rootNow(); return index.keyAtLine(line); },
@@ -633,6 +665,8 @@ export function createOutlineDoc(o: OutlineDocOptions): OutlineDocHandle {
         onRegionStyle: (id) => { if (handle.regionNode(id)) sessions.markChanged(handle.scoped(id).region); },
         onRegionFoldSync: (region) => writeInnerFold(region),
         onMainTaskToggle: (id, ref, to) => handle.toggleTask(id, ref, to),
+        onMainFoldToggle: (id) => handle.toggleFold(id),
+        onMainFoldLevel: (level, under) => handle.setFoldLevel(level, under),
       };
     },
     unlock(branchId, anchorEl, opt = {}) {

@@ -2,7 +2,6 @@ import { parseAssetsBlock, type AssetEntry } from './thumbnails.js';
 import { headerKid, isLineSealAlg, isSealedBranchPayload } from './sealedState.js';
 import { parseEncBody } from './sealed.js';
 import { parseAutoWidth } from './mapFit.js';
-import { isSessionId } from './nodeAddress.js';
 import type {
   NodeLayout,
   OutlineFrontmatter,
@@ -388,8 +387,7 @@ export function parseLayoutBlock(block: string): {
     const top = line.match(KEY_LINE);
     if (top) {
       flush();
-      // 0.6.2: session ids are never layout keys (and cannot round-trip via KEY_LINE).
-      current = isSessionId(top[1]) ? null : top[1]!;
+      current = top[1]!;
       continue;
     }
     // Unknown top-level line (`__sid-3:` does not match KEY_LINE, typos, …):
@@ -422,32 +420,15 @@ function unquote(s: string): string {
 }
 
 /**
- * One frontmatter key. Strict layout blocks reject fold- and fold+ together.
+ * One frontmatter key. A legacy fold list line is skipped and not stored.
  * Returns true when the line was a document key.
  */
 function readFmLine(
   fm: OutlineFrontmatter,
   line: string,
-  strict: boolean,
+  _strict: boolean,
 ): boolean {
-  const foldMinus = line.match(/^fold-\s*:\s*(.*)$/i);
-  if (foldMinus) {
-    if (strict && fm.foldMode === '+') {
-      throw new Error('Document cannot have both fold- and fold+');
-    }
-    fm.foldMode = '-';
-    fm.foldIds = splitIds(foldMinus[1]!);
-    return true;
-  }
-  const foldPlus = line.match(/^fold\+\s*:\s*(.*)$/i);
-  if (foldPlus) {
-    if (strict && fm.foldMode === '-') {
-      throw new Error('Document cannot have both fold- and fold+');
-    }
-    fm.foldMode = '+';
-    fm.foldIds = splitIds(foldPlus[1]!);
-    return true;
-  }
+  if (/^fold[+-]\s*:/i.test(line)) return true;
   const cm = line.match(/^collapsedMarker\s*:\s*(.+)$/i);
   if (cm) {
     fm.collapsedMarker = unquote(cm[1]!.trim());
@@ -502,21 +483,12 @@ export function parseFmBlock(block: string): OutlineFrontmatter {
   return fm;
 }
 
-function splitIds(s: string): string[] {
-  return s
-    .split(/[, ]+/)
-    .map((x) => x.trim())
-    .filter(Boolean);
-}
-
 /** Merge frontmatter: tail wins on conflicts. */
 export function mergeFrontmatter(
   head: OutlineFrontmatter,
   tail: OutlineFrontmatter,
 ): OutlineFrontmatter {
   const out: OutlineFrontmatter = { ...head };
-  if (tail.foldMode !== undefined) out.foldMode = tail.foldMode;
-  if (tail.foldIds !== undefined) out.foldIds = [...tail.foldIds];
   if (tail.collapsedMarker !== undefined)
     out.collapsedMarker = tail.collapsedMarker;
   if (tail.expandedMarker !== undefined)
@@ -539,7 +511,7 @@ export function attachLayouts(nodes: OutlineNode[], layouts: LayoutMap): void {
   const ids = new Set<string>();
   const walkIds = (list: OutlineNode[]) => {
     for (const n of list) {
-      if (n.id) ids.add(n.id);
+      if (n.writtenId) ids.add(n.writtenId);
       if (n.children?.length) walkIds(n.children);
     }
   };
@@ -549,9 +521,9 @@ export function attachLayouts(nodes: OutlineNode[], layouts: LayoutMap): void {
   const walk = (list: OutlineNode[]) => {
     for (const n of list) {
       pos += 1;
-      if (n.id && layouts[n.id]) {
-        n.layout = { ...layouts[n.id] };
-      } else if (!n.id) {
+      if (n.writtenId && layouts[n.writtenId]) {
+        n.layout = { ...layouts[n.writtenId] };
+      } else if (!n.writtenId) {
         const key = String(pos);
         if (layouts[key] && !ids.has(key)) n.layout = { ...layouts[key] };
       }
@@ -565,8 +537,7 @@ export function collectLayouts(nodes: OutlineNode[]): LayoutMap {
   const out: LayoutMap = {};
   const walk = (list: OutlineNode[]) => {
     for (const n of list) {
-      // 0.6.2: never emit a session id into the saved layout block.
-      if (n.id && n.layout && !isSessionId(n.id)) {
+      if (n.writtenId && n.layout) {
         const e: NodeLayout = {};
         if (typeof n.layout.w === 'number' && n.layout.w > 0) {
           e.w = n.layout.w;
@@ -583,7 +554,7 @@ export function collectLayouts(nodes: OutlineNode[]): LayoutMap {
           e.font = n.layout.font;
           if (n.layout.fontKey) e.fontKey = n.layout.fontKey;
         }
-        if (Object.keys(e).length) out[n.id] = e;
+        if (Object.keys(e).length) out[n.writtenId] = e;
       }
       if (n.children?.length) walk(n.children);
     }
@@ -598,8 +569,6 @@ export function formatLayoutBlock(
 ): string {
   const lines: string[] = ['--- layout ---'];
   if (frontmatter) {
-    // Single-source truth: don't write fold-:/fold+: to layout (inline (+) is the sole store).
-    // Strip legacy fold-: on save (migration to inline (+) on first save).
     if (frontmatter.collapsedMarker && frontmatter.collapsedMarker !== DEFAULT_COLLAPSED) {
       lines.push(`collapsedMarker: "${frontmatter.collapsedMarker}"`);
     }
@@ -628,8 +597,7 @@ export function formatLayoutBlock(
       lines.push(bare ? `${key}: ${uri}` : `${key}: "${uri.replace(/"/g, '\\"')}"`);
     }
   }
-  // 0.6.2: never write a session id key into the saved block.
-  const keys = Object.keys(layouts).filter((id) => !isSessionId(id)).sort();
+  const keys = Object.keys(layouts).sort();
   for (const id of keys) {
     const e = layouts[id]!;
     const w = e.w;
@@ -662,10 +630,10 @@ export function attachPayloads(
 ): void {
   const walk = (list: OutlineNode[]) => {
     for (const n of list) {
-      if (n.id && payloads[n.id]) {
+      if (n.writtenId && payloads[n.writtenId]) {
         // of-seal-v2: the key id lives on the line (`<enc:KEYID>`), not in the payload.
         const tagKid = n.sealed?.kid;
-        n.sealed = { ...payloads[n.id] };
+        n.sealed = { ...payloads[n.writtenId] };
         if (!n.sealed.kid && isLineSealAlg(n.sealed.alg)) {
           const k = tagKid ?? headerKid(n.sealed);
           if (k) n.sealed.kid = k;
@@ -687,9 +655,9 @@ export function collectPayloads(nodes: OutlineNode[]): PayloadMap {
   const out: PayloadMap = {};
   const walk = (list: OutlineNode[]) => {
     for (const n of list) {
-      if (n.id && n.sealed && (n.sealed.ciphertext || n.sealed.uri)) {
-        out[n.id] = { ...n.sealed };
-        if (isLineSealAlg(n.sealed.alg)) delete out[n.id]!.kid; // written as <enc:KEYID>
+      if (n.writtenId && n.sealed && (n.sealed.ciphertext || n.sealed.uri)) {
+        out[n.writtenId] = { ...n.sealed };
+        if (isLineSealAlg(n.sealed.alg)) delete out[n.writtenId]!.kid; // written as <enc:KEYID>
       }
       if (n.children) walk(n.children);
     }
